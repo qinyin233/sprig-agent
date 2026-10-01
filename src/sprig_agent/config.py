@@ -1,0 +1,70 @@
+"""Configuration and small shared safety helpers; no on-disk secrets."""
+
+from dataclasses import dataclass, field
+from pathlib import Path
+import unicodedata
+from urllib.parse import urlsplit, urlunsplit
+
+
+def redact(value, secret):
+    """Replace only the configured key, not arbitrary or encoded secrets."""
+    if isinstance(value, str):
+        return value.replace(secret, "[REDACTED]") if secret else value
+    if isinstance(value, list):
+        return [redact(item, secret) for item in value]
+    if isinstance(value, dict):
+        return {redact(key, secret): redact(item, secret) for key, item in value.items()}
+    return value
+
+
+def terminal_text(text):
+    """Make untrusted terminal controls visible, including bidi overrides."""
+    return "".join(
+        ch if ch == "\n" or (not unicodedata.category(ch).startswith("C"))
+        else f"\\u{ord(ch):04x}" for ch in str(text)
+    )
+
+
+def endpoint(base_url):
+    if not isinstance(base_url, str) or any(ord(ch) <= 32 for ch in base_url):
+        raise ValueError("base URL contains whitespace or control characters")
+    parsed = urlsplit(base_url)
+    if not parsed.hostname or parsed.username or parsed.password or parsed.query or parsed.fragment:
+        raise ValueError("base URL must not contain credentials, query, or fragment")
+    if parsed.scheme != "https" and not (
+        parsed.scheme == "http" and parsed.hostname in {"localhost", "127.0.0.1", "::1"}
+    ):
+        raise ValueError("use HTTPS (HTTP is allowed only for localhost/loopback)")
+    parsed.port  # Validate invalid/non-numeric ports before making a request.
+    return urlunsplit((parsed.scheme, parsed.netloc, parsed.path.rstrip("/"), "", ""))
+
+
+@dataclass(frozen=True)
+class Config:
+    workdir: Path
+    model: str
+    base_url: str = "https://api.openai.com/v1"
+    api_key: str = field(default="", repr=False)
+    max_steps: int = 20
+    timeout: float = 30
+    max_output: int = 16000
+
+    def __post_init__(self):
+        root = Path(self.workdir).expanduser().resolve(strict=True)
+        if not root.is_dir():
+            raise ValueError("workdir must be a directory")
+        object.__setattr__(self, "workdir", root)
+        object.__setattr__(self, "base_url", endpoint(self.base_url))
+        if not self.model or len(self.model) > 200 or any(ord(c) < 32 for c in self.model):
+            raise ValueError("a valid model is required (--model or SPRIG_MODEL)")
+        if not 1 <= self.max_steps <= 100 or isinstance(self.max_steps, bool):
+            raise ValueError("max-steps must be between 1 and 100")
+        if not 0 < self.timeout <= 120:
+            raise ValueError("timeout must be greater than 0 and at most 120 seconds")
+        if not 256 <= self.max_output <= 1000000:
+            raise ValueError("max-output must be between 256 and 1000000 bytes")
+        if any(ord(c) < 32 for c in self.api_key):
+            raise ValueError("API key contains control characters")
+
+    def binding(self):
+        return {"base_url": self.base_url, "model": self.model, "workdir": str(self.workdir)}
