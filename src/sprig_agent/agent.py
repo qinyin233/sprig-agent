@@ -5,6 +5,7 @@ import uuid
 
 from .config import redact
 from .context import prepare_context
+from .metrics import Measurements
 from .provider import ProviderError, validate_message
 from .tools import TOOL_SCHEMAS
 
@@ -33,6 +34,12 @@ class Agent:
 
     def context_preview(self, messages):
         return prepare_context(self.config, messages or [], self.schemas, compact=True)[1]
+
+    def usage_report(self):
+        measurements = getattr(self.provider, "measurements", None)
+        if isinstance(measurements, Measurements):
+            return measurements.report()
+        return {"available": False, "reason": "provider does not record numeric request measurements"}
 
     def record_workspace_change(self, messages, result):
         if messages and (result.get("changed") or result.get("outcome") == "uncertain"):

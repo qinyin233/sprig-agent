@@ -11,6 +11,7 @@ import urllib.error
 import urllib.request
 
 from .config import redact
+from .metrics import MeasuredResponse, Measurements, RequestMeasurement
 
 MAX_RESPONSE = 2 * 1024 * 1024
 MAX_TOOL_CALLS = 16
@@ -114,8 +115,21 @@ class Provider:
     def __init__(self, config):
         self.config = config
         self.opener = urllib.request.build_opener(NoRedirect())
+        self.measurements = Measurements()
 
     def complete(self, messages, tools, on_text=None):
+        measurement = RequestMeasurement(self.config.stream)
+        try:
+            result = self._complete(messages, tools, on_text, measurement)
+            measurement.outcome = "success"
+            return result
+        except KeyboardInterrupt:
+            measurement.outcome = "cancelled"
+            raise
+        finally:
+            self.measurements.add(measurement.finish())
+
+    def _complete(self, messages, tools, on_text, measurement):
         config = self.config
         from .context import request_body
         body = request_body(config, messages, tools)
@@ -127,15 +141,23 @@ class Provider:
         if config.api_key:
             headers["Authorization"] = f"Bearer {config.api_key}"
         request = urllib.request.Request(config.base_url + "/chat/completions", body, headers)
+        measurement.begin(len(body))
         try:
             with self.opener.open(request, timeout=config.timeout) as response:
+                status = getattr(response, "status", None)
+                if type(status) is int and 100 <= status <= 599:
+                    measurement.status = status
+                reader = MeasuredResponse(response, measurement)
                 if config.stream:
                     from .streaming import complete_stream
-                    return complete_stream(response, on_text, config.api_key)
-                raw = response.read(MAX_RESPONSE + 1)
+                    return complete_stream(reader, on_text, config.api_key,
+                                           on_usage=measurement.observe_usage, on_delta=measurement.text_received)
+                raw = reader.read(MAX_RESPONSE + 1)
             if len(raw) > MAX_RESPONSE:
                 raise ProviderError("provider response exceeds 2 MiB")
             data = json.loads(raw)
+            if isinstance(data, dict):
+                measurement.observe_usage(data.get("usage"))
             if (not isinstance(data, dict) or not isinstance(data.get("choices"), list)
                     or not data["choices"] or not isinstance(data["choices"][0], dict)):
                 raise ProviderError("invalid Chat Completions choices")
@@ -144,6 +166,8 @@ class Provider:
                 raise ProviderError("provider stopped before a complete response")
             return redact(validate_message(choice["message"]), config.api_key)
         except urllib.error.HTTPError as exc:
+            if type(exc.code) is int and 100 <= exc.code <= 599:
+                measurement.status = exc.code
             # Never echo response bodies: gateways can include request credentials.
             try:
                 failure = http_failure(exc.code, exc.headers, config.api_key)

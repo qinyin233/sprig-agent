@@ -140,6 +140,7 @@ class TuiTests(unittest.IsolatedAsyncioTestCase):
             for identity in ("diff", "git", "undo", "redo"):
                 self.assertTrue(app.query_one("#" + identity).disabled)
             await self.click(pilot, "#context-budget")
+            await self.click(pilot, "#usage")
             await self.until(pilot, lambda: '"budget_bytes"' in app.transcript)
             await self.click(pilot, "#compact")
             await self.until(pilot, lambda: isinstance(app.screen, ApprovalScreen))
@@ -615,6 +616,7 @@ class TuiTests(unittest.IsolatedAsyncioTestCase):
                 self.assertEqual(app.last_status, 2)
                 self.assertEqual(app.task_message, task_message)
             await self.click(pilot, "#context-budget")
+            await self.click(pilot, "#usage")
             app.query_one("#session-name", Input).value = "unverified"
             await self.click(pilot, "#save")
             await self.until(pilot, lambda: (self.parent / "sessions/unverified.json").exists())
@@ -623,6 +625,24 @@ class TuiTests(unittest.IsolatedAsyncioTestCase):
             self.assertEqual(len(provider.calls), 1)
             await pilot.press("ctrl+q")
         self.assertEqual(app.return_value, 2)
+
+    async def test_local_usage_shows_real_request_records_without_network_or_history_changes(self):
+        from sprig_agent.provider import Provider
+        from tests.test_streaming import chunk, sse
+
+        provider = Provider(self.config)
+        provider.opener = Mock()
+        provider.opener.open.return_value = io.BytesIO(sse(chunk({"content": "plan"}, "stop"), {
+            "choices": [], "usage": {"prompt_tokens": 10, "completion_tokens": 2, "total_tokens": 12}}))
+        app = self.app(provider, task="inspect")
+        async with app.run_test(size=(110, 40)) as pilot:
+            await self.until(pilot, lambda: not app.busy and app.messages is not None)
+            history, status, task_message = copy.deepcopy(app.messages), app.last_status, app.task_message
+            await self.click(pilot, "#usage")
+            self.assertIn('"complete_sum": 12', app.transcript)
+            self.assertEqual(app.messages, history)
+            self.assertEqual((app.last_status, app.task_message), (status, task_message))
+            self.assertEqual(provider.opener.open.call_count, 1)
 
     async def test_model_failure_survives_local_view_and_next_task_can_recover(self):
         provider = ScriptedProvider([response("recovered")])
@@ -970,8 +990,11 @@ class TuiCliTests(unittest.TestCase):
                     patch("sprig_agent.tui.run_tui", return_value=0) as run, \
                     patch.dict(os.environ, {"SPRIG_API_KEY": "", "OPENAI_API_KEY": ""}):
                 self.assertEqual(cli.main(["--tui", "--model", "test", "--workdir", root,
-                                           "--base-url", "http://localhost/v1", "--resume", "demo"]), 0)
+                                           "--base-url", "http://localhost/v1", "--resume", "demo",
+                                           "--metrics", "--request-usage"]), 0)
             self.assertTrue(run.call_args.args[0].stream)
+            self.assertTrue(run.call_args.args[0].request_usage)
+            self.assertTrue(run.call_args.kwargs["show_metrics"])
             self.assertEqual(run.call_args.args[-1], "demo")
 
 

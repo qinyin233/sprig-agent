@@ -63,6 +63,7 @@ class Config:
     inherit_env: bool = False
     max_context_bytes: int = 131072
     compact_context: bool = False
+    request_usage: bool = False
 
     def __post_init__(self):
         root = Path(self.workdir).expanduser().resolve(strict=True)
@@ -82,6 +83,8 @@ class Config:
             raise ValueError("API key contains control characters")
         if not isinstance(self.stream, bool):
             raise ValueError("stream must be a boolean")
+        if not isinstance(self.request_usage, bool) or (self.request_usage and not self.stream):
+            raise ValueError("request-usage requires streaming and must be a boolean")
         if not isinstance(self.read_only, bool) or not isinstance(self.inherit_env, bool):
             raise ValueError("read-only and inherit-env must be booleans")
         if self.read_only and self.checks:

@@ -81,7 +81,7 @@ def chat(agent, task, messages, emit):
 
     if task or messages is not None:
         run(task)
-    emit("Chat ready. Enter a task; /continue, /help, /status, /context, /compact, /changes, /undo, /redo, /diff, /git or /exit.")
+    emit("Chat ready. Enter a task; /continue, /help, /status, /context, /usage, /compact, /changes, /undo, /redo, /diff, /git or /exit.")
     while True:
         try:
             task = input("sprig> ").strip()
@@ -96,7 +96,7 @@ def chat(agent, task, messages, emit):
             return status
         try:
             if task == "/help":
-                emit("Enter a task to continue the same conversation. /continue explicitly continues retained history without adding a duplicate request; /status shows local context; /context previews the request budget; /compact confirms request-only elision; /changes lists exact edit backups; /undo and /redo require diff approval; /discard-history confirms removal of backups; /diff and /git show Git changes with approval; /exit closes chat.")
+                emit("Enter a task to continue the same conversation. /continue explicitly continues retained history without adding a duplicate request; /status shows local context; /context previews the request budget; /usage shows local numeric request measurements and unknown token counts; /compact confirms request-only elision; /changes lists exact edit backups; /undo and /redo require diff approval; /discard-history confirms removal of backups; /diff and /git show Git changes with approval; /exit closes chat.")
             elif task == "/continue":
                 if messages and len(messages) >= 2:
                     run(None)
@@ -106,6 +106,8 @@ def chat(agent, task, messages, emit):
                 emit(f"Messages: {len(messages or [])} | model: {agent.config.model} | acceptance checks: {len(agent.config.checks)} | last status: {status}")
             elif task == "/context":
                 emit(json.dumps(agent.context_preview(messages), ensure_ascii=False, indent=2))
+            elif task == "/usage":
+                emit(json.dumps(agent.usage_report(), ensure_ascii=False, indent=2))
             elif task == "/compact":
                 preview = agent.context_preview(messages)
                 emit(json.dumps(preview, ensure_ascii=False, indent=2))
@@ -155,6 +157,8 @@ def main(argv=None):
     parser.add_argument("--timeout", type=float, default=30)
     parser.add_argument("--max-output", type=int, default=16000)
     parser.add_argument("--stream", action="store_true", help="display model text as it arrives")
+    parser.add_argument("--request-usage", action="store_true", help="request final stream token statistics; requires --stream or --tui and provider support")
+    parser.add_argument("--metrics", action="store_true", help="print local numeric request measurements at CLI exit; missing token counts stay unknown")
     parser.add_argument("--read-only", action="store_true", help="allow file inspection only; block writes and all commands")
     parser.add_argument("--inherit-env", action="store_true", help="let approved commands inherit additional environment variables")
     parser.add_argument("--max-context-bytes", type=int, default=131072, help="maximum serialized model request size; not a token/cost estimate")
@@ -173,7 +177,7 @@ def main(argv=None):
     parser.add_argument("--change-history-dir", type=Path, help="explicitly persist exact edit backups in a private directory outside the repository (not encrypted)")
     args = parser.parse_args(argv)
     key = os.environ.get("SPRIG_API_KEY") or os.environ.get("OPENAI_API_KEY", "")
-    store = tools = history = None
+    store = tools = history = provider = None
     try:
         manage_sessions = args.list_sessions or args.delete_session
         if os.name not in {"posix", "nt"}:
@@ -188,7 +192,8 @@ def main(argv=None):
             raise ValueError("--tui requires an interactive terminal (stdin and stdout)")
         config = Config(Path(args.workdir), args.model or ("session-manager" if manage_sessions else ""), args.base_url, key, args.max_steps, args.timeout, args.max_output,
                         stream=args.stream or args.tui, checks=tuple(args.check), read_only=args.read_only, inherit_env=args.inherit_env,
-                        max_context_bytes=args.max_context_bytes, compact_context=args.compact_context)
+                        max_context_bytes=args.max_context_bytes, compact_context=args.compact_context,
+                        request_usage=args.request_usage)
         if manage_sessions:
             store = SessionStore(args.session_dir, config)
             if args.list_sessions:
@@ -208,7 +213,8 @@ def main(argv=None):
             raise ValueError("set SPRIG_API_KEY or OPENAI_API_KEY before using OpenAI")
         if args.tui:
             from .tui import run_tui
-            return run_tui(config, args.task, args.session_dir, args.save_session, args.resume, change_dir=args.change_history_dir)
+            return run_tui(config, args.task, args.session_dir, args.save_session, args.resume,
+                           change_dir=args.change_history_dir, show_metrics=args.metrics)
         emit = lambda text: print(terminal_text(redact(text, key)), flush=True)
         confirm = lambda text: approve(redact(text, key))
         emit_delta = lambda text: print(terminal_text(text), end="", flush=True)
@@ -229,7 +235,8 @@ def main(argv=None):
         if args.change_history_dir:
             emit("Exact edit backups persist locally (not encrypted). Only file-tool edits can be undone; commands are not tracked.")
         tools = Tools(config, confirm, emit_output=emit_delta, history=history)
-        agent = Agent(config, Provider(config), tools, emit, checkpoint, emit_delta=emit_delta)
+        provider = Provider(config)
+        agent = Agent(config, provider, tools, emit, checkpoint, emit_delta=emit_delta)
         if args.chat:
             return chat(agent, args.task, messages, emit)
         _, complete = agent.run(args.task, messages)
@@ -241,6 +248,8 @@ def main(argv=None):
         print("Error: " + terminal_text(redact(str(exc), key)), file=sys.stderr)
         return 1
     finally:
+        if args.metrics and provider is not None:
+            print("[usage] " + json.dumps(provider.measurements.report(), ensure_ascii=False), file=sys.stderr, flush=True)
         if tools:
             tools.close()
         elif history:

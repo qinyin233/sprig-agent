@@ -72,7 +72,7 @@ class TextOutput:
         self.pending = ""
 
 
-def complete_stream(response, on_text, secret):
+def complete_stream(response, on_text, secret, *, on_usage=None, on_delta=None):
     output = TextOutput(on_text, secret)
     content, refusal, calls, finished = [], [], {}, None
     for event in events(response):
@@ -98,6 +98,8 @@ def complete_stream(response, on_text, secret):
         if not isinstance(choices, list) or len(choices) > 1:
             raise ProviderError("invalid streamed choices")
         if not choices:  # Optional final usage chunk.
+            if on_usage:
+                on_usage(chunk.get("usage"))
             continue
         choice = choices[0]
         if not isinstance(choice, dict) or type(choice.get("index")) is not int or choice["index"] != 0:
@@ -108,6 +110,8 @@ def complete_stream(response, on_text, secret):
         if finished is not None:
             # Some compatible providers keep index=0 in the final usage event.
             if not delta and choice.get("finish_reason") is None and isinstance(chunk.get("usage"), dict):
+                if on_usage:
+                    on_usage(chunk["usage"])
                 continue
             raise ProviderError("invalid delta or data after stream completion")
         if delta.get("role") not in {None, "assistant"} or delta.get("function_call") is not None:
@@ -118,6 +122,8 @@ def complete_stream(response, on_text, secret):
                 if not isinstance(text, str):
                     raise ProviderError("only text assistant content is supported")
                 target.append(text)
+                if text and on_delta:
+                    on_delta()
                 if field == "content":
                     output.write(text)
         fragments = delta.get("tool_calls", [])
@@ -156,3 +162,5 @@ def complete_stream(response, on_text, secret):
             if (reason == "tool_calls") != bool(calls):
                 raise ProviderError("stream finish reason does not match tool calls")
             finished = reason
+        if on_usage:
+            on_usage(chunk.get("usage"))

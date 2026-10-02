@@ -186,7 +186,8 @@ class StreamIntegrationTests(unittest.TestCase):
                 self.wfile.flush()
                 if not gate.wait(3):
                     errors.append("text callback did not run before the stream finished")
-                self.wfile.write(sse(chunk(reason="stop")))
+                self.wfile.write(sse(chunk(reason="stop"), {"choices": [], "usage": {
+                    "prompt_tokens": 10, "completion_tokens": 2, "total_tokens": 12}}))
                 self.wfile.flush()
 
             def log_message(self, *_):
@@ -201,10 +202,16 @@ class StreamIntegrationTests(unittest.TestCase):
             def display(text):
                 displayed.append(text)
                 gate.set()
-            result = Provider(config).complete([], [], on_text=display)
+            provider = Provider(config)
+            result = provider.complete([], [], on_text=display)
             self.assertEqual(displayed, ["early"])
             self.assertEqual(result["content"], "early")
             self.assertEqual(errors, [])
+            record = provider.measurements.report()["recent"][0]
+            self.assertEqual(record["http_status"], 200)
+            self.assertIsNotNone(record["first_text_ms"])
+            self.assertLessEqual(record["first_text_ms"], record["elapsed_ms"])
+            self.assertEqual(record["usage"]["total_tokens"], 12)
         finally:
             gate.set()
             server.shutdown()

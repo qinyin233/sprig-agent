@@ -98,7 +98,7 @@ uv run sprig '为现有函数补一个最小测试，并运行测试' --workdir 
 ```text
 sprig [TASK] [--workdir PATH] [--model MODEL] [--base-url URL]
       [--max-steps INT] [--timeout SECONDS] [--max-output INT]
-      [--stream] [--chat | --tui] [--check JSON_ARGV ...]
+      [--stream] [--request-usage] [--metrics] [--chat | --tui] [--check JSON_ARGV ...]
       [--save-session NAME | --resume NAME] [--session-dir PATH]
       [--change-history-dir PATH]
 ```
@@ -115,6 +115,8 @@ sprig [TASK] [--workdir PATH] [--model MODEL] [--base-url URL]
 | `--timeout` | `30` 秒；网络 socket 的等待超时（非整个请求的总时限），命令的墙钟时限 |
 | `--max-output` | `16000` 字节，工具输出上限；读取 / 搜索结果可截断，命令超出上限会被终止 |
 | `--stream` | 可选；逐步显示模型文本，工具调用仍在完整响应校验通过后执行 |
+| `--request-usage` | 显式请求流末尾的 token 用量，须搭配 `--stream` 或 `--tui`；服务不支持时不自动重试 |
+| `--metrics` | 退出 CLI/TUI 时向标准错误输出本地数值统计；不改变任务状态码，不写报告文件 |
 | `--read-only` | 只允许文件检查；工具入口强制拒绝所有写入和命令，不可搭配 `--check` |
 | `--inherit-env` | 显式允许获批命令继承更多环境变量；已知模型密钥仍移除 |
 | `--max-context-bytes` | 默认 131072；限制实际序列化请求大小，范围 4096–2097152；不等同 token 或费用预算 |
@@ -134,6 +136,18 @@ sprig [TASK] [--workdir PATH] [--model MODEL] [--base-url URL]
 请求在实际发送前检查字节预算，超限时停止，不会请求模型或自动删除历史。CLI `/context` 和 TUI“查看上下文预算”显示当前请求大小、压缩后大小以及将缩减的消息、字段和字节数。CLI `/compact` 或 TUI“压缩旧工具输出”需要确认；也可启动时明确指定 `--compact-context`。
 
 压缩只影响下一次发送的请求，不修改保存的完整工具输出。用户要求、拒绝、失败、验收状态元数据、工具调用顺序和最近六条消息保留；旧成功读取或命令的正文替换为省略标记，模型需要时应重新检查实际文件。无法压缩的长要求仍会被预算拦截，可以由用户增加预算或开始新会话。
+
+### 请求测量与用量
+
+CLI `/usage`、TUI“查看请求统计”在本地显示当前 provider 实例的请求统计，不调用模型、不修改对话或验收结果。`--metrics` 在退出时输出相同统计；例如 `uv run --locked sprig --stream --request-usage --metrics --model your-model '说明项目结构'`。模型仍可能提出写入或命令，每次都需要确认；统计选项不改变批准规则。
+
+记录每次网络调用尝试的请求 JSON 字节数、客户端读取到的响应体字节数、总耗时及流式首段非空文本/拒绝片段的接收延迟。计时从发起网络调用前开始，包含响应解析和输出回调，排除请求序列化、工具执行和用户批准等待；首段计时在文本遮盖和界面缓冲前，不能代表界面显示延迟或 token 逐个生成时间。非流式和纯工具调用没有可观测首段文本，记为 `null`。响应字节不含 HTTP 头，也不代表线路流量；HTTP 错误正文不读取或保留。
+
+只保留服务报告的 `prompt_tokens`、`completion_tokens`、`total_tokens`。缺失字段、非法数值或矛盾用量为 `null`，不通过字符数推算 token、费用或计费结果。流式用量按[官方接口约定](https://developers.openai.com/api/reference/resources/chat)通过 `stream_options.include_usage` 请求；断流或取消可能缺失最终用量，兼容服务可能不支持此选项，所以默认不开启。重复且相同的用量片段只计一次；矛盾或非法片段使该请求用量未知。非流式响应中的用量自动记录。
+
+`reported_sum` 仅累计有明确数值的请求，同时给出 `known_requests`、`unknown_requests`；只有全部尝试都有该字段时，`complete_sum` 才是总数，否则为 `null`。请求结果 `success` 仅表示完整响应通过协议校验，不能证明代码正确、通过验收或新要求已采用。网络调用尝试也不证明服务收到请求；失败和取消不自动重试，其未知费用不能当作零。Provider 入口的预算拒绝属于 `not_attempted`，不会计为网络尝试；在 Agent 预算检查阶段已停止的任务没有 Provider 记录。
+
+只在内存保存最近 128 条数值记录，历史累计计数保留；不保存提示词、模型文本、工具参数、URL、请求 ID、错误正文或密钥。统计不进入模型上下文或会话文件，恢复历史不能恢复以往用量。它是请求级测量，完整任务耗时、工具与批准开销、内存及竞品对照仍需另外评测。
 
 ### 会话管理
 

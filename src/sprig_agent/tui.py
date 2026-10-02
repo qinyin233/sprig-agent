@@ -3,6 +3,7 @@
 import io
 import json
 from pathlib import Path
+import sys
 import threading
 
 from textual import on, work
@@ -215,6 +216,7 @@ class SprigApp(App[int]):
                             yield Button("查看 Git 状态", id="git", disabled=self.config.read_only)
                             yield Button("查看项目地图", id="map")
                             yield Button("查看上下文预算", id="context-budget")
+                            yield Button("查看请求统计", id="usage")
                             yield Button("压缩旧工具输出", id="compact")
                             yield Button("查看修改记录", id="changes")
                             yield Button("撤销最近文件编辑", id="undo", disabled=self.config.read_only)
@@ -313,7 +315,7 @@ class SprigApp(App[int]):
 
     def set_busy(self, busy):
         self.busy = busy
-        for identity in ("continue", "diff", "git", "map", "context-budget", "compact", "changes", "undo", "redo", "discard-history", "save", "restore", "sessions", "delete", "session-name"):
+        for identity in ("continue", "diff", "git", "map", "context-budget", "usage", "compact", "changes", "undo", "redo", "discard-history", "save", "restore", "sessions", "delete", "session-name"):
             self.query_one("#" + identity).disabled = busy or (self.config.read_only and identity in {"diff", "git", "undo", "redo"})
         self.query_one("#cancel", Button).disabled = not busy
         if not busy:
@@ -671,6 +673,8 @@ class SprigApp(App[int]):
                 self.start(local=(identity, {}))
             elif identity == "context-budget":
                 self.append("\n[上下文预算；本地预览]\n" + json.dumps(self.agent.context_preview(self.messages), ensure_ascii=False, indent=2) + "\n")
+            elif identity == "usage":
+                self.append("\n[请求统计；本地记录，缺失用量为未知]\n" + json.dumps(self.agent.usage_report(), ensure_ascii=False, indent=2) + "\n")
             elif identity == "compact":
                 preview = self.agent.context_preview(self.messages)
 
@@ -713,9 +717,11 @@ class SprigApp(App[int]):
             self._lifecycle_lock.release()
 
 
-def run_tui(config, task=None, session_dir=None, save_session=None, resume=None, change_dir=None):
+def run_tui(config, task=None, session_dir=None, save_session=None, resume=None, change_dir=None, show_metrics=False):
     app = SprigApp(config, task, session_dir, save_session, resume, change_dir=change_dir)
     try:
         return app.run() or 0
     finally:
         app.close()
+        if show_metrics:
+            print("[usage] " + json.dumps(app.agent.usage_report(), ensure_ascii=False), file=sys.stderr, flush=True)

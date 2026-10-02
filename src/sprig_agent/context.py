@@ -7,6 +7,8 @@ def request_payload(config, messages, tools):
     payload = {"model": config.model, "messages": redact(messages, config.api_key), "tools": tools, "tool_choice": "auto"}
     if config.stream:
         payload["stream"] = True
+        if config.request_usage:
+            payload["stream_options"] = {"include_usage": True}
     return payload
 
 
