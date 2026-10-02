@@ -68,7 +68,7 @@ class TextOutput:
 
     def finish(self):
         if self.emit and self.pending:
-            self.emit(self.pending)
+            self.emit(redact(self.pending, self.secret))
         self.pending = ""
 
 

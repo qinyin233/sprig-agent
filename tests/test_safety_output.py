@@ -1,6 +1,8 @@
 """Enforced read-only/privacy policy and actual incremental command output."""
 from dataclasses import replace
 import os
+import io
+import json
 from pathlib import Path
 import sys
 import tempfile
@@ -12,6 +14,8 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 from sprig_agent.agent import Agent
 from sprig_agent.config import Config
 from sprig_agent.tools import Tools
+from sprig_agent.session import SessionStore
+from sprig_agent.streaming import complete_stream
 
 
 class SafetyOutputTests(unittest.TestCase):
@@ -119,6 +123,56 @@ class SafetyOutputTests(unittest.TestCase):
             cancel.set()
             (self.root / "release").touch()
             worker.join(6)
+
+    def test_file_cap_does_not_upload_trailing_known_key_prefix(self):
+        prefix = self.config.api_key[:12]
+        filler = "x" * (self.config.max_output - len(prefix))
+        (self.root / "payload.txt").write_text(filler + self.config.api_key)
+        result = self.tools().execute("read_file", {"path": "payload.txt"})
+        self.assertTrue(result["truncated"])
+        self.assertEqual(result["content"], filler + "[REDACTED]")
+        self.assertNotIn(prefix, result["content"])
+
+    def test_actual_command_cap_masks_key_prefix_in_display_and_result(self):
+        prefix = self.config.api_key[:12]
+        filler = "x" * (self.config.max_output - len(prefix))
+        (self.root / "payload.bin").write_bytes((filler + self.config.api_key).encode("utf-8"))
+        displayed = []
+        tools = self.tools(emit_output=displayed.append)
+        result = tools.execute("run", {"argv": [sys.executable, "-c", "import sys; from pathlib import Path; sys.stdout.buffer.write(Path('payload.bin').read_bytes()); sys.stdout.buffer.flush()"]})
+        self.assertTrue(result["output_limited"])
+        self.assertEqual(result["output"], filler + "[REDACTED]")
+        self.assertEqual("".join(displayed), filler + "[REDACTED]")
+        self.assertNotIn(prefix, json.dumps(result))
+
+    def test_completed_stream_masks_partial_key_and_preserves_short_ordinary_suffix(self):
+        prefix = self.config.api_key[:12]
+        content = "reply " + prefix
+        chunks = [{"choices": [{"index": 0, "delta": {"content": content}, "finish_reason": None}]},
+                  {"choices": [{"index": 0, "delta": {}, "finish_reason": "stop"}]}]
+        stream = b"".join(b"data: " + json.dumps(chunk).encode() + b"\n\n" for chunk in chunks) + b"data: [DONE]\n\n"
+        displayed = []
+        result = complete_stream(io.BytesIO(stream), displayed.append, self.config.api_key)
+        self.assertEqual(result["content"], "reply [REDACTED]")
+        self.assertEqual("".join(displayed), "reply [REDACTED]")
+        from sprig_agent.streaming import TextOutput
+        displayed.clear()
+        output = TextOutput(displayed.append, "ordinary-secret")
+        output.write("an ordinary word: ord")
+        output.finish()
+        self.assertEqual("".join(displayed), "an ordinary word: ord")
+
+    def test_private_saved_transcript_also_masks_long_partial_key(self):
+        with tempfile.TemporaryDirectory() as parent:
+            store = SessionStore(Path(parent) / "sessions", self.config)
+            try:
+                prefix = self.config.api_key[:12]
+                history = [{"role": "system", "content": "system"}, {"role": "user", "content": "prefix " + prefix}]
+                store.save("redaction", history)
+                self.assertNotIn(prefix, (store.directory / "redaction.json").read_text())
+                self.assertEqual(store.load("redaction")[-1]["content"], "prefix [REDACTED]")
+            finally:
+                store.close()
 
 
 if __name__ == "__main__":

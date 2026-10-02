@@ -8,9 +8,17 @@ from urllib.parse import urlsplit, urlunsplit
 
 
 def redact(value, secret):
-    """Replace only the configured key, not arbitrary or encoded secrets."""
+    """Mask the configured key and long trailing prefixes, including truncation."""
     if isinstance(value, str):
-        return value.replace(secret, "[REDACTED]") if secret else value
+        if not secret:
+            return value
+        value = value.replace(secret, "[REDACTED]")
+        # A tool cap or completed stream can cut the key in the middle. Long
+        # trailing prefixes are withheld too; short ordinary words stay intact.
+        for length in range(min(len(secret) - 1, len(value)), 7, -1):
+            if value.endswith(secret[:length]):
+                return value[:-length] + "[REDACTED]"
+        return value
     if isinstance(value, list):
         return [redact(item, secret) for item in value]
     if isinstance(value, dict):

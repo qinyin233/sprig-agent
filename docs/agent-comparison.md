@@ -28,7 +28,7 @@ Sprig 借鉴这些接口边界和交互流程。模型与工具核心使用 Pyth
 | Git 查看 | `/diff`、`/git` 本地查看当前工作目录 | 需确认；不自动提交或回滚 |
 | 文件修改记录与撤销 | TUI/CLI 可查看、逐次确认撤销与重做；精确备份可显式持久化 | 有界记录；外部修改拒绝覆盖；不跟踪命令改动；没有工作树隔离；撤销后验收失效 |
 | 测试与修复 | 用户固定 `--check` 命令，失败返回模型 | 每次执行需确认，仍受步数和命令资源上限约束 |
-| 跨平台 | POSIX 目录 FD/进程组；Windows 无重解析句柄/DACL/Job Object | Linux、Windows 本地实测；[三平台、四版本 CI 已通过](https://github.com/qinyin233/sprig-agent/actions/runs/37007902891) |
+| 跨平台 | POSIX 目录 FD/进程组；Windows 无重解析句柄/DACL/Job Object | Linux、Windows 本地实测；[三平台、四版本 CI 已通过](https://github.com/qinyin233/sprig-agent/actions/runs/37024709025) |
 
 ## 本轮差异化功能：绑定会话的独立验收
 
