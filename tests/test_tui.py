@@ -82,6 +82,9 @@ class TuiTests(unittest.IsolatedAsyncioTestCase):
         button.focus(scroll_visible=False)
         await self.until(pilot, lambda: pilot.app.screen.focused is button)
         await pilot.wait_for_scheduled_animations()
+        # Textual suppresses clicks while the previous activation effect is
+        # active. A hit-tested pointer click alone does not imply Pressed.
+        await self.until(pilot, lambda: not button.has_class("-active"))
         button.scroll_visible(animate=False, immediate=True)
         await pilot.pause()
         # Widget.size excludes the border; use region so a one-row button's
@@ -811,6 +814,9 @@ class TuiTests(unittest.IsolatedAsyncioTestCase):
             await self.until(pilot, lambda: not app.busy)
             history = copy.deepcopy(app.messages)
             app.query_one("#session-name", Input).value = "replacement"
+            # Exercise an immediate retry inside the normal click suppression
+            # window, even on fast runners; the helper must wait for readiness.
+            app.query_one("#save").active_effect_duration = 1
             with patch.object(app.store.handle, "replace", side_effect=OSError("fixture disk error")) as replace:
                 await self.click(pilot, "#save")
                 await self.until(pilot, lambda: replace.call_count == 1)
