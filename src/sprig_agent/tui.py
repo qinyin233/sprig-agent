@@ -1,5 +1,6 @@
 """Textual terminal UI; the existing agent and approval boundaries stay in charge."""
 
+import io
 import json
 from pathlib import Path
 import threading
@@ -99,6 +100,8 @@ class ApprovalScreen(ModalScreen[bool]):
 
 
 class SprigApp(App[int]):
+    OUTPUT_BUFFER_LIMIT = 64000
+    OUTPUT_REFRESH_SECONDS = 0.05
     TITLE = "Sprig Agent"
     BINDINGS = [
         Binding("ctrl+enter", "submit", "发送", show=False, priority=True),
@@ -136,6 +139,9 @@ class SprigApp(App[int]):
         self.busy = False
         self.last_status = 0
         self.cancel_event = threading.Event()
+        self._output_condition = threading.Condition()
+        self._output_buffer = io.StringIO()
+        self._output_size = 0
         self._lifecycle_lock = threading.Lock()
         self._closed = False
         self._unmounted = False
@@ -221,6 +227,7 @@ class SprigApp(App[int]):
 
     def on_mount(self):
         self._ui_thread_id = threading.get_ident()
+        self.set_interval(self.OUTPUT_REFRESH_SECONDS, self.flush_output)
         self.action_focus_task()
         self.append("Sprig 就绪。任务、读取内容和工具结果会发送到所示服务。\n写入和命令逐次确认；命令没有沙箱。\n")
         if self.tools.history.store is not None:
@@ -234,6 +241,11 @@ class SprigApp(App[int]):
         return terminal_text(redact(str(text), self.config.api_key))
 
     def append(self, text):
+        # Drain older worker output before user messages and completion notices.
+        self.flush_output()
+        self._append(text)
+
+    def _append(self, text):
         text = self.safe(text)
         combined = self.transcript + text
         self.transcript = combined[-64000:]
@@ -243,6 +255,35 @@ class SprigApp(App[int]):
         else:
             view.load_text(self.transcript)
         view.scroll_end(animate=False)
+
+    def flush_output(self):
+        with self._output_condition:
+            if not self._output_size:
+                return
+            text = self._output_buffer.getvalue()
+            self._output_buffer = io.StringIO()
+            self._output_size = 0
+            self._output_condition.notify_all()
+        if not self._unmounted:
+            self._append(text)
+
+    def queue_output(self, text):
+        """Coalesce fragments with bounded memory and cancellable backpressure."""
+        offset = 0
+        while offset < len(text):
+            self.check_cancelled()
+            with self._output_condition:
+                while self._output_size == self.OUTPUT_BUFFER_LIMIT:
+                    self._output_condition.wait(0.05)
+                    self.check_cancelled()
+                    if self._unmounted:
+                        raise RuntimeError("terminal interface has closed")
+                if self._unmounted:
+                    raise RuntimeError("terminal interface has closed")
+                count = min(len(text) - offset, self.OUTPUT_BUFFER_LIMIT - self._output_size)
+                self._output_buffer.write(text[offset:offset + count])
+                self._output_size += count
+                offset += count
 
     def event(self, text):
         self.query_one("#events", RichLog).write(self.safe(text))
@@ -318,20 +359,21 @@ class SprigApp(App[int]):
     def emit_delta(self, text):
         self.check_cancelled()
         if not self.streaming:
-            self.ui_call(self.append, "\nSprig> ")
+            self.queue_output("\nSprig> ")
             self.streaming = True
-        self.ui_call(self.append, text)
+        self.queue_output(text)
 
     def emit_command(self, text):
         self.check_cancelled()
         self.streaming = False
-        self.ui_call(self.append, text)
+        self.queue_output(text)
 
     def confirm(self, description):
         self.check_cancelled()
         answer, done = [False], threading.Event()
 
         def show():
+            self.flush_output()
             # Guidance could arrive between the agent boundary and this approval.
             if self.pending_tasks:
                 done.set()
@@ -433,8 +475,11 @@ class SprigApp(App[int]):
     def on_unmount(self):
         self._unmounted = True
         self.cancel_event.set()
+        with self._output_condition:
+            self._output_condition.notify_all()
 
     def finished(self, status, message):
+        self.flush_output()
         if self.pending_tasks and status in (0, 2) and not self.cancel_event.is_set():
             self.set_state(f"继续处理 {len(self.pending_tasks)} 条新要求")
             return True
@@ -484,6 +529,8 @@ class SprigApp(App[int]):
         if not self.busy:
             return
         self.cancel_event.set()
+        with self._output_condition:
+            self._output_condition.notify_all()
         if self.approval:
             self.approval.dismiss(False)
         self.set_state("正在取消；网络等待可能持续至超时")
@@ -602,6 +649,8 @@ class SprigApp(App[int]):
         # Textual cancels the async wrapper without joining its worker thread.
         # Keep filesystem/session handles alive until that thread has stopped.
         self.cancel_event.set()
+        with self._output_condition:
+            self._output_condition.notify_all()
         if not self._lifecycle_lock.acquire(timeout=min(60, self.config.timeout + 5)):
             raise TimeoutError("worker cleanup is still pending; filesystem handles remain open")
         try:

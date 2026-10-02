@@ -182,6 +182,116 @@ class TuiTests(unittest.IsolatedAsyncioTestCase):
         finally:
             gate.set()
 
+    async def test_small_stream_fragments_are_coalesced_visible_and_ordered(self):
+        gate = threading.Event()
+        text = "中文🙂" * 500
+        provider = ScriptedProvider([])
+
+        def complete(messages, tools, on_text=None):
+            provider.calls.append(copy.deepcopy(messages))
+            for character in text:
+                on_text(character)
+            gate.wait(10)
+            return response(text)
+
+        provider.complete = complete
+        app = self.app(provider, task="burst")
+        rendered = []
+        original = app._append
+
+        def append(chunk):
+            rendered.append(chunk)
+            original(chunk)
+
+        app._append = append
+        try:
+            async with app.run_test(size=(110, 36)) as pilot:
+                await self.until(pilot, lambda: text in app.transcript)
+                self.assertTrue(app.busy)
+                self.assertLess(len(rendered), 50, "render batches, not each of the 1500 fragments")
+                gate.set()
+                await self.until(pilot, lambda: not app.busy)
+                self.assertEqual(app.transcript.count(text), 1)
+                self.assertLess(app.transcript.index(text), app.transcript.index("[本轮结束]"))
+                self.assertEqual(app.messages[-1], response(text))
+                self.assertEqual(app.query_one("#transcript", TextArea).text, app.transcript)
+                self.assertEqual(app._output_size, 0)
+        finally:
+            gate.set()
+
+    async def test_large_fragment_is_bounded_and_flushes_before_approval(self):
+        text = "中文🙂" * 500
+        message = call("edit", "edit_file", {"path": "value.txt", "old": "", "new": "approved only"})
+        message["content"] = text
+        app = self.app(ScriptedProvider([message, response("finished")]), task="bounded")
+        app.OUTPUT_BUFFER_LIMIT = 128
+        sizes = []
+        original = app.flush_output
+
+        def flush():
+            with app._output_condition:
+                sizes.append(app._output_size)
+            original()
+
+        app.flush_output = flush
+        async with app.run_test(size=(110, 36)) as pilot:
+            await self.until(pilot, lambda: isinstance(app.screen, ApprovalScreen))
+            self.assertIn(text, app.transcript)
+            self.assertGreater(len([size for size in sizes if size]), 1)
+            self.assertLessEqual(max(sizes), 128)
+            self.assertFalse((self.root / "value.txt").exists())
+            await self.click(pilot, "#approve")
+            await self.until(pilot, lambda: not app.busy)
+            self.assertEqual((self.root / "value.txt").read_text(), "approved only")
+            self.assertIn("finished", app.transcript)
+
+    async def test_cancel_releases_producer_waiting_for_full_output_buffer(self):
+        stopped = threading.Event()
+        provider = ScriptedProvider([])
+
+        def complete(messages, tools, on_text=None):
+            try:
+                on_text("x" * 1024)
+                self.fail("a full buffer must apply backpressure")
+            finally:
+                stopped.set()
+
+        provider.complete = complete
+        app = self.app(provider, task="cancel burst")
+        app.OUTPUT_BUFFER_LIMIT = 128
+        app.OUTPUT_REFRESH_SECONDS = 30
+        async with app.run_test(size=(110, 36)) as pilot:
+            await self.until(pilot, lambda: app._output_size == 128)
+            self.assertFalse(stopped.is_set())
+            await pilot.press("ctrl+c")
+            await self.until(pilot, lambda: not app.busy)
+            self.assertTrue(stopped.is_set())
+            self.assertEqual(app.last_status, 130)
+            self.assertEqual(app._output_size, 0)
+
+    async def test_unmount_releases_producer_waiting_for_full_output_buffer(self):
+        stopped = threading.Event()
+        provider = ScriptedProvider([])
+
+        def complete(messages, tools, on_text=None):
+            try:
+                on_text("x" * 1024)
+                return call("late", "edit_file", {"path": "late.txt", "old": "", "new": "bad"})
+            finally:
+                stopped.set()
+
+        provider.complete = complete
+        app = self.app(provider, task="close burst")
+        app.OUTPUT_BUFFER_LIMIT = 128
+        app.OUTPUT_REFRESH_SECONDS = 30
+        async with app.run_test(size=(110, 36)) as pilot:
+            await self.until(pilot, lambda: app._output_size == 128)
+            self.assertFalse(stopped.is_set())
+        self.assertTrue(await asyncio.to_thread(stopped.wait, 3))
+        app.close()
+        self.assertIsNone(app.tools.root.fd)
+        self.assertFalse((self.root / "late.txt").exists())
+
     async def test_enter_sends_shift_enter_newline_and_empty_enter_is_ignored(self):
         provider = ScriptedProvider([response("received")])
         app = self.app(provider)
@@ -248,8 +358,10 @@ class TuiTests(unittest.IsolatedAsyncioTestCase):
 
     async def test_guidance_during_command_keeps_result_and_skips_remaining_calls(self):
         self.config = Config(self.root, "test", base_url="http://localhost/v1", stream=True, timeout=30)
-        script = ("from pathlib import Path;import time\n"
+        script = ("from pathlib import Path;import time,sys\n"
+                  "sys.stdout.reconfigure(encoding='utf-8')\n"
                   "Path('started').write_text('yes')\n"
+                  "print('COMMAND_STARTED 中文🙂', flush=True)\n"
                   "while not Path('release').exists(): time.sleep(0.01)\n"
                   "print('COMMAND_FINISHED')")
         first = call("run-first", "run", {"argv": [sys.executable, "-c", script]})
@@ -262,6 +374,8 @@ class TuiTests(unittest.IsolatedAsyncioTestCase):
                 await self.until(pilot, lambda: isinstance(app.screen, ApprovalScreen))
                 await self.click(pilot, "#approve")
                 await self.until(pilot, lambda: (self.root / "started").exists())
+                await self.until(pilot, lambda: "COMMAND_STARTED 中文🙂" in app.transcript)
+                self.assertTrue(app.busy)
                 editor = app.query_one("#task", TextArea)
                 editor.focus()
                 editor.load_text("keep command evidence but change the remaining plan")
@@ -274,6 +388,8 @@ class TuiTests(unittest.IsolatedAsyncioTestCase):
                 results = [m for m in provider.calls[1] if m["role"] == "tool"]
                 self.assertEqual(json.loads(results[0]["content"])["returncode"], 0)
                 self.assertIn("COMMAND_FINISHED", results[0]["content"])
+                self.assertLess(app.transcript.index("COMMAND_STARTED"),
+                                app.transcript.index("你> keep command evidence"))
                 self.assertTrue(json.loads(results[1]["content"])["skipped"])
                 self.assertEqual(provider.calls[1][-1]["role"], "user")
                 self.assertFalse((self.root / "stale.txt").exists())
