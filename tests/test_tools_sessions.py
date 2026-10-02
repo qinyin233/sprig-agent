@@ -345,6 +345,7 @@ class SessionTests(unittest.TestCase):
 
     def test_endpoint_model_and_workdir_binding_fail_closed(self):
         self.store.save("test", self.messages)
+        self.store.release("test")
         other = Path(self.temp.name) / "other"
         other.mkdir()
         for config in (Config(self.root, "other"), Config(self.root, "test-model", base_url="https://other.example/v1"), Config(other, "test-model")):

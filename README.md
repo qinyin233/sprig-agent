@@ -117,6 +117,19 @@ sprig [TASK] [--workdir PATH] [--model MODEL] [--base-url URL]
 | `--save-session NAME` | 显式启用会话保存 |
 | `--resume NAME` | 恢复指定的已保存会话 |
 | `--session-dir PATH` | 默认 `~/.local/state/sprig-agent/sessions`，须位于工作目录之外 |
+| `--list-sessions` | 列出本地会话元数据，无需模型或密钥，不上传对话 |
+| `--delete-session NAME` | 逐次确认后删除本地会话文件；非交互输入默认拒绝 |
+
+### 会话管理
+
+```sh
+uv run --locked sprig --list-sessions
+uv run --locked sprig --delete-session coding
+```
+
+TUI 的操作页也提供会话列表和删除按钮。列表显示名称、模型、目录和消息数量，不显示对话正文。删除默认拒绝，不改变项目文件。
+
+新会话名称在使用前即被保留，保存或恢复后会持有独占锁直到切换或退出。同一个会话不能被两个 Sprig 进程同时加载、覆盖或删除。锁由操作系统句柄管理，进程崩溃后自动释放；残留的锁文件无需手动删除，运行期间删除锁文件会破坏并发保护。
 
 ## 工具
 

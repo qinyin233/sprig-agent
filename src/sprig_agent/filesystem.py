@@ -112,6 +112,26 @@ class Directory:
         if os.name != "nt":
             os.fsync(self.fd)
 
+    def lock(self, name):
+        """Hold a private, stable lock inode/handle until close or process exit."""
+        if os.name == "nt":
+            from .windows import file_descriptor
+            fd = file_descriptor(self.path / name, create=True, private=True, exclusive=True)
+        else:
+            import fcntl
+            fd = os.open(name, os.O_RDWR | os.O_CREAT | os.O_NOFOLLOW | os.O_NONBLOCK,
+                         0o600, dir_fd=self.fd)
+            try:
+                info = os.fstat(fd)
+                if (not stat.S_ISREG(info.st_mode) or info.st_nlink != 1
+                        or info.st_uid != os.getuid() or stat.S_IMODE(info.st_mode) != 0o600):
+                    raise ValueError("lock file must be a private regular file without hard links")
+                fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            except BaseException:
+                os.close(fd)
+                raise
+        return os.fdopen(fd, "r+b", buffering=0)
+
 
 def is_link(entry):
     try:

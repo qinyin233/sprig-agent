@@ -99,13 +99,15 @@ def validate_component(name):
         raise ValueError("invalid Windows path component (device, stream or ambiguous name)")
 
 
-def open_file(path, *, directory=False, create=False, attributes=None):
+def open_file(path, *, directory=False, create=False, attributes=None, exclusive=False):
     # FILE_LIST_DIRECTORY counts as read access for share-delete enforcement;
     # attribute-only handles do not pin directories against renaming.
     access = 0x20000 | (0x81 if directory else (0x40000000 if create else 0x80000000))
+    if exclusive:
+        access |= 0xC0000000
     # Deny deletion/renaming while handles are open. Parents stay pinned during approval.
-    handle = create_file(str(path), access, 3, c.byref(attributes) if attributes else None,
-                         1 if create else 3, 0x00200000 | (0x02000000 if directory else 0), None)
+    handle = create_file(str(path), access, 0 if exclusive else 3, c.byref(attributes) if attributes else None,
+                         4 if exclusive else (1 if create else 3), 0x00200000 | (0x02000000 if directory else 0), None)
     if handle == c.c_void_p(-1).value:
         raise c.WinError(c.get_last_error())
     try:
@@ -113,6 +115,8 @@ def open_file(path, *, directory=False, create=False, attributes=None):
         checked(get_file_info(handle, c.byref(info)))
         if info.attributes & 0x400 or bool(info.attributes & 0x10) != directory:
             raise ValueError("only ordinary files/directories are supported; reparse points are rejected")
+        if exclusive and info.links != 1:
+            raise ValueError("lock files must not have hard links")
         length = get_final_path(handle, None, 0, 0)
         checked(length)
         final = c.create_unicode_buffer(length + 1)
@@ -147,19 +151,19 @@ def existing_attributes(path):
         close_handle(handle)
 
 
-def file_descriptor(path, *, create=False, private=False, permissions_from=None):
+def file_descriptor(path, *, create=False, private=False, permissions_from=None, exclusive=False):
     if create and private:
         with private_attributes() as attributes:
-            handle = open_file(path, create=True, attributes=attributes)
+            handle = open_file(path, create=True, attributes=attributes, exclusive=exclusive)
     elif create and permissions_from is not None:
         with existing_attributes(permissions_from) as attributes:
             handle = open_file(path, create=True, attributes=attributes)
     else:
-        handle = open_file(path, create=create)
+        handle = open_file(path, create=create, exclusive=exclusive)
     try:
         if private:
             check_private(handle)
-        return msvcrt.open_osfhandle(handle, os.O_BINARY | (os.O_WRONLY if create else os.O_RDONLY))
+        return msvcrt.open_osfhandle(handle, os.O_BINARY | (os.O_RDWR if exclusive else (os.O_WRONLY if create else os.O_RDONLY)))
     except BaseException:
         close_handle(handle)
         raise

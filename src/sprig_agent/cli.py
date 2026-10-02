@@ -85,21 +85,36 @@ def main(argv=None):
     group = parser.add_mutually_exclusive_group()
     group.add_argument("--save-session", metavar="NAME")
     group.add_argument("--resume", metavar="NAME")
+    group.add_argument("--list-sessions", action="store_true", help="list local session metadata without contacting a model")
+    group.add_argument("--delete-session", metavar="NAME", help="delete one local session after confirmation")
     parser.add_argument("--session-dir", type=Path, default=Path.home() / ".local/state/sprig-agent/sessions")
     args = parser.parse_args(argv)
     key = os.environ.get("SPRIG_API_KEY") or os.environ.get("OPENAI_API_KEY", "")
     store = tools = None
     try:
+        manage_sessions = args.list_sessions or args.delete_session
         if os.name not in {"posix", "nt"}:
             raise ValueError("Sprig requires Linux/macOS or Windows 10+")
-        if not args.resume and not args.task and not args.chat and not args.tui:
+        if manage_sessions and (args.task or args.chat or args.tui or args.check):
+            raise ValueError("session management cannot be combined with tasks or interactive interfaces")
+        if not manage_sessions and not args.resume and not args.task and not args.chat and not args.tui:
             raise ValueError("provide a task, --chat, --tui, or --resume NAME")
         if args.chat and not sys.stdin.isatty():
             raise ValueError("--chat requires an interactive terminal")
         if args.tui and (not sys.stdin.isatty() or not sys.stdout.isatty()):
             raise ValueError("--tui requires an interactive terminal (stdin and stdout)")
-        config = Config(Path(args.workdir), args.model, args.base_url, key, args.max_steps, args.timeout, args.max_output,
+        config = Config(Path(args.workdir), args.model or ("session-manager" if manage_sessions else ""), args.base_url, key, args.max_steps, args.timeout, args.max_output,
                         stream=args.stream or args.tui, checks=tuple(args.check))
+        if manage_sessions:
+            store = SessionStore(args.session_dir, config)
+            if args.list_sessions:
+                print(terminal_text(json.dumps(store.list(), ensure_ascii=False, indent=2)))
+            elif approve("DELETE local session " + terminal_text(args.delete_session) + "\nThis deletes its saved transcript; it does not change workspace files."):
+                store.delete(args.delete_session)
+                print("Local session deleted")
+            else:
+                return 2
+            return 0
         if not key and config.base_url.startswith("https://api.openai.com/"):
             raise ValueError("set SPRIG_API_KEY or OPENAI_API_KEY before using OpenAI")
         if args.tui:

@@ -193,6 +193,7 @@ class WindowsTests(unittest.TestCase):
         history = [{"role": "system", "content": "s"}, {"role": "user", "content": "u"}]
         store.save("demo", history)
         self.assertEqual(store.load("demo"), history)
+        store.release("demo")
         other = SessionStore(self.parent / "sessions", Config(self.root, "other"))
         try:
             with self.assertRaisesRegex(SessionError, "history will not be sent"):

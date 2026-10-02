@@ -486,6 +486,32 @@ class TuiTests(unittest.IsolatedAsyncioTestCase):
             self.assertIn("saved", restored.transcript)
             forbidden.complete.assert_not_called()
 
+    async def test_session_listing_is_local_and_deletion_requires_confirmation(self):
+        forbidden = Mock()
+        app = self.app(forbidden)
+        history = [{"role": "system", "content": "system"}, {"role": "user", "content": "private text"}]
+        app.get_store().save("demo", history)
+        async with app.run_test(size=(110, 44)) as pilot:
+            app.query_one("#sessions").scroll_visible()
+            await pilot.pause()
+            await pilot.click("#sessions")
+            await self.until(pilot, lambda: not app.busy)
+            self.assertIn('"demo"', app.transcript)
+            self.assertNotIn("private text", app.transcript)
+            self.assertIsNone(app.messages)
+            app.query_one("#session-name", Input).value = "demo"
+            app.query_one("#delete").scroll_visible()
+            await pilot.pause()
+            await pilot.click("#delete")
+            await self.until(pilot, lambda: isinstance(app.screen, ApprovalScreen))
+            await pilot.press("enter")
+            self.assertTrue((self.parent / "sessions/demo.json").exists())
+            await pilot.click("#delete")
+            await self.until(pilot, lambda: isinstance(app.screen, ApprovalScreen))
+            await pilot.click("#approve")
+            self.assertFalse((self.parent / "sessions/demo.json").exists())
+            forbidden.complete.assert_not_called()
+
     async def test_local_map_does_not_upload_and_controls_and_key_are_hidden(self):
         (self.root / "code.py").write_text("def function():\n    pass\n")
         self.config = Config(self.root, "test", base_url="http://localhost/v1", api_key="fake-secret", stream=True)

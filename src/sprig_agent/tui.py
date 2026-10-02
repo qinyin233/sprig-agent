@@ -202,6 +202,8 @@ class SprigApp(App[int]):
                             with Horizontal(id="session-buttons"):
                                 yield Button("保存", id="save")
                                 yield Button("恢复", id="restore")
+                            yield Button("列出本地会话", id="sessions")
+                            yield Button("删除指定会话", id="delete")
                     with TabPane("事件", id="events-tab"):
                         yield RichLog(id="events", wrap=True, markup=False, highlight=False, max_lines=1000)
         yield Footer()
@@ -237,7 +239,7 @@ class SprigApp(App[int]):
 
     def set_busy(self, busy):
         self.busy = busy
-        for identity in ("continue", "diff", "git", "map", "save", "restore", "session-name"):
+        for identity in ("continue", "diff", "git", "map", "save", "restore", "sessions", "delete", "session-name"):
             self.query_one("#" + identity).disabled = busy
         self.query_one("#cancel", Button).disabled = not busy
         if not busy:
@@ -371,7 +373,7 @@ class SprigApp(App[int]):
         try:
             if local:
                 name, arguments = local
-                result = self.tools.execute(name, arguments)
+                result = {"sessions": self.get_store().list()} if name == "sessions" else self.tools.execute(name, arguments)
                 self.emit("[本地查看，不自动上传]\n" + json.dumps(result, ensure_ascii=False, indent=2))
                 if "error" in result or result.get("approved") is False or result.get("returncode", 0) != 0:
                     status, message = 2, "本地操作未完成"
@@ -487,6 +489,8 @@ class SprigApp(App[int]):
             if name != self.session_name:
                 store.ensure_new(name)
             store.save(name, self.messages)
+            if self.session_name and name != self.session_name:
+                store.release(self.session_name)
             self.session_name = name
             self.event("已保存会话: " + name + "；后续轮次自动保存")
             self.set_state("会话已保存")
@@ -501,6 +505,8 @@ class SprigApp(App[int]):
                 return
             try:
                 history = self.get_store().load(name)
+                if self.session_name and name != self.session_name:
+                    self.store.release(self.session_name)
                 self.messages, self.session_name = history, name
                 self.pending_tasks = []
                 self.transcript = ""
@@ -535,6 +541,22 @@ class SprigApp(App[int]):
                 self.save()
             elif identity == "restore":
                 self.restore()
+            elif identity == "sessions":
+                self.start(local=("sessions", {}))
+            elif identity == "delete":
+                name = self.query_one("#session-name", Input).value.strip()
+
+                def delete(approved):
+                    if approved:
+                        try:
+                            self.get_store().delete(name)
+                            if name == self.session_name:
+                                self.session_name = None
+                            self.event("已删除本地会话: " + name)
+                        except (OSError, ValueError, SessionError) as error:
+                            self.notify(self.safe(error), severity="error")
+
+                self.push_screen(ApprovalScreen("删除本地会话 " + self.safe(name) + "？\n保存的对话文件将删除；当前内存对话保留。"), delete)
 
     def close(self):
         # Textual cancels the async wrapper without joining its worker thread.
