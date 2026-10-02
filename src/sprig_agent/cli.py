@@ -1,6 +1,7 @@
 """Terminal entry point; approvals default to no, including non-interactive stdin."""
 
 import argparse
+import json
 import os
 from pathlib import Path
 import sys
@@ -24,6 +25,47 @@ def approve(description):
         return False
 
 
+def check_argv(text):
+    try:
+        argv = json.loads(text)
+        if not isinstance(argv, list) or not argv or any(not isinstance(arg, str) for arg in argv):
+            raise ValueError
+        return tuple(argv)
+    except (ValueError, RecursionError):
+        raise argparse.ArgumentTypeError("--check expects a JSON argv array, e.g. '[\"python\",\"-m\",\"unittest\"]'") from None
+
+
+def chat(agent, task, messages, emit):
+    """Keep context across terminal turns; slash commands never call a model."""
+    status = 0
+    if task or messages is not None:
+        messages, complete = agent.run(task, messages)
+        status = 0 if complete else 2
+    emit("Chat ready. Enter a task; /help, /status, /diff, /git or /exit.")
+    while True:
+        try:
+            task = input("sprig> ").strip()
+        except EOFError:
+            return status
+        if not task:
+            continue
+        if task == "/exit":
+            return status
+        if task == "/help":
+            emit("Enter a task to continue the same conversation. /status shows local context; /diff and /git show Git changes with approval; /exit closes chat.")
+        elif task == "/status":
+            emit(f"Messages: {len(messages or [])} | model: {agent.config.model} | acceptance checks: {len(agent.config.checks)}")
+        elif task in {"/diff", "/git"}:
+            argv = ["git", "diff", "--", "."] if task == "/diff" else ["git", "status", "--short", "--", "."]
+            result = agent.tools.execute("run", {"argv": argv})
+            emit(json.dumps(redact(result, agent.config.api_key), ensure_ascii=False))
+        elif task.startswith("/"):
+            emit("Unknown chat command. Use /help.")
+        else:
+            messages, complete = agent.run(task, messages)
+            status = 0 if complete else 2
+
+
 def main(argv=None):
     parser = argparse.ArgumentParser(description="Sprig: a small approval-first coding agent")
     parser.add_argument("task", nargs="?", help="task; optional when resuming")
@@ -35,6 +77,11 @@ def main(argv=None):
     parser.add_argument("--timeout", type=float, default=30)
     parser.add_argument("--max-output", type=int, default=16000)
     parser.add_argument("--stream", action="store_true", help="display model text as it arrives")
+    interface = parser.add_mutually_exclusive_group()
+    interface.add_argument("--chat", action="store_true", help="keep an interactive conversation open")
+    interface.add_argument("--tui", action="store_true", help="open the full-screen terminal interface (streams by default)")
+    parser.add_argument("--check", action="append", type=check_argv, default=[], metavar="JSON_ARGV",
+                        help="fixed acceptance command, repeatable; execution still requires approval")
     group = parser.add_mutually_exclusive_group()
     group.add_argument("--save-session", metavar="NAME")
     group.add_argument("--resume", metavar="NAME")
@@ -45,11 +92,19 @@ def main(argv=None):
     try:
         if os.name not in {"posix", "nt"}:
             raise ValueError("Sprig requires Linux/macOS or Windows 10+")
-        if not args.resume and not args.task:
-            raise ValueError("provide a task, or --resume NAME")
-        config = Config(Path(args.workdir), args.model, args.base_url, key, args.max_steps, args.timeout, args.max_output, stream=args.stream)
+        if not args.resume and not args.task and not args.chat and not args.tui:
+            raise ValueError("provide a task, --chat, --tui, or --resume NAME")
+        if args.chat and not sys.stdin.isatty():
+            raise ValueError("--chat requires an interactive terminal")
+        if args.tui and (not sys.stdin.isatty() or not sys.stdout.isatty()):
+            raise ValueError("--tui requires an interactive terminal (stdin and stdout)")
+        config = Config(Path(args.workdir), args.model, args.base_url, key, args.max_steps, args.timeout, args.max_output,
+                        stream=args.stream or args.tui, checks=tuple(args.check))
         if not key and config.base_url.startswith("https://api.openai.com/"):
             raise ValueError("set SPRIG_API_KEY or OPENAI_API_KEY before using OpenAI")
+        if args.tui:
+            from .tui import run_tui
+            return run_tui(config, args.task, args.session_dir, args.save_session, args.resume)
         emit = lambda text: print(terminal_text(redact(text, key)), flush=True)
         confirm = lambda text: approve(redact(text, key))
         emit_delta = lambda text: print(terminal_text(text), end="", flush=True)
@@ -67,7 +122,10 @@ def main(argv=None):
         if store:
             emit("Local transcript saving enabled (not encrypted). Resume never replays pending actions.")
         tools = Tools(config, confirm)
-        _, complete = Agent(config, Provider(config), tools, emit, checkpoint, emit_delta=emit_delta).run(args.task, messages)
+        agent = Agent(config, Provider(config), tools, emit, checkpoint, emit_delta=emit_delta)
+        if args.chat:
+            return chat(agent, args.task, messages, emit)
+        _, complete = agent.run(args.task, messages)
         return 0 if complete else 2
     except KeyboardInterrupt:
         print("Interrupted; no pending actions will be replayed on resume", file=sys.stderr)

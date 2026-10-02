@@ -5,20 +5,26 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "sprig-agent"
 version = "0.1.0"
-description = "A small, approval-first command-line coding agent using the Python standard library"
+description = "An approval-first coding agent with streaming CLI and terminal UI"
 readme = "README.md"
 requires-python = ">=3.11"
 license = { file = "LICENSE" }
 authors = [{ name = "Sprig contributors" }]
-dependencies = []
+dependencies = [
+    "textual>=8.2.8",
+]
 classifiers = [
     "Development Status :: 3 - Alpha",
     "Environment :: Console",
     "License :: OSI Approved :: MIT License",
     "Operating System :: POSIX",
     "Operating System :: MacOS",
+    "Operating System :: Microsoft :: Windows :: Windows 10",
     "Programming Language :: Python :: 3",
     "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: 3.14",
 ]
 
 [project.scripts]

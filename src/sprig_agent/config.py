@@ -49,6 +49,7 @@ class Config:
     timeout: float = 30
     max_output: int = 16000
     stream: bool = False
+    checks: tuple = ()
 
     def __post_init__(self):
         root = Path(self.workdir).expanduser().resolve(strict=True)
@@ -68,6 +69,18 @@ class Config:
             raise ValueError("API key contains control characters")
         if not isinstance(self.stream, bool):
             raise ValueError("stream must be a boolean")
+        if not isinstance(self.checks, tuple) or len(self.checks) > 16:
+            raise ValueError("at most 16 acceptance checks are supported")
+        for argv in self.checks:
+            if (not isinstance(argv, tuple) or not argv or len(argv) > 256
+                    or any(not isinstance(arg, str) or "\0" in arg for arg in argv) or not argv[0]
+                    or sum(len(arg) for arg in argv) > 65536):
+                raise ValueError("each acceptance check must be a nonempty argv array")
+            if self.api_key and any(self.api_key in arg for arg in argv):
+                raise ValueError("configured API key must not appear in acceptance arguments")
 
     def binding(self):
-        return {"base_url": self.base_url, "model": self.model, "workdir": str(self.workdir)}
+        binding = {"base_url": self.base_url, "model": self.model, "workdir": str(self.workdir)}
+        if self.checks:
+            binding["checks"] = [list(argv) for argv in self.checks]
+        return binding
