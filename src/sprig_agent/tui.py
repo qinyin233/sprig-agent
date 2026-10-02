@@ -120,6 +120,7 @@ class SprigApp(App[int]):
     #task-buttons Button { width: 1fr; margin-right: 1; }
     #sidebar { width: 30; border-left: solid $primary; padding: 0 1; }
     #state { height: auto; min-height: 2; color: $success; }
+    #task-state { height: auto; min-height: 2; color: $text-muted; }
     #side-tabs { height: 1fr; }
     #operations Button { width: 1fr; margin-bottom: 1; }
     #session-name { margin-top: 1; }
@@ -137,7 +138,11 @@ class SprigApp(App[int]):
         self.store = None
         self.messages = None
         self.busy = False
-        self.last_status = 0
+        self.task_status = 2 if resume else None
+        self.task_message = "已恢复历史，未重新验收" if resume else "尚未运行任务"
+        self.last_operation_status = 0
+        self.local_action = None
+        self.local_command_approved = False
         self.cancel_event = threading.Event()
         self._output_condition = threading.Condition()
         self._output_buffer = io.StringIO()
@@ -201,6 +206,7 @@ class SprigApp(App[int]):
                     yield Button("取消 / Ctrl+C", id="cancel", disabled=True)
             with Vertical(id="sidebar"):
                 yield Static("就绪", id="state", markup=False)
+                yield Static(self.safe("任务结果：" + self.task_message), id="task-state", markup=False)
                 with TabbedContent(id="side-tabs"):
                     with TabPane("操作", id="actions-tab"):
                         with VerticalScroll(id="operations"):
@@ -290,6 +296,20 @@ class SprigApp(App[int]):
 
     def set_state(self, text):
         self.query_one("#state", Static).update(self.safe(text))
+
+    @property
+    def last_status(self):
+        # Inspecting local metadata cannot erase a failed/cancelled task.
+        return self.task_status if self.task_status is not None else self.last_operation_status
+
+    def set_task_result(self, status, message):
+        self.task_status, self.task_message = status, message
+        if status == 0 and not self.config.checks:
+            self.task_message += "；未配置验收命令"
+        self.query_one("#task-state", Static).update(self.safe("任务结果：" + self.task_message))
+
+    def invalidate_task(self):
+        self.set_task_result(2, "工作区已变更或可能变更，先前验收失效")
 
     def set_busy(self, busy):
         self.busy = busy
@@ -382,6 +402,11 @@ class SprigApp(App[int]):
             def decide(approved):
                 answer[0] = approved
                 self.approval = None
+                if approved and self.local_action == "run":
+                    # Even a viewing command can invoke Git helpers. Treat its
+                    # workspace effects conservatively, including cancellation.
+                    self.invalidate_task()
+                    self.local_command_approved = True
                 done.set()
                 self.set_state("处理中")
             self.approval = ApprovalScreen(self.safe(description), allow_steering=True)
@@ -402,6 +427,10 @@ class SprigApp(App[int]):
             return
         self.cancel_event.clear()
         self.streaming = False
+        self.local_action = local[0] if local else None
+        self.local_command_approved = False
+        if not local:
+            self.set_task_result(2, "任务进行中，等待本轮结果")
         self.set_busy(True)
         self.set_state("处理中")
         if task:
@@ -437,9 +466,12 @@ class SprigApp(App[int]):
                     result = {"sessions": self.get_store().list()}
                 elif name in {"changes", "undo", "redo", "discard-history"}:
                     result = self.tools.change_action(name)
-                    self.agent.record_workspace_change(self.messages, result)
                     if result.get("changed") or result.get("outcome") == "uncertain":
+                        # Invalidate before checkpointing: a failed save cannot
+                        # make a successful file restoration appear verified.
+                        self.ui_call(self.invalidate_task)
                         status, message = 2, "本地文件已变更；先前验收失效，请检查并重新验收"
+                    self.agent.record_workspace_change(self.messages, result)
                 else:
                     result = self.tools.execute(name, arguments)
                 self.emit("[本地查看，不自动上传]\n" + json.dumps(result, ensure_ascii=False, indent=2))
@@ -470,6 +502,14 @@ class SprigApp(App[int]):
                     self.agent._steer(self.messages)
             except (OSError, SessionError, RuntimeError) as recovery_error:
                 message += "；会话恢复或保存失败: " + self.safe(recovery_error)
+        if local and self.local_command_approved:
+            try:
+                # Keep only the invalidation notice in model history; command
+                # output from the local operation is still not auto-uploaded.
+                self.agent.record_workspace_change(self.messages,
+                                                   {"action": "command", "path": ".", "outcome": "uncertain"})
+            except (OSError, SessionError) as error:
+                status, message = 1, "本地命令后会话保存失败: " + self.safe(error)
         return status, message
 
     def on_unmount(self):
@@ -480,10 +520,16 @@ class SprigApp(App[int]):
 
     def finished(self, status, message):
         self.flush_output()
+        if self.local_action is not None:
+            self.last_operation_status = status
         if self.pending_tasks and status in (0, 2) and not self.cancel_event.is_set():
+            self.local_action = None
+            self.set_task_result(2, "新要求待处理，等待更新后的结果")
             self.set_state(f"继续处理 {len(self.pending_tasks)} 条新要求")
             return True
-        self.last_status = status
+        if self.local_action is None:
+            self.set_task_result(status, message)
+        self.local_action = None
         self.set_busy(False)
         if self.pending_tasks:
             message += f"；{len(self.pending_tasks)} 条要求待处理，点击继续"
@@ -491,7 +537,7 @@ class SprigApp(App[int]):
         self.event(message)
         self.append("\n[" + message + "]\n")
         if self.quit_when_idle:
-            self.exit(status)
+            self.exit(self.last_status)
         return False
 
     def action_focus_task(self):
@@ -515,6 +561,7 @@ class SprigApp(App[int]):
             return
         if self.busy:
             self.pending_tasks.append(task)
+            self.set_task_result(2, "新要求待处理，等待更新后的结果")
             self.streaming = False
             self.append("\n你> " + task + "\n")
             self.append("[已接收新要求，将在下一个安全节点调整当前任务]\n")
@@ -587,6 +634,7 @@ class SprigApp(App[int]):
                 self.append("已恢复本地会话。输入新任务或点击继续。\n")
                 self.show_history()
                 self.set_state("已恢复，等待任务")
+                self.set_task_result(2, "已恢复历史，未重新验收")
             except (OSError, ValueError, SessionError) as error:
                 self.notify(self.safe(error), severity="error")
 

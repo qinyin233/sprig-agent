@@ -15,7 +15,7 @@ from unittest.mock import Mock, patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
-from textual.widgets import Input, TextArea
+from textual.widgets import Input, Static, TextArea
 from textual.css.query import NoMatches
 from sprig_agent import cli
 from sprig_agent.config import Config
@@ -595,6 +595,111 @@ class TuiTests(unittest.IsolatedAsyncioTestCase):
             self.assertNotIn("All user checks passed", app.transcript)
             self.assertEqual(len(provider.calls), 1)
 
+    async def test_local_inspections_and_save_cannot_erase_rejected_acceptance(self):
+        self.config = Config(self.root, "test", stream=True,
+                             checks=((sys.executable, "-c", "raise SystemExit(99)"),))
+        provider = ScriptedProvider([response("All tests pass")])
+        app = self.app(provider, task="verify")
+        async with app.run_test(size=(110, 40)) as pilot:
+            await self.until(pilot, lambda: isinstance(app.screen, ApprovalScreen))
+            await pilot.press("escape")
+            await self.until(pilot, lambda: not app.busy)
+            task_message = app.task_message
+            for identity in ("map", "changes", "sessions"):
+                await self.click(pilot, "#" + identity)
+                await self.until(pilot, lambda: not app.busy)
+                self.assertEqual(app.last_operation_status, 0)
+                self.assertEqual(app.last_status, 2)
+                self.assertEqual(app.task_message, task_message)
+            await self.click(pilot, "#context-budget")
+            app.query_one("#session-name", Input).value = "unverified"
+            await self.click(pilot, "#save")
+            await self.until(pilot, lambda: (self.parent / "sessions/unverified.json").exists())
+            self.assertEqual(app.last_status, 2)
+            self.assertIn(task_message, str(app.query_one("#task-state", Static).render()))
+            self.assertEqual(len(provider.calls), 1)
+            await pilot.press("ctrl+q")
+        self.assertEqual(app.return_value, 2)
+
+    async def test_model_failure_survives_local_view_and_next_task_can_recover(self):
+        provider = ScriptedProvider([response("recovered")])
+        original = provider.complete
+        attempts = []
+
+        def complete(messages, tools, on_text=None):
+            attempts.append(copy.deepcopy(messages))
+            if len(attempts) == 1:
+                raise ValueError("fixture connection failed")
+            return original(messages, tools, on_text)
+
+        provider.complete = complete
+        app = self.app(provider, task="initial request")
+        async with app.run_test(size=(110, 36)) as pilot:
+            await self.until(pilot, lambda: not app.busy)
+            self.assertEqual(app.last_status, 1)
+            await self.click(pilot, "#map")
+            await self.until(pilot, lambda: not app.busy)
+            self.assertEqual(app.last_status, 1)
+            app.query_one("#task", TextArea).load_text("retry after fixing connection")
+            await pilot.press("enter")
+            await self.until(pilot, lambda: not app.busy and len(attempts) == 2)
+            self.assertEqual(app.last_status, 0)
+            self.assertIn("未配置验收命令", app.task_message)
+            self.assertEqual([message["content"] for message in attempts[1] if message["role"] == "user"],
+                             ["initial request", "retry after fixing connection"])
+
+    async def test_verified_result_becomes_stale_after_undo_even_if_checkpoint_fails(self):
+        self.config = Config(self.root, "test", stream=True,
+                             checks=((sys.executable, "-c", "from pathlib import Path;assert Path('value.txt').read_text()=='ok'"),))
+        provider = ScriptedProvider([call("edit", "edit_file", {"path": "value.txt", "old": "", "new": "ok"}), response()])
+        app = self.app(provider, task="create and verify", save_session="verified")
+        async with app.run_test(size=(110, 40)) as pilot:
+            await self.until(pilot, lambda: isinstance(app.screen, ApprovalScreen))
+            await self.click(pilot, "#approve")
+            await self.until(pilot, lambda: isinstance(app.screen, ApprovalScreen)
+                             and "assert Path" in app.screen.query_one("#approval-detail", TextArea).text)
+            await self.click(pilot, "#approve")
+            await self.until(pilot, lambda: not app.busy)
+            self.assertEqual(app.last_status, 0)
+            self.assertEqual(app.task_message, "验收通过")
+            with patch.object(app.store, "save", side_effect=OSError("fixture disk full")):
+                await self.click(pilot, "#undo")
+                await self.until(pilot, lambda: isinstance(app.screen, ApprovalScreen))
+                await self.click(pilot, "#approve")
+                await self.until(pilot, lambda: not app.busy)
+            self.assertFalse((self.root / "value.txt").exists())
+            self.assertEqual(app.last_operation_status, 1)
+            self.assertEqual(app.last_status, 2)
+            self.assertIn("验收失效", app.task_message)
+            self.assertIn("stale", app.messages[-1]["content"])
+            await self.click(pilot, "#map")
+            await self.until(pilot, lambda: not app.busy)
+            self.assertEqual(app.last_status, 2)
+            self.assertEqual(len(provider.calls), 2)
+
+    async def test_approved_local_command_invalidates_result_when_cancelled(self):
+        self.config = Config(self.root, "test", stream=True, timeout=30,
+                             checks=((sys.executable, "-c", "assert 1+1==2"),))
+        provider = ScriptedProvider([response()])
+        app = self.app(provider, task="verify", save_session="local-command")
+        async with app.run_test(size=(110, 40)) as pilot:
+            await self.until(pilot, lambda: isinstance(app.screen, ApprovalScreen))
+            await self.click(pilot, "#approve")
+            await self.until(pilot, lambda: not app.busy)
+            self.assertEqual(app.last_status, 0)
+            script = "from pathlib import Path;import time;Path('started').write_text('yes');time.sleep(30)"
+            app.start(local=("run", {"argv": [sys.executable, "-c", script]}))
+            await self.until(pilot, lambda: isinstance(app.screen, ApprovalScreen))
+            await self.click(pilot, "#approve")
+            await self.until(pilot, lambda: (self.root / "started").exists())
+            self.assertEqual(app.last_status, 2)
+            await pilot.press("ctrl+c")
+            await self.until(pilot, lambda: not app.busy)
+            self.assertEqual(app.last_operation_status, 130)
+            self.assertEqual(app.last_status, 2)
+            self.assertIn("stale", app.store.load("local-command")[-1]["content"])
+            self.assertEqual(len(provider.calls), 1)
+
     async def test_cancel_command_kills_descendants_and_next_turn_does_not_replay(self):
         self.config = Config(self.root, "test", base_url="http://localhost/v1", stream=True, timeout=30)
         child = ("import time;from pathlib import Path\n"
@@ -632,6 +737,12 @@ class TuiTests(unittest.IsolatedAsyncioTestCase):
             self.assertEqual(app.last_status, 130)
             self.assertFalse((self.root / "created.txt").exists())
             self.assertNotIsInstance(app.screen, ApprovalScreen)
+            await self.click(pilot, "#map")
+            await self.until(pilot, lambda: not app.busy)
+            self.assertEqual(app.last_operation_status, 0)
+            self.assertEqual(app.last_status, 130)
+            await pilot.press("ctrl+q")
+        self.assertEqual(app.return_value, 130)
 
     async def test_cancel_waiting_model_does_not_execute_late_tools(self):
         gate, entered = threading.Event(), threading.Event()
@@ -661,9 +772,14 @@ class TuiTests(unittest.IsolatedAsyncioTestCase):
             gate.set()
 
     async def test_ui_save_and_restore_keep_history_without_network(self):
+        self.config = Config(self.root, "test", stream=True,
+                             checks=((sys.executable, "-c", "assert 1+1==2"),))
         app = self.app(ScriptedProvider([response("saved")]), task="remember")
         async with app.run_test(size=(110, 40)) as pilot:
+            await self.until(pilot, lambda: isinstance(app.screen, ApprovalScreen))
+            await self.click(pilot, "#approve")
             await self.until(pilot, lambda: not app.busy)
+            self.assertEqual(app.task_message, "验收通过")
             app.query_one("#session-name", Input).value = "demo"
             app.query_one("#save").scroll_visible(animate=False)
             await pilot.pause()
@@ -681,6 +797,8 @@ class TuiTests(unittest.IsolatedAsyncioTestCase):
             await self.click(pilot, "#restore")
             await self.until(pilot, lambda: restored.messages is not None)
             self.assertEqual(restored.messages, history)
+            self.assertEqual(restored.last_status, 2)
+            self.assertIn("未重新验收", restored.task_message)
             self.assertIn("saved", restored.transcript)
             forbidden.complete.assert_not_called()
 
