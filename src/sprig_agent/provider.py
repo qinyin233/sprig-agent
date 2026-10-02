@@ -1,7 +1,12 @@
 """Minimal Chat Completions client; optional SSE and no automatic retries."""
 
 import json
+from datetime import datetime, timezone
+from email.utils import parsedate_to_datetime
 from http.client import HTTPException
+import math
+import re
+import ssl
 import urllib.error
 import urllib.request
 
@@ -9,10 +14,61 @@ from .config import redact
 
 MAX_RESPONSE = 2 * 1024 * 1024
 MAX_TOOL_CALLS = 16
+MAX_RETRY_AFTER = 24 * 60 * 60
 
 
 class ProviderError(Exception):
-    pass
+    def __init__(self, message, *, status=None, retry_after=None):
+        super().__init__(message)
+        self.status = status
+        self.retry_after = retry_after
+
+
+def retry_after_seconds(value, *, now=None):
+    """Parse a bounded server hint, never schedule or automatically retry a POST."""
+    if (not isinstance(value, str) or len(value) > 128
+            or any(ord(char) < 32 or ord(char) > 126 for char in value)):
+        return None
+    value = value.strip()
+    if re.fullmatch(r"[0-9]{1,5}", value):
+        seconds = int(value)
+    else:
+        try:
+            date = parsedate_to_datetime(value)
+            if date.tzinfo is None or date.utcoffset().total_seconds() != 0:
+                return None
+            seconds = max(0, math.ceil((date - (now or datetime.now(timezone.utc))).total_seconds()))
+        except (TypeError, ValueError, OverflowError):
+            return None
+    return seconds if seconds <= MAX_RETRY_AFTER else None
+
+
+def http_failure(status, headers, secret=""):
+    """Expose fixed diagnostics and numeric delay only; never server error text."""
+    hints = {
+        400: "request rejected; check model and Chat Completions tool compatibility",
+        401: "authentication failed; check the configured API key",
+        403: "access denied; check account permissions and model access",
+        404: "endpoint or model not found; check --base-url and --model",
+        405: "Chat Completions POST not accepted; check --base-url",
+        408: "service request timed out; check provider status before retrying manually",
+        413: "request too large for the service; review /context or reduce --max-context-bytes",
+        422: "request rejected; check model and Chat Completions tool compatibility",
+        429: "rate limit or quota reached; check service limits",
+        504: "service request timed out; check provider status before retrying manually",
+    }
+    hint = hints.get(status, "service failed; check provider status before retrying manually"
+                     if 500 <= status <= 599 else "check endpoint, model, or account settings")
+    delay = None
+    if status in {429, 503} and headers is not None:
+        # Multiple hints are ambiguous; HTTPMessage preserves repeated fields.
+        values = headers.get_all("Retry-After", []) if hasattr(headers, "get_all") else [headers.get("Retry-After")]
+        if len(values) == 1:
+            delay = retry_after_seconds(values[0])
+    message = f"provider HTTP {status}; {hint}; no automatic retry"
+    if delay is not None:
+        message += f"; server suggests waiting {delay} seconds before a manual retry"
+    return ProviderError(redact(message, secret), status=status, retry_after=delay)
 
 
 class NoRedirect(urllib.request.HTTPRedirectHandler):
@@ -89,9 +145,19 @@ class Provider:
             return redact(validate_message(choice["message"]), config.api_key)
         except urllib.error.HTTPError as exc:
             # Never echo response bodies: gateways can include request credentials.
-            exc.close()
-            raise ProviderError(f"provider HTTP {exc.code}; check endpoint, model, or credentials") from None
-        except (urllib.error.URLError, TimeoutError, OSError, HTTPException):
-            raise ProviderError("provider request failed or timed out; no automatic retry") from None
+            try:
+                failure = http_failure(exc.code, exc.headers, config.api_key)
+            finally:
+                exc.close()
+            raise failure from None
+        except (urllib.error.URLError, TimeoutError, OSError, HTTPException) as exc:
+            reason = exc.reason if isinstance(exc, urllib.error.URLError) else exc
+            if isinstance(reason, ssl.SSLCertVerificationError):
+                hint = "TLS certificate verification failed; check the trusted endpoint and local certificates"
+            elif isinstance(reason, TimeoutError):
+                hint = "socket timed out; check connectivity or --timeout"
+            else:
+                hint = "connection or HTTP response failed; check endpoint, network, or proxy"
+            raise ProviderError(redact(f"provider {hint}; no automatic retry", config.api_key)) from None
         except (KeyError, IndexError, TypeError, ValueError, RecursionError):
             raise ProviderError("invalid Chat Completions response") from None
