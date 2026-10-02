@@ -16,6 +16,7 @@ from unittest.mock import Mock, patch
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
 from textual.widgets import Input, TextArea
+from textual.css.query import NoMatches
 from sprig_agent import cli
 from sprig_agent.config import Config
 from sprig_agent.session import validate_history
@@ -64,9 +65,12 @@ class TuiTests(unittest.IsolatedAsyncioTestCase):
 
     async def until(self, pilot, predicate):
         for _ in range(150):
-            if predicate():
-                await pilot.pause()  # Drain mount/layout events before interacting with a new screen.
-                return
+            try:
+                if predicate():
+                    await pilot.pause()  # Drain mount/layout events before interacting with a new screen.
+                    return
+            except NoMatches:
+                pass  # Screen is on the stack before its children have mounted.
             await pilot.pause(0.02)
         self.fail("UI condition did not become true")
 
