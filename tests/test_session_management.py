@@ -66,10 +66,10 @@ class SessionManagementTests(unittest.TestCase):
         self.assertTrue((self.directory / ".lock-bad.json").is_dir())
 
     def test_process_exit_releases_the_lock_without_stale_cleanup(self):
-        script = ("import sys; from pathlib import Path; from sprig_agent.config import Config; "
+        script = ("import os,sys; from pathlib import Path; from sprig_agent.config import Config; "
                   "from sprig_agent.session import SessionStore; "
                   "store=SessionStore(Path(sys.argv[1]), Config(Path(sys.argv[2]), 'test')); "
-                  "store.ensure_new('crashed'); print('ready', flush=True); sys.stdin.read()")
+                  "store.ensure_new('crashed'); print('ready', flush=True); sys.stdin.readline(); os._exit(3)")
         child = subprocess.Popen([sys.executable, "-c", script, str(self.directory), str(self.config.workdir)],
                                  stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True,
                                  env=dict(os.environ, PYTHONPATH=str(Path(__file__).resolve().parents[1] / "src")))
@@ -77,8 +77,10 @@ class SessionManagementTests(unittest.TestCase):
             self.assertEqual(child.stdout.readline().strip(), "ready")
             with self.assertRaisesRegex(SessionError, "busy"):
                 self.store.ensure_new("crashed")
-            child.terminate()
-            child.communicate(timeout=5)
+            # Crash the actual lock owner, not a Windows venv launcher that can
+            # exit before its redirected interpreter has released its handles.
+            child.communicate(input="crash\n", timeout=5)
+            self.assertEqual(child.returncode, 3)
             self.store.ensure_new("crashed")
         finally:
             if child.poll() is None:
