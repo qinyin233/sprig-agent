@@ -53,6 +53,8 @@ class Config:
     checks: tuple = ()
     read_only: bool = False
     inherit_env: bool = False
+    max_context_bytes: int = 131072
+    compact_context: bool = False
 
     def __post_init__(self):
         root = Path(self.workdir).expanduser().resolve(strict=True)
@@ -76,6 +78,11 @@ class Config:
             raise ValueError("read-only and inherit-env must be booleans")
         if self.read_only and self.checks:
             raise ValueError("read-only mode cannot execute acceptance commands")
+        if (not isinstance(self.max_context_bytes, int) or isinstance(self.max_context_bytes, bool)
+                or not 4096 <= self.max_context_bytes <= 2 * 1024 * 1024):
+            raise ValueError("max-context-bytes must be between 4096 and 2097152")
+        if not isinstance(self.compact_context, bool):
+            raise ValueError("compact-context must be a boolean")
         if not isinstance(self.checks, tuple) or len(self.checks) > 16:
             raise ValueError("at most 16 acceptance checks are supported")
         for argv in self.checks:

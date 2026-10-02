@@ -41,7 +41,7 @@ def chat(agent, task, messages, emit):
     if task or messages is not None:
         messages, complete = agent.run(task, messages)
         status = 0 if complete else 2
-    emit("Chat ready. Enter a task; /help, /status, /diff, /git or /exit.")
+    emit("Chat ready. Enter a task; /help, /status, /context, /compact, /diff, /git or /exit.")
     while True:
         try:
             task = input("sprig> ").strip()
@@ -52,9 +52,16 @@ def chat(agent, task, messages, emit):
         if task == "/exit":
             return status
         if task == "/help":
-            emit("Enter a task to continue the same conversation. /status shows local context; /diff and /git show Git changes with approval; /exit closes chat.")
+            emit("Enter a task to continue the same conversation. /status shows local context; /context previews the request budget; /compact confirms request-only elision; /diff and /git show Git changes with approval; /exit closes chat.")
         elif task == "/status":
             emit(f"Messages: {len(messages or [])} | model: {agent.config.model} | acceptance checks: {len(agent.config.checks)}")
+        elif task == "/context":
+            emit(json.dumps(agent.context_preview(messages), ensure_ascii=False, indent=2))
+        elif task == "/compact":
+            preview = agent.context_preview(messages)
+            emit(json.dumps(preview, ensure_ascii=False, indent=2))
+            if approve("Enable request-only elision of older successful tool output? User instructions, failures, refusals and the last six messages are preserved; saved history is unchanged."):
+                agent.compact_context = True
         elif task in {"/diff", "/git"}:
             argv = ["git", "diff", "--", "."] if task == "/diff" else ["git", "status", "--short", "--", "."]
             result = agent.tools.execute("run", {"argv": argv})
@@ -79,6 +86,8 @@ def main(argv=None):
     parser.add_argument("--stream", action="store_true", help="display model text as it arrives")
     parser.add_argument("--read-only", action="store_true", help="allow file inspection only; block writes and all commands")
     parser.add_argument("--inherit-env", action="store_true", help="let approved commands inherit additional environment variables")
+    parser.add_argument("--max-context-bytes", type=int, default=131072, help="maximum serialized model request size; not a token/cost estimate")
+    parser.add_argument("--compact-context", action="store_true", help="explicitly elide older successful tool output from requests; keep saved history")
     interface = parser.add_mutually_exclusive_group()
     interface.add_argument("--chat", action="store_true", help="keep an interactive conversation open")
     interface.add_argument("--tui", action="store_true", help="open the full-screen terminal interface (streams by default)")
@@ -106,7 +115,8 @@ def main(argv=None):
         if args.tui and (not sys.stdin.isatty() or not sys.stdout.isatty()):
             raise ValueError("--tui requires an interactive terminal (stdin and stdout)")
         config = Config(Path(args.workdir), args.model or ("session-manager" if manage_sessions else ""), args.base_url, key, args.max_steps, args.timeout, args.max_output,
-                        stream=args.stream or args.tui, checks=tuple(args.check), read_only=args.read_only, inherit_env=args.inherit_env)
+                        stream=args.stream or args.tui, checks=tuple(args.check), read_only=args.read_only, inherit_env=args.inherit_env,
+                        max_context_bytes=args.max_context_bytes, compact_context=args.compact_context)
         if manage_sessions:
             store = SessionStore(args.session_dir, config)
             if args.list_sessions:

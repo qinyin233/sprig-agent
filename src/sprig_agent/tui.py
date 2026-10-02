@@ -197,6 +197,8 @@ class SprigApp(App[int]):
                             yield Button("查看 Git diff", id="diff")
                             yield Button("查看 Git 状态", id="git")
                             yield Button("查看项目地图", id="map")
+                            yield Button("查看上下文预算", id="context-budget")
+                            yield Button("压缩旧工具输出", id="compact")
                             yield Static("本地会话（不加密）", markup=False)
                             yield Input(value=self.session_name or "", placeholder="会话名称", id="session-name")
                             with Horizontal(id="session-buttons"):
@@ -239,7 +241,7 @@ class SprigApp(App[int]):
 
     def set_busy(self, busy):
         self.busy = busy
-        for identity in ("continue", "diff", "git", "map", "save", "restore", "sessions", "delete", "session-name"):
+        for identity in ("continue", "diff", "git", "map", "context-budget", "compact", "save", "restore", "sessions", "delete", "session-name"):
             self.query_one("#" + identity).disabled = busy
         self.query_one("#cancel", Button).disabled = not busy
         if not busy:
@@ -548,6 +550,18 @@ class SprigApp(App[int]):
                 self.restore()
             elif identity == "sessions":
                 self.start(local=("sessions", {}))
+            elif identity == "context-budget":
+                self.append("\n[上下文预算；本地预览]\n" + json.dumps(self.agent.context_preview(self.messages), ensure_ascii=False, indent=2) + "\n")
+            elif identity == "compact":
+                preview = self.agent.context_preview(self.messages)
+
+                def compact(approved):
+                    if approved:
+                        self.agent.compact_context = True
+                        self.event("已启用请求上下文压缩；保存的完整对话保留")
+
+                self.push_screen(ApprovalScreen("仅压缩发送给模型的旧成功工具输出；用户要求、失败、拒绝和最近六条消息保留。完整会话文件保留。\n"
+                                               + json.dumps(preview, ensure_ascii=False, indent=2)), compact)
             elif identity == "delete":
                 name = self.query_one("#session-name", Input).value.strip()
 

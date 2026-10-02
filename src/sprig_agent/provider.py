@@ -61,11 +61,10 @@ class Provider:
 
     def complete(self, messages, tools, on_text=None):
         config = self.config
-        payload = {"model": config.model, "messages": redact(messages, config.api_key),
-                   "tools": tools, "tool_choice": "auto"}
-        if config.stream:
-            payload["stream"] = True
-        body = json.dumps(payload).encode("utf-8")
+        from .context import request_body
+        body = request_body(config, messages, tools)
+        if len(body) > config.max_context_bytes:
+            raise ProviderError("context byte budget exceeded; request was not sent")
         headers = {"Content-Type": "application/json", "User-Agent": "sprig-agent/0.1.0"}
         if config.stream:
             headers["Accept"] = "text/event-stream"

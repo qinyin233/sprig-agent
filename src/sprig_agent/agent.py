@@ -4,6 +4,7 @@ import json
 import uuid
 
 from .config import redact
+from .context import prepare_context
 from .provider import ProviderError, validate_message
 from .tools import TOOL_SCHEMAS
 
@@ -28,6 +29,10 @@ class Agent:
         self.receive_input = receive_input or (lambda: [])
         self.schemas = [schema for schema in TOOL_SCHEMAS
                         if not config.read_only or schema["function"]["name"] not in {"edit_file", "run"}]
+        self.compact_context = config.compact_context
+
+    def context_preview(self, messages):
+        return prepare_context(self.config, messages or [], self.schemas, compact=True)[1]
 
     def _steer(self, messages, pending_calls=()):
         """Accept FIFO user guidance only at a boundary with complete tool results."""
@@ -50,6 +55,11 @@ class Agent:
             raise KeyboardInterrupt
 
     def _complete(self, messages):
+        messages, report = prepare_context(self.config, messages, self.schemas, self.compact_context)
+        if not report["within_budget"]:
+            raise ProviderError("context byte budget exceeded; no request sent. Review /context and explicitly /compact, or increase --max-context-bytes.")
+        if report["changes"]:
+            self.emit(f"[context] {report['before_bytes']} → {report['after_bytes']} bytes; saved history unchanged")
         if not self.config.stream or self.emit_delta is None:
             return self.provider.complete(messages, self.schemas)
         displayed = False
@@ -109,7 +119,8 @@ class Agent:
             prompt += "\nRead-only mode: inspect files and explain a plan. File writes and every command are disabled by the application."
         if self.config.checks:
             prompt += "\nUser-defined acceptance argv (run by the application after you finish): " + json.dumps(self.config.checks)
-        messages = messages if messages is not None else [{"role": "system", "content": prompt}]
+        messages = messages if messages else [{"role": "system", "content": prompt}]
+        messages[0] = {"role": "system", "content": prompt}
         if task:
             messages.append({"role": "user", "content": redact(task, self.config.api_key)})
         self._steer(messages)

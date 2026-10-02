@@ -74,6 +74,13 @@ class TuiTests(unittest.IsolatedAsyncioTestCase):
             await pilot.pause(0.02)
         self.fail("UI condition did not become true")
 
+    async def click(self, pilot, selector):
+        # Scroll animation can move a target between coordinate lookup and the
+        # mouse event; use actual stable layout before exercising the click.
+        pilot.app.screen.query_one(selector).scroll_visible(animate=False)
+        await pilot.pause()
+        self.assertTrue(await pilot.click(selector), "button must be visible: " + selector)
+
     async def test_stream_is_visible_before_finish_and_history_continues(self):
         gate = threading.Event()
         provider = ScriptedProvider([response("first"), response("second")])
@@ -184,7 +191,7 @@ class TuiTests(unittest.IsolatedAsyncioTestCase):
         try:
             async with app.run_test(size=(110, 36)) as pilot:
                 await self.until(pilot, lambda: isinstance(app.screen, ApprovalScreen))
-                await pilot.click("#approve")
+                await self.click(pilot, "#approve")
                 await self.until(pilot, lambda: (self.root / "started").exists())
                 editor = app.query_one("#task", TextArea)
                 editor.focus()
@@ -226,7 +233,7 @@ class TuiTests(unittest.IsolatedAsyncioTestCase):
             self.assertEqual(file.read_text(), "old")
             self.assertEqual(provider.calls[1][-1], {"role": "user", "content": "use blue instead"})
             self.assertFalse(json.loads(provider.calls[1][-2]["content"])["approved"])
-            await pilot.click("#approve")
+            await self.click(pilot, "#approve")
             await self.until(pilot, lambda: not app.busy)
             self.assertEqual(file.read_text(), "blue")
             self.assertEqual(app.messages, validate_history(app.messages))
@@ -245,7 +252,7 @@ class TuiTests(unittest.IsolatedAsyncioTestCase):
             await self.until(pilot, lambda: isinstance(app.screen, ApprovalScreen) and len(provider.calls) == 2)
             self.assertEqual(provider.calls[1][-1]["content"], "review the updated requirement first")
             self.assertNotIn("All user checks passed", app.transcript)
-            await pilot.click("#approve")
+            await self.click(pilot, "#approve")
             await self.until(pilot, lambda: not app.busy)
             self.assertEqual(app.last_status, 0)
             self.assertIn("All user checks passed", app.transcript)
@@ -303,7 +310,7 @@ class TuiTests(unittest.IsolatedAsyncioTestCase):
                 self.assertEqual(len(provider.calls), 1)
                 self.assertEqual(app.messages[-1], {"role": "user", "content": "keep this correction"})
                 self.assertEqual(app.store.load("cancel-guidance"), app.messages)
-                await pilot.click("#continue")
+                await self.click(pilot, "#continue")
                 await self.until(pilot, lambda: not app.busy)
                 self.assertEqual(len(provider.calls), 2)
                 self.assertEqual(provider.calls[1][-1]["content"], "keep this correction")
@@ -372,7 +379,7 @@ class TuiTests(unittest.IsolatedAsyncioTestCase):
             await self.until(pilot, lambda: isinstance(app.screen, ApprovalScreen))
             await pilot.press("ctrl+enter")  # Submission shortcuts must never approve a modal.
             self.assertEqual(file.read_text(), "old")
-            await pilot.click("#approve")
+            await self.click(pilot, "#approve")
             await self.until(pilot, lambda: not app.busy)
             self.assertEqual(file.read_text(), "new", app.transcript + repr(app.messages))
             self.assertTrue(json.loads(app.messages[-2]["content"])["changed"])
@@ -384,7 +391,7 @@ class TuiTests(unittest.IsolatedAsyncioTestCase):
         async with app.run_test(size=(100, 32)) as pilot:
             await self.until(pilot, lambda: isinstance(app.screen, ApprovalScreen))
             self.assertIn("CHECK_OK", app.screen.query_one("#approval-detail", TextArea).text)
-            await pilot.click("#approve")
+            await self.click(pilot, "#approve")
             await self.until(pilot, lambda: not app.busy)
             self.assertEqual(app.last_status, 0)
             self.assertIn("All user checks passed", app.transcript)
@@ -415,7 +422,7 @@ class TuiTests(unittest.IsolatedAsyncioTestCase):
         app = self.app(provider, task="run")
         async with app.run_test(size=(100, 32)) as pilot:
             await self.until(pilot, lambda: isinstance(app.screen, ApprovalScreen))
-            await pilot.click("#approve")
+            await self.click(pilot, "#approve")
             await self.until(pilot, lambda: (self.root / "started").exists())
             await pilot.press("ctrl+c")
             await self.until(pilot, lambda: not app.busy)
@@ -473,9 +480,9 @@ class TuiTests(unittest.IsolatedAsyncioTestCase):
         async with app.run_test(size=(110, 40)) as pilot:
             await self.until(pilot, lambda: not app.busy)
             app.query_one("#session-name", Input).value = "demo"
-            app.query_one("#save").scroll_visible()
+            app.query_one("#save").scroll_visible(animate=False)
             await pilot.pause()
-            await pilot.click("#save")
+            await self.click(pilot, "#save")
             await self.until(pilot, lambda: (self.parent / "sessions/demo.json").exists())
             self.assertTrue((self.parent / "sessions/demo.json").exists())
             history = copy.deepcopy(app.messages)
@@ -484,9 +491,9 @@ class TuiTests(unittest.IsolatedAsyncioTestCase):
         restored = self.app(forbidden)
         async with restored.run_test(size=(110, 40)) as pilot:
             restored.query_one("#session-name", Input).value = "demo"
-            restored.query_one("#restore").scroll_visible()
+            restored.query_one("#restore").scroll_visible(animate=False)
             await pilot.pause()
-            await pilot.click("#restore")
+            await self.click(pilot, "#restore")
             await self.until(pilot, lambda: restored.messages is not None)
             self.assertEqual(restored.messages, history)
             self.assertIn("saved", restored.transcript)
@@ -498,23 +505,23 @@ class TuiTests(unittest.IsolatedAsyncioTestCase):
         history = [{"role": "system", "content": "system"}, {"role": "user", "content": "private text"}]
         app.get_store().save("demo", history)
         async with app.run_test(size=(110, 44)) as pilot:
-            app.query_one("#sessions").scroll_visible()
+            app.query_one("#sessions").scroll_visible(animate=False)
             await pilot.pause()
-            await pilot.click("#sessions")
+            await self.click(pilot, "#sessions")
             await self.until(pilot, lambda: not app.busy)
             self.assertIn('"demo"', app.transcript)
             self.assertNotIn("private text", app.transcript)
             self.assertIsNone(app.messages)
             app.query_one("#session-name", Input).value = "demo"
-            app.query_one("#delete").scroll_visible()
+            app.query_one("#delete").scroll_visible(animate=False)
             await pilot.pause()
-            await pilot.click("#delete")
+            await self.click(pilot, "#delete")
             await self.until(pilot, lambda: isinstance(app.screen, ApprovalScreen))
             await pilot.press("enter")
             self.assertTrue((self.parent / "sessions/demo.json").exists())
-            await pilot.click("#delete")
+            await self.click(pilot, "#delete")
             await self.until(pilot, lambda: isinstance(app.screen, ApprovalScreen))
-            await pilot.click("#approve")
+            await self.click(pilot, "#approve")
             self.assertFalse((self.parent / "sessions/demo.json").exists())
             forbidden.complete.assert_not_called()
 
@@ -524,7 +531,7 @@ class TuiTests(unittest.IsolatedAsyncioTestCase):
         forbidden = Mock()
         app = self.app(forbidden)
         async with app.run_test(size=(110, 36)) as pilot:
-            await pilot.click("#map")
+            await self.click(pilot, "#map")
             await self.until(pilot, lambda: not app.busy)
             self.assertIn("function", app.transcript)
             app.append("fake-secret\x1b[31m")
