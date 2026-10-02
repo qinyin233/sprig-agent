@@ -1,0 +1,148 @@
+{
+  "scope": "offline retrieval and multilingual parsing; no model/API or coding-task success comparison",
+  "python": "3.13.0",
+  "platform": "Windows-11-10.0.26300-SP0",
+  "dependencies": {
+    "textual": "8.2.8",
+    "tree-sitter": "0.25.2",
+    "tree-sitter-javascript": "0.25.0",
+    "tree-sitter-typescript": "0.23.2",
+    "tree-sitter-rust": "0.24.2",
+    "tree-sitter-go": "0.25.0",
+    "tree-sitter-c": "0.24.2",
+    "tree-sitter-cpp": "0.23.4",
+    "tree-sitter-java": "0.23.5"
+  },
+  "revision": "542e67085a218eb32582216a503d74c566db269f",
+  "dirty": true,
+  "repeat": 11,
+  "current": {
+    "source_sha256": "6bf5e6de5677846aa1533b7e2c0488373c0044ea5d70645161daa85495c3b912",
+    "ranged_reads": true,
+    "cases": [
+      {
+        "case": "small.py",
+        "target_found_runs": 11,
+        "runs": 11,
+        "median_ms": 6.28,
+        "max_ms": 11.379,
+        "tool_result_bytes": 167,
+        "stable_result_size": true,
+        "tool_calls_per_run": 2
+      },
+      {
+        "case": "early.py",
+        "target_found_runs": 11,
+        "runs": 11,
+        "median_ms": 8.709,
+        "max_ms": 8.926,
+        "tool_result_bytes": 166,
+        "stable_result_size": true,
+        "tool_calls_per_run": 2
+      },
+      {
+        "case": "late.py",
+        "target_found_runs": 11,
+        "runs": 11,
+        "median_ms": 8.749,
+        "max_ms": 9.699,
+        "tool_result_bytes": 175,
+        "stable_result_size": true,
+        "tool_calls_per_run": 2
+      }
+    ],
+    "project_map": {
+      "files": 103,
+      "symbols": 10003,
+      "first_ms": 151.202,
+      "median_repeated_ms": 50.604,
+      "max_repeated_ms": 62.797,
+      "repeated_runs": 11,
+      "first_parse_calls": 103,
+      "repeated_parse_calls": 0,
+      "tool_result_bytes": 611052,
+      "result_sha256": "b962a3e5a26690f040c6b9d571cf33173eb1396b34e205bdeea6630f3579ffee",
+      "results_identical": true
+    },
+    "multilingual_map": {
+      "files": 80,
+      "complete_declaration_files": 80,
+      "expected_symbols": 810,
+      "returned_symbols": 810,
+      "first_ms": 41.632,
+      "median_repeated_ms": 17.987,
+      "max_repeated_ms": 20.899,
+      "repeated_runs": 11,
+      "first_parse_calls": 80,
+      "repeated_parse_calls": 0,
+      "tool_result_bytes": 50699,
+      "result_sha256": "d69e87a42ad0ca8e1b79468807178b6a8d83e0c7de533cb2fa867fd10ff7d1a0",
+      "results_identical": true
+    }
+  },
+  "baseline": {
+    "revision": "542e67085a218eb32582216a503d74c566db269f",
+    "source_sha256": "1c727704c7a0f74a50f688edd52ec7968c15c5529cc7cdc9fd7282f2ce94a7c9",
+    "ranged_reads": true,
+    "cases": [
+      {
+        "case": "small.py",
+        "target_found_runs": 11,
+        "runs": 11,
+        "median_ms": 6.393,
+        "max_ms": 11.292,
+        "tool_result_bytes": 167,
+        "stable_result_size": true,
+        "tool_calls_per_run": 2
+      },
+      {
+        "case": "early.py",
+        "target_found_runs": 11,
+        "runs": 11,
+        "median_ms": 8.379,
+        "max_ms": 9.046,
+        "tool_result_bytes": 166,
+        "stable_result_size": true,
+        "tool_calls_per_run": 2
+      },
+      {
+        "case": "late.py",
+        "target_found_runs": 11,
+        "runs": 11,
+        "median_ms": 8.525,
+        "max_ms": 9.536,
+        "tool_result_bytes": 175,
+        "stable_result_size": true,
+        "tool_calls_per_run": 2
+      }
+    ],
+    "project_map": {
+      "files": 103,
+      "symbols": 10003,
+      "first_ms": 147.247,
+      "median_repeated_ms": 49.444,
+      "max_repeated_ms": 56.52,
+      "repeated_runs": 11,
+      "first_parse_calls": 103,
+      "repeated_parse_calls": 0,
+      "tool_result_bytes": 611052,
+      "result_sha256": "b962a3e5a26690f040c6b9d571cf33173eb1396b34e205bdeea6630f3579ffee",
+      "results_identical": true
+    },
+    "multilingual_map": {
+      "files": 80,
+      "complete_declaration_files": 0,
+      "expected_symbols": 810,
+      "returned_symbols": 0,
+      "first_ms": 0.843,
+      "median_repeated_ms": 0.497,
+      "max_repeated_ms": 1.087,
+      "repeated_runs": 11,
+      "first_parse_calls": null,
+      "repeated_parse_calls": null,
+      "tool_result_bytes": 1899,
+      "result_sha256": "e2526a010f719880404b931afc14b123f251be3db442f65bca92683ba8b17c17",
+      "results_identical": true
+    }
+  }
+}

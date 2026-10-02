@@ -5,6 +5,8 @@ from collections import OrderedDict
 import hashlib
 import json
 
+from .syntax import SyntaxParser, language_for
+
 MAX_CACHE_ENTRIES = 128
 MAX_CACHE_BYTES = 1024 * 1024
 
@@ -13,34 +15,30 @@ class SymbolIndex:
     def __init__(self):
         self.entries = OrderedDict()
         self.bytes = 0
+        self.syntax = SyntaxParser()
 
     def clear(self):
         self.entries.clear()
         self.bytes = 0
+        self.syntax.clear()
 
     def python(self, text):
+        return self.symbols(text, "python")
+
+    def symbols(self, text, language, check_cancelled=lambda: None):
+        check_cancelled()
         # Content, not mtime, identifies a parse. Never cache raw source or ASTs.
-        key = hashlib.sha256(text.encode("utf-8")).digest()
+        key = language.encode("ascii") + b"\0" + hashlib.sha256(text.encode("utf-8")).digest()
         if key in self.entries:
             encoded, size = self.entries.pop(key)
             self.entries[key] = (encoded, size)
             return json.loads(encoded)
         else:
-            try:
-                tree = ast.parse(text)
-                symbols, pending = [], [(tree.body, "")]
-                while pending:
-                    nodes, parent = pending.pop()
-                    for node in nodes:
-                        if isinstance(node, (ast.ClassDef, ast.FunctionDef, ast.AsyncFunctionDef)):
-                            name = parent + node.name
-                            symbols.append({"name": name, "line": node.lineno,
-                                            "kind": "class" if isinstance(node, ast.ClassDef) else "function"})
-                            if isinstance(node, ast.ClassDef):
-                                pending.append((node.body, name + "."))
-                data = sorted(symbols, key=lambda item: item["line"])
-            except (SyntaxError, ValueError, RecursionError):
-                data = None
+            if language == "python":
+                data = self._python(text, check_cancelled)
+            else:
+                data = self.syntax.parse(text, language, check_cancelled)
+            check_cancelled()
             encoded = json.dumps(data, ensure_ascii=False, separators=(",", ":"))
             size = len(encoded.encode("utf-8")) + len(key)
             if size <= MAX_CACHE_BYTES:
@@ -51,3 +49,23 @@ class SymbolIndex:
                 self.bytes += size
         # Cached JSON is immutable; returned dictionaries never share storage.
         return data
+
+    @staticmethod
+    def _python(text, check_cancelled):
+        try:
+            tree = ast.parse(text.removeprefix("\ufeff"))
+            symbols, pending = [], [(tree.body, "")]
+            while pending:
+                check_cancelled()
+                nodes, parent = pending.pop()
+                for node in nodes:
+                    check_cancelled()
+                    if isinstance(node, (ast.ClassDef, ast.FunctionDef, ast.AsyncFunctionDef)):
+                        name = parent + node.name
+                        symbols.append({"name": name, "line": node.lineno,
+                                        "kind": "class" if isinstance(node, ast.ClassDef) else "function"})
+                        if isinstance(node, ast.ClassDef):
+                            pending.append((node.body, name + "."))
+            return sorted(symbols, key=lambda item: item["line"])
+        except (SyntaxError, ValueError, RecursionError):
+            return None

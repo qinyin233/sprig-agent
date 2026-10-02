@@ -2,7 +2,7 @@
 
 一个小而直接的 Python 命令行编程代理：把任务交给支持工具调用的模型，由模型读取项目、提出修改、请求执行命令。你逐次确认每次写入和命令执行。
 
-- Python 3.11+，模型与工具核心使用标准库，TUI 使用 Textual
+- Python 3.11+，模型与文件执行核心使用标准库，TUI 使用 Textual，跨语言声明索引使用 Tree-sitter
 - Linux / macOS / Windows 10+ / Windows WSL
 - Chat Completions + function tools，可选 SSE 流式输出
 - 全屏终端 TUI、连续对话、项目代码地图与本地 Git 查看
@@ -22,7 +22,7 @@ uv run sprig --help
 uv run python -m unittest discover -s tests -v
 ```
 
-`.python-version` 固定开发主版本为 3.13，`.venv` 由 uv 管理，`uv.lock` 提交到 Git；包仍支持 Python 3.11+。`--managed-python` 使用 uv 管理的 CPython，避免选择 Microsoft Store 应用别名。无需手动激活环境或使用 pip 安装。Textual 及其依赖由 uv 锁定安装；模型、文件、会话和命令核心仍使用标准库。构建由 uv 管理隔离的 `setuptools` / `wheel` 环境，离线使用需预先准备依赖和构建缓存。
+`.python-version` 固定开发主版本为 3.13，`.venv` 由 uv 管理，`uv.lock` 提交到 Git；包仍支持 Python 3.11+。`--managed-python` 使用 uv 管理的 CPython，避免选择 Microsoft Store 应用别名。无需手动激活环境或使用 pip 安装。Textual、Tree-sitter 和所需语法包由 uv 锁定安装，读取项目时只加载已安装的本地语法包；模型、文件、会话和命令核心仍使用标准库。构建由 uv 管理隔离的 `setuptools` / `wheel` 环境，离线使用需预先准备依赖和构建缓存。
 
 Windows 中文路径下若必须使用 Python 3.11，请在 `uv sync` 和 `uv run` 上都加 `--no-editable`，避开旧版 Python 对 editable `.pth` 路径的编码限制。默认的 3.13 开发环境无需此选项。
 
@@ -183,7 +183,7 @@ CLI 与 TUI 都实时显示命令输出，保留 UTF-8 分段，遮盖跨片段�
 | `list_files(path=".")` | 列出目录内容 |
 | `read_file(path, offset=1, limit=...)` | 读取 UTF-8 文本文件；可按行读取，返回后续行号，仍受输出预算限制 |
 | `search(query, path=".")` | 递归搜索文本中的字面字符串，不解释为正则表达式 |
-| `project_map(path=".")` | 返回有界文件地图和 Python 类、函数、方法的名称与行号；其他语言只列文件路径 |
+| `project_map(path=".")` | 返回有界文件地图和 Python、JavaScript、TypeScript/TSX、Rust、Go、C/C++、Java 的声明名称与行号；不支持的语言只列路径 |
 | `edit_file(path, old, new)` | 将恰好一处 `old` 替换为 `new`；零处或多处匹配都拒绝 |
 | `run(argv, cwd=".", timeout=...)` | 运行参数数组所指定的命令；可选超时不能超过全局上限 |
 
@@ -197,7 +197,9 @@ CLI 与 TUI 都实时显示命令输出，保留 UTF-8 分段，遮盖跨片段�
 
 搜索会跳过不可读文件、二进制文件、`node_modules`、`.venv`、`.venv-*` 和 `__pycache__`，最多遍历 5,000 个条目、32 层目录、读取 8 MiB；单文件编辑和搜索读取限制为 512 KiB。结果带有截断标记，但“没有匹配”不代表被跳过的文件也已检查。
 
-代码地图采用相同遍历与读取预算。它使用 Python AST 提取声明，并按内容摘要在内存中缓存解析结果（最多 128 项、1 MiB 编码后的符号元数据）；每次仍读取最新文件并检查隐私规则，文件修改、删除或新增排除规则不会沿用旧符号。缓存不保存源文件正文或 AST，关闭工具时清除。没有跨语言语义索引或调用图；无效或过大的 Python 文件会标记 `symbols_unavailable`。请继续读取相关源码确认行为。
+代码地图采用相同遍历与读取预算。Python 使用 AST，其他支持的语言使用本地 Tree-sitter 语法包，提取类、函数、方法和类型等声明；Go 方法带接收者名称，Rust 方法带 `impl` 类型名称。`.h` 按 C++ 语法处理，`.C` 表示 C++，`.c` 表示 C；JavaScript 支持 `.js/.mjs/.cjs/.jsx`，TypeScript 支持 `.ts/.mts/.cts/.tsx`。行号从 1 开始，与按行读取的 CR/LF 行号一致。
+
+解析结果按语言和内容摘要缓存到内存（最多 128 项、1 MiB 摘要与编码后的符号元数据）；每次仍读取最新文件并检查隐私规则，文件修改、删除或新增排除规则不会沿用旧符号。缓存不保存源文件正文或 AST，关闭工具时清除缓存和解析器。非 Python 单文件解析限时 1 秒，遍历最多 100,000 个语法节点、返回最多 4,096 个声明，限定后的名称最多 1,024 个 UTF-8 字节；取消在解析前后和遍历期间检查，原生解析中的取消需等它完成或超时。语法错误、超时、超限、隐私拒绝或过大文件会标记 `symbols_unavailable`，超时和超限不会缓存。没有语义解析、类型推断、引用关系或调用图；函数体内的局部声明不加入地图。请继续读取相关源码确认行为。
 
 `run` 使用参数数组，不自动经过 shell。但批准 `sh`、`bash`、Python、项目脚本等命令仍可能执行任意代码。工作目录只决定命令从哪里启动，不限制它能去哪里。
 

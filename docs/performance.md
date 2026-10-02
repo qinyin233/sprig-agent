@@ -13,7 +13,7 @@
 ## 已确认差距与实施顺序
 
 1. **文件后部读取和上下文体积：本批落实。** 原先只返回文件开头；新增按行读取和后续行号。OpenCode 的 [read 工具](https://github.com/anomalyco/opencode/blob/dev/packages/opencode/src/tool/read.ts)和 Pi 的 [read 工具](https://github.com/earendil-works/pi/blob/main/packages/coding-agent/src/core/tools/read.ts)均提供 offset / limit。
-2. **代码地图重复解析：已落实内容缓存；跨语言定位仍待实施。** Python 符号按内容摘要缓存到有界内存；每次仍读取和校验文件，其他语言没有符号索引。Aider 的 [RepoMap](https://github.com/Aider-AI/aider/blob/main/aider/repomap.py)有缓存和多语言语法解析；缓存不能绕过新隐私规则或返回过期内容。
+2. **代码地图重复解析与跨语言声明：已落实基础索引。** Python 使用 AST，JavaScript、TypeScript/TSX、Rust、Go、C/C++、Java 使用锁定的本地 Tree-sitter 语法包；按语言与内容摘要缓存到有界内存，每次仍读取和校验文件。Aider 的 [RepoMap](https://github.com/Aider-AI/aider/blob/main/aider/repomap.py)有缓存和多语言语法解析；Sprig 当前还没有依引用重要性选择地图内容的排序、完整语义索引或调用图。
 3. **真实模型测量和对照：待实施。** 当前测试进程没有 API 凭证；模型用量、失败样本、任务级评测和竞品适配仍需补齐。只使用进程环境提供的凭证和一次性工作区，不读取历史密钥或降低产品权限。
 4. **复杂任务工具与上下文：按任务失败证据改进。** 重点检查多文件编辑、测试反馈、检索范围、长历史和输出预算，避免只做界面或错误文案优化。
 
@@ -40,3 +40,15 @@ uv run --locked python scripts/benchmark-tools.py --compare-ref f3cd10c --repeat
 原始测量见 [Windows 地图缓存基线](benchmarks/map-cache-windows.json)。首次调用两版均解析 103 次；随后 11 次完整地图调用，旧版重复解析 1,133 次，缓存版为 0，两版输出的摘要完全相同。缓存仍进行文件读取、隐私校验、内容摘要、结果解码和输出构建。
 
 首次建立缓存增加了编码和维护开销，重复调用减少了 AST 解析；需要同时报告两者。缓存最多保存 128 项，摘要与编码后符号元数据合计最多 1 MiB，这不是整个 Python 进程的 RSS 上限。超大结果不进入缓存，最旧且最近未使用的条目优先移除。这里的收益只适用于索引未改变且命中缓存的文件，不代表任意规模、多语言或模型总延迟的提升。
+
+## 跨语言声明的覆盖与开销
+
+```powershell
+uv run --locked python scripts/benchmark-tools.py --compare-ref 542e670 --repeat 11
+```
+
+脚本增加 80 个一次性源码文件，分别覆盖 JavaScript、TypeScript、TSX、Rust、Go、C、C++、Java，每类 10 个文件，合计 810 个已知声明。测量首次完整地图、重复地图、实际原生解析调用次数和完整声明文件数；旧版本仅列这些文件的路径，因此不能把两版耗时直接当成同能力下的加速对比。原始测量见 [Windows 跨语言地图基线](benchmarks/multilingual-map-windows.json)。
+
+本次 Windows / Python 3.13 测量，新版完整返回全部 810 个声明，首次地图 41.632 ms，11 次重复地图的中位数为 17.987 ms；首次原生解析 80 次，重复调用为 0。旧版返回 0 个声明，列路径约 0.5 ms；新版增加的是读取、隐私检查和声明发现能力，结果体积也从 1,899 增至 50,699 字节。Python 场景的完整输出摘要保持一致，首次耗时 147.247 → 151.202 ms，重复中位数 49.444 → 50.604 ms；这些小幅开销差异需要多次和多平台测量，不能宣布 Python 加速。此报告在全量测试结束后单独运行，避免测试和构建并发干扰。
+
+非 Python 解析单文件限时 1 秒，语法遍历最多 100,000 个节点、4,096 个声明；超时和超限标记不可用且不缓存，原生解析前后及遍历中检查取消。语法包随 uv 安装，不在地图读取过程中下载。索引只提取声明及行号，跳过函数体内的局部声明，不能解析调用关系或证明真实编码任务成功率；基线也不覆盖所有语言语法或大型真实仓库。后续仍需测量实际模型任务、地图选择质量和整体资源消耗。

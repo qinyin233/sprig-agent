@@ -1,9 +1,10 @@
-"""Offline retrieval and Python map measurements; not a model success benchmark."""
+"""Offline retrieval and multilingual map measurements; not model task success."""
 
 import argparse
 import ast
 import hashlib
 import inspect
+from importlib.metadata import version
 import io
 import json
 import os
@@ -61,7 +62,8 @@ def measure(source, repeat):
             digest = hashlib.sha256()
             for file in sorted(source.rglob("*.py")):
                 digest.update(file.relative_to(source).as_posix().encode() + b"\0" + file.read_bytes())
-            return {"source_sha256": digest.hexdigest(), "ranged_reads": ranged, "cases": cases, "project_map": mapping}
+            return {"source_sha256": digest.hexdigest(), "ranged_reads": ranged, "cases": cases, "project_map": mapping,
+                    "multilingual_map": measure_multilingual(Config, Tools, unexpected_approval, repeat)}
         finally:
             tools.close()
 
@@ -115,6 +117,70 @@ def worker(source, repeat):
     return json.loads(result.stdout)
 
 
+def measure_multilingual(Config, Tools, approve, repeat):
+    with tempfile.TemporaryDirectory(prefix="sprig-language-bench-") as temporary:
+        root, expected = Path(temporary), {}
+        for language in ("js", "ts", "tsx", "rs", "go", "c", "cpp", "java"):
+            for module in range(10):
+                names = [f"module_{module}_function_{number}" for number in range(10)]
+                if language in {"js", "ts"}:
+                    source = "\n".join(f"export function {name}() {{ return 1; }}" for name in names)
+                elif language == "tsx":
+                    source = "\n".join(f"export function {name}() {{ return <p>value</p>; }}" for name in names)
+                elif language == "rs":
+                    source = "\n".join(f"pub fn {name}() -> i32 {{ 1 }}" for name in names)
+                elif language == "go":
+                    source = "package sample\n" + "\n".join(f"func {name}() int {{ return 1 }}" for name in names)
+                elif language in {"c", "cpp"}:
+                    source = "\n".join(f"int {name}(void) {{ return 1; }}" for name in names)
+                else:
+                    container = f"Service{module}"
+                    source = f"class {container} {{\n" + "\n".join(f"int {name}() {{ return 1; }}" for name in names) + "\n}"
+                    names = [container] + [f"{container}.{name}" for name in names]
+                file = f"module_{module}.{language}"
+                expected[file] = names
+                (root / file).write_text(source, encoding="utf-8", newline="")
+        tools = Tools(Config(root, "offline", read_only=True, max_output=1000000), approve)
+        parse_calls, parser = [], getattr(getattr(tools, "index", None), "syntax", None)
+        original = parser.parse if parser is not None else None
+
+        def count_parse(*args, **kwargs):
+            parse_calls.append(True)
+            return original(*args, **kwargs)
+
+        if parser is not None:
+            parser.parse = count_parse
+        try:
+            started = time.perf_counter()
+            first = tools.execute("project_map", {})
+            first_ms, first_parses = (time.perf_counter() - started) * 1000, len(parse_calls)
+            first_body = json.dumps(first, sort_keys=True, ensure_ascii=False, separators=(",", ":")).encode()
+            if first.get("truncated") or len(first.get("files", [])) != len(expected):
+                raise RuntimeError("multilingual map benchmark did not cover every fixture")
+            timings, identical = [], True
+            for _ in range(repeat):
+                started = time.perf_counter()
+                current = tools.execute("project_map", {})
+                timings.append((time.perf_counter() - started) * 1000)
+                body = json.dumps(current, sort_keys=True, ensure_ascii=False, separators=(",", ":")).encode()
+                identical = identical and body == first_body
+            found = sum([symbol["name"] for symbol in item.get("symbols", [])] == expected[item["path"]]
+                        for item in first["files"])
+            return {"files": len(expected), "complete_declaration_files": found,
+                    "expected_symbols": sum(len(names) for names in expected.values()),
+                    "returned_symbols": sum(len(item.get("symbols", [])) for item in first["files"]),
+                    "first_ms": round(first_ms, 3), "median_repeated_ms": round(statistics.median(timings), 3),
+                    "max_repeated_ms": round(max(timings), 3), "repeated_runs": repeat,
+                    "first_parse_calls": first_parses if parser is not None else None,
+                    "repeated_parse_calls": len(parse_calls) - first_parses if parser is not None else None,
+                    "tool_result_bytes": len(first_body), "result_sha256": hashlib.sha256(first_body).hexdigest(),
+                    "results_identical": identical}
+        finally:
+            if parser is not None:
+                parser.parse = original
+            tools.close()
+
+
 def git(*arguments):
     return subprocess.check_output(["git", "-C", str(REPO), *arguments])
 
@@ -131,8 +197,11 @@ def main():
     if args.worker:
         print(json.dumps(measure(args.source, args.repeat)))
         return 0
-    report = {"scope": "offline retrieval and Python parsing; no model/API or coding-task success comparison",
+    report = {"scope": "offline retrieval and multilingual parsing; no model/API or coding-task success comparison",
               "python": platform.python_version(), "platform": platform.platform(),
+              "dependencies": {name: version(name) for name in (
+                  "textual", "tree-sitter", "tree-sitter-javascript", "tree-sitter-typescript",
+                  "tree-sitter-rust", "tree-sitter-go", "tree-sitter-c", "tree-sitter-cpp", "tree-sitter-java")},
               "revision": git("rev-parse", "HEAD").decode().strip(),
               "dirty": bool(git("status", "--porcelain")), "repeat": args.repeat,
               "current": worker(REPO / "src", args.repeat)}

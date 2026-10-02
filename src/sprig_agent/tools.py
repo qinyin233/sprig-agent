@@ -17,7 +17,7 @@ import uuid
 from .config import redact
 from .changes import ChangeError, ChangeHistory, unpack
 from .filesystem import Directory, is_link
-from .index import SymbolIndex
+from .index import SymbolIndex, language_for
 from .policy import FilePolicy, command_environment
 from .output import CommandOutput
 
@@ -45,7 +45,7 @@ TOOL_SCHEMAS = [
             "limit": {"type": "integer", "minimum": 1, "maximum": 10000}}, ["path"]),
     schema("search", "Find literal text recursively in UTF-8 files, with bounded results.",
            {"query": STRING, "path": STRING}, ["query"]),
-    schema("project_map", "Bounded workspace file map with Python class/function names and line numbers; inspect relevant files afterwards.",
+    schema("project_map", "Bounded workspace file map with declarations and 1-based lines for Python, JavaScript, TypeScript/TSX, Rust, Go, C/C++ and Java. Syntax only; inspect relevant files afterwards. Unsupported files have paths only; unavailable or oversized parses are marked.",
            {"path": STRING}),
     schema("edit_file", "Replace exactly one occurrence after diff approval. Empty old creates a new file only. Parent directory must exist.",
            {"path": STRING, "old": STRING, "new": STRING}, ["path", "old", "new"]),
@@ -313,7 +313,8 @@ class Tools:
                         if not entry.is_file(follow_symlinks=False):
                             continue
                         record = {"path": "/".join((*prefix, entry.name))}
-                        if entry.name.endswith(".py"):
+                        language = language_for(entry.name)
+                        if language:
                             raw = self._read(directory, entry.name, min(MAX_FILE, budget))
                             self._check_cancelled()
                             budget -= len(raw)
@@ -322,7 +323,7 @@ class Tools:
                                 record["symbols_unavailable"] = True
                             else:
                                 try:
-                                    symbols = self.index.python(self._decode(raw))
+                                    symbols = self.index.symbols(self._decode(raw), language, self._check_cancelled)
                                     self._check_cancelled()
                                     if symbols is None:
                                         record["symbols_unavailable"] = True
