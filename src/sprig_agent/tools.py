@@ -18,6 +18,7 @@ from .config import redact
 from .changes import ChangeError, ChangeHistory, unpack
 from .filesystem import Directory, is_link
 from .index import SymbolIndex, language_for
+from .map_selection import MapSelection, encoded_size
 from .policy import FilePolicy, command_environment
 from .output import CommandOutput
 
@@ -45,8 +46,8 @@ TOOL_SCHEMAS = [
             "limit": {"type": "integer", "minimum": 1, "maximum": 10000}}, ["path"]),
     schema("search", "Find literal text recursively in UTF-8 files, with bounded results.",
            {"query": STRING, "path": STRING}, ["query"]),
-    schema("project_map", "Bounded workspace file map with declarations and 1-based lines for Python, JavaScript, TypeScript/TSX, Rust, Go, C/C++ and Java. Syntax only; inspect relevant files afterwards. Unsupported files have paths only; unavailable or oversized parses are marked.",
-           {"path": STRING}),
+    schema("project_map", "Bounded workspace file map with declarations and 1-based lines for Python, JavaScript, TypeScript/TSX, Rust, Go, C/C++ and Java. Optional query is a case-insensitive literal path/declaration-name match; exact names then prefixes outrank substrings, and only matching declarations or files are returned. Use it when a full map omits relevant symbols. Syntax only; inspect relevant files afterwards. Unsupported files have paths only; unavailable or oversized parses are marked.",
+           {"path": STRING, "query": {"type": "string", "minLength": 1, "maxLength": 256}}),
     schema("edit_file", "Replace exactly one occurrence after diff approval. Empty old creates a new file only. Parent directory must exist.",
            {"path": STRING, "old": STRING, "new": STRING}, ["path", "old", "new"]),
     schema("run", "Run argv after explicit approval. NOT sandboxed; can access network and files outside workspace.",
@@ -286,7 +287,19 @@ class Tools:
             walk(fd, parts, 0)
         return {"matches": matches, "truncated": truncated}
 
-    def project_map(self, path="."):
+    def project_map(self, path=".", query=""):
+        if not isinstance(query, str) or len(query.encode("utf-8")) > 256 or any(ord(char) < 32 or ord(char) == 127 for char in query):
+            raise ToolError("query must be a literal string of at most 256 UTF-8 bytes without control characters")
+        if query and not query.strip():
+            raise ToolError("query must contain a non-whitespace character")
+        query = query.strip().casefold()
+        def measure(record):
+            size = encoded_size(record)
+            if self.config.api_key:
+                size = max(size, encoded_size(redact(record, self.config.api_key)))
+            return size
+
+        selection = MapSelection(self.config.max_output, measure) if query else None
         parts = self._parts(path)
         files, scanned, budget, size, truncated = [], 0, 8 * 1024 * 1024, 0, False
 
@@ -299,7 +312,7 @@ class Tools:
                 for entry in iterator:
                     self._check_cancelled()
                     scanned += 1
-                    if scanned > 5000 or budget <= 0 or size >= self.config.max_output:
+                    if scanned > 5000 or budget <= 0 or (selection is None and size >= self.config.max_output):
                         truncated = True
                         return
                     if self.policy.excluded((*prefix, entry.name)) or is_link(entry):
@@ -331,6 +344,9 @@ class Tools:
                                         record["symbols"] = symbols
                                 except (ValueError, ToolError):
                                     record["symbols_unavailable"] = True
+                        if selection is not None:
+                            selection.add(record, query, self._check_cancelled)
+                            continue
                         record_size = len(json.dumps(record, ensure_ascii=False).encode("utf-8")) + 2
                         if size + record_size > self.config.max_output:
                             # Keep a large module discoverable even when its symbol list is too big.
@@ -346,6 +362,8 @@ class Tools:
 
         with self._directory(parts) as directory:
             walk(directory, parts, 0)
+        if selection is not None:
+            return selection.result(truncated, self._check_cancelled)
         return {"files": sorted(files, key=lambda item: item["path"]), "truncated": truncated}
 
     @staticmethod

@@ -63,7 +63,8 @@ def measure(source, repeat):
             for file in sorted(source.rglob("*.py")):
                 digest.update(file.relative_to(source).as_posix().encode() + b"\0" + file.read_bytes())
             return {"source_sha256": digest.hexdigest(), "ranged_reads": ranged, "cases": cases, "project_map": mapping,
-                    "multilingual_map": measure_multilingual(Config, Tools, unexpected_approval, repeat)}
+                    "multilingual_map": measure_multilingual(Config, Tools, unexpected_approval, repeat),
+                    "focused_map": measure_focused_map(Config, Tools, unexpected_approval, repeat)}
         finally:
             tools.close()
 
@@ -115,6 +116,45 @@ def worker(source, repeat):
                              "--repeat", str(repeat)], cwd=REPO, env=environment,
                             capture_output=True, check=True, timeout=60)
     return json.loads(result.stdout)
+
+
+def measure_focused_map(Config, Tools, approve, repeat):
+    with tempfile.TemporaryDirectory(prefix="sprig-focused-map-bench-") as temporary:
+        root = Path(temporary).resolve()
+        body = "".join(f"def helper_{number}(): return {number}\n" for number in range(1000))
+        body += "def resolve_customer_route(): return 'value'\n"
+        (root / "routing.py").write_text(body, encoding="utf-8", newline="")
+        targeted = "query" in inspect.signature(Tools.project_map).parameters
+        cases = []
+        for name, cap, focus in (("default_budget_full_map", 16000, False),
+                                 ("complete_budget_full_map", 1000000, False),
+                                 ("default_budget_target_lookup", 16000, targeted)):
+            tools = Tools(Config(root, "offline", read_only=True, max_output=cap), approve)
+            arguments = {"query": "resolve_customer_route"} if focus else {}
+            try:
+                started = time.perf_counter()
+                first = tools.execute("project_map", arguments)
+                first_ms = (time.perf_counter() - started) * 1000
+                timings, bodies, found = [], [], []
+                for _ in range(repeat):
+                    started = time.perf_counter()
+                    result = tools.execute("project_map", arguments)
+                    timings.append((time.perf_counter() - started) * 1000)
+                    encoded = json.dumps(result, sort_keys=True, ensure_ascii=False, separators=(",", ":")).encode()
+                    bodies.append(encoded)
+                    found.append(any(symbol["name"] == "resolve_customer_route"
+                                     for file in result.get("files", []) for symbol in file.get("symbols", [])))
+                first_body = json.dumps(first, sort_keys=True, ensure_ascii=False, separators=(",", ":")).encode()
+                cases.append({"case": name, "max_output": cap, "query_used": focus,
+                              "target_found_runs": sum(found), "runs": repeat,
+                              "first_ms": round(first_ms, 3), "median_repeated_ms": round(statistics.median(timings), 3),
+                              "max_repeated_ms": round(max(timings), 3), "tool_result_bytes": len(first_body),
+                              "returned_symbols": sum(len(file.get("symbols", [])) for file in first.get("files", [])),
+                              "truncated": first.get("truncated"), "results_identical": all(encoded == first_body for encoded in bodies)})
+            finally:
+                tools.close()
+        return {"scope": "one 1,001-declaration fixture; target lookup intentionally omits other declarations, not identical full-map contents or model success",
+                "supports_query": targeted, "fixture_sha256": hashlib.sha256(body.encode()).hexdigest(), "cases": cases}
 
 
 def measure_multilingual(Config, Tools, approve, repeat):

@@ -1,0 +1,246 @@
+{
+  "scope": "offline retrieval and multilingual parsing; no model/API or coding-task success comparison",
+  "python": "3.13.0",
+  "platform": "Windows-11-10.0.26300-SP0",
+  "dependencies": {
+    "textual": "8.2.8",
+    "tree-sitter": "0.25.2",
+    "tree-sitter-javascript": "0.25.0",
+    "tree-sitter-typescript": "0.23.2",
+    "tree-sitter-rust": "0.24.2",
+    "tree-sitter-go": "0.25.0",
+    "tree-sitter-c": "0.24.2",
+    "tree-sitter-cpp": "0.23.4",
+    "tree-sitter-java": "0.23.5"
+  },
+  "revision": "b0300bddeadd622a534c6d3dbca07e93848d0120",
+  "dirty": true,
+  "repeat": 11,
+  "current": {
+    "source_sha256": "2025dfe87c13ee64b869d3755cb5da7530c25a2026ea39185d3173115abc4ef5",
+    "ranged_reads": true,
+    "cases": [
+      {
+        "case": "small.py",
+        "target_found_runs": 11,
+        "runs": 11,
+        "median_ms": 5.426,
+        "max_ms": 9.334,
+        "tool_result_bytes": 167,
+        "stable_result_size": true,
+        "tool_calls_per_run": 2
+      },
+      {
+        "case": "early.py",
+        "target_found_runs": 11,
+        "runs": 11,
+        "median_ms": 7.799,
+        "max_ms": 8.092,
+        "tool_result_bytes": 166,
+        "stable_result_size": true,
+        "tool_calls_per_run": 2
+      },
+      {
+        "case": "late.py",
+        "target_found_runs": 11,
+        "runs": 11,
+        "median_ms": 7.527,
+        "max_ms": 8.13,
+        "tool_result_bytes": 175,
+        "stable_result_size": true,
+        "tool_calls_per_run": 2
+      }
+    ],
+    "project_map": {
+      "files": 103,
+      "symbols": 10003,
+      "first_ms": 126.696,
+      "median_repeated_ms": 42.505,
+      "max_repeated_ms": 47.527,
+      "repeated_runs": 11,
+      "first_parse_calls": 103,
+      "repeated_parse_calls": 0,
+      "tool_result_bytes": 611052,
+      "result_sha256": "b962a3e5a26690f040c6b9d571cf33173eb1396b34e205bdeea6630f3579ffee",
+      "results_identical": true
+    },
+    "multilingual_map": {
+      "files": 80,
+      "complete_declaration_files": 80,
+      "expected_symbols": 810,
+      "returned_symbols": 810,
+      "first_ms": 35.578,
+      "median_repeated_ms": 15.226,
+      "max_repeated_ms": 16.049,
+      "repeated_runs": 11,
+      "first_parse_calls": 80,
+      "repeated_parse_calls": 0,
+      "tool_result_bytes": 50699,
+      "result_sha256": "d69e87a42ad0ca8e1b79468807178b6a8d83e0c7de533cb2fa867fd10ff7d1a0",
+      "results_identical": true
+    },
+    "focused_map": {
+      "scope": "one 1,001-declaration fixture; target lookup intentionally omits other declarations, not identical full-map contents or model success",
+      "supports_query": true,
+      "fixture_sha256": "83af6f8dccfb3410e219a4050426d634f17d832c10bca0c5cb13a447b163c42b",
+      "cases": [
+        {
+          "case": "default_budget_full_map",
+          "max_output": 16000,
+          "query_used": false,
+          "target_found_runs": 0,
+          "runs": 11,
+          "first_ms": 6.381,
+          "median_repeated_ms": 1.368,
+          "max_repeated_ms": 2.139,
+          "tool_result_bytes": 77,
+          "returned_symbols": 0,
+          "truncated": true,
+          "results_identical": true
+        },
+        {
+          "case": "complete_budget_full_map",
+          "max_output": 1000000,
+          "query_used": false,
+          "target_found_runs": 11,
+          "runs": 11,
+          "first_ms": 6.182,
+          "median_repeated_ms": 1.873,
+          "max_repeated_ms": 2.24,
+          "tool_result_bytes": 50910,
+          "returned_symbols": 1001,
+          "truncated": false,
+          "results_identical": true
+        },
+        {
+          "case": "default_budget_target_lookup",
+          "max_output": 16000,
+          "query_used": true,
+          "target_found_runs": 11,
+          "runs": 11,
+          "first_ms": 5.51,
+          "median_repeated_ms": 1.291,
+          "max_repeated_ms": 1.867,
+          "tool_result_bytes": 169,
+          "returned_symbols": 1,
+          "truncated": false,
+          "results_identical": true
+        }
+      ]
+    }
+  },
+  "baseline": {
+    "revision": "b0300bddeadd622a534c6d3dbca07e93848d0120",
+    "source_sha256": "1d7a930afa8bc5763016225bf658d8f153c84827558bbeb3d47cb898af9052df",
+    "ranged_reads": true,
+    "cases": [
+      {
+        "case": "small.py",
+        "target_found_runs": 11,
+        "runs": 11,
+        "median_ms": 5.38,
+        "max_ms": 10.378,
+        "tool_result_bytes": 167,
+        "stable_result_size": true,
+        "tool_calls_per_run": 2
+      },
+      {
+        "case": "early.py",
+        "target_found_runs": 11,
+        "runs": 11,
+        "median_ms": 7.593,
+        "max_ms": 8.403,
+        "tool_result_bytes": 166,
+        "stable_result_size": true,
+        "tool_calls_per_run": 2
+      },
+      {
+        "case": "late.py",
+        "target_found_runs": 11,
+        "runs": 11,
+        "median_ms": 7.19,
+        "max_ms": 8.211,
+        "tool_result_bytes": 175,
+        "stable_result_size": true,
+        "tool_calls_per_run": 2
+      }
+    ],
+    "project_map": {
+      "files": 103,
+      "symbols": 10003,
+      "first_ms": 129.141,
+      "median_repeated_ms": 42.683,
+      "max_repeated_ms": 48.425,
+      "repeated_runs": 11,
+      "first_parse_calls": 103,
+      "repeated_parse_calls": 0,
+      "tool_result_bytes": 611052,
+      "result_sha256": "b962a3e5a26690f040c6b9d571cf33173eb1396b34e205bdeea6630f3579ffee",
+      "results_identical": true
+    },
+    "multilingual_map": {
+      "files": 80,
+      "complete_declaration_files": 80,
+      "expected_symbols": 810,
+      "returned_symbols": 810,
+      "first_ms": 38.14,
+      "median_repeated_ms": 15.876,
+      "max_repeated_ms": 17.671,
+      "repeated_runs": 11,
+      "first_parse_calls": 80,
+      "repeated_parse_calls": 0,
+      "tool_result_bytes": 50699,
+      "result_sha256": "d69e87a42ad0ca8e1b79468807178b6a8d83e0c7de533cb2fa867fd10ff7d1a0",
+      "results_identical": true
+    },
+    "focused_map": {
+      "scope": "one 1,001-declaration fixture; target lookup intentionally omits other declarations, not identical full-map contents or model success",
+      "supports_query": false,
+      "fixture_sha256": "83af6f8dccfb3410e219a4050426d634f17d832c10bca0c5cb13a447b163c42b",
+      "cases": [
+        {
+          "case": "default_budget_full_map",
+          "max_output": 16000,
+          "query_used": false,
+          "target_found_runs": 0,
+          "runs": 11,
+          "first_ms": 7.06,
+          "median_repeated_ms": 1.404,
+          "max_repeated_ms": 1.803,
+          "tool_result_bytes": 77,
+          "returned_symbols": 0,
+          "truncated": true,
+          "results_identical": true
+        },
+        {
+          "case": "complete_budget_full_map",
+          "max_output": 1000000,
+          "query_used": false,
+          "target_found_runs": 11,
+          "runs": 11,
+          "first_ms": 5.785,
+          "median_repeated_ms": 1.945,
+          "max_repeated_ms": 2.261,
+          "tool_result_bytes": 50910,
+          "returned_symbols": 1001,
+          "truncated": false,
+          "results_identical": true
+        },
+        {
+          "case": "default_budget_target_lookup",
+          "max_output": 16000,
+          "query_used": false,
+          "target_found_runs": 0,
+          "runs": 11,
+          "first_ms": 5.329,
+          "median_repeated_ms": 1.415,
+          "max_repeated_ms": 1.996,
+          "tool_result_bytes": 77,
+          "returned_symbols": 0,
+          "truncated": true,
+          "results_identical": true
+        }
+      ]
+    }
+  }
+}
