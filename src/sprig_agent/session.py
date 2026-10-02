@@ -7,6 +7,7 @@ import re
 import stat
 import sys
 import uuid
+from contextlib import contextmanager
 
 from .config import redact
 from .filesystem import Directory
@@ -126,6 +127,19 @@ class SessionStore:
         if lease is not None:
             lease.close()
 
+    @contextmanager
+    def _reservation(self, name):
+        """Keep active ownership; release a new reservation when an operation fails."""
+        self._filename(name)
+        owned = name in self._leases
+        self.acquire(name)
+        try:
+            yield
+        except BaseException:
+            if not owned:
+                self.release(name)
+            raise
+
     def _filename(self, name):
         if not isinstance(name, str) or not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_-]{0,63}", name):
             raise SessionError("session name must use 1–64 letters, digits, hyphens or underscores")
@@ -143,15 +157,18 @@ class SessionStore:
 
     def ensure_new(self, name):
         filename = self._filename(name)
-        owned = name in self._leases
-        self.acquire(name)
-        try:
-            self.handle.stat(filename)
-        except FileNotFoundError:
-            return
-        if not owned:
-            self.release(name)
-        raise SessionError("session already exists; use --resume or choose a new name")
+        with self._reservation(name):
+            try:
+                self.handle.stat(filename)
+            except FileNotFoundError:
+                return
+            raise SessionError("session already exists; use --resume or choose a new name")
+
+    def save_new(self, name, messages):
+        """Reserve and save a fresh name together, retaining ownership only on success."""
+        with self._reservation(name):
+            self.ensure_new(name)
+            self.save(name, messages)
 
     def save(self, name, messages):
         filename = self._filename(name)
@@ -159,32 +176,26 @@ class SessionStore:
                                  self.config.api_key), ensure_ascii=False, indent=2).encode("utf-8")
         if len(body) > MAX_SESSION:
             raise SessionError("session exceeds 8 MiB; no data was overwritten")
-        self.acquire(name)
-        try:
-            self._check_file(filename)
-        except FileNotFoundError:
-            pass
-        temp = "." + uuid.uuid4().hex + ".tmp"
-        try:
-            self.handle.write_new(temp, body, private=True)
-            self.handle.replace(temp, filename)
-            self.handle.sync()
-        finally:
+        with self._reservation(name):
             try:
-                self.handle.unlink(temp)
+                self._check_file(filename)
             except FileNotFoundError:
                 pass
+            temp = "." + uuid.uuid4().hex + ".tmp"
+            try:
+                self.handle.write_new(temp, body, private=True)
+                self.handle.replace(temp, filename)
+                self.handle.sync()
+            finally:
+                try:
+                    self.handle.unlink(temp)
+                except FileNotFoundError:
+                    pass
 
     def load(self, name):
         filename = self._filename(name)
-        owned = name in self._leases
-        self.acquire(name)
-        try:
+        with self._reservation(name):
             return self._load(filename)
-        except BaseException:
-            if not owned:
-                self.release(name)
-            raise
 
     def _load(self, filename):
         self._check_file(filename)
@@ -245,11 +256,9 @@ class SessionStore:
 
     def delete(self, name):
         """Caller must obtain explicit approval; active leases exclude other writers."""
-        self.acquire(name)
-        try:
+        with self._reservation(name):
             filename = self._filename(name)
             self._check_file(filename)
             self.handle.unlink(filename)
             self.handle.sync()
-        finally:
             self.release(name)

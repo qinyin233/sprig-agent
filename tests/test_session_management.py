@@ -59,6 +59,94 @@ class SessionManagementTests(unittest.TestCase):
             other.load("missing")
         self.store.ensure_new("missing")
 
+    def test_failed_new_name_check_releases_new_lock_but_keeps_active_lock(self):
+        other = self.other()
+        for owned in (False, True):
+            name = "reserved" if owned else "fresh"
+            if owned:
+                self.store.ensure_new(name)
+            for failure in (PermissionError("fixture stat denied"), KeyboardInterrupt()):
+                with self.subTest(owned=owned, failure=type(failure).__name__):
+                    with patch.object(self.store.handle, "stat", side_effect=failure):
+                        with self.assertRaises(type(failure)):
+                            self.store.ensure_new(name)
+                    if owned:
+                        with self.assertRaisesRegex(SessionError, "busy"):
+                            other.ensure_new(name)
+                    else:
+                        other.ensure_new(name)
+                        other.release(name)
+            self.store.release(name)
+
+    def test_save_failures_preserve_file_and_release_only_new_locks(self):
+        other = self.other()
+        updated = self.history + [{"role": "assistant", "content": "updated"}]
+        for owned in (False, True):
+            for stage in ("_check_file", "write_new", "replace", "sync"):
+                with self.subTest(owned=owned, stage=stage):
+                    name = stage.strip("_") + str(int(owned))
+                    self.store.save(name, self.history)
+                    if not owned:
+                        self.store.release(name)
+                    target = self.store if stage == "_check_file" else self.store.handle
+                    with patch.object(target, stage, side_effect=OSError("fixture save failed")):
+                        with self.assertRaisesRegex(OSError, "fixture save failed"):
+                            self.store.save(name, updated)
+                    expected = updated if stage == "sync" else self.history
+                    if owned:
+                        with self.assertRaisesRegex(SessionError, "busy"):
+                            other.load(name)
+                        self.assertEqual(self.store.load(name), expected)
+                        self.store.release(name)
+                    self.assertEqual(other.load(name), expected)
+                    other.release(name)
+                    self.assertEqual(list(self.directory.glob(".*.tmp")), [])
+
+    def test_new_save_failure_releases_name_for_retry_and_does_not_overwrite_existing(self):
+        other = self.other()
+        with patch.object(self.store.handle, "replace", side_effect=OSError("fixture rename failed")):
+            with self.assertRaisesRegex(OSError, "fixture rename failed"):
+                self.store.save_new("fresh", self.history)
+        self.assertFalse((self.directory / "fresh.json").exists())
+        self.assertEqual(list(self.directory.glob(".*.tmp")), [])
+        other.ensure_new("fresh")
+        other.release("fresh")
+        self.store.save_new("fresh", self.history)
+        with self.assertRaisesRegex(SessionError, "busy"):
+            other.load("fresh")
+        self.store.release("fresh")
+        with self.assertRaisesRegex(SessionError, "already exists"):
+            self.store.save_new("fresh", self.history + [{"role": "assistant", "content": "overwrite"}])
+        self.assertEqual(other.load("fresh"), self.history)
+
+    def test_new_save_sync_failure_releases_lock_without_claiming_file_rollback(self):
+        with patch.object(self.store.handle, "sync", side_effect=OSError("fixture sync failed")):
+            with self.assertRaisesRegex(OSError, "fixture sync failed"):
+                self.store.save_new("synced", self.history)
+        self.assertEqual(self.other().load("synced"), self.history)
+
+    def test_failed_deletion_keeps_active_lock_and_releases_new_lock(self):
+        other = self.other()
+        for owned in (False, True):
+            for stage in ("unlink", "sync"):
+                with self.subTest(owned=owned, stage=stage):
+                    name = stage + str(int(owned))
+                    self.store.save(name, self.history)
+                    if not owned:
+                        self.store.release(name)
+                    with patch.object(self.store.handle, stage, side_effect=OSError("fixture delete failed")):
+                        with self.assertRaisesRegex(OSError, "fixture delete failed"):
+                            self.store.delete(name)
+                    self.assertEqual((self.directory / (name + ".json")).exists(), stage == "unlink")
+                    if owned:
+                        with self.assertRaisesRegex(SessionError, "busy"):
+                            other.acquire(name)
+                        self.store.save(name, self.history)
+                        self.assertEqual(self.store.load(name), self.history)
+                        self.store.release(name)
+                    other.acquire(name)
+                    other.release(name)
+
     def test_unsafe_lock_file_is_not_replaced_or_followed(self):
         self.store.handle.mkdir(".lock-bad.json")
         with self.assertRaisesRegex(SessionError, "unsafe"):

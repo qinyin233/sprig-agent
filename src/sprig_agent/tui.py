@@ -607,8 +607,9 @@ class SprigApp(App[int]):
             name = self.query_one("#session-name", Input).value.strip()
             store = self.get_store()
             if name != self.session_name:
-                store.ensure_new(name)
-            store.save(name, self.messages)
+                store.save_new(name, self.messages)
+            else:
+                store.save(name, self.messages)
             if self.session_name and name != self.session_name:
                 store.release(self.session_name)
             self.session_name = name

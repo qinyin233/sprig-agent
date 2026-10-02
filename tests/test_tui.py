@@ -19,7 +19,7 @@ from textual.widgets import Input, Static, TextArea
 from textual.css.query import NoMatches
 from sprig_agent import cli
 from sprig_agent.config import Config
-from sprig_agent.session import validate_history
+from sprig_agent.session import SessionError, SessionStore, validate_history
 from sprig_agent.tui import ApprovalScreen, SprigApp
 
 
@@ -801,6 +801,59 @@ class TuiTests(unittest.IsolatedAsyncioTestCase):
             self.assertIn("未重新验收", restored.task_message)
             self.assertIn("saved", restored.transcript)
             forbidden.complete.assert_not_called()
+
+    async def test_failed_save_as_keeps_current_session_and_releases_new_name(self):
+        provider = ScriptedProvider([response("saved history")])
+        app = self.app(provider, task="remember", save_session="active")
+        other = SessionStore(self.parent / "sessions", self.config)
+        self.addCleanup(other.close)
+        async with app.run_test(size=(110, 40)) as pilot:
+            await self.until(pilot, lambda: not app.busy)
+            history = copy.deepcopy(app.messages)
+            app.query_one("#session-name", Input).value = "replacement"
+            with patch.object(app.store.handle, "replace", side_effect=OSError("fixture disk error")) as replace:
+                await self.click(pilot, "#save")
+                await self.until(pilot, lambda: replace.call_count == 1)
+            self.assertEqual(app.session_name, "active")
+            self.assertEqual(app.messages, history)
+            self.assertFalse((self.parent / "sessions/replacement.json").exists())
+            with self.assertRaisesRegex(SessionError, "busy"):
+                other.load("active")
+            other.ensure_new("replacement")
+            other.release("replacement")
+            await self.click(pilot, "#save")
+            await self.until(pilot, lambda: app.session_name == "replacement")
+            self.assertEqual(other.load("active"), history)
+            with self.assertRaisesRegex(SessionError, "busy"):
+                other.load("replacement")
+            self.assertEqual(app.store.load("replacement"), history)
+            self.assertEqual(len(provider.calls), 1)
+
+    async def test_save_as_sync_error_keeps_active_session_and_allows_explicit_restore(self):
+        provider = ScriptedProvider([response("saved history")])
+        app = self.app(provider, task="remember", save_session="active")
+        other = SessionStore(self.parent / "sessions", self.config)
+        self.addCleanup(other.close)
+        async with app.run_test(size=(110, 40)) as pilot:
+            await self.until(pilot, lambda: not app.busy)
+            history = copy.deepcopy(app.messages)
+            app.query_one("#session-name", Input).value = "replacement"
+            with patch.object(app.store.handle, "sync", side_effect=OSError("fixture sync error")) as sync:
+                await self.click(pilot, "#save")
+                await self.until(pilot, lambda: sync.call_count == 1)
+            self.assertEqual(app.session_name, "active")
+            with self.assertRaisesRegex(SessionError, "busy"):
+                other.load("active")
+            self.assertEqual(other.load("replacement"), history)
+            other.release("replacement")
+            await self.click(pilot, "#restore")
+            await self.until(pilot, lambda: isinstance(app.screen, ApprovalScreen))
+            await self.click(pilot, "#approve")
+            await self.until(pilot, lambda: app.session_name == "replacement")
+            self.assertEqual(app.messages, history)
+            self.assertEqual(other.load("active"), history)
+            self.assertEqual(app.last_status, 2)
+            self.assertEqual(len(provider.calls), 1)
 
     async def test_session_listing_is_local_and_deletion_requires_confirmation(self):
         forbidden = Mock()
