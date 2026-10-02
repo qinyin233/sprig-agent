@@ -34,6 +34,7 @@ def main(argv=None):
     parser.add_argument("--max-steps", type=int, default=20)
     parser.add_argument("--timeout", type=float, default=30)
     parser.add_argument("--max-output", type=int, default=16000)
+    parser.add_argument("--stream", action="store_true", help="display model text as it arrives")
     group = parser.add_mutually_exclusive_group()
     group.add_argument("--save-session", metavar="NAME")
     group.add_argument("--resume", metavar="NAME")
@@ -46,11 +47,12 @@ def main(argv=None):
             raise ValueError("Sprig requires Linux/macOS or Windows 10+")
         if not args.resume and not args.task:
             raise ValueError("provide a task, or --resume NAME")
-        config = Config(Path(args.workdir), args.model, args.base_url, key, args.max_steps, args.timeout, args.max_output)
+        config = Config(Path(args.workdir), args.model, args.base_url, key, args.max_steps, args.timeout, args.max_output, stream=args.stream)
         if not key and config.base_url.startswith("https://api.openai.com/"):
             raise ValueError("set SPRIG_API_KEY or OPENAI_API_KEY before using OpenAI")
         emit = lambda text: print(terminal_text(redact(text, key)), flush=True)
         confirm = lambda text: approve(redact(text, key))
+        emit_delta = lambda text: print(terminal_text(text), end="", flush=True)
         messages, checkpoint = None, None
         session_name = args.resume or args.save_session
         if session_name:
@@ -65,7 +67,7 @@ def main(argv=None):
         if store:
             emit("Local transcript saving enabled (not encrypted). Resume never replays pending actions.")
         tools = Tools(config, confirm)
-        _, complete = Agent(config, Provider(config), tools, emit, checkpoint).run(args.task, messages)
+        _, complete = Agent(config, Provider(config), tools, emit, checkpoint, emit_delta=emit_delta).run(args.task, messages)
         return 0 if complete else 2
     except KeyboardInterrupt:
         print("Interrupted; no pending actions will be replayed on resume", file=sys.stderr)

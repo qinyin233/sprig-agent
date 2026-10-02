@@ -48,6 +48,7 @@ class Config:
     max_steps: int = 20
     timeout: float = 30
     max_output: int = 16000
+    stream: bool = False
 
     def __post_init__(self):
         root = Path(self.workdir).expanduser().resolve(strict=True)
@@ -65,6 +66,8 @@ class Config:
             raise ValueError("max-output must be between 256 and 1000000 bytes")
         if any(ord(c) < 32 for c in self.api_key):
             raise ValueError("API key contains control characters")
+        if not isinstance(self.stream, bool):
+            raise ValueError("stream must be a boolean")
 
     def binding(self):
         return {"base_url": self.base_url, "model": self.model, "workdir": str(self.workdir)}

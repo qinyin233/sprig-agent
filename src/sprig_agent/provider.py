@@ -1,4 +1,4 @@
-"""Minimal, non-streaming Chat Completions client; no automatic retries."""
+"""Minimal Chat Completions client; optional SSE and no automatic retries."""
 
 import json
 from http.client import HTTPException
@@ -59,16 +59,24 @@ class Provider:
         self.config = config
         self.opener = urllib.request.build_opener(NoRedirect())
 
-    def complete(self, messages, tools):
+    def complete(self, messages, tools, on_text=None):
         config = self.config
-        body = json.dumps({"model": config.model, "messages": redact(messages, config.api_key),
-                           "tools": tools, "tool_choice": "auto"}).encode("utf-8")
+        payload = {"model": config.model, "messages": redact(messages, config.api_key),
+                   "tools": tools, "tool_choice": "auto"}
+        if config.stream:
+            payload["stream"] = True
+        body = json.dumps(payload).encode("utf-8")
         headers = {"Content-Type": "application/json", "User-Agent": "sprig-agent/0.1.0"}
+        if config.stream:
+            headers["Accept"] = "text/event-stream"
         if config.api_key:
             headers["Authorization"] = f"Bearer {config.api_key}"
         request = urllib.request.Request(config.base_url + "/chat/completions", body, headers)
         try:
             with self.opener.open(request, timeout=config.timeout) as response:
+                if config.stream:
+                    from .streaming import complete_stream
+                    return complete_stream(response, on_text, config.api_key)
                 raw = response.read(MAX_RESPONSE + 1)
             if len(raw) > MAX_RESPONSE:
                 raise ProviderError("provider response exceeds 2 MiB")
@@ -82,6 +90,7 @@ class Provider:
             return redact(validate_message(choice["message"]), config.api_key)
         except urllib.error.HTTPError as exc:
             # Never echo response bodies: gateways can include request credentials.
+            exc.close()
             raise ProviderError(f"provider HTTP {exc.code}; check endpoint, model, or credentials") from None
         except (urllib.error.URLError, TimeoutError, OSError, HTTPException):
             raise ProviderError("provider request failed or timed out; no automatic retry") from None

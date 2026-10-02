@@ -18,9 +18,26 @@ Finish with a concise summary of changes, verification, and any remaining limita
 
 
 class Agent:
-    def __init__(self, config, provider, tools, emit, checkpoint=None):
+    def __init__(self, config, provider, tools, emit, checkpoint=None, emit_delta=None):
         self.config, self.provider, self.tools = config, provider, tools
         self.emit, self.checkpoint = emit, checkpoint or (lambda messages: None)
+        self.emit_delta = emit_delta
+
+    def _complete(self, messages):
+        if not self.config.stream or self.emit_delta is None:
+            return self.provider.complete(messages, TOOL_SCHEMAS)
+        displayed = False
+
+        def on_text(text):
+            nonlocal displayed
+            displayed = True
+            self.emit_delta(text)
+
+        try:
+            return self.provider.complete(messages, TOOL_SCHEMAS, on_text=on_text)
+        finally:
+            if displayed:
+                self.emit_delta("\n")
 
     def run(self, task=None, messages=None):
         messages = messages if messages is not None else [{"role": "system", "content": SYSTEM_PROMPT}]
@@ -31,14 +48,14 @@ class Agent:
         self.checkpoint(messages)
         seen_ids = {call["id"] for message in messages for call in message.get("tool_calls", [])}
         for _ in range(self.config.max_steps):
-            message = redact(validate_message(self.provider.complete(messages, TOOL_SCHEMAS)), self.config.api_key)
+            message = redact(validate_message(self._complete(messages)), self.config.api_key)
             calls = message.get("tool_calls", [])
             if any(call["id"] in seen_ids for call in calls):
                 raise ProviderError("provider reused a tool call ID; stopped without replaying it")
             seen_ids.update(call["id"] for call in calls)
             messages.append(message)
             self.checkpoint(messages)  # Save intent before any possible side effect.
-            if message["content"]:
+            if message["content"] and not (self.config.stream and self.emit_delta is not None):
                 self.emit(message["content"])
             if not calls:
                 return messages, True
