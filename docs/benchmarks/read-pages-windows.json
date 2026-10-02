@@ -1,0 +1,81 @@
+{
+  "scope": "offline file retrieval; no model/API or coding-task success comparison",
+  "python": "3.13.0",
+  "platform": "Windows-11-10.0.26300-SP0",
+  "revision": "e9e8a8d0e6cb134a77ad78f8f32ecb293b763e1b",
+  "dirty": true,
+  "repeat": 11,
+  "current": {
+    "source_sha256": "f74cf417e2cb187290317b4bd1155eb93766b63666dbacb8fd40f5052f1bca96",
+    "ranged_reads": true,
+    "cases": [
+      {
+        "case": "small.py",
+        "target_found_runs": 11,
+        "runs": 11,
+        "median_ms": 6.657,
+        "max_ms": 11.923,
+        "tool_result_bytes": 167,
+        "stable_result_size": true,
+        "tool_calls_per_run": 2
+      },
+      {
+        "case": "early.py",
+        "target_found_runs": 11,
+        "runs": 11,
+        "median_ms": 8.705,
+        "max_ms": 9.992,
+        "tool_result_bytes": 166,
+        "stable_result_size": true,
+        "tool_calls_per_run": 2
+      },
+      {
+        "case": "late.py",
+        "target_found_runs": 11,
+        "runs": 11,
+        "median_ms": 8.988,
+        "max_ms": 12.06,
+        "tool_result_bytes": 175,
+        "stable_result_size": true,
+        "tool_calls_per_run": 2
+      }
+    ]
+  },
+  "baseline": {
+    "revision": "e9e8a8d0e6cb134a77ad78f8f32ecb293b763e1b",
+    "source_sha256": "ee2d2f3271d5f3b1692a990f68ecbe7a236e15746662ceac54c5a00a3d83da5e",
+    "ranged_reads": false,
+    "cases": [
+      {
+        "case": "small.py",
+        "target_found_runs": 11,
+        "runs": 11,
+        "median_ms": 5.568,
+        "max_ms": 12.718,
+        "tool_result_bytes": 85,
+        "stable_result_size": true,
+        "tool_calls_per_run": 2
+      },
+      {
+        "case": "early.py",
+        "target_found_runs": 11,
+        "runs": 11,
+        "median_ms": 6.2,
+        "max_ms": 6.726,
+        "tool_result_bytes": 33425,
+        "stable_result_size": true,
+        "tool_calls_per_run": 2
+      },
+      {
+        "case": "late.py",
+        "target_found_runs": 0,
+        "runs": 11,
+        "median_ms": 6.62,
+        "max_ms": 8.003,
+        "tool_result_bytes": 33422,
+        "stable_result_size": true,
+        "tool_calls_per_run": 2
+      }
+    ]
+  }
+}

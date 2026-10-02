@@ -40,6 +40,7 @@ class WindowsTests(unittest.TestCase):
                      "CONIN$", "a.", "a ", "a/.ENV", ".ENV", ".GiT/config", "a/../../escape"):
             with self.subTest(path=path):
                 self.assertIn("error", self.tools.execute("read_file", {"path": path}))
+                self.assertIn("error", self.tools.execute("read_file", {"path": path, "limit": 1}))
                 self.assertIn("error", self.tools.execute("edit_file", {"path": path, "old": "", "new": "bad"}))
         self.assertEqual(self.tools.execute("list_files", {})["entries"], [])
         self.assertEqual(self.tools.execute("search", {"query": "hidden"})["matches"], [])
@@ -49,6 +50,7 @@ class WindowsTests(unittest.TestCase):
         result = self.tools.execute("edit_file", {"path": path, "old": "", "new": "你好\r\n世界\r\n"})
         self.assertTrue(result["changed"])
         self.assertEqual(self.tools.execute("read_file", {"path": path})["content"], "你好\r\n世界\r\n")
+        self.assertEqual(self.tools.execute("read_file", {"path": path, "offset": 2, "limit": 1})["content"], "世界\r\n")
         self.assertEqual(self.tools.execute("search", {"query": "世界"})["matches"][0]["line"], 2)
 
     def test_junction_cannot_read_write_search_or_run_outside(self):
@@ -60,6 +62,7 @@ class WindowsTests(unittest.TestCase):
         subprocess.run(["cmd.exe", "/c", "mklink", "/J", str(link), str(outside)], check=True, capture_output=True)
         try:
             for name, args in (("read_file", {"path": "link/a"}),
+                               ("read_file", {"path": "link/a", "limit": 1}),
                                ("edit_file", {"path": "link/a", "old": "secret", "new": "bad"}),
                                ("run", {"argv": [sys.executable, "-V"], "cwd": "link"})):
                 self.assertIn("error", self.tools.execute(name, args))

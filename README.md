@@ -181,13 +181,15 @@ CLI 与 TUI 都实时显示命令输出，保留 UTF-8 分段，遮盖跨片段�
 | 工具 | 行为 |
 | --- | --- |
 | `list_files(path=".")` | 列出目录内容 |
-| `read_file(path)` | 读取 UTF-8 文本文件 |
+| `read_file(path, offset=1, limit=...)` | 读取 UTF-8 文本文件；可按行读取，返回后续行号，仍受输出预算限制 |
 | `search(query, path=".")` | 递归搜索文本中的字面字符串，不解释为正则表达式 |
 | `project_map(path=".")` | 返回有界文件地图和 Python 类、函数、方法的名称与行号；其他语言只列文件路径 |
 | `edit_file(path, old, new)` | 将恰好一处 `old` 替换为 `new`；零处或多处匹配都拒绝 |
 | `run(argv, cwd=".", timeout=...)` | 运行参数数组所指定的命令；可选超时不能超过全局上限 |
 
 `edit_file` 的 `old` 为空时仅用于创建新文件，且父目录必须已存在。已有文件不能用空字符串匹配来覆盖。写入都需先检查 diff 并确认。
+
+`read_file` 不带范围时保留按输出预算读取文件开头的行为。指定 `offset` / `limit` 可精确读取后部代码；范围读取先检查完整的受限文件（最多 8 MiB），避免用干净页面绕过其他位置的凭证、二进制或编码检查。行号从 1 开始，`limit` 最多 10,000，省略时为 2,000；`next_offset` 指向下一页。返回尽可能完整的行，单行超过输出预算时仅返回该行开头，并标记 `line_truncated`，不生成无法推进的后续行号。换行和 UTF-8 字符保持原样，超限、取消或非法范围会明确失败。
 
 文件工具拒绝越出工作根目录的路径、符号链接，以及路径中包含 `.git`、`.env`、`.env.*` 的组件。它们只处理 UTF-8 文本，不能编辑二进制文件。
 
@@ -282,6 +284,8 @@ uv run python -m unittest discover -s tests -v
 ```
 
 2026-10-02 已在原生 Windows 上使用 Agnes 3.0 Flash 完成普通和流式 API 的端到端测试：读取临时项目、修复函数、执行固定验收命令并保存恢复会话。[验证记录](docs/validation.md)列出实际测试范围，不代表任意兼容服务都能正常工作。
+
+性能目标、基线测量与尚未验证的差距见[性能记录](docs/performance.md)。`uv run --locked python scripts/benchmark-tools.py --compare-ref e9e8a8d` 可在相同临时项目中对照旧提交的检索能力和开销，不调用模型。
 
 可选真实 API 测试（会使用账户额度）：
 

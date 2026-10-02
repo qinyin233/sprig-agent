@@ -1,6 +1,7 @@
 """Pinned directories and no-follow files for POSIX and native Windows."""
 
 import os
+from contextlib import contextmanager
 from pathlib import Path
 import stat
 
@@ -43,7 +44,8 @@ class Directory:
             return os.stat(self.path / name, follow_symlinks=False)
         return os.stat(name, dir_fd=self.fd, follow_symlinks=False)
 
-    def read(self, name, limit, *, private=False):
+    @contextmanager
+    def open_read(self, name, *, private=False):
         if os.name == "nt":
             from .windows import file_descriptor
             fd = file_descriptor(self.path / name, private=private)
@@ -55,6 +57,10 @@ class Directory:
                 raise ValueError("only regular files are supported")
             if private and os.name != "nt" and (info.st_uid != os.getuid() or stat.S_IMODE(info.st_mode) != 0o600):
                 raise ValueError("unsafe session file")
+            yield handle
+
+    def read(self, name, limit, *, private=False):
+        with self.open_read(name, private=private) as handle:
             return handle.read(limit + 1)
 
     def write_new(self, name, data, mode=0o600, *, private=False, permissions_from=None):

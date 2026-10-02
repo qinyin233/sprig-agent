@@ -3,6 +3,7 @@
 from contextlib import contextmanager
 import ast
 import difflib
+import io
 import json
 import math
 import os
@@ -21,6 +22,7 @@ from .policy import FilePolicy, command_environment
 from .output import CommandOutput
 
 MAX_FILE = 512 * 1024
+MAX_READ = 8 * 1024 * 1024
 SKIP_DIRS = {"node_modules", ".venv", "__pycache__"}
 
 
@@ -38,8 +40,9 @@ STRING = {"type": "string"}
 TOOL_SCHEMAS = [
     schema("list_files", "List one workspace directory; no symlinks or protected files.",
            {"path": STRING}),
-    schema("read_file", "Read a UTF-8 workspace file; output may be truncated.",
-           {"path": STRING}, ["path"]),
+    schema("read_file", "Read UTF-8 text. Use 1-based offset and limit to inspect specific lines or continue a large file. Ranged reads scan at most 8 MiB, enforce file privacy, and report next_offset; a single oversized line is explicitly marked incomplete.",
+           {"path": STRING, "offset": {"type": "integer", "minimum": 1, "maximum": 1000000},
+            "limit": {"type": "integer", "minimum": 1, "maximum": 10000}}, ["path"]),
     schema("search", "Find literal text recursively in UTF-8 files, with bounded results.",
            {"query": STRING, "path": STRING}, ["query"]),
     schema("project_map", "Bounded workspace file map with Python class/function names and line numbers; inspect relevant files afterwards.",
@@ -165,7 +168,13 @@ class Tools:
                 entries.append({"name": entry.name, "type": kind})
         return {"entries": sorted(entries, key=lambda item: item["name"]), "truncated": truncated}
 
-    def read_file(self, path):
+    def read_file(self, path, offset=1, limit=None):
+        if type(offset) is not int or not 1 <= offset <= 1000000:
+            raise ToolError("offset must be an integer from 1 to 1000000 (1-based line number)")
+        if limit is not None and (type(limit) is not int or not 1 <= limit <= 10000):
+            raise ToolError("limit must be an integer from 1 to 10000")
+        if offset != 1 or limit is not None:
+            return self._read_page(path, offset, limit or 2000)
         with self._parent(path) as (fd, name):
             raw = self._read(fd, name, self.config.max_output)
         truncated = len(raw) > self.config.max_output
@@ -180,6 +189,51 @@ class Tools:
         else:
             text = self._decode(raw)
         return {"path": path, "content": text, "truncated": truncated}
+
+    def _read_page(self, path, offset, limit):
+        # Validate the whole bounded file before exposing a page: selecting a
+        # clean line must not bypass the credential/binary policy elsewhere.
+        raw = bytearray()
+        with self._parent(path) as (directory, name), directory.open_read(name) as handle:
+            if os.fstat(handle.fileno()).st_size > MAX_READ:
+                raise ToolError("ranged read exceeds the 8 MiB scan limit")
+            while True:
+                self._check_cancelled()
+                chunk = handle.read(min(65536, MAX_READ - len(raw) + 1))
+                if not chunk:
+                    break
+                raw.extend(chunk)
+                if len(raw) > MAX_READ:
+                    raise ToolError("ranged read exceeds the 8 MiB scan limit")
+        self._check_cancelled()
+        selected, size, partial, capped, total = [], 0, False, False, 0
+        # Iterate rather than allocating one list entry per line for a file
+        # containing millions of blank lines. Keep CR/LF endings unchanged.
+        for line in io.StringIO(self._decode(raw), newline=""):
+            total += 1
+            if total % 256 == 0:
+                self._check_cancelled()
+            if total < offset or total >= offset + limit or capped:
+                continue
+            encoded = line.encode("utf-8")
+            if size + len(encoded) > self.config.max_output:
+                if not selected:
+                    import codecs
+                    selected.append(codecs.getincrementaldecoder("utf-8")().decode(
+                        encoded[:self.config.max_output], final=False))
+                    partial = True
+                capped = True
+                continue
+            selected.append(line)
+            size += len(encoded)
+        self._check_cancelled()
+        if offset > total and not (offset == 1 and not total):
+            raise ToolError(f"offset {offset} is beyond the end of the file ({total} lines)")
+        end = offset - 1 + len(selected)
+        truncated = partial or end < total
+        return {"path": path, "content": "".join(selected), "offset": offset, "end_line": end,
+                "total_lines": total, "truncated": truncated, "line_truncated": partial,
+                "next_offset": end + 1 if truncated and not partial else None}
 
     def search(self, query, path="."):
         if not isinstance(query, str) or not query or len(query) > 1000:
@@ -212,7 +266,8 @@ class Tools:
                             if len(raw) > MAX_FILE or budget < 0:
                                 truncated = True
                                 continue
-                            for line_number, line in enumerate(self._decode(raw).splitlines(), 1):
+                            for line_number, line in enumerate(io.StringIO(self._decode(raw), newline=""), 1):
+                                line = line.rstrip("\r\n")
                                 if query in line:
                                     match = {"path": relative, "line": line_number, "text": line}
                                     size = len(json.dumps(match).encode("utf-8"))
