@@ -307,6 +307,46 @@ class TuiTests(unittest.IsolatedAsyncioTestCase):
         finally:
             gate.set()
 
+    async def test_close_waits_for_worker_before_releasing_handles(self):
+        gate, entered = threading.Event(), threading.Event()
+        errors = []
+        provider = ScriptedProvider([response("late")])
+        original = provider.complete
+
+        def complete(messages, tools, on_text=None):
+            entered.set()
+            gate.wait(10)
+            return original(messages, tools, on_text)
+
+        provider.complete = complete
+        app = self.app(provider, task="original", save_session="shutdown")
+        closer = None
+        try:
+            async with app.run_test(size=(110, 36)) as pilot:
+                await self.until(pilot, entered.is_set)
+
+            def close():
+                try:
+                    app.close()
+                except Exception as error:
+                    errors.append(error)
+
+            closer = threading.Thread(target=close)
+            closer.start()
+            await asyncio.sleep(0.03)
+            self.assertTrue(closer.is_alive())
+            self.assertIsNotNone(app.tools.root.fd)
+            gate.set()
+            closer.join(5)
+            self.assertFalse(closer.is_alive())
+            self.assertEqual(errors, [])
+            self.assertIsNone(app.tools.root.fd)
+            self.assertIsNone(app.store.handle.fd)
+        finally:
+            gate.set()
+            if closer:
+                closer.join(5)
+
     async def test_diff_defaults_to_rejection_then_explicit_approval_writes(self):
         file = self.root / "value.txt"
         file.write_text("old", encoding="utf-8")

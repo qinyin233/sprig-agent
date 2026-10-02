@@ -20,6 +20,16 @@ from .session import SessionError, SessionStore, validate_history
 from .tools import Tools
 
 
+class UiRequest(Message):
+    """A cancellable bridge; worker threads never wait on a stopped UI loop."""
+
+    def __init__(self, callback, args):
+        super().__init__()
+        self.callback, self.args = callback, args
+        self.done = threading.Event()
+        self.result, self.error = None, None
+
+
 class TaskInput(TextArea):
     """Chat composer: Enter sends; modified Enter inserts a newline."""
 
@@ -125,6 +135,10 @@ class SprigApp(App[int]):
         self.busy = False
         self.last_status = 0
         self.cancel_event = threading.Event()
+        self._lifecycle_lock = threading.Lock()
+        self._closed = False
+        self._unmounted = False
+        self._ui_thread_id = threading.get_ident()
         self.quit_when_idle = False
         self.transcript = ""
         self.streaming = False
@@ -146,11 +160,11 @@ class SprigApp(App[int]):
         class UiTools(Tools):
             def execute(self, name, arguments):
                 result = super().execute(name, arguments)
-                if result.get("approved") is False and app.call_from_thread(lambda: bool(app.pending_tasks)):
+                if result.get("approved") is False and app.ui_call(lambda: bool(app.pending_tasks)):
                     result = {**result, "skipped": True,
                               "error": "Not executed: superseded by new user guidance. Follow the updated request and request fresh approval for any new action."}
                 summary = {key: result[key] for key in ("approved", "changed", "returncode", "timed_out", "output_limited", "error") if key in result}
-                app.call_from_thread(app.event, name + ": " + json.dumps(summary, ensure_ascii=False))
+                app.ui_call(app.event, name + ": " + json.dumps(summary, ensure_ascii=False))
                 return result
 
         try:
@@ -193,6 +207,7 @@ class SprigApp(App[int]):
         yield Footer()
 
     def on_mount(self):
+        self._ui_thread_id = threading.get_ident()
         self.action_focus_task()
         self.append("Sprig 就绪。任务、读取内容和工具结果会发送到所示服务。\n写入和命令逐次确认；命令没有沙箱。\n")
         if self.messages:
@@ -240,7 +255,36 @@ class SprigApp(App[int]):
         return tasks
 
     def receive_input(self):
-        return self.call_from_thread(self.take_pending)
+        if self._unmounted:
+            tasks, self.pending_tasks = self.pending_tasks, []
+            return tasks
+        return self.ui_call(self.take_pending)
+
+    @on(UiRequest)
+    def ui_request(self, event):
+        try:
+            if self._unmounted:
+                raise RuntimeError("terminal interface has closed")
+            event.result = event.callback(*event.args)
+        except BaseException as error:
+            event.error = error
+        finally:
+            event.done.set()
+
+    def ui_call(self, callback, *args):
+        if self._unmounted:
+            raise RuntimeError("terminal interface has closed")
+        if threading.get_ident() == self._ui_thread_id:
+            return callback(*args)
+        event = UiRequest(callback, args)
+        if not self.post_message(event):
+            raise RuntimeError("terminal interface has closed")
+        while not event.done.wait(0.05):
+            if self._unmounted:
+                raise RuntimeError("terminal interface has closed")
+        if event.error:
+            raise event.error
+        return event.result
 
     def check_cancelled(self):
         if get_current_worker().is_cancelled:
@@ -249,17 +293,19 @@ class SprigApp(App[int]):
             raise KeyboardInterrupt
 
     def emit(self, text):
+        if self._unmounted:
+            return
         self.streaming = False
-        self.call_from_thread(self.append, str(text) + "\n")
+        self.ui_call(self.append, str(text) + "\n")
         if str(text).startswith("["):
-            self.call_from_thread(self.event, text)
+            self.ui_call(self.event, text)
 
     def emit_delta(self, text):
         self.check_cancelled()
         if not self.streaming:
-            self.call_from_thread(self.append, "\nSprig> ")
+            self.ui_call(self.append, "\nSprig> ")
             self.streaming = True
-        self.call_from_thread(self.append, text)
+        self.ui_call(self.append, text)
 
     def confirm(self, description):
         self.check_cancelled()
@@ -280,7 +326,7 @@ class SprigApp(App[int]):
             self.set_state("等待确认")
             self.push_screen(self.approval, decide)
 
-        self.call_from_thread(show)
+        self.ui_call(show)
         while not done.wait(0.05):
             self.check_cancelled()
         self.check_cancelled()
@@ -307,15 +353,18 @@ class SprigApp(App[int]):
     def execute(self, task, local):
         # Finishing and submission are serialized on the UI thread. A late
         # request keeps this worker alive instead of racing a second worker.
-        while True:
-            status, message = self.execute_turn(task, local)
-            try:
-                again = self.call_from_thread(self.finished, status, message)
-            except RuntimeError:
-                return  # The terminal/app may already have closed during teardown.
-            if not again:
+        with self._lifecycle_lock:
+            if self._closed:
                 return
-            task, local = None, None
+            while True:
+                status, message = self.execute_turn(task, local)
+                try:
+                    again = self.ui_call(self.finished, status, message)
+                except RuntimeError:
+                    return  # The terminal/app may already have closed during teardown.
+                if not again:
+                    return
+                task, local = None, None
 
     def execute_turn(self, task, local):
         status, message = 0, "完成"
@@ -340,7 +389,7 @@ class SprigApp(App[int]):
                         message += "；新要求已保留，点击继续执行"
                     if self.store and self.session_name:
                         self.store.save(self.session_name, self.messages)
-            except (OSError, SessionError) as error:
+            except (OSError, SessionError, RuntimeError) as error:
                 status, message = 1, "已取消，但会话保存失败: " + self.safe(error)
         except Exception as error:
             status, message = 1, "错误: " + self.safe(error)
@@ -349,11 +398,12 @@ class SprigApp(App[int]):
                 if self.messages:
                     self.messages = validate_history(self.messages)
                     self.agent._steer(self.messages)
-            except (OSError, SessionError) as recovery_error:
+            except (OSError, SessionError, RuntimeError) as recovery_error:
                 message += "；会话恢复或保存失败: " + self.safe(recovery_error)
         return status, message
 
     def on_unmount(self):
+        self._unmounted = True
         self.cancel_event.set()
 
     def finished(self, status, message):
@@ -487,9 +537,18 @@ class SprigApp(App[int]):
                 self.restore()
 
     def close(self):
-        self.tools.close()
-        if self.store:
-            self.store.close()
+        # Textual cancels the async wrapper without joining its worker thread.
+        # Keep filesystem/session handles alive until that thread has stopped.
+        self.cancel_event.set()
+        if not self._lifecycle_lock.acquire(timeout=min(60, self.config.timeout + 5)):
+            raise TimeoutError("worker cleanup is still pending; filesystem handles remain open")
+        try:
+            self._closed = True
+            self.tools.close()
+            if self.store:
+                self.store.close()
+        finally:
+            self._lifecycle_lock.release()
 
 
 def run_tui(config, task=None, session_dir=None, save_session=None, resume=None):
