@@ -141,7 +141,12 @@ def main(argv=None):
         if manage_sessions:
             store = SessionStore(args.session_dir, config)
             if args.list_sessions:
-                print(terminal_text(json.dumps(store.list(), ensure_ascii=False, indent=2)))
+                listing = store.scan()
+                print(terminal_text(json.dumps(listing["sessions"], ensure_ascii=False, indent=2)))
+                if listing["limited"]:
+                    print(f"Session listing reached the {listing['limit_reason']} limit; results may be incomplete "
+                          f"({listing['scanned_entries']} entries scanned, {listing['read_bytes']} bytes read).", file=sys.stderr)
+                    return 2
             elif approve("DELETE local session " + terminal_text(args.delete_session) + "\nThis deletes its saved transcript; it does not change workspace files."):
                 store.delete(args.delete_session)
                 print("Local session deleted")

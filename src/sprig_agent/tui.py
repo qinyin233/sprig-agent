@@ -463,7 +463,9 @@ class SprigApp(App[int]):
             if local:
                 name, arguments = local
                 if name == "sessions":
-                    result = {"sessions": self.get_store().list()}
+                    result = self.get_store().scan(cancel_event=self.cancel_event)
+                    if result["limited"]:
+                        status, message = 2, "会话列表达到上限，结果可能不完整"
                 elif name in {"changes", "undo", "redo", "discard-history"}:
                     result = self.tools.change_action(name)
                     if result.get("changed") or result.get("outcome") == "uncertain":

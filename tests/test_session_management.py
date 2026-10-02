@@ -1,16 +1,18 @@
 """Actual interprocess session ownership and local-only management."""
 import io
+import json
 import os
 from pathlib import Path
 import subprocess
 import sys
 import tempfile
+import threading
 import unittest
 from contextlib import redirect_stdout, redirect_stderr
 from unittest.mock import patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
-from sprig_agent import cli
+from sprig_agent import cli, session
 from sprig_agent.config import Config
 from sprig_agent.session import SessionError, SessionStore
 
@@ -203,6 +205,87 @@ class SessionManagementTests(unittest.TestCase):
                 self.assertEqual(cli.main(common + ["--delete-session", "demo"]), 0)
             provider.assert_not_called()
         self.assertFalse((self.directory / "demo.json").exists())
+
+    def test_scan_bounds_ignored_entries_and_reports_limit(self):
+        for index in range(10):
+            self.store.handle.write_new(f"ignored-{index}.txt", b"unused", private=True)
+        with patch.object(session, "MAX_LIST_ENTRIES", 3):
+            listing = self.store.scan()
+        self.assertEqual(listing, {"sessions": [], "limited": True, "limit_reason": "entries",
+                                  "scanned_entries": 3, "read_bytes": 0})
+
+    def test_scan_limits_records_and_keeps_transcripts_private(self):
+        for name in ("one", "two", "three"):
+            self.store.save(name, self.history)
+        with patch.object(session, "MAX_LIST_SESSIONS", 2):
+            listing = self.store.scan()
+        self.assertEqual(len(listing["sessions"]), 2)
+        self.assertTrue(listing["limited"])
+        self.assertEqual(listing["limit_reason"], "sessions")
+        self.assertNotIn("private transcript", str(listing))
+        self.assertEqual(len(self.store.list()), 3)
+        complete = self.store.scan()
+        self.assertFalse(complete["limited"])
+        self.assertIsNone(complete["limit_reason"])
+
+    def test_scan_read_budget_is_reported_and_releases_temporary_lock(self):
+        self.store.save("large", self.history)
+        self.store.release("large")
+        with patch.object(session, "MAX_LIST_BYTES", 50):
+            listing = self.store.scan()
+        self.assertTrue(listing["limited"])
+        self.assertEqual(listing["limit_reason"], "bytes")
+        self.assertEqual(listing["read_bytes"], 51)  # One extra byte detects overflow.
+        self.assertEqual(listing["sessions"], [{"name": "large", "error": "session metadata read limit reached"}])
+        self.assertEqual(self.other().load("large"), self.history)
+
+    def test_cancelled_scan_retains_active_locks_and_releases_temporary_locks(self):
+        other = self.other()
+        cancel = threading.Event()
+        cancel.set()
+        with patch.object(self.store.handle, "scandir") as discovery:
+            with self.assertRaises(KeyboardInterrupt):
+                self.store.scan(cancel_event=cancel)
+            discovery.assert_not_called()
+        for owned in (False, True):
+            with self.subTest(owned=owned):
+                # Use one entry per directory scan, so the cancellation always
+                # occurs while reading the named session rather than a prior one.
+                name = "interrupted"
+                self.store.save(name, self.history)
+                if not owned:
+                    self.store.release(name)
+                cancel.clear()
+                original = self.store.handle.read
+
+                def read(*args, **kwargs):
+                    data = original(*args, **kwargs)
+                    cancel.set()
+                    return data
+
+                with patch.object(self.store.handle, "read", side_effect=read):
+                    with self.assertRaises(KeyboardInterrupt):
+                        self.store.scan(cancel_event=cancel)
+                if owned:
+                    with self.assertRaisesRegex(SessionError, "busy"):
+                        other.load(name)
+                    self.store.release(name)
+                self.assertEqual(other.load(name), self.history)
+                other.release(name)
+
+    def test_cli_limited_listing_preserves_json_output_and_reports_incompleteness(self):
+        for name in ("one", "two"):
+            self.store.save(name, self.history)
+            self.store.release(name)
+        stdout, stderr = io.StringIO(), io.StringIO()
+        with patch.object(session, "MAX_LIST_SESSIONS", 1), \
+                patch.object(cli, "Provider") as provider, redirect_stdout(stdout), redirect_stderr(stderr):
+            code = cli.main(["--workdir", str(self.config.workdir), "--session-dir", str(self.directory), "--list-sessions"])
+        self.assertEqual(code, 2)
+        self.assertEqual(len(json.loads(stdout.getvalue())), 1)
+        self.assertIn("results may be incomplete", stderr.getvalue())
+        self.assertNotIn("private transcript", stdout.getvalue() + stderr.getvalue())
+        provider.assert_not_called()
 
 
 if __name__ == "__main__":

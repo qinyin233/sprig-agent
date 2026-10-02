@@ -17,7 +17,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
 from textual.widgets import Input, Static, TextArea
 from textual.css.query import NoMatches
-from sprig_agent import cli
+from sprig_agent import cli, session
 from sprig_agent.config import Config
 from sprig_agent.session import SessionError, SessionStore, validate_history
 from sprig_agent.tui import ApprovalScreen, SprigApp
@@ -874,6 +874,7 @@ class TuiTests(unittest.IsolatedAsyncioTestCase):
             self.assertIn('"demo"', app.transcript)
             self.assertNotIn("private text", app.transcript)
             self.assertIsNone(app.messages)
+            self.assertIn('"limited": false', app.transcript)
             app.query_one("#session-name", Input).value = "demo"
             app.query_one("#delete").scroll_visible(animate=False)
             await pilot.pause()
@@ -886,6 +887,57 @@ class TuiTests(unittest.IsolatedAsyncioTestCase):
             await self.click(pilot, "#approve")
             self.assertFalse((self.parent / "sessions/demo.json").exists())
             forbidden.complete.assert_not_called()
+
+    async def test_session_listing_limit_is_visible_and_does_not_create_task_result(self):
+        forbidden = Mock()
+        app = self.app(forbidden)
+        store = app.get_store()
+        for index in range(10):
+            store.handle.write_new(f"ignored-{index}.txt", b"unused", private=True)
+        with patch.object(session, "MAX_LIST_ENTRIES", 3):
+            async with app.run_test(size=(110, 40)) as pilot:
+                await self.click(pilot, "#sessions")
+                await self.until(pilot, lambda: not app.busy)
+                self.assertIn('"limited": true', app.transcript)
+                self.assertIn('"scanned_entries": 3', app.transcript)
+                self.assertEqual(app.last_operation_status, 2)
+                self.assertIsNone(app.task_status)
+                self.assertIn("结果可能不完整", str(app.query_one("#state", Static).render()))
+                forbidden.complete.assert_not_called()
+
+    async def test_cancel_session_listing_releases_borrowed_lock_without_model_request(self):
+        entered, gate = threading.Event(), threading.Event()
+        forbidden = Mock()
+        app = self.app(forbidden)
+        store = app.get_store()
+        history = [{"role": "system", "content": "system"}, {"role": "user", "content": "private transcript"}]
+        store.save("demo", history)
+        store.release("demo")
+        other = SessionStore(self.parent / "sessions", self.config)
+        self.addCleanup(other.close)
+        original = store.handle.read
+
+        def read(*args, **kwargs):
+            entered.set()
+            gate.wait(10)
+            return original(*args, **kwargs)
+
+        try:
+            with patch.object(store.handle, "read", side_effect=read):
+                async with app.run_test(size=(110, 40)) as pilot:
+                    await self.click(pilot, "#sessions")
+                    await self.until(pilot, entered.is_set)
+                    await pilot.press("ctrl+c")
+                    gate.set()
+                    await self.until(pilot, lambda: not app.busy)
+                    self.assertEqual(app.last_operation_status, 130)
+                    self.assertEqual(app.last_status, 130)
+                    self.assertEqual(other.load("demo"), history)
+                    self.assertNotIn("private transcript", app.transcript)
+                    self.assertIsNone(app.messages)
+                    forbidden.complete.assert_not_called()
+        finally:
+            gate.set()
 
     async def test_local_map_does_not_upload_and_controls_and_key_are_hidden(self):
         (self.root / "code.py").write_text("def function():\n    pass\n")

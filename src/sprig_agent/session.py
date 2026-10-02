@@ -14,6 +14,9 @@ from .filesystem import Directory
 from .provider import ProviderError, validate_message
 
 MAX_SESSION = 8 * 1024 * 1024
+MAX_LIST_ENTRIES = 4096
+MAX_LIST_SESSIONS = 256
+MAX_LIST_BYTES = MAX_SESSION
 
 
 class SessionError(Exception):
@@ -217,10 +220,25 @@ class SessionStore:
 
     def list(self):
         """List local metadata without loading transcripts into a conversation."""
-        records, budget = [], MAX_SESSION
+        return self.scan()["sessions"]
+
+    def scan(self, *, cancel_event=None):
+        """Bound discovery and reads, reporting limits without returning transcript text."""
+        records, budget, scanned, reason = [], MAX_LIST_BYTES, 0, None
+
+        def check_cancelled():
+            if cancel_event is not None and cancel_event.is_set():
+                raise KeyboardInterrupt
+
+        check_cancelled()
         with self.handle.scandir() as entries:
             for entry in entries:
+                check_cancelled()
+                scanned += 1
                 if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_-]{0,63}\.json", entry.name):
+                    if scanned >= MAX_LIST_ENTRIES:
+                        reason = "entries"
+                        break
                     continue
                 record = {"name": entry.name[:-5]}
                 owned = record["name"] in self._leases
@@ -228,17 +246,23 @@ class SessionStore:
                     self.acquire(record["name"])
                     self._check_file(entry.name)
                     limit = min(MAX_SESSION, budget)
+                    check_cancelled()
                     raw = self.handle.read(entry.name, limit, private=True)
                     budget -= len(raw)
+                    check_cancelled()
                     if len(raw) > limit:
-                        raise ValueError
-                    saved = json.loads(raw)
-                    if not isinstance(saved, dict) or saved.get("version") != 1 or not isinstance(saved.get("binding"), dict):
-                        raise ValueError
-                    history = validate_history(saved.get("messages"))
-                    binding = {key: saved["binding"][key][:4096] for key in ("model", "base_url", "workdir")
-                               if isinstance(saved["binding"].get(key), str)}
-                    record.update(binding=binding, messages=len(history))
+                        record["error"] = "session metadata read limit reached"
+                        # A per-file limit also makes the result incomplete,
+                        # even when a larger total read budget was configured.
+                        reason = "bytes"
+                    else:
+                        saved = json.loads(raw)
+                        if not isinstance(saved, dict) or saved.get("version") != 1 or not isinstance(saved.get("binding"), dict):
+                            raise ValueError
+                        history = validate_history(saved.get("messages"))
+                        binding = {key: saved["binding"][key][:4096] for key in ("model", "base_url", "workdir")
+                                   if isinstance(saved["binding"].get(key), str)}
+                        record.update(binding=binding, messages=len(history))
                 except SessionError as error:
                     if "busy" in str(error):
                         record["busy"] = True
@@ -250,9 +274,19 @@ class SessionStore:
                     if not owned:
                         self.release(record["name"])
                 records.append(redact(record, self.config.api_key))
-                if len(records) >= 256 or budget <= 0:
+                if reason or budget <= 0:
+                    reason = "bytes"
                     break
-        return sorted(records, key=lambda record: record["name"])
+                if len(records) >= MAX_LIST_SESSIONS:
+                    reason = "sessions"
+                    break
+                if scanned >= MAX_LIST_ENTRIES:
+                    reason = "entries"
+                    break
+        check_cancelled()
+        return {"sessions": sorted(records, key=lambda record: record["name"]),
+                "limited": reason is not None, "limit_reason": reason,
+                "scanned_entries": scanned, "read_bytes": MAX_LIST_BYTES - budget}
 
     def delete(self, name):
         """Caller must obtain explicit approval; active leases exclude other writers."""
