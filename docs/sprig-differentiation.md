@@ -1,6 +1,6 @@
 # Sprig 差异化调研与产品提案
 
-调研日期：2026-10-02。状态：设计提案，本文新增功能尚未实现。
+调研日期：2026-10-02。状态：设计提案；会话锁和保守文件级撤销基础已落地，完整需求工作台、归属跟踪、PTY 等流程仍待实现。
 
 考虑到需求级撤回的实现难度，另有[其他产品方向调研](sprig-alternative-directions.md)，评估项目首次跑通、失败复现卡、编程陪练、轻量实验与小补丁模式。本文保留为较完整的长期设计参考，不代表必须按此路线实施。
 
@@ -131,9 +131,9 @@ Sprig 已有 SSE 测试与真实 Agnes smoke 脚本，可将其中受控夹具�
 | 已有基础 | 当前实现位置 | 提案需要补什么 |
 | --- | --- | --- |
 | 执行中输入与旧意图作废 | [`Agent._steer`](../src/sprig_agent/agent.py)、[`TaskInput` 和单 worker 队列](../src/sprig_agent/tui.py) | 需求 ID/版本、映射状态、影响卡与可编辑待处理列表 |
-| 精确编辑、diff 确认、并发内容检查 | [`Tools`](../src/sprig_agent/tools.py)、[Windows 文件接口](../src/sprig_agent/windows.py) | 操作前后内容、可靠归属、撤回预览与冲突检查 |
+| 精确编辑、diff 确认、并发内容检查与撤销 | [`Tools`](../src/sprig_agent/tools.py)、[修改记录](../src/sprig_agent/changes.py)、[Windows 文件接口](../src/sprig_agent/windows.py) | 已有精确前后备份、恢复 diff 与外部变更拒绝；仍需需求归属与选择性撤回 |
 | 用户固定验收与真实结果 | [`Agent._verify`](../src/sprig_agent/agent.py) 的验收流程、[验收测试](../tests/test_acceptance_chat.py) | 文件清单、需求版本、证据有效期、检查范围及配置迁移 |
-| 原子会话保存，中断调用不重放 | [`SessionStore`](../src/sprig_agent/session.py) | 单写者锁、事件记录、崩溃恢复状态；原子 JSON 保存本身不能解决并发覆盖 |
+| 原子会话保存、单写者锁、中断调用不重放 | [`SessionStore`](../src/sprig_agent/session.py) | 仍需版本化事件记录与需求归属；持久化修改备份已有中断状态，不自动重放 |
 | Windows 进程清理与流式传输 | [`windows.py`](../src/sprig_agent/windows.py)、[`streaming.py`](../src/sprig_agent/streaming.py) | PTY 会话管理；取消网络/命令不等于终端按键驱动 |
 | uv 与 Windows/WSL 验证 | [`uv.lock`](../uv.lock)、[验证记录](validation.md) | 隔离夹具、双环境同版本任务与差异报告 |
 
@@ -188,4 +188,4 @@ MCP、更多语言索引、容器及常规工具能力根据任务需求补齐�
 
 核心指标是有效要求覆盖率、旧意图误执行次数、无关/人工修改误覆盖次数、过期证据误报次数、变更后的额外返工和用户审查负担。对确定性夹具，旧意图误执行、人工修改误覆盖和过期证据误报应为零；这些测试不构成所有任意命令或外部副作用的安全证明。用户体验还需观察实际试用，不能仅由测试数量或 agent 数量推断。
 
-本轮交付调研与提案文档；新增需求工作台、精细撤回、证据版本化、PTY 工具和模型体检均仍待实现。已有功能及其验证范围继续以 [README](../README.md) 和[验证记录](validation.md)为准。
+后续实现已补上会话独占锁、管理入口、上下文预算、可预览的确定性压缩、保守文件级撤销与重做，以及撤销后的验收失效提示。完整需求工作台、精细需求归属撤回、证据版本化、PTY 工具和模型体检仍待实现。已有功能及其验证范围以 [README](../README.md) 和[验证记录](validation.md)为准。

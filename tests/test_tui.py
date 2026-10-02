@@ -75,11 +75,21 @@ class TuiTests(unittest.IsolatedAsyncioTestCase):
         self.fail("UI condition did not become true")
 
     async def click(self, pilot, selector):
-        # Scroll animation can move a target between coordinate lookup and the
-        # mouse event; use actual stable layout before exercising the click.
-        pilot.app.screen.query_one(selector).scroll_visible(animate=False)
+        # Focus/scroll callbacks can be deferred past a refresh. Settle them
+        # before computing a point, then click the button interior (its border
+        # can be clipped by the scrolling viewport).
+        button = pilot.app.screen.query_one(selector)
+        button.focus(scroll_visible=False)
+        await self.until(pilot, lambda: pilot.app.screen.focused is button)
+        await pilot.wait_for_scheduled_animations()
+        button.scroll_visible(animate=False, immediate=True)
         await pilot.pause()
-        self.assertTrue(await pilot.click(selector), "button must be visible: " + selector)
+        # Widget.size excludes the border; use region so a one-row button's
+        # content is clicked instead of its clipped top border.
+        offset = (button.region.width // 2, button.region.height // 2)
+        point = button.region.offset + offset
+        self.assertIs(pilot.app.get_widget_at(*point)[0], button, "button center must be visible: " + selector)
+        self.assertTrue(await pilot.click(selector, offset=offset), "button must be visible: " + selector)
 
     async def test_local_undo_redo_confirm_diff_and_mark_saved_acceptance_stale(self):
         provider = ScriptedProvider([call("write", "edit_file", {"path": "new.txt", "old": "", "new": "created content"}), response("Done")])
