@@ -168,7 +168,7 @@ class SprigApp(App[int]):
                 return result
 
         try:
-            self.tools = UiTools(config, self.confirm, self.cancel_event)
+            self.tools = UiTools(config, self.confirm, self.cancel_event, self.emit_command)
         except BaseException:
             if self.store:
                 self.store.close()
@@ -179,7 +179,7 @@ class SprigApp(App[int]):
 
     def compose(self) -> ComposeResult:
         yield Header()
-        yield Static(self.safe(f"{self.config.model} | {self.config.base_url}\n{self.config.workdir} | 验收命令: {len(self.config.checks)}"), id="context", markup=False)
+        yield Static(self.safe(f"{self.config.model} | {self.config.base_url}\n{self.config.workdir} | {'只读模式' if self.config.read_only else '编辑模式'} | 验收命令: {len(self.config.checks)}"), id="context", markup=False)
         with Horizontal(id="body"):
             with Vertical(id="chat"):
                 yield Static("对话", classes="pane-title", markup=False)
@@ -307,6 +307,11 @@ class SprigApp(App[int]):
         if not self.streaming:
             self.ui_call(self.append, "\nSprig> ")
             self.streaming = True
+        self.ui_call(self.append, text)
+
+    def emit_command(self, text):
+        self.check_cancelled()
+        self.streaming = False
         self.ui_call(self.append, text)
 
     def confirm(self, description):

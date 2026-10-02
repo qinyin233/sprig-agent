@@ -26,6 +26,8 @@ class Agent:
         self.emit_delta = emit_delta
         self.cancel_event = cancel_event
         self.receive_input = receive_input or (lambda: [])
+        self.schemas = [schema for schema in TOOL_SCHEMAS
+                        if not config.read_only or schema["function"]["name"] not in {"edit_file", "run"}]
 
     def _steer(self, messages, pending_calls=()):
         """Accept FIFO user guidance only at a boundary with complete tool results."""
@@ -49,7 +51,7 @@ class Agent:
 
     def _complete(self, messages):
         if not self.config.stream or self.emit_delta is None:
-            return self.provider.complete(messages, TOOL_SCHEMAS)
+            return self.provider.complete(messages, self.schemas)
         displayed = False
 
         def on_text(text):
@@ -58,7 +60,7 @@ class Agent:
             self.emit_delta(text)
 
         try:
-            return self.provider.complete(messages, TOOL_SCHEMAS, on_text=on_text)
+            return self.provider.complete(messages, self.schemas, on_text=on_text)
         finally:
             if displayed:
                 self.emit_delta("\n")
@@ -103,6 +105,8 @@ class Agent:
 
     def run(self, task=None, messages=None):
         prompt = SYSTEM_PROMPT
+        if self.config.read_only:
+            prompt += "\nRead-only mode: inspect files and explain a plan. File writes and every command are disabled by the application."
         if self.config.checks:
             prompt += "\nUser-defined acceptance argv (run by the application after you finish): " + json.dumps(self.config.checks)
         messages = messages if messages is not None else [{"role": "system", "content": prompt}]
@@ -170,6 +174,7 @@ class Agent:
                 elif result.get("approved") is False:
                     self.emit("[rejected] No action taken")
                 elif function["name"] == "run":
-                    self.emit(content)
+                    self.emit(json.dumps({key: value for key, value in result.items() if key != "output"}, ensure_ascii=False)
+                              if result.get("streamed") else content)
         self.emit("Maximum model steps reached; stopped. Last tool results are available in the session if saving is enabled.")
         return messages, False

@@ -319,7 +319,7 @@ def check_command_launcher(executable):
         break
 
 
-def run_command(argv, directory, env, seconds, cap, cancel_event=None):
+def run_command(argv, directory, env, seconds, cap, cancel_event=None, on_output=None):
     """Create directly in a kill-on-close Job Object; bound output without threads."""
     program = argv[0]
     if os.path.dirname(program) and not os.path.isabs(program):
@@ -402,6 +402,8 @@ def run_command(argv, directory, env, seconds, cap, cancel_event=None):
                 chunk = os.read(read_fd, min(available.value, cap - len(output) + 1, 65536))
                 space = cap - len(output)
                 output.extend(chunk[:space])
+                if on_output:
+                    on_output(chunk[:space])
                 if len(chunk) > space:
                     reason = "output_limit"
                     break

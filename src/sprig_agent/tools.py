@@ -1,4 +1,4 @@
-"""Five tools with pinned, no-follow files; commands are NOT sandboxed."""
+"""Bounded, approval-first tools; commands are NOT sandboxed."""
 
 from contextlib import contextmanager
 import ast
@@ -16,6 +16,8 @@ import uuid
 
 from .config import redact
 from .filesystem import Directory, is_link
+from .policy import FilePolicy, command_environment
+from .output import CommandOutput
 
 MAX_FILE = 512 * 1024
 SKIP_DIRS = {"node_modules", ".venv", "__pycache__"}
@@ -58,10 +60,12 @@ def protected(name):
 
 
 class Tools:
-    def __init__(self, config, approve, cancel_event=None):
+    def __init__(self, config, approve, cancel_event=None, emit_output=None):
         self.config, self.approve = config, approve
         self.cancel_event = cancel_event
         self.root = Directory(config.workdir)
+        self.policy = FilePolicy(self.root)
+        self.emit_output = emit_output
 
     def _check_cancelled(self):
         if self.cancel_event is not None and self.cancel_event.is_set():
@@ -76,6 +80,9 @@ class Tools:
         parsed = PurePosixPath(path)
         if parsed.is_absolute() or ".." in parsed.parts or any(protected(p.lower() if os.name == "nt" else p) for p in parsed.parts):
             raise ToolError("path escapes workdir or names a protected component")
+        self.policy.reload()
+        if self.policy.excluded(parsed.parts):
+            raise ToolError("path is excluded by file privacy policy")
         if os.name == "nt":
             from .windows import validate_component
             for part in parsed.parts:
@@ -119,7 +126,9 @@ class Tools:
         if b"\0" in data:
             raise ToolError("binary files are not supported")
         try:
-            return data.decode("utf-8")
+            text = data.decode("utf-8")
+            self.policy.check_text(text)
+            return text
         except UnicodeDecodeError:
             raise ToolError("file must be UTF-8 text") from None
 
@@ -140,9 +149,10 @@ class Tools:
 
     def list_files(self, path="."):
         entries, size, truncated = [], 0, False
-        with self._directory(self._parts(path)) as fd, fd.scandir() as iterator:
+        parts = self._parts(path)
+        with self._directory(parts) as fd, fd.scandir() as iterator:
             for entry in iterator:
-                if protected(entry.name.lower() if os.name == "nt" else entry.name) or is_link(entry):
+                if self.policy.excluded((*parts, entry.name)) or is_link(entry):
                     continue
                 kind = "dir" if entry.is_dir(follow_symlinks=False) else "file"
                 size += len(entry.name.encode("utf-8")) + 30
@@ -163,6 +173,7 @@ class Tools:
             text = decoder.decode(raw[:self.config.max_output], final=False)
             if "\0" in text:
                 raise ToolError("binary files are not supported")
+            self.policy.check_text(text)
         else:
             text = self._decode(raw)
         return {"path": path, "content": text, "truncated": truncated}
@@ -184,7 +195,7 @@ class Tools:
                     if scanned > 5000 or budget <= 0 or output_size >= self.config.max_output:
                         truncated = True
                         return
-                    if protected(entry.name.lower() if os.name == "nt" else entry.name) or is_link(entry):
+                    if self.policy.excluded((*prefix, entry.name)) or is_link(entry):
                         continue
                     relative = "/".join((*prefix, entry.name))
                     try:
@@ -208,7 +219,7 @@ class Tools:
                                         return
                                     matches.append(match)
                                     output_size += size
-                    except (OSError, ToolError):
+                    except (OSError, ToolError, ValueError):
                         continue  # Files may disappear or be unreadable/binary during traversal.
 
         with self._directory(parts) as fd:
@@ -230,7 +241,7 @@ class Tools:
                     if scanned > 5000 or budget <= 0 or size >= self.config.max_output:
                         truncated = True
                         return
-                    if protected(entry.name.lower() if os.name == "nt" else entry.name) or is_link(entry):
+                    if self.policy.excluded((*prefix, entry.name)) or is_link(entry):
                         continue
                     try:
                         if entry.is_dir(follow_symlinks=False):
@@ -281,6 +292,8 @@ class Tools:
         return {"files": sorted(files, key=lambda item: item["path"]), "truncated": truncated}
 
     def edit_file(self, path, old, new):
+        if self.config.read_only:
+            return {"approved": False, "changed": False, "error": "read-only mode blocks file writes"}
         if not isinstance(old, str) or not isinstance(new, str):
             raise ToolError("old and new must be strings")
         if len(old.encode("utf-8")) > MAX_FILE or len(new.encode("utf-8")) > MAX_FILE:
@@ -333,6 +346,8 @@ class Tools:
         return {"approved": True, "changed": True, "path": path}
 
     def run(self, argv, cwd=".", timeout=None):
+        if self.config.read_only:
+            return {"approved": False, "error": "read-only mode blocks command execution"}
         if (not isinstance(argv, list) or not argv or len(argv) > 256
                 or any(not isinstance(arg, str) or "\0" in arg for arg in argv) or not argv[0]):
             raise ToolError("argv must be a nonempty array of strings (at most 256)")
@@ -357,12 +372,15 @@ class Tools:
         # Unlike file tools, the approved program controls its own filesystem and network access.
         with self._directory(parts):
             pass
-        env = {key: value for key, value in os.environ.items()
-               if key.upper() not in {"SPRIG_API_KEY", "OPENAI_API_KEY"}
-               and not (self.config.api_key and self.config.api_key in value)}
+        env = command_environment(self.config)
+        stream = CommandOutput(self.emit_output, self.config.api_key)
         if os.name == "nt":
             from .windows import run_command
-            return run_command(argv, directory, env, seconds, self.config.max_output, self.cancel_event)
+            result = run_command(argv, directory, env, seconds, self.config.max_output, self.cancel_event, stream.write)
+            stream.finish()
+            if self.emit_output:
+                result["streamed"] = True
+            return result
         process = subprocess.Popen(argv, cwd=directory, env=env, stdin=subprocess.DEVNULL,
                                    stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
                                    start_new_session=True, shell=False)
@@ -385,6 +403,7 @@ class Tools:
                         else:
                             space = self.config.max_output - len(output)
                             output.extend(chunk[:space])
+                            stream.write(chunk[:space])
                             if len(chunk) > space:
                                 reason = "output_limit"
                                 break
@@ -409,6 +428,7 @@ class Tools:
                 pass
             process.wait()
             process.stdout.close()
-        return {"approved": True, "returncode": process.returncode,
+        stream.finish()
+        return {"approved": True, "returncode": process.returncode, "streamed": bool(self.emit_output),
                 "output": output.decode("utf-8", errors="replace"),
                 "timed_out": reason == "timeout", "output_limited": reason == "output_limit"}

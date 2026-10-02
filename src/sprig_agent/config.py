@@ -1,6 +1,7 @@
 """Configuration and small shared safety helpers; no on-disk secrets."""
 
 from dataclasses import dataclass, field
+import math
 from pathlib import Path
 import unicodedata
 from urllib.parse import urlsplit, urlunsplit
@@ -50,6 +51,8 @@ class Config:
     max_output: int = 16000
     stream: bool = False
     checks: tuple = ()
+    read_only: bool = False
+    inherit_env: bool = False
 
     def __post_init__(self):
         root = Path(self.workdir).expanduser().resolve(strict=True)
@@ -57,18 +60,22 @@ class Config:
             raise ValueError("workdir must be a directory")
         object.__setattr__(self, "workdir", root)
         object.__setattr__(self, "base_url", endpoint(self.base_url))
-        if not self.model or len(self.model) > 200 or any(ord(c) < 32 for c in self.model):
+        if not isinstance(self.model, str) or not self.model or len(self.model) > 200 or any(ord(c) < 32 for c in self.model):
             raise ValueError("a valid model is required (--model or SPRIG_MODEL)")
-        if not 1 <= self.max_steps <= 100 or isinstance(self.max_steps, bool):
+        if not isinstance(self.max_steps, int) or isinstance(self.max_steps, bool) or not 1 <= self.max_steps <= 100:
             raise ValueError("max-steps must be between 1 and 100")
-        if not 0 < self.timeout <= 120:
+        if isinstance(self.timeout, bool) or not isinstance(self.timeout, (int, float)) or not math.isfinite(self.timeout) or not 0 < self.timeout <= 120:
             raise ValueError("timeout must be greater than 0 and at most 120 seconds")
-        if not 256 <= self.max_output <= 1000000:
+        if not isinstance(self.max_output, int) or isinstance(self.max_output, bool) or not 256 <= self.max_output <= 1000000:
             raise ValueError("max-output must be between 256 and 1000000 bytes")
-        if any(ord(c) < 32 for c in self.api_key):
+        if not isinstance(self.api_key, str) or any(ord(c) < 32 for c in self.api_key):
             raise ValueError("API key contains control characters")
         if not isinstance(self.stream, bool):
             raise ValueError("stream must be a boolean")
+        if not isinstance(self.read_only, bool) or not isinstance(self.inherit_env, bool):
+            raise ValueError("read-only and inherit-env must be booleans")
+        if self.read_only and self.checks:
+            raise ValueError("read-only mode cannot execute acceptance commands")
         if not isinstance(self.checks, tuple) or len(self.checks) > 16:
             raise ValueError("at most 16 acceptance checks are supported")
         for argv in self.checks:
@@ -83,4 +90,8 @@ class Config:
         binding = {"base_url": self.base_url, "model": self.model, "workdir": str(self.workdir)}
         if self.checks:
             binding["checks"] = [list(argv) for argv in self.checks]
+        if self.read_only:
+            binding["read_only"] = True
+        if self.inherit_env:
+            binding["inherit_env"] = True
         return binding

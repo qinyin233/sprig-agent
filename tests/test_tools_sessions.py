@@ -255,10 +255,10 @@ class ToolTests(unittest.TestCase):
 
     def test_command_key_removed_and_known_key_output_redacted(self):
         self.allowed = True
-        script = "import os; print(os.getenv('SPRIG_API_KEY')); print(os.getenv('OPENAI_API_KEY')); print(os.getenv('ALIAS')); print(os.getenv('VISIBLE'))"
+        script = "import os; print(os.getenv('SPRIG_API_KEY')); print(os.getenv('OPENAI_API_KEY')); print(os.getenv('ALIAS')); print(os.getenv('LANG'))"
         with patch.dict(os.environ, {"SPRIG_API_KEY": self.config.api_key,
                                      "OPENAI_API_KEY": "other-key", "ALIAS": self.config.api_key,
-                                     "VISIBLE": "ordinary"}):
+                                     "LANG": "ordinary"}):
             result = self.call("run", argv=[sys.executable, "-c", script])
         self.assertEqual(result["output"].replace("\r\n", "\n"), "None\nNone\nNone\nordinary\n")
         (self.root / "key.txt").write_text(self.config.api_key)

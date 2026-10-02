@@ -77,6 +77,8 @@ def main(argv=None):
     parser.add_argument("--timeout", type=float, default=30)
     parser.add_argument("--max-output", type=int, default=16000)
     parser.add_argument("--stream", action="store_true", help="display model text as it arrives")
+    parser.add_argument("--read-only", action="store_true", help="allow file inspection only; block writes and all commands")
+    parser.add_argument("--inherit-env", action="store_true", help="let approved commands inherit additional environment variables")
     interface = parser.add_mutually_exclusive_group()
     interface.add_argument("--chat", action="store_true", help="keep an interactive conversation open")
     interface.add_argument("--tui", action="store_true", help="open the full-screen terminal interface (streams by default)")
@@ -104,7 +106,7 @@ def main(argv=None):
         if args.tui and (not sys.stdin.isatty() or not sys.stdout.isatty()):
             raise ValueError("--tui requires an interactive terminal (stdin and stdout)")
         config = Config(Path(args.workdir), args.model or ("session-manager" if manage_sessions else ""), args.base_url, key, args.max_steps, args.timeout, args.max_output,
-                        stream=args.stream or args.tui, checks=tuple(args.check))
+                        stream=args.stream or args.tui, checks=tuple(args.check), read_only=args.read_only, inherit_env=args.inherit_env)
         if manage_sessions:
             store = SessionStore(args.session_dir, config)
             if args.list_sessions:
@@ -136,7 +138,7 @@ def main(argv=None):
         emit("Prompts and tool results are sent to this endpoint. Commands are NOT sandboxed and may access outside files/network. Writes and commands require approval.")
         if store:
             emit("Local transcript saving enabled (not encrypted). Resume never replays pending actions.")
-        tools = Tools(config, confirm)
+        tools = Tools(config, confirm, emit_output=emit_delta)
         agent = Agent(config, Provider(config), tools, emit, checkpoint, emit_delta=emit_delta)
         if args.chat:
             return chat(agent, args.task, messages, emit)
