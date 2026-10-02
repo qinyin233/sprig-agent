@@ -473,7 +473,10 @@ class TuiTests(unittest.IsolatedAsyncioTestCase):
         async with app.run_test(size=(110, 40)) as pilot:
             await self.until(pilot, lambda: not app.busy)
             app.query_one("#session-name", Input).value = "demo"
+            app.query_one("#save").scroll_visible()
+            await pilot.pause()
             await pilot.click("#save")
+            await self.until(pilot, lambda: (self.parent / "sessions/demo.json").exists())
             self.assertTrue((self.parent / "sessions/demo.json").exists())
             history = copy.deepcopy(app.messages)
         app.close()
@@ -481,7 +484,10 @@ class TuiTests(unittest.IsolatedAsyncioTestCase):
         restored = self.app(forbidden)
         async with restored.run_test(size=(110, 40)) as pilot:
             restored.query_one("#session-name", Input).value = "demo"
+            restored.query_one("#restore").scroll_visible()
+            await pilot.pause()
             await pilot.click("#restore")
+            await self.until(pilot, lambda: restored.messages is not None)
             self.assertEqual(restored.messages, history)
             self.assertIn("saved", restored.transcript)
             forbidden.complete.assert_not_called()
