@@ -1,0 +1,69 @@
+{
+  "schema": 1,
+  "cases": [
+    {
+      "id": "py-interval", "language": "python", "category": "boundary-repair",
+      "task": "Fix contains(start, end, point) in interval.py for half-open intervals [start, end). Empty or reversed intervals contain no point. Preserve the public signature and do not change the inputs. Inspect the project before editing; the application runs a fixed external acceptance check after you finish.",
+      "files": {"interval.py": "def contains(start, end, point):\n    return start <= point <= end\n"},
+      "reference": {"interval.py": "def contains(start, end, point):\n    return start <= point < end\n"},
+      "module": "interval", "function": "contains",
+      "checks": [{"args": [0, 10, 0], "value": true}, {"args": [0, 10, 10], "value": false}, {"args": [5, 5, 5], "value": false}, {"args": [10, 0, 5], "value": false}, {"args": [-7, -2, -3], "value": true}, {"args": [-7, -2, -8], "value": false}]
+    },
+    {
+      "id": "py-pagination", "language": "python", "category": "cross-file-repair",
+      "task": "The service.page API uses 1-based page numbers. Repair the service and pagination helper so page 1 starts at item 0, pages return at most size items, later pages may be empty, and page_number < 1 or size < 1 raises ValueError. Keep both public signatures and leave input lists unchanged. The application runs a fixed external acceptance check after you finish.",
+      "files": {"pagination.py": "def window(items, start, size):\n    return items[start:start + size + 1]\n", "service.py": "from pagination import window\n\ndef page(items, page_number, size):\n    return window(items, page_number * size, size)\n"},
+      "reference": {"pagination.py": "def window(items, start, size):\n    return items[start:start + size]\n", "service.py": "from pagination import window\n\ndef page(items, page_number, size):\n    if page_number < 1 or size < 1:\n        raise ValueError\n    return window(items, (page_number - 1) * size, size)\n"},
+      "module": "service", "function": "page",
+      "checks": [{"args": [[1, 2, 3, 4, 5], 1, 2], "value": [1, 2]}, {"args": [[1, 2, 3, 4, 5], 2, 2], "value": [3, 4]}, {"args": [[1, 2, 3, 4, 5], 3, 2], "value": [5]}, {"args": [[], 1, 3], "value": []}, {"args": [[1], 4, 1], "value": []}, {"args": [[1], 0, 1], "error": "ValueError"}, {"args": [[1], 1, 0], "error": "ValueError"}]
+    },
+    {
+      "id": "py-grouping", "language": "python", "category": "new-feature",
+      "task": "Implement group_by(items, key) in grouping.py. Return a list of groups, each {'key': value, 'items': [...]}, in first-seen key order. Items missing the key belong to the None group. Preserve item order within each group and do not mutate inputs. Inputs are JSON dictionaries whose grouping keys are strings, numbers or None. Keep the public signature. The application runs a fixed external acceptance check after you finish.",
+      "files": {"grouping.py": "def group_by(items, key):\n    raise NotImplementedError\n"},
+      "reference": {"grouping.py": "def group_by(items, key):\n    groups = {}\n    for item in items:\n        value = item.get(key)\n        groups.setdefault(value, []).append(item)\n    return [{'key': value, 'items': members} for value, members in groups.items()]\n"},
+      "module": "grouping", "function": "group_by",
+      "checks": [{"args": [[], "kind"], "value": []}, {"args": [[{"kind": "b", "n": 1}, {"kind": "a", "n": 2}, {"kind": "b", "n": 3}], "kind"], "value": [{"key": "b", "items": [{"kind": "b", "n": 1}, {"kind": "b", "n": 3}]}, {"key": "a", "items": [{"kind": "a", "n": 2}]}]}, {"args": [[{"n": 1}, {"kind": "x", "n": 2}, {"kind": null, "n": 3}], "kind"], "value": [{"key": null, "items": [{"n": 1}, {"kind": null, "n": 3}]}, {"key": "x", "items": [{"kind": "x", "n": 2}]}]}]
+    },
+    {
+      "id": "py-lru", "language": "python", "category": "stateful-repair",
+      "task": "Repair Cache in cache.py while preserving the app.simulate entry point. get refreshes the key's recency; put updates existing keys without evicting another key; overflow evicts the least recently used key; missing get returns None; capacity < 1 raises ValueError. Do not mutate the operations input. The application runs a fixed external acceptance check after you finish.",
+      "files": {"cache.py": "class Cache:\n    def __init__(self, capacity):\n        self.capacity, self.data = capacity, {}\n\n    def get(self, key):\n        return self.data.get(key)\n\n    def put(self, key, value):\n        if len(self.data) >= self.capacity:\n            self.data.pop(next(iter(self.data)))\n        self.data[key] = value\n", "app.py": "from cache import Cache\n\ndef simulate(capacity, operations):\n    cache, result = Cache(capacity), []\n    for operation in operations:\n        if operation[0] == 'put':\n            cache.put(operation[1], operation[2])\n        else:\n            result.append(cache.get(operation[1]))\n    return result\n"},
+      "reference": {"cache.py": "class Cache:\n    def __init__(self, capacity):\n        if capacity < 1:\n            raise ValueError\n        self.capacity, self.data = capacity, {}\n\n    def get(self, key):\n        if key not in self.data:\n            return None\n        value = self.data.pop(key)\n        self.data[key] = value\n        return value\n\n    def put(self, key, value):\n        self.data.pop(key, None)\n        self.data[key] = value\n        if len(self.data) > self.capacity:\n            self.data.pop(next(iter(self.data)))\n"},
+      "module": "app", "function": "simulate",
+      "checks": [{"args": [2, [["put", "a", 1], ["put", "b", 2], ["get", "a"], ["put", "c", 3], ["get", "b"], ["get", "a"], ["get", "c"]]], "value": [1, null, 1, 3]}, {"args": [2, [["put", "a", 1], ["put", "b", 2], ["put", "b", 4], ["get", "a"], ["get", "b"]]], "value": [1, 4]}, {"args": [1, [["put", "a", 1], ["put", "b", 2], ["get", "a"], ["get", "b"]]], "value": [null, 2]}, {"args": [0, []], "error": "ValueError"}]
+    },
+    {
+      "id": "py-late-router", "language": "python", "category": "large-file-location", "padding_lines": 2200,
+      "task": "Find and repair choose_route(routes, path) in routing.py. Routes are [prefix, handler] pairs. Match only a full path segment boundary, select the longest matching prefix, return None if none match, and treat '/' as the fallback for any absolute path. Preserve routes unchanged. The application runs a fixed external acceptance check after you finish.",
+      "files": {"routing.py": "def choose_route(routes, path):\n    for prefix, handler in routes:\n        if path.startswith(prefix):\n            return handler\n    return None\n"},
+      "reference": {"routing.py": "def choose_route(routes, path):\n    matches = [(prefix, handler) for prefix, handler in routes\n               if path == prefix or path.startswith(prefix.rstrip('/') + '/')\n               or (prefix == '/' and path.startswith('/'))]\n    return max(matches, key=lambda item: len(item[0]))[1] if matches else None\n"},
+      "module": "routing", "function": "choose_route",
+      "checks": [{"args": [[["/api", "api"], ["/api/v1", "v1"], ["/", "root"]], "/api/v1/items"], "value": "v1"}, {"args": [[["/api", "api"]], "/apix"], "value": null}, {"args": [[["/api", "api"]], "/api"], "value": "api"}, {"args": [[["/", "root"]], "/other"], "value": "root"}, {"args": [[], "/"], "value": null}]
+    },
+    {
+      "id": "py-long-history", "language": "python", "category": "synthetic-long-history", "history_reads": 12,
+      "task": "Fix dedupe(items) in dedupe.py: retain the first occurrence of each hashable item in its original order, return a new list, and leave inputs unchanged. Preserve the public function name, as requested in the earlier conversation. The application runs a fixed external acceptance check after you finish.",
+      "files": {"dedupe.py": "def dedupe(items):\n    return sorted(set(items))\n"},
+      "reference": {"dedupe.py": "def dedupe(items):\n    return list(dict.fromkeys(items))\n"},
+      "module": "dedupe", "function": "dedupe",
+      "checks": [{"args": [[3, 1, 3, 2, 1]], "value": [3, 1, 2]}, {"args": [[]], "value": []}, {"args": [["z", "a", "z"]], "value": ["z", "a"]}, {"args": [[1, null, 1, "a"]], "value": [1, null, "a"]}]
+    },
+    {
+      "id": "js-stable-unique", "language": "javascript", "category": "typed-value-repair",
+      "task": "Repair stableUnique(items) in unique.cjs using JavaScript SameValueZero equality. Keep the first occurrence order, do not collapse values of different types such as 1 and '1', and do not mutate the input array. Separate object instances remain distinct even if their contents match. Preserve the CommonJS export. The application runs a fixed external acceptance check after you finish.",
+      "files": {"unique.cjs": "exports.stableUnique = items => Object.values(Object.fromEntries(items.map(value => [String(value), value])));\n"},
+      "reference": {"unique.cjs": "exports.stableUnique = items => [...new Set(items)];\n"},
+      "module": "unique.cjs", "function": "stableUnique",
+      "checks": [{"args": [[3, 1, 3, 2, 1]], "value": [3, 1, 2]}, {"args": [[1, "1", true, "true", null, "null"]], "value": [1, "1", true, "true", null, "null"]}, {"args": [[{"x": 1}, {"x": 1}]], "value": [{"x": 1}, {"x": 1}]}, {"args": [[]], "value": []}]
+    },
+    {
+      "id": "js-search", "language": "javascript", "category": "cross-file-feature",
+      "task": "Implement case-insensitive prefix search across normalize.cjs and search.cjs. normalize(value) trims and lowercases a string. search(items, prefix) returns strings whose normalized forms start with the normalized prefix, preserving original values and order. Empty normalized prefix returns every item. Do not mutate inputs. Preserve the CommonJS exports. The application runs a fixed external acceptance check after you finish.",
+      "files": {"normalize.cjs": "exports.normalize = value => value.trim();\n", "search.cjs": "const { normalize } = require('./normalize.cjs');\nexports.search = (items, prefix) => items.filter(item => normalize(item).includes(prefix));\n"},
+      "reference": {"normalize.cjs": "exports.normalize = value => value.trim().toLowerCase();\n", "search.cjs": "const { normalize } = require('./normalize.cjs');\nexports.search = (items, prefix) => items.filter(item => normalize(item).startsWith(normalize(prefix)));\n"},
+      "module": "search.cjs", "function": "search",
+      "checks": [{"args": [["  Alpha", "alphabet", "Beta", "xalpha"], " AL "], "value": ["  Alpha", "alphabet"]}, {"args": [["中文甲", "乙中文"], "中文"], "value": ["中文甲"]}, {"args": [["Z", " a "], "  "], "value": ["Z", " a "]}, {"args": [[], "a"], "value": []}]
+    }
+  ]
+}
