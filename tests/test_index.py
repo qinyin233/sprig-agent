@@ -1,0 +1,129 @@
+"""Content-based parsing cache cannot skip fresh file/privacy checks."""
+
+import ast
+import json
+import os
+from pathlib import Path
+import sys
+import tempfile
+import threading
+import unittest
+from unittest.mock import patch
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
+
+from sprig_agent.config import Config
+from sprig_agent.index import SymbolIndex
+from sprig_agent.tools import Tools
+
+
+class IndexTests(unittest.TestCase):
+    def setUp(self):
+        temporary = tempfile.TemporaryDirectory()
+        self.addCleanup(temporary.cleanup)
+        self.root = Path(temporary.name)
+        self.cancel = threading.Event()
+        self.tools = Tools(Config(self.root, "test", read_only=True, max_output=1000000),
+                           lambda _: self.fail("mapping must not require write or command approval"), self.cancel)
+        self.addCleanup(self.tools.close)
+
+    def test_unchanged_maps_parse_once_and_do_not_share_mutable_results(self):
+        source = "class Service:\n    def run(self):\n        return 'private body'\n"
+        (self.root / "one.py").write_text(source, encoding="utf-8")
+        (self.root / "two.py").write_text(source, encoding="utf-8")
+        with patch("sprig_agent.index.ast.parse", wraps=ast.parse) as parse:
+            first = self.tools.project_map()
+            first["files"][0]["symbols"][0]["name"] = "poison"
+            second = self.tools.project_map()
+            self.assertEqual(parse.call_count, 1)
+        self.assertEqual(second["files"][0]["symbols"][0]["name"], "Service")
+        self.assertNotIn("private body", repr(self.tools.index.entries))
+        self.assertNotIn("private body", json.dumps(second))
+
+    def test_external_edit_with_restored_mtime_returns_new_symbols(self):
+        file = self.root / "one.py"
+        file.write_text("def before(): pass\n", encoding="utf-8")
+        original = file.stat()
+        with patch("sprig_agent.index.ast.parse", wraps=ast.parse) as parse:
+            self.tools.project_map()
+            file.write_text("def after_(): pass\n", encoding="utf-8")
+            os.utime(file, ns=(original.st_atime_ns, original.st_mtime_ns))
+            result = self.tools.project_map()
+            self.assertEqual(parse.call_count, 2)
+        self.assertEqual(result["files"][0]["symbols"][0]["name"], "after_")
+
+    def test_new_privacy_rules_and_new_credentials_cannot_reuse_cached_symbols(self):
+        file = self.root / "one.py"
+        file.write_text("def safe(): pass\n", encoding="utf-8")
+        self.tools.project_map()
+        (self.root / ".sprigignore").write_text("one.py\n.sprigignore\n", encoding="utf-8")
+        self.assertEqual(self.tools.project_map()["files"], [])
+        (self.root / ".sprigignore").unlink()
+        secret = "sk-" + "a" * 32
+        file.write_text("def safe(): pass\n# " + secret, encoding="utf-8")
+        result = self.tools.project_map()
+        self.assertTrue(result["files"][0]["symbols_unavailable"])
+        self.assertNotIn("symbols", result["files"][0])
+        self.assertNotIn(secret, json.dumps(result) + repr(self.tools.index.entries))
+        file.unlink()
+        self.assertEqual(self.tools.project_map()["files"], [])
+
+    def test_invalid_parse_is_cached_but_repaired_file_is_reparsed(self):
+        file = self.root / "one.py"
+        file.write_text("def broken(", encoding="utf-8")
+        with patch("sprig_agent.index.ast.parse", wraps=ast.parse) as parse:
+            self.assertTrue(self.tools.project_map()["files"][0]["symbols_unavailable"])
+            self.assertTrue(self.tools.project_map()["files"][0]["symbols_unavailable"])
+            file.write_text("async def fixed(): pass\n", encoding="utf-8")
+            self.assertEqual(self.tools.project_map()["files"][0]["symbols"][0]["name"], "fixed")
+            self.assertEqual(parse.call_count, 2)
+
+    def test_cancellation_after_file_read_stops_before_parsing_and_close_clears_cache(self):
+        (self.root / "one.py").write_text("def safe(): pass\n", encoding="utf-8")
+        read = self.tools._read
+
+        def cancel_after_read(*arguments):
+            raw = read(*arguments)
+            self.cancel.set()
+            return raw
+
+        with patch.object(self.tools, "_read", side_effect=cancel_after_read), \
+                patch("sprig_agent.index.ast.parse", wraps=ast.parse) as parse:
+            with self.assertRaises(KeyboardInterrupt):
+                self.tools.project_map()
+            parse.assert_not_called()
+        self.cancel.clear()
+        self.tools.project_map()
+        self.assertTrue(self.tools.index.entries)
+        self.tools.close()
+        self.assertEqual((len(self.tools.index.entries), self.tools.index.bytes), (0, 0))
+
+
+class CacheBoundTests(unittest.TestCase):
+    def test_entry_limit_evicts_least_recently_used_and_reparses_evicted_content(self):
+        cache = SymbolIndex()
+        with patch("sprig_agent.index.MAX_CACHE_ENTRIES", 2), patch("sprig_agent.index.ast.parse", wraps=ast.parse) as parse:
+            cache.python("def first(): pass")
+            cache.python("def second(): pass")
+            cache.python("def first(): pass")
+            cache.python("def third(): pass")
+            cache.python("def second(): pass")
+            self.assertEqual(parse.call_count, 4)
+            self.assertEqual(len(cache.entries), 2)
+
+    def test_encoded_metadata_budget_is_enforced_and_oversized_entry_is_not_retained(self):
+        cache = SymbolIndex()
+        with patch("sprig_agent.index.MAX_CACHE_BYTES", 256):
+            for number in range(20):
+                cache.python(f"def function_{number}(): pass")
+                self.assertLessEqual(cache.bytes, 256)
+            entries, size = len(cache.entries), cache.bytes
+            result = cache.python("\n".join(f"def large_function_{number}(): pass" for number in range(100)))
+            self.assertEqual(len(result), 100)
+            self.assertEqual((len(cache.entries), cache.bytes), (entries, size))
+            cache.clear()
+            self.assertEqual((len(cache.entries), cache.bytes), (0, 0))
+
+
+if __name__ == "__main__":
+    unittest.main()

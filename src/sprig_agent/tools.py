@@ -1,7 +1,6 @@
 """Bounded, approval-first tools; commands are NOT sandboxed."""
 
 from contextlib import contextmanager
-import ast
 import difflib
 import io
 import json
@@ -18,6 +17,7 @@ import uuid
 from .config import redact
 from .changes import ChangeError, ChangeHistory, unpack
 from .filesystem import Directory, is_link
+from .index import SymbolIndex
 from .policy import FilePolicy, command_environment
 from .output import CommandOutput
 
@@ -70,6 +70,7 @@ class Tools:
         self.root = Directory(config.workdir)
         self.history = history or ChangeHistory(config)
         self.policy = FilePolicy(self.root)
+        self.index = SymbolIndex()
         self.emit_output = emit_output
 
     def _check_cancelled(self):
@@ -79,6 +80,7 @@ class Tools:
     def close(self):
         self.root.close()
         self.history.close()
+        self.index.clear()
 
     def _parts(self, path):
         if not isinstance(path, str) or not path or len(path) > 4096 or "\0" in path or "\\" in path:
@@ -295,6 +297,7 @@ class Tools:
                 return
             with directory.scandir() as iterator:
                 for entry in iterator:
+                    self._check_cancelled()
                     scanned += 1
                     if scanned > 5000 or budget <= 0 or size >= self.config.max_output:
                         truncated = True
@@ -312,25 +315,20 @@ class Tools:
                         record = {"path": "/".join((*prefix, entry.name))}
                         if entry.name.endswith(".py"):
                             raw = self._read(directory, entry.name, min(MAX_FILE, budget))
+                            self._check_cancelled()
                             budget -= len(raw)
                             if len(raw) > MAX_FILE or budget < 0:
                                 truncated = True
                                 record["symbols_unavailable"] = True
                             else:
                                 try:
-                                    tree = ast.parse(self._decode(raw))
-                                    symbols, pending = [], [(tree.body, "")]
-                                    while pending:
-                                        nodes, parent = pending.pop()
-                                        for node in nodes:
-                                            if isinstance(node, (ast.ClassDef, ast.FunctionDef, ast.AsyncFunctionDef)):
-                                                name = parent + node.name
-                                                symbols.append({"name": name, "line": node.lineno,
-                                                                "kind": "class" if isinstance(node, ast.ClassDef) else "function"})
-                                                if isinstance(node, ast.ClassDef):
-                                                    pending.append((node.body, name + "."))
-                                    record["symbols"] = sorted(symbols, key=lambda item: item["line"])
-                                except (SyntaxError, ValueError, RecursionError, ToolError):
+                                    symbols = self.index.python(self._decode(raw))
+                                    self._check_cancelled()
+                                    if symbols is None:
+                                        record["symbols_unavailable"] = True
+                                    else:
+                                        record["symbols"] = symbols
+                                except (ValueError, ToolError):
                                     record["symbols_unavailable"] = True
                         record_size = len(json.dumps(record, ensure_ascii=False).encode("utf-8")) + 2
                         if size + record_size > self.config.max_output:

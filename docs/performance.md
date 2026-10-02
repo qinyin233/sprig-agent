@@ -13,7 +13,7 @@
 ## 已确认差距与实施顺序
 
 1. **文件后部读取和上下文体积：本批落实。** 原先只返回文件开头；新增按行读取和后续行号。OpenCode 的 [read 工具](https://github.com/anomalyco/opencode/blob/dev/packages/opencode/src/tool/read.ts)和 Pi 的 [read 工具](https://github.com/earendil-works/pi/blob/main/packages/coding-agent/src/core/tools/read.ts)均提供 offset / limit。
-2. **代码地图重复解析与跨语言定位：继续实施。** 当前每次解析所有可读 Python 文件，其他语言没有符号索引。Aider 的 [RepoMap](https://github.com/Aider-AI/aider/blob/main/aider/repomap.py)有缓存和多语言语法解析；缓存不能绕过新隐私规则或返回过期内容。
+2. **代码地图重复解析：已落实内容缓存；跨语言定位仍待实施。** Python 符号按内容摘要缓存到有界内存；每次仍读取和校验文件，其他语言没有符号索引。Aider 的 [RepoMap](https://github.com/Aider-AI/aider/blob/main/aider/repomap.py)有缓存和多语言语法解析；缓存不能绕过新隐私规则或返回过期内容。
 3. **真实模型测量和对照：待实施。** 当前测试进程没有 API 凭证；模型用量、失败样本、任务级评测和竞品适配仍需补齐。只使用进程环境提供的凭证和一次性工作区，不读取历史密钥或降低产品权限。
 4. **复杂任务工具与上下文：按任务失败证据改进。** 重点检查多文件编辑、测试反馈、检索范围、长历史和输出预算，避免只做界面或错误文案优化。
 
@@ -28,3 +28,15 @@ uv run --locked python scripts/benchmark-tools.py --compare-ref e9e8a8d --repeat
 测试场景是小文件、目标在大文件开头和目标在大文件后部；它们只代表基础定位后的读取能力，不能代表任意仓库检索或模型编码成功率。两版都能发现目标行号；旧版在后部场景无法用文件工具取得目标正文。范围版本会完整扫描受限文件，局部读取耗时可能增加；减少的是返回上下文，不能把字节减少直接换算成 token、费用或整体速度。
 
 原始测量见 [Windows 读取基线](benchmarks/read-pages-windows.json)。平台差异和运行噪声需要分别测量；这里不设置不稳定的时间阈值作为 CI 正确性断言。
+
+## Python 代码地图的冷启动与重复开销
+
+```powershell
+uv run --locked python scripts/benchmark-tools.py --compare-ref f3cd10c --repeat 11
+```
+
+扩展后的脚本同时测量 103 个 Python 文件、10,003 个符号的完整代码地图。两版使用相同输入和 1,000,000 字节的输出预算，比较首次调用与重复调用，并在两版中以相同包装函数统计实际 `ast.parse` 次数。这个输入可以完整返回，不能靠截断索引获得更快结果。
+
+原始测量见 [Windows 地图缓存基线](benchmarks/map-cache-windows.json)。首次调用两版均解析 103 次；随后 11 次完整地图调用，旧版重复解析 1,133 次，缓存版为 0，两版输出的摘要完全相同。缓存仍进行文件读取、隐私校验、内容摘要、结果解码和输出构建。
+
+首次建立缓存增加了编码和维护开销，重复调用减少了 AST 解析；需要同时报告两者。缓存最多保存 128 项，摘要与编码后符号元数据合计最多 1 MiB，这不是整个 Python 进程的 RSS 上限。超大结果不进入缓存，最旧且最近未使用的条目优先移除。这里的收益只适用于索引未改变且命中缓存的文件，不代表任意规模、多语言或模型总延迟的提升。

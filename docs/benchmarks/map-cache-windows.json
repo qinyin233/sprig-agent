@@ -1,0 +1,107 @@
+{
+  "scope": "offline retrieval and Python parsing; no model/API or coding-task success comparison",
+  "python": "3.13.0",
+  "platform": "Windows-11-10.0.26300-SP0",
+  "revision": "f3cd10c8404596db5fe870ff39d7bf07e3425c70",
+  "dirty": true,
+  "repeat": 11,
+  "current": {
+    "source_sha256": "0afa27f6b406cc868eef0a2460b54201d7db0def6156b124f1204fbe67a696b6",
+    "ranged_reads": true,
+    "cases": [
+      {
+        "case": "small.py",
+        "target_found_runs": 11,
+        "runs": 11,
+        "median_ms": 5.909,
+        "max_ms": 11.955,
+        "tool_result_bytes": 167,
+        "stable_result_size": true,
+        "tool_calls_per_run": 2
+      },
+      {
+        "case": "early.py",
+        "target_found_runs": 11,
+        "runs": 11,
+        "median_ms": 8.423,
+        "max_ms": 10.402,
+        "tool_result_bytes": 166,
+        "stable_result_size": true,
+        "tool_calls_per_run": 2
+      },
+      {
+        "case": "late.py",
+        "target_found_runs": 11,
+        "runs": 11,
+        "median_ms": 8.481,
+        "max_ms": 9.2,
+        "tool_result_bytes": 175,
+        "stable_result_size": true,
+        "tool_calls_per_run": 2
+      }
+    ],
+    "project_map": {
+      "files": 103,
+      "symbols": 10003,
+      "first_ms": 157.278,
+      "median_repeated_ms": 47.404,
+      "max_repeated_ms": 54.044,
+      "repeated_runs": 11,
+      "first_parse_calls": 103,
+      "repeated_parse_calls": 0,
+      "tool_result_bytes": 611052,
+      "result_sha256": "b962a3e5a26690f040c6b9d571cf33173eb1396b34e205bdeea6630f3579ffee",
+      "results_identical": true
+    }
+  },
+  "baseline": {
+    "revision": "f3cd10c8404596db5fe870ff39d7bf07e3425c70",
+    "source_sha256": "3218a8bc8f64b924bab2621a810572fca32bad266d8d74ae334504e23e52b8bc",
+    "ranged_reads": true,
+    "cases": [
+      {
+        "case": "small.py",
+        "target_found_runs": 11,
+        "runs": 11,
+        "median_ms": 6.718,
+        "max_ms": 12.094,
+        "tool_result_bytes": 167,
+        "stable_result_size": true,
+        "tool_calls_per_run": 2
+      },
+      {
+        "case": "early.py",
+        "target_found_runs": 11,
+        "runs": 11,
+        "median_ms": 8.078,
+        "max_ms": 8.617,
+        "tool_result_bytes": 166,
+        "stable_result_size": true,
+        "tool_calls_per_run": 2
+      },
+      {
+        "case": "late.py",
+        "target_found_runs": 11,
+        "runs": 11,
+        "median_ms": 8.08,
+        "max_ms": 11.249,
+        "tool_result_bytes": 175,
+        "stable_result_size": true,
+        "tool_calls_per_run": 2
+      }
+    ],
+    "project_map": {
+      "files": 103,
+      "symbols": 10003,
+      "first_ms": 149.481,
+      "median_repeated_ms": 85.23,
+      "max_repeated_ms": 95.036,
+      "repeated_runs": 11,
+      "first_parse_calls": 103,
+      "repeated_parse_calls": 1133,
+      "tool_result_bytes": 611052,
+      "result_sha256": "b962a3e5a26690f040c6b9d571cf33173eb1396b34e205bdeea6630f3579ffee",
+      "results_identical": true
+    }
+  }
+}

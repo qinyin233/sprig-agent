@@ -1,6 +1,7 @@
-"""Read-only offline retrieval measurements; this is not a model success benchmark."""
+"""Offline retrieval and Python map measurements; not a model success benchmark."""
 
 import argparse
+import ast
 import hashlib
 import inspect
 import io
@@ -56,12 +57,51 @@ def measure(source, repeat):
                               "median_ms": round(statistics.median(timings), 3),
                               "max_ms": round(max(timings), 3), "tool_result_bytes": sizes[0],
                               "stable_result_size": len(set(sizes)) == 1, "tool_calls_per_run": 2})
+            mapping = measure_map(root, Config, Tools, unexpected_approval, repeat)
             digest = hashlib.sha256()
             for file in sorted(source.rglob("*.py")):
                 digest.update(file.relative_to(source).as_posix().encode() + b"\0" + file.read_bytes())
-            return {"source_sha256": digest.hexdigest(), "ranged_reads": ranged, "cases": cases}
+            return {"source_sha256": digest.hexdigest(), "ranged_reads": ranged, "cases": cases, "project_map": mapping}
         finally:
             tools.close()
+
+
+def measure_map(root, Config, Tools, approve, repeat):
+    # Different source and names prevent identical files from inflating hits.
+    for module in range(100):
+        source = "\n".join(f"def module_{module}_function_{function}(): return {function}" for function in range(100))
+        (root / f"module_{module}.py").write_text(source, encoding="utf-8", newline="")
+    tools = Tools(Config(root, "offline", read_only=True, max_output=1000000), approve)
+    parse, parse_calls = ast.parse, []
+
+    def count_parse(*arguments, **kwargs):
+        parse_calls.append(True)
+        return parse(*arguments, **kwargs)
+
+    ast.parse = count_parse
+    try:
+        started = time.perf_counter()
+        first = tools.execute("project_map", {})
+        first_ms, first_parses = (time.perf_counter() - started) * 1000, len(parse_calls)
+        first_body = json.dumps(first, sort_keys=True, ensure_ascii=False, separators=(",", ":")).encode()
+        if first.get("truncated") or len(first.get("files", [])) != 103:
+            raise RuntimeError("map benchmark did not cover every fixture")
+        timings, identical = [], True
+        for _ in range(repeat):
+            started = time.perf_counter()
+            current = tools.execute("project_map", {})
+            timings.append((time.perf_counter() - started) * 1000)
+            body = json.dumps(current, sort_keys=True, ensure_ascii=False, separators=(",", ":")).encode()
+            identical = identical and body == first_body
+        return {"files": len(first["files"]), "symbols": sum(len(item.get("symbols", [])) for item in first["files"]),
+                "first_ms": round(first_ms, 3), "median_repeated_ms": round(statistics.median(timings), 3),
+                "max_repeated_ms": round(max(timings), 3), "repeated_runs": repeat,
+                "first_parse_calls": first_parses, "repeated_parse_calls": len(parse_calls) - first_parses,
+                "tool_result_bytes": len(first_body), "result_sha256": hashlib.sha256(first_body).hexdigest(),
+                "results_identical": identical}
+    finally:
+        ast.parse = parse
+        tools.close()
 
 
 def worker(source, repeat):
@@ -91,7 +131,7 @@ def main():
     if args.worker:
         print(json.dumps(measure(args.source, args.repeat)))
         return 0
-    report = {"scope": "offline file retrieval; no model/API or coding-task success comparison",
+    report = {"scope": "offline retrieval and Python parsing; no model/API or coding-task success comparison",
               "python": platform.python_version(), "platform": platform.platform(),
               "revision": git("rev-parse", "HEAD").decode().strip(),
               "dirty": bool(git("status", "--porcelain")), "repeat": args.repeat,
