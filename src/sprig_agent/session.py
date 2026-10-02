@@ -8,6 +8,7 @@ import stat
 import uuid
 
 from .config import redact
+from .filesystem import Directory
 from .provider import ProviderError, validate_message
 
 MAX_SESSION = 8 * 1024 * 1024
@@ -62,8 +63,6 @@ def validate_history(messages):
 
 class SessionStore:
     def __init__(self, directory, config):
-        if os.name != "posix":
-            raise SessionError("private sessions require POSIX owner-only permissions")
         self.directory = Path(directory).expanduser().absolute()
         self.config = config
         # A nested workdir must not allow storing transcripts elsewhere in the same repo.
@@ -75,28 +74,29 @@ class SessionStore:
         resolved = self.directory.resolve()
         if any(resolved.is_relative_to(root) for root in forbidden):
             raise SessionError("session directory must be outside the workspace/repository")
-        fd = os.open("/", os.O_RDONLY | os.O_DIRECTORY)
+        directory_handle = Directory(self.directory.anchor)
         try:
             for part in self.directory.parts[1:]:
                 try:
-                    child = os.open(part, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW, dir_fd=fd)
+                    child = directory_handle.child(part)
                 except FileNotFoundError:
-                    os.mkdir(part, mode=0o700, dir_fd=fd)
-                    child = os.open(part, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW, dir_fd=fd)
-                os.close(fd)
-                fd = child
-            info = os.fstat(fd)
-            if info.st_uid != os.getuid() or stat.S_IMODE(info.st_mode) != 0o700:
-                raise SessionError("session directory must be owned by you with mode 0700")
-            self.fd, fd = fd, None
+                    try:
+                        directory_handle.mkdir(part)
+                    except FileExistsError:
+                        pass  # Another process may have created the same directory.
+                    child = directory_handle.child(part)
+                directory_handle.close()
+                directory_handle = child
+            directory_handle.check_private()
+            self.handle, directory_handle = directory_handle, None
+        except ValueError as exc:
+            raise SessionError(str(exc)) from None
         finally:
-            if fd is not None:
-                os.close(fd)
+            if directory_handle is not None:
+                directory_handle.close()
 
     def close(self):
-        if self.fd is not None:
-            os.close(self.fd)
-            self.fd = None
+        self.handle.close()
 
     def _filename(self, name):
         if not isinstance(name, str) or not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_-]{0,63}", name):
@@ -104,15 +104,19 @@ class SessionStore:
         return name + ".json"
 
     def _check_file(self, filename):
-        info = os.stat(filename, dir_fd=self.fd, follow_symlinks=False)
-        if not stat.S_ISREG(info.st_mode) or info.st_uid != os.getuid() or stat.S_IMODE(info.st_mode) != 0o600:
+        info = self.handle.stat(filename)
+        if not stat.S_ISREG(info.st_mode):
             raise SessionError("session file must be a regular owner-only (0600) file")
+        try:
+            self.handle.check_private(filename)
+        except ValueError as exc:
+            raise SessionError(str(exc)) from None
         return info
 
     def ensure_new(self, name):
         filename = self._filename(name)
         try:
-            os.stat(filename, dir_fd=self.fd, follow_symlinks=False)
+            self.handle.stat(filename)
         except FileNotFoundError:
             return
         raise SessionError("session already exists; use --resume or choose a new name")
@@ -129,29 +133,22 @@ class SessionStore:
             pass
         temp = "." + uuid.uuid4().hex + ".tmp"
         try:
-            fd = os.open(temp, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o600, dir_fd=self.fd)
-            with os.fdopen(fd, "wb") as handle:
-                os.fchmod(handle.fileno(), 0o600)
-                handle.write(body)
-                handle.flush()
-                os.fsync(handle.fileno())
-            os.replace(temp, filename, src_dir_fd=self.fd, dst_dir_fd=self.fd)
-            os.fsync(self.fd)
+            self.handle.write_new(temp, body, private=True)
+            self.handle.replace(temp, filename)
+            self.handle.sync()
         finally:
             try:
-                os.unlink(temp, dir_fd=self.fd)
+                self.handle.unlink(temp)
             except FileNotFoundError:
                 pass
 
     def load(self, name):
         filename = self._filename(name)
         self._check_file(filename)
-        fd = os.open(filename, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK, dir_fd=self.fd)
-        with os.fdopen(fd, "rb") as handle:
-            info = os.fstat(handle.fileno())
-            if not stat.S_ISREG(info.st_mode) or info.st_uid != os.getuid() or stat.S_IMODE(info.st_mode) != 0o600:
-                raise SessionError("unsafe session file")
-            raw = handle.read(MAX_SESSION + 1)
+        try:
+            raw = self.handle.read(filename, MAX_SESSION, private=True)
+        except ValueError as exc:
+            raise SessionError(str(exc)) from None
         if len(raw) > MAX_SESSION:
             raise SessionError("session exceeds 8 MiB")
         try:

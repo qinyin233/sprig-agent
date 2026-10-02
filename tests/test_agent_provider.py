@@ -620,9 +620,9 @@ class CLITests(ConfigCase):
         outcome.store.return_value.close.assert_called_once()
 
     def test_unsupported_platform_fails_before_tools_or_provider(self):
-        outcome = self.invoke(["Task", "--model", "test"], platform="nt")
+        outcome = self.invoke(["Task", "--model", "test"], platform="unsupported")
         self.assertEqual(outcome.result, 1)
-        self.assertIn("requires POSIX", outcome.err)
+        self.assertIn("Windows 10+", outcome.err)
         outcome.tools.assert_not_called()
         outcome.provider.assert_not_called()
 

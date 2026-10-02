@@ -25,7 +25,7 @@ def approve(description):
 
 
 def main(argv=None):
-    parser = argparse.ArgumentParser(description="Sprig: a small approval-first coding agent (POSIX)")
+    parser = argparse.ArgumentParser(description="Sprig: a small approval-first coding agent")
     parser.add_argument("task", nargs="?", help="task; optional when resuming")
     parser.add_argument("--version", action="version", version=__version__)
     parser.add_argument("--workdir", default=".")
@@ -42,8 +42,8 @@ def main(argv=None):
     key = os.environ.get("SPRIG_API_KEY") or os.environ.get("OPENAI_API_KEY", "")
     store = tools = None
     try:
-        if os.name != "posix":
-            raise ValueError("this MVP requires POSIX (Linux/macOS); Windows is not supported")
+        if os.name not in {"posix", "nt"}:
+            raise ValueError("Sprig requires Linux/macOS or Windows 10+")
         if not args.resume and not args.task:
             raise ValueError("provide a task, or --resume NAME")
         config = Config(Path(args.workdir), args.model, args.base_url, key, args.max_steps, args.timeout, args.max_output)

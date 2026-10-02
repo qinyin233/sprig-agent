@@ -15,7 +15,7 @@ from sprig_agent.session import SessionError, SessionStore, validate_history
 from sprig_agent.tools import MAX_FILE, Tools
 
 
-@unittest.skipUnless(os.name == "posix", "file descriptors and process groups require POSIX")
+@unittest.skipUnless(os.name in {"posix", "nt"}, "requires a supported platform")
 class ToolTests(unittest.TestCase):
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory()
@@ -38,7 +38,7 @@ class ToolTests(unittest.TestCase):
         return self.tools.execute(name, kwargs)
 
     def test_read_list_search(self):
-        (self.root / "a.txt").write_text("hello\nworld\nhello again\n", encoding="utf-8")
+        (self.root / "a.txt").write_text("hello\nworld\nhello again\n", encoding="utf-8", newline="")
         (self.root / "sub").mkdir()
         (self.root / "sub/b.txt").write_text("hello too", encoding="utf-8")
         self.assertEqual(self.call("read_file", path="a.txt")["content"], "hello\nworld\nhello again\n")
@@ -75,6 +75,7 @@ class ToolTests(unittest.TestCase):
         self.assertEqual(self.call("search", query="hidden")["matches"], [])
         self.assertEqual(self.prompts, [])
 
+    @unittest.skipUnless(os.name == "posix", "Windows reparse points covered in native tests")
     def test_symlinks_to_inside_and_outside_are_rejected(self):
         outside = Path(self.temp.name) / "outside"
         outside.mkdir()
@@ -91,6 +92,7 @@ class ToolTests(unittest.TestCase):
         self.assertFalse((outside / "new").exists())
         self.assertEqual(self.prompts, [])
 
+    @unittest.skipUnless(os.name == "posix", "POSIX FIFO")
     def test_fifo_read_does_not_block(self):
         os.mkfifo(self.root / "fifo")
         start = time.monotonic()
@@ -114,7 +116,8 @@ class ToolTests(unittest.TestCase):
         result = self.call("edit_file", path="a", old="before", new="after\n")
         self.assertTrue(result["changed"])
         self.assertEqual(file.read_text(), "after\n")
-        self.assertEqual(stat.S_IMODE(file.stat().st_mode), 0o755)
+        if os.name == "posix":
+            self.assertEqual(stat.S_IMODE(file.stat().st_mode), 0o755)
         self.assertIn("No newline", self.prompts[0])
         self.assertEqual(list(self.root.glob(".sprig-*.tmp")), [])
 
@@ -137,6 +140,7 @@ class ToolTests(unittest.TestCase):
         self.assertIn("error", self.call("edit_file", path="a", old="one one", new="x" * (MAX_FILE + 1)))
         self.assertEqual(self.prompts, [])
 
+    @unittest.skipUnless(os.name == "posix", "Windows approval races covered in native tests")
     def test_change_or_symlink_swap_during_approval_aborts(self):
         file = self.root / "a"
         file.write_text("old")
@@ -156,6 +160,7 @@ class ToolTests(unittest.TestCase):
         self.assertIn("error", self.call("edit_file", path="a", old="other editor", new="new"))
         self.assertEqual(outside.read_text(), "outside")
 
+    @unittest.skipUnless(os.name == "posix", "Windows pins parent handles instead")
     def test_parent_symlink_swap_cannot_redirect_approved_write(self):
         (self.root / "sub").mkdir()
         (self.root / "sub/a").write_text("old")
@@ -192,13 +197,33 @@ class ToolTests(unittest.TestCase):
             (self.root / f"file-{i}").touch()
         self.assertTrue(self.call("list_files")["truncated"])
 
+    def test_project_map_exposes_structure_without_whole_file_bodies(self):
+        (self.root / "module.py").write_text("class Service:\n    def run(self):\n        return 'private implementation'\n\nasync def main():\n    pass\n", encoding="utf-8")
+        (self.root / "README.md").write_text("documentation")
+        (self.root / ".env.secret").write_text("hidden")
+        result = self.call("project_map")
+        self.assertFalse(result["truncated"])
+        record = next(item for item in result["files"] if item["path"] == "module.py")
+        self.assertEqual(record["symbols"], [{"name": "Service", "line": 1, "kind": "class"},
+                                             {"name": "Service.run", "line": 2, "kind": "function"},
+                                             {"name": "main", "line": 5, "kind": "function"}])
+        self.assertNotIn("private implementation", json.dumps(result))
+        self.assertNotIn(".env", json.dumps(result))
+        self.assertEqual(self.prompts, [])
+
+    def test_project_map_marks_invalid_python_and_output_limits(self):
+        (self.root / "broken.py").write_text("def broken(", encoding="utf-8")
+        self.assertTrue(self.call("project_map")["files"][0]["symbols_unavailable"])
+        (self.root / "large.py").write_text("".join(f"def function_{i}(): pass\n" for i in range(1000)), encoding="utf-8")
+        self.assertTrue(self.call("project_map")["truncated"])
+
     def test_command_rejection_and_exact_argv_prompt(self):
         argv = [sys.executable, "-c", "raise SystemExit('must not run')", "a b", "$(echo unsafe)"]
         with patch("subprocess.Popen") as popen:
             self.assertEqual(self.call("run", argv=argv), {"approved": False})
             popen.assert_not_called()
         self.assertIn(json.dumps(argv), self.prompts[0])
-        self.assertIn(str(self.root), self.prompts[0])
+        self.assertIn(json.dumps(str(self.root)), self.prompts[0])
         self.assertIn("NOT SANDBOXED", self.prompts[0])
 
     def test_command_argv_is_not_shell_and_reports_failure(self):
@@ -235,10 +260,10 @@ class ToolTests(unittest.TestCase):
                                      "OPENAI_API_KEY": "other-key", "ALIAS": self.config.api_key,
                                      "VISIBLE": "ordinary"}):
             result = self.call("run", argv=[sys.executable, "-c", script])
-        self.assertEqual(result["output"], "None\nNone\nNone\nordinary\n")
+        self.assertEqual(result["output"].replace("\r\n", "\n"), "None\nNone\nNone\nordinary\n")
         (self.root / "key.txt").write_text(self.config.api_key)
         result = self.call("run", argv=[sys.executable, "-c", "print(open('key.txt').read())"])
-        self.assertEqual(result["output"], "[REDACTED]\n")
+        self.assertEqual(result["output"].replace("\r\n", "\n"), "[REDACTED]\n")
         self.assertIn("error", self.call("run", argv=["echo", self.config.api_key]))
 
     def test_command_invalid_arguments_timeout_and_executable(self):

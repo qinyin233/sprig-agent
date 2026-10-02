@@ -1,6 +1,7 @@
-"""Five tools. File access uses no-follow directory FDs; commands are NOT sandboxed."""
+"""Five tools with pinned, no-follow files; commands are NOT sandboxed."""
 
 from contextlib import contextmanager
+import ast
 import difflib
 import json
 import math
@@ -14,9 +15,14 @@ import time
 import uuid
 
 from .config import redact
+from .filesystem import Directory, is_link
 
 MAX_FILE = 512 * 1024
 SKIP_DIRS = {"node_modules", ".venv", "__pycache__"}
+
+
+def skip_directory(name):
+    return name in SKIP_DIRS or name.startswith(".venv-")
 
 
 def schema(name, description, properties, required=()):
@@ -33,6 +39,8 @@ TOOL_SCHEMAS = [
            {"path": STRING}, ["path"]),
     schema("search", "Find literal text recursively in UTF-8 files, with bounded results.",
            {"query": STRING, "path": STRING}, ["query"]),
+    schema("project_map", "Bounded workspace file map with Python class/function names and line numbers; inspect relevant files afterwards.",
+           {"path": STRING}),
     schema("edit_file", "Replace exactly one occurrence after diff approval. Empty old creates a new file only. Parent directory must exist.",
            {"path": STRING, "old": STRING, "new": STRING}, ["path", "old", "new"]),
     schema("run", "Run argv after explicit approval. NOT sandboxed; can access network and files outside workspace.",
@@ -50,34 +58,42 @@ def protected(name):
 
 
 class Tools:
-    def __init__(self, config, approve):
+    def __init__(self, config, approve, cancel_event=None):
         self.config, self.approve = config, approve
-        self.root_fd = os.open(config.workdir, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
+        self.cancel_event = cancel_event
+        self.root = Directory(config.workdir)
+
+    def _check_cancelled(self):
+        if self.cancel_event is not None and self.cancel_event.is_set():
+            raise KeyboardInterrupt
 
     def close(self):
-        if self.root_fd is not None:
-            os.close(self.root_fd)
-            self.root_fd = None
+        self.root.close()
 
     def _parts(self, path):
         if not isinstance(path, str) or not path or len(path) > 4096 or "\0" in path or "\\" in path:
             raise ToolError("path must be a nonempty relative POSIX path")
         parsed = PurePosixPath(path)
-        if parsed.is_absolute() or ".." in parsed.parts or any(protected(p) for p in parsed.parts):
+        if parsed.is_absolute() or ".." in parsed.parts or any(protected(p.lower() if os.name == "nt" else p) for p in parsed.parts):
             raise ToolError("path escapes workdir or names a protected component")
+        if os.name == "nt":
+            from .windows import validate_component
+            for part in parsed.parts:
+                validate_component(part)
         return parsed.parts
 
     @contextmanager
     def _directory(self, parts):
-        fd = os.dup(self.root_fd)
+        directory = self.root
+        opened = []
         try:
             for part in parts:
-                new_fd = os.open(part, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW, dir_fd=fd)
-                os.close(fd)
-                fd = new_fd
-            yield fd
+                directory = directory.child(part)
+                opened.append(directory)
+            yield directory
         finally:
-            os.close(fd)
+            for directory in reversed(opened):
+                directory.close()
 
     @contextmanager
     def _parent(self, path):
@@ -88,11 +104,16 @@ class Tools:
             yield fd, parts[-1]
 
     def _read(self, parent, name, limit):
-        fd = os.open(name, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK, dir_fd=parent)
-        with os.fdopen(fd, "rb") as handle:
-            if not stat.S_ISREG(os.fstat(handle.fileno()).st_mode):
-                raise ToolError("only regular files are supported")
-            return handle.read(limit + 1)
+        return parent.read(name, limit)
+
+    @staticmethod
+    def _revision(info):
+        if info is None:
+            return None
+        # Reading during review can change atime without changing the file.
+        return tuple(getattr(info, name, None) for name in (
+            "st_dev", "st_ino", "st_mode", "st_nlink", "st_uid", "st_gid", "st_size",
+            "st_mtime_ns", "st_ctime_ns", "st_file_attributes"))
 
     def _decode(self, data):
         if b"\0" in data:
@@ -103,11 +124,13 @@ class Tools:
             raise ToolError("file must be UTF-8 text") from None
 
     def execute(self, name, arguments):
+        self._check_cancelled()
         try:
             if not isinstance(arguments, dict):
                 raise ToolError("tool arguments must be an object")
             method = {"list_files": self.list_files, "read_file": self.read_file,
-                      "search": self.search, "edit_file": self.edit_file, "run": self.run}.get(name)
+                      "search": self.search, "project_map": self.project_map,
+                      "edit_file": self.edit_file, "run": self.run}.get(name)
             if method is None:
                 raise ToolError("unknown tool")
             result = method(**arguments)
@@ -117,9 +140,9 @@ class Tools:
 
     def list_files(self, path="."):
         entries, size, truncated = [], 0, False
-        with self._directory(self._parts(path)) as fd, os.scandir(fd) as iterator:
+        with self._directory(self._parts(path)) as fd, fd.scandir() as iterator:
             for entry in iterator:
-                if protected(entry.name) or entry.is_symlink():
+                if protected(entry.name.lower() if os.name == "nt" else entry.name) or is_link(entry):
                     continue
                 kind = "dir" if entry.is_dir(follow_symlinks=False) else "file"
                 size += len(entry.name.encode("utf-8")) + 30
@@ -155,23 +178,20 @@ class Tools:
             if depth > 32:
                 truncated = True
                 return
-            with os.scandir(fd) as iterator:
+            with fd.scandir() as iterator:
                 for entry in iterator:
                     scanned += 1
                     if scanned > 5000 or budget <= 0 or output_size >= self.config.max_output:
                         truncated = True
                         return
-                    if protected(entry.name) or entry.is_symlink():
+                    if protected(entry.name.lower() if os.name == "nt" else entry.name) or is_link(entry):
                         continue
                     relative = "/".join((*prefix, entry.name))
                     try:
                         if entry.is_dir(follow_symlinks=False):
-                            if entry.name not in SKIP_DIRS:
-                                child = os.open(entry.name, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW, dir_fd=fd)
-                                try:
+                            if not skip_directory(entry.name):
+                                with fd.child(entry.name) as child:
                                     walk(child, (*prefix, entry.name), depth + 1)
-                                finally:
-                                    os.close(child)
                         elif entry.is_file(follow_symlinks=False):
                             raw = self._read(fd, entry.name, min(MAX_FILE, budget))
                             budget -= len(raw)
@@ -195,6 +215,71 @@ class Tools:
             walk(fd, parts, 0)
         return {"matches": matches, "truncated": truncated}
 
+    def project_map(self, path="."):
+        parts = self._parts(path)
+        files, scanned, budget, size, truncated = [], 0, 8 * 1024 * 1024, 0, False
+
+        def walk(directory, prefix, depth):
+            nonlocal scanned, budget, size, truncated
+            if depth > 32:
+                truncated = True
+                return
+            with directory.scandir() as iterator:
+                for entry in iterator:
+                    scanned += 1
+                    if scanned > 5000 or budget <= 0 or size >= self.config.max_output:
+                        truncated = True
+                        return
+                    if protected(entry.name.lower() if os.name == "nt" else entry.name) or is_link(entry):
+                        continue
+                    try:
+                        if entry.is_dir(follow_symlinks=False):
+                            if not skip_directory(entry.name):
+                                with directory.child(entry.name) as child:
+                                    walk(child, (*prefix, entry.name), depth + 1)
+                            continue
+                        if not entry.is_file(follow_symlinks=False):
+                            continue
+                        record = {"path": "/".join((*prefix, entry.name))}
+                        if entry.name.endswith(".py"):
+                            raw = self._read(directory, entry.name, min(MAX_FILE, budget))
+                            budget -= len(raw)
+                            if len(raw) > MAX_FILE or budget < 0:
+                                truncated = True
+                                record["symbols_unavailable"] = True
+                            else:
+                                try:
+                                    tree = ast.parse(self._decode(raw))
+                                    symbols, pending = [], [(tree.body, "")]
+                                    while pending:
+                                        nodes, parent = pending.pop()
+                                        for node in nodes:
+                                            if isinstance(node, (ast.ClassDef, ast.FunctionDef, ast.AsyncFunctionDef)):
+                                                name = parent + node.name
+                                                symbols.append({"name": name, "line": node.lineno,
+                                                                "kind": "class" if isinstance(node, ast.ClassDef) else "function"})
+                                                if isinstance(node, ast.ClassDef):
+                                                    pending.append((node.body, name + "."))
+                                    record["symbols"] = sorted(symbols, key=lambda item: item["line"])
+                                except (SyntaxError, ValueError, RecursionError, ToolError):
+                                    record["symbols_unavailable"] = True
+                        record_size = len(json.dumps(record, ensure_ascii=False).encode("utf-8")) + 2
+                        if size + record_size > self.config.max_output:
+                            # Keep a large module discoverable even when its symbol list is too big.
+                            record = {"path": record["path"], "symbols_unavailable": True}
+                            record_size = len(json.dumps(record, ensure_ascii=False).encode("utf-8")) + 2
+                            truncated = True
+                        if size + record_size > self.config.max_output:
+                            return
+                        files.append(record)
+                        size += record_size
+                    except (OSError, ToolError):
+                        truncated = True
+
+        with self._directory(parts) as directory:
+            walk(directory, parts, 0)
+        return {"files": sorted(files, key=lambda item: item["path"]), "truncated": truncated}
+
     def edit_file(self, path, old, new):
         if not isinstance(old, str) or not isinstance(new, str):
             raise ToolError("old and new must be strings")
@@ -203,7 +288,7 @@ class Tools:
         with self._parent(path) as (fd, name):
             try:
                 before_raw = self._read(fd, name, MAX_FILE)
-                before_stat = os.stat(name, dir_fd=fd, follow_symlinks=False)
+                before_stat = fd.stat(name)
             except FileNotFoundError:
                 before_raw, before_stat = b"", None
             if len(before_raw) > MAX_FILE:
@@ -229,24 +314,20 @@ class Tools:
                 return {"approved": False, "changed": False}
             # Recheck after approval: an editor may have changed the file while the user read the diff.
             try:
-                current_stat = os.stat(name, dir_fd=fd, follow_symlinks=False)
+                current_stat = fd.stat(name)
             except FileNotFoundError:
                 current_stat = None
-            if current_stat != before_stat or (current_stat and self._read(fd, name, MAX_FILE) != before_raw):
+            if self._revision(current_stat) != self._revision(before_stat) or (current_stat and self._read(fd, name, MAX_FILE) != before_raw):
                 raise ToolError("file changed during approval; request a fresh diff")
+            self._check_cancelled()
             temp = f".sprig-{uuid.uuid4().hex}.tmp"
             try:
-                temp_fd = os.open(temp, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o600, dir_fd=fd)
-                with os.fdopen(temp_fd, "wb") as handle:
-                    handle.write(data)
-                    handle.flush()
-                    if before_stat:
-                        os.fchmod(handle.fileno(), stat.S_IMODE(before_stat.st_mode) & 0o777)
-                    os.fsync(handle.fileno())
-                os.replace(temp, name, src_dir_fd=fd, dst_dir_fd=fd)
+                fd.write_new(temp, data, stat.S_IMODE(before_stat.st_mode) & 0o777 if before_stat else 0o600,
+                             permissions_from=name if before_stat else None)
+                fd.replace(temp, name)
             finally:
                 try:
-                    os.unlink(temp, dir_fd=fd)
+                    fd.unlink(temp)
                 except FileNotFoundError:
                     pass
         return {"approved": True, "changed": True, "path": path}
@@ -272,12 +353,16 @@ class Tools:
                        f"timeout: {seconds}s; output cap: {self.config.max_output} bytes")
         if not self.approve(description):
             return {"approved": False}
+        self._check_cancelled()
         # Unlike file tools, the approved program controls its own filesystem and network access.
         with self._directory(parts):
             pass
         env = {key: value for key, value in os.environ.items()
-               if key not in {"SPRIG_API_KEY", "OPENAI_API_KEY"}
+               if key.upper() not in {"SPRIG_API_KEY", "OPENAI_API_KEY"}
                and not (self.config.api_key and self.config.api_key in value)}
+        if os.name == "nt":
+            from .windows import run_command
+            return run_command(argv, directory, env, seconds, self.config.max_output, self.cancel_event)
         process = subprocess.Popen(argv, cwd=directory, env=env, stdin=subprocess.DEVNULL,
                                    stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
                                    start_new_session=True, shell=False)
@@ -288,6 +373,7 @@ class Tools:
             with selectors.DefaultSelector() as selector:
                 selector.register(process.stdout, selectors.EVENT_READ)
                 while selector.get_map():
+                    self._check_cancelled()
                     remaining = deadline - time.monotonic()
                     if remaining <= 0:
                         reason = "timeout"
@@ -305,10 +391,16 @@ class Tools:
                     if reason:
                         break
                 if not reason:
-                    try:
-                        process.wait(timeout=max(0.001, deadline - time.monotonic()))
-                    except subprocess.TimeoutExpired:
-                        reason = "timeout"
+                    while process.poll() is None:
+                        self._check_cancelled()
+                        remaining = deadline - time.monotonic()
+                        if remaining <= 0:
+                            reason = "timeout"
+                            break
+                        try:
+                            process.wait(timeout=min(0.1, remaining))
+                        except subprocess.TimeoutExpired:
+                            pass
         finally:
             # Also clean up descendants that inherited the process group / pipe.
             try:

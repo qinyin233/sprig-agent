@@ -47,6 +47,15 @@ class Agent:
                 self.emit(f"[tool] {function['name']}")
                 try:
                     arguments = json.loads(function["arguments"])
+                    # Python versions differ in their JSON recursion limit.
+                    pending = [(arguments, 0)]
+                    while pending:
+                        value, depth = pending.pop()
+                        if isinstance(value, (dict, list)):
+                            if depth >= 64:
+                                raise ValueError("tool arguments are too deeply nested")
+                            children = value.values() if isinstance(value, dict) else value
+                            pending.extend((child, depth + 1) for child in children)
                 except (ValueError, RecursionError):
                     result = {"error": "tool arguments are not valid JSON"}
                 else:
