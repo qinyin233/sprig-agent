@@ -43,7 +43,13 @@ uv sync --locked --managed-python
 uv run --locked python -m unittest discover -s tests -q
 ```
 
-GitHub Actions 已配置 Ubuntu、Windows、macOS 与 Python 3.11–3.14 的矩阵，使用 uv 安装环境、运行测试。推送后查询 Actions API 返回 HTTP 403，因此远程 CI 结果尚未核实；实际运行状态见 [GitHub Actions](https://github.com/qinyin233/sprig-agent/actions/workflows/tests.yml)。macOS 尚未本地实测，不能把 CI 配置视为测试通过。
+GitHub Actions 已配置 Ubuntu、Windows、macOS 与 Python 3.11–3.14 的矩阵，使用 uv 安装环境、运行测试和构建源码包及 wheel。下表是本地验证；远程证据另列在下方，不能把 CI 配置视为测试通过。
+
+### CI 修复与推送检查
+
+初次推送 `ba70294` 的[实际 CI](https://github.com/qinyin233/sprig-agent/actions/runs/37005909515)失败：Windows 替换私有文件时未复制安全描述符的所有者，在提升权限的 runner 上失去原所有者；macOS `/var` 是系统别名，会话目录的逐级无符号链接遍历拒绝了临时目录。Ubuntu 对应测试通过。
+
+修复保留 Windows 原文件所有者与 DACL，并仅规范化 macOS 的 `/var`、`/tmp`、`/etc` 已知系统别名；用户建立的符号链接仍被拒绝。新增 Windows 所有者回归测试，本地 152 项：139 通过、13 平台跳过。矩阵关闭提前取消，避免一个平台失败掩盖其他平台结果；每次推送必须等待对应 SHA 的完整 CI 结果，规则见仓库 `AGENTS.md`。
 
 ## 重点行为
 

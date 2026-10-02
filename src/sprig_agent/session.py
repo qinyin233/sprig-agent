@@ -5,6 +5,7 @@ import os
 from pathlib import Path
 import re
 import stat
+import sys
 import uuid
 
 from .config import redact
@@ -64,6 +65,16 @@ def validate_history(messages):
 class SessionStore:
     def __init__(self, directory, config):
         self.directory = Path(directory).expanduser().absolute()
+        # macOS exposes these root-owned system paths as aliases into /private.
+        # Normalize only these known aliases; user-created symlinks anywhere
+        # below them still go through the no-follow directory traversal.
+        if sys.platform == "darwin":
+            for name in ("var", "tmp", "etc"):
+                alias, target = Path("/") / name, Path("/private") / name
+                if (self.directory.parts[:2] == alias.parts and alias.is_symlink()
+                        and alias.resolve() == target):
+                    self.directory = target.joinpath(*self.directory.parts[2:])
+                    break
         self.config = config
         # A nested workdir must not allow storing transcripts elsewhere in the same repo.
         forbidden = [config.workdir]

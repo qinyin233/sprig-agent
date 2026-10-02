@@ -102,6 +102,20 @@ class WindowsTests(unittest.TestCase):
         finally:
             close_handle(handle)
 
+    def test_replacement_security_descriptor_includes_owner(self):
+        import ctypes
+        from ctypes import wintypes
+        from sprig_agent.windows import api, security, existing_attributes, file_descriptor, checked
+        path = self.root / "owned.txt"
+        with os.fdopen(file_descriptor(path, create=True, private=True), "wb") as file:
+            file.write(b"old")
+        get_owner = api(security, "GetSecurityDescriptorOwner", wintypes.BOOL,
+                        ctypes.c_void_p, ctypes.POINTER(ctypes.c_void_p), ctypes.POINTER(wintypes.BOOL))
+        with existing_attributes(path) as attributes:
+            owner, defaulted = ctypes.c_void_p(), wintypes.BOOL()
+            checked(get_owner(attributes.descriptor, ctypes.byref(owner), ctypes.byref(defaulted)))
+            self.assertTrue(owner.value, "replacement must preserve the original owner")
+
     def test_batch_file_cannot_invoke_an_implicit_shell(self):
         batch = self.root / "write.cmd"
         batch.write_text("@echo off\necho bad>pwned\n")

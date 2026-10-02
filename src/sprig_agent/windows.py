@@ -130,12 +130,14 @@ def open_file(path, *, directory=False, create=False, attributes=None):
 
 @contextmanager
 def existing_attributes(path):
-    """Preserve a replaced file's DACL, including inheritance protection."""
+    """Preserve a replaced file's owner and DACL, including inheritance protection."""
     handle, descriptor = open_file(path), PTR()
     get_security = api(security, "GetSecurityInfo", w.DWORD, w.HANDLE, w.DWORD, w.DWORD,
                        PTR, PTR, PTR, PTR, c.POINTER(PTR))
     try:
-        code = get_security(handle, 1, 4, None, None, None, None, c.byref(descriptor))
+        # Include the owner: elevated runners otherwise assign the default
+        # Administrators owner to the replacement even with the correct DACL.
+        code = get_security(handle, 1, 5, None, None, None, None, c.byref(descriptor))
         if code:
             raise c.WinError(code)
         yield SecurityAttributes(c.sizeof(SecurityAttributes), descriptor, False)
