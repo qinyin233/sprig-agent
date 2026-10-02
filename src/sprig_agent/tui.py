@@ -14,6 +14,7 @@ from textual.widgets import Button, Footer, Header, Input, RichLog, Static, Tabb
 from textual.worker import get_current_worker
 
 from .agent import Agent
+from .changes import ChangeHistory
 from .config import redact, terminal_text
 from .provider import Provider
 from .session import SessionError, SessionStore, validate_history
@@ -124,7 +125,7 @@ class SprigApp(App[int]):
     #events { height: 1fr; }
     """
 
-    def __init__(self, config, task=None, session_dir=None, save_session=None, resume=None, provider=None):
+    def __init__(self, config, task=None, session_dir=None, save_session=None, resume=None, provider=None, change_dir=None):
         super().__init__()
         self.config = config
         self.initial_task = task
@@ -167,9 +168,13 @@ class SprigApp(App[int]):
                 app.ui_call(app.event, name + ": " + json.dumps(summary, ensure_ascii=False))
                 return result
 
+        history = None
         try:
-            self.tools = UiTools(config, self.confirm, self.cancel_event, self.emit_command)
+            history = ChangeHistory(config, change_dir)
+            self.tools = UiTools(config, self.confirm, self.cancel_event, self.emit_command, history=history)
         except BaseException:
+            if history:
+                history.close()
             if self.store:
                 self.store.close()
             raise
@@ -194,11 +199,15 @@ class SprigApp(App[int]):
                     with TabPane("操作", id="actions-tab"):
                         with VerticalScroll(id="operations"):
                             yield Button("继续当前对话", id="continue")
-                            yield Button("查看 Git diff", id="diff")
-                            yield Button("查看 Git 状态", id="git")
+                            yield Button("查看 Git diff", id="diff", disabled=self.config.read_only)
+                            yield Button("查看 Git 状态", id="git", disabled=self.config.read_only)
                             yield Button("查看项目地图", id="map")
                             yield Button("查看上下文预算", id="context-budget")
                             yield Button("压缩旧工具输出", id="compact")
+                            yield Button("查看修改记录", id="changes")
+                            yield Button("撤销最近文件编辑", id="undo", disabled=self.config.read_only)
+                            yield Button("重做文件编辑", id="redo", disabled=self.config.read_only)
+                            yield Button("清除修改备份", id="discard-history")
                             yield Static("本地会话（不加密）", markup=False)
                             yield Input(value=self.session_name or "", placeholder="会话名称", id="session-name")
                             with Horizontal(id="session-buttons"):
@@ -214,6 +223,8 @@ class SprigApp(App[int]):
         self._ui_thread_id = threading.get_ident()
         self.action_focus_task()
         self.append("Sprig 就绪。任务、读取内容和工具结果会发送到所示服务。\n写入和命令逐次确认；命令没有沙箱。\n")
+        if self.tools.history.store is not None:
+            self.append("已显式启用本地修改备份（不加密）；仅记录文件工具编辑，命令修改不在撤销范围内。\n")
         if self.messages:
             self.show_history()
         if self.initial_task:
@@ -241,8 +252,8 @@ class SprigApp(App[int]):
 
     def set_busy(self, busy):
         self.busy = busy
-        for identity in ("continue", "diff", "git", "map", "context-budget", "compact", "save", "restore", "sessions", "delete", "session-name"):
-            self.query_one("#" + identity).disabled = busy
+        for identity in ("continue", "diff", "git", "map", "context-budget", "compact", "changes", "undo", "redo", "discard-history", "save", "restore", "sessions", "delete", "session-name"):
+            self.query_one("#" + identity).disabled = busy or (self.config.read_only and identity in {"diff", "git", "undo", "redo"})
         self.query_one("#cancel", Button).disabled = not busy
         if not busy:
             self.action_focus_task()
@@ -380,7 +391,15 @@ class SprigApp(App[int]):
         try:
             if local:
                 name, arguments = local
-                result = {"sessions": self.get_store().list()} if name == "sessions" else self.tools.execute(name, arguments)
+                if name == "sessions":
+                    result = {"sessions": self.get_store().list()}
+                elif name in {"changes", "undo", "redo", "discard-history"}:
+                    result = self.tools.change_action(name)
+                    self.agent.record_workspace_change(self.messages, result)
+                    if result.get("changed") or result.get("outcome") == "uncertain":
+                        status, message = 2, "本地文件已变更；先前验收失效，请检查并重新验收"
+                else:
+                    result = self.tools.execute(name, arguments)
                 self.emit("[本地查看，不自动上传]\n" + json.dumps(result, ensure_ascii=False, indent=2))
                 if "error" in result or result.get("approved") is False or result.get("returncode", 0) != 0:
                     status, message = 2, "本地操作未完成"
@@ -550,6 +569,8 @@ class SprigApp(App[int]):
                 self.restore()
             elif identity == "sessions":
                 self.start(local=("sessions", {}))
+            elif identity in {"changes", "undo", "redo", "discard-history"}:
+                self.start(local=(identity, {}))
             elif identity == "context-budget":
                 self.append("\n[上下文预算；本地预览]\n" + json.dumps(self.agent.context_preview(self.messages), ensure_ascii=False, indent=2) + "\n")
             elif identity == "compact":
@@ -592,8 +613,8 @@ class SprigApp(App[int]):
             self._lifecycle_lock.release()
 
 
-def run_tui(config, task=None, session_dir=None, save_session=None, resume=None):
-    app = SprigApp(config, task, session_dir, save_session, resume)
+def run_tui(config, task=None, session_dir=None, save_session=None, resume=None, change_dir=None):
+    app = SprigApp(config, task, session_dir, save_session, resume, change_dir=change_dir)
     try:
         return app.run() or 0
     finally:

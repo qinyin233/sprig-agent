@@ -5,10 +5,11 @@ from pathlib import Path
 import sys
 import tempfile
 import unittest
-from unittest.mock import Mock
+from unittest.mock import Mock, patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 from sprig_agent.agent import Agent
+from sprig_agent import cli
 from sprig_agent.config import Config
 from sprig_agent.context import prepare_context, request_body
 from sprig_agent.provider import Provider, ProviderError
@@ -76,6 +77,18 @@ class ContextTests(unittest.TestCase):
         for size in (True, 1000, 3 * 1024 * 1024, 4096.5):
             with self.assertRaises(ValueError):
                 Config(self.config.workdir, "test", max_context_bytes=size)
+
+    def test_chat_budget_failure_keeps_history_and_local_preview_available(self):
+        provider, tools, emitted = Mock(), Mock(), []
+        agent = Agent(self.config, provider, tools, emitted.append)
+        history = []
+        agent.checkpoint = lambda messages: history.append(copy.deepcopy(messages))
+        with patch("builtins.input", side_effect=["/context", "/exit"]):
+            status = cli.chat(agent, "x" * 20000, None, emitted.append)
+        self.assertEqual(status, 1)
+        self.assertEqual(history[-1][-1]["content"], "x" * 20000)
+        self.assertTrue(any('"within_budget": false' in text for text in emitted))
+        provider.complete.assert_not_called()
 
 
 if __name__ == "__main__":

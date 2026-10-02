@@ -15,6 +15,7 @@ import time
 import uuid
 
 from .config import redact
+from .changes import ChangeError, ChangeHistory, unpack
 from .filesystem import Directory, is_link
 from .policy import FilePolicy, command_environment
 from .output import CommandOutput
@@ -60,10 +61,11 @@ def protected(name):
 
 
 class Tools:
-    def __init__(self, config, approve, cancel_event=None, emit_output=None):
+    def __init__(self, config, approve, cancel_event=None, emit_output=None, history=None):
         self.config, self.approve = config, approve
         self.cancel_event = cancel_event
         self.root = Directory(config.workdir)
+        self.history = history or ChangeHistory(config)
         self.policy = FilePolicy(self.root)
         self.emit_output = emit_output
 
@@ -73,6 +75,7 @@ class Tools:
 
     def close(self):
         self.root.close()
+        self.history.close()
 
     def _parts(self, path):
         if not isinstance(path, str) or not path or len(path) > 4096 or "\0" in path or "\\" in path:
@@ -144,7 +147,7 @@ class Tools:
                 raise ToolError("unknown tool")
             result = method(**arguments)
             return redact(result, self.config.api_key)
-        except (OSError, ToolError, TypeError, ValueError) as exc:
+        except (OSError, ToolError, ChangeError, TypeError, ValueError) as exc:
             return {"error": redact(str(exc), self.config.api_key)}
 
     def list_files(self, path="."):
@@ -291,6 +294,93 @@ class Tools:
             walk(directory, parts, 0)
         return {"files": sorted(files, key=lambda item: item["path"]), "truncated": truncated}
 
+    @staticmethod
+    def _diff(path, before, after):
+        return "".join(line if line.endswith("\n") else line + "\n\\ No newline at end of file\n"
+                       for line in difflib.unified_diff((before or "").splitlines(True), (after or "").splitlines(True),
+                                                       fromfile=path if before is not None else "/dev/null",
+                                                       tofile=path if after is not None else "/dev/null"))
+
+    def _snapshot(self, fd, name):
+        try:
+            data, info = self._read(fd, name, MAX_FILE), fd.stat(name)
+        except FileNotFoundError:
+            return None, None
+        if len(data) > MAX_FILE:
+            raise ToolError("file exceeds 512 KiB")
+        return data, info
+
+    def _unchanged(self, fd, name, before_raw, before_stat):
+        data, info = self._snapshot(fd, name)
+        if self._revision(info) != self._revision(before_stat) or data != before_raw:
+            raise ToolError("file changed during approval; request a fresh diff")
+
+    def _replace(self, fd, name, data, mode, before_stat):
+        if data is None:
+            fd.unlink(name)
+        else:
+            temp = f".sprig-{uuid.uuid4().hex}.tmp"
+            try:
+                fd.write_new(temp, data, mode, permissions_from=name if before_stat else None)
+                fd.replace(temp, name)
+            finally:
+                try:
+                    fd.unlink(temp)
+                except FileNotFoundError:
+                    pass
+        fd.sync()
+
+    def change_action(self, action):
+        """Local user controls only; deliberately absent from model tool schemas."""
+        try:
+            self._check_cancelled()
+            if action == "changes":
+                result = self.history.summary()
+            elif action == "discard-history":
+                description = "DISCARD exact edit backups (workspace files unchanged). Undo/redo will no longer be available.\n" + json.dumps(self.history.summary(), ensure_ascii=False)
+                if not self.approve(description):
+                    result = {"approved": False}
+                else:
+                    self._check_cancelled()
+                    self.history.discard()
+                    result = {"approved": True, "discarded": True}
+            else:
+                result = self._restore_change(action)
+            return redact(result, self.config.api_key)
+        except (OSError, ToolError, ChangeError, ValueError) as exc:
+            return {"error": redact(str(exc), self.config.api_key)}
+
+    def _restore_change(self, action):
+        if self.config.read_only:
+            return {"approved": False, "changed": False, "error": "read-only mode blocks undo/redo"}
+        record, revision = self.history.plan(action)
+        path = record["path"]
+        expected = unpack(record["after"] if action == "undo" else record["before"])
+        target = unpack(record["before"] if action == "undo" else record["after"])
+        with self._parent(path) as (fd, name):
+            current, info = self._snapshot(fd, name)
+            if current != expected or self._revision(info) != revision:
+                raise ToolError("file changed outside the recorded edit; undo/redo blocked to preserve external changes")
+            before = None if current is None else self._decode(current)
+            after = None if target is None else self._decode(target)
+            if self.config.api_key and any(self.config.api_key in (text or "") for text in (before, after)):
+                raise ToolError("configured API key must not appear in change backups")
+            description = action.upper() + " " + json.dumps(path) + "\n" + (self._diff(path, before, after) or "(empty file create/delete)")
+            if not self.approve(description):
+                return {"approved": False, "changed": False}
+            self._parts(path)  # File privacy rules may have changed during review.
+            self._unchanged(fd, name, current, info)
+            self._check_cancelled()
+            try:
+                self.history.begin_restore(action, path)
+                self._replace(fd, name, target, record["mode"], info)
+                self.history.complete(self._revision(fd.stat(name)) if target is not None else None)
+            except (OSError, ChangeError) as error:
+                return {"approved": True, "changed": False, "outcome": "uncertain", "path": path, "action": action,
+                        "error": "Restore outcome is uncertain; inspect current files and the pending backup before continuing: " + str(error)}
+        return {"approved": True, "changed": True, "path": path, "action": action,
+                "note": "Workspace changed; previous model conclusions and acceptance results need rechecking."}
+
     def edit_file(self, path, old, new):
         if self.config.read_only:
             return {"approved": False, "changed": False, "error": "read-only mode blocks file writes"}
@@ -299,14 +389,8 @@ class Tools:
         if len(old.encode("utf-8")) > MAX_FILE or len(new.encode("utf-8")) > MAX_FILE:
             raise ToolError("edit exceeds 512 KiB")
         with self._parent(path) as (fd, name):
-            try:
-                before_raw = self._read(fd, name, MAX_FILE)
-                before_stat = fd.stat(name)
-            except FileNotFoundError:
-                before_raw, before_stat = b"", None
-            if len(before_raw) > MAX_FILE:
-                raise ToolError("file exceeds 512 KiB")
-            before = self._decode(before_raw)
+            before_raw, before_stat = self._snapshot(fd, name)
+            before = self._decode(before_raw or b"")
             if before_stat is None:
                 if old:
                     raise ToolError("new files require old to be empty")
@@ -318,31 +402,22 @@ class Tools:
             data = after.encode("utf-8")
             if len(data) > MAX_FILE:
                 raise ToolError("result exceeds 512 KiB")
+            self._decode(data)
+            if self.config.api_key and (self.config.api_key in before or self.config.api_key in after):
+                raise ToolError("configured API key must not appear in change backups")
             if before_stat is not None and before == after:
                 return {"changed": False}
-            diff = "".join(line if line.endswith("\n") else line + "\n\\ No newline at end of file\n"
-                           for line in difflib.unified_diff(before.splitlines(True), after.splitlines(True),
-                                                           fromfile=path if before_stat else "/dev/null", tofile=path))
+            diff = self._diff(path, before if before_stat else None, after)
             if not self.approve(f"WRITE {json.dumps(path)}\n{diff or '(create empty file)'}"):
                 return {"approved": False, "changed": False}
             # Recheck after approval: an editor may have changed the file while the user read the diff.
-            try:
-                current_stat = fd.stat(name)
-            except FileNotFoundError:
-                current_stat = None
-            if self._revision(current_stat) != self._revision(before_stat) or (current_stat and self._read(fd, name, MAX_FILE) != before_raw):
-                raise ToolError("file changed during approval; request a fresh diff")
+            self._parts(path)
+            self._unchanged(fd, name, before_raw, before_stat)
             self._check_cancelled()
-            temp = f".sprig-{uuid.uuid4().hex}.tmp"
-            try:
-                fd.write_new(temp, data, stat.S_IMODE(before_stat.st_mode) & 0o777 if before_stat else 0o600,
-                             permissions_from=name if before_stat else None)
-                fd.replace(temp, name)
-            finally:
-                try:
-                    fd.unlink(temp)
-                except FileNotFoundError:
-                    pass
+            mode = stat.S_IMODE(before_stat.st_mode) & 0o777 if before_stat else 0o600
+            self.history.begin_edit(path, before_raw, data, mode, self._revision(before_stat))
+            self._replace(fd, name, data, mode, before_stat)
+            self.history.complete(self._revision(fd.stat(name)))
         return {"approved": True, "changed": True, "path": path}
 
     def run(self, argv, cwd=".", timeout=None):
@@ -370,6 +445,7 @@ class Tools:
             return {"approved": False}
         self._check_cancelled()
         # Unlike file tools, the approved program controls its own filesystem and network access.
+        self._parts(cwd)
         with self._directory(parts):
             pass
         env = command_environment(self.config)

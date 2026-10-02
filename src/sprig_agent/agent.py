@@ -34,6 +34,15 @@ class Agent:
     def context_preview(self, messages):
         return prepare_context(self.config, messages or [], self.schemas, compact=True)[1]
 
+    def record_workspace_change(self, messages, result):
+        if messages and (result.get("changed") or result.get("outcome") == "uncertain"):
+            messages.append({"role": "user", "content": redact(
+                "User local " + result["action"] + " of " + json.dumps(result["path"]) +
+                (" has an uncertain outcome" if result.get("outcome") == "uncertain" else " changed the workspace") +
+                ": prior conclusions and acceptance results are stale. Inspect current files and rerun the fixed acceptance checks before claiming completion.",
+                self.config.api_key)})
+            self.checkpoint(messages)
+
     def _steer(self, messages, pending_calls=()):
         """Accept FIFO user guidance only at a boundary with complete tool results."""
         tasks = self.receive_input()

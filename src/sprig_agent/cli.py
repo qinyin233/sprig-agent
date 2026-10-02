@@ -7,10 +7,11 @@ from pathlib import Path
 import sys
 
 from . import __version__
-from .agent import Agent
+from .agent import Agent, SYSTEM_PROMPT
+from .changes import ChangeError, ChangeHistory
 from .config import Config, redact, terminal_text
 from .provider import Provider, ProviderError
-from .session import SessionError, SessionStore
+from .session import SessionError, SessionStore, validate_history
 from .tools import Tools
 
 
@@ -38,10 +39,24 @@ def check_argv(text):
 def chat(agent, task, messages, emit):
     """Keep context across terminal turns; slash commands never call a model."""
     status = 0
+
+    def run(task):
+        nonlocal messages, status
+        # Own the list before entering the agent so a budget/network/checkpoint
+        # error does not throw away the turn and prevent local recovery commands.
+        if not messages:
+            messages = [{"role": "system", "content": SYSTEM_PROMPT}]
+        try:
+            messages, complete = agent.run(task, messages)
+            status = 0 if complete else 2
+        except (OSError, ValueError, ProviderError, SessionError) as error:
+            messages = validate_history(messages)
+            emit("Error: " + redact(str(error), agent.config.api_key) + "; conversation retained. Use local controls or enter a new request.")
+            status = 1
+
     if task or messages is not None:
-        messages, complete = agent.run(task, messages)
-        status = 0 if complete else 2
-    emit("Chat ready. Enter a task; /help, /status, /context, /compact, /diff, /git or /exit.")
+        run(task)
+    emit("Chat ready. Enter a task; /help, /status, /context, /compact, /changes, /undo, /redo, /diff, /git or /exit.")
     while True:
         try:
             task = input("sprig> ").strip()
@@ -52,7 +67,7 @@ def chat(agent, task, messages, emit):
         if task == "/exit":
             return status
         if task == "/help":
-            emit("Enter a task to continue the same conversation. /status shows local context; /context previews the request budget; /compact confirms request-only elision; /diff and /git show Git changes with approval; /exit closes chat.")
+            emit("Enter a task to continue the same conversation. /status shows local context; /context previews the request budget; /compact confirms request-only elision; /changes lists exact edit backups; /undo and /redo require diff approval; /discard-history confirms removal of backups; /diff and /git show Git changes with approval; /exit closes chat.")
         elif task == "/status":
             emit(f"Messages: {len(messages or [])} | model: {agent.config.model} | acceptance checks: {len(agent.config.checks)}")
         elif task == "/context":
@@ -62,6 +77,12 @@ def chat(agent, task, messages, emit):
             emit(json.dumps(preview, ensure_ascii=False, indent=2))
             if approve("Enable request-only elision of older successful tool output? User instructions, failures, refusals and the last six messages are preserved; saved history is unchanged."):
                 agent.compact_context = True
+        elif task in {"/changes", "/undo", "/redo", "/discard-history"}:
+            result = agent.tools.change_action(task[1:])
+            agent.record_workspace_change(messages, result)
+            emit(json.dumps(result, ensure_ascii=False, indent=2))
+            if result.get("changed") or "error" in result or result.get("approved") is False:
+                status = 2
         elif task in {"/diff", "/git"}:
             argv = ["git", "diff", "--", "."] if task == "/diff" else ["git", "status", "--short", "--", "."]
             result = agent.tools.execute("run", {"argv": argv})
@@ -69,8 +90,7 @@ def chat(agent, task, messages, emit):
         elif task.startswith("/"):
             emit("Unknown chat command. Use /help.")
         else:
-            messages, complete = agent.run(task, messages)
-            status = 0 if complete else 2
+            run(task)
 
 
 def main(argv=None):
@@ -99,9 +119,10 @@ def main(argv=None):
     group.add_argument("--list-sessions", action="store_true", help="list local session metadata without contacting a model")
     group.add_argument("--delete-session", metavar="NAME", help="delete one local session after confirmation")
     parser.add_argument("--session-dir", type=Path, default=Path.home() / ".local/state/sprig-agent/sessions")
+    parser.add_argument("--change-history-dir", type=Path, help="explicitly persist exact edit backups in a private directory outside the repository (not encrypted)")
     args = parser.parse_args(argv)
     key = os.environ.get("SPRIG_API_KEY") or os.environ.get("OPENAI_API_KEY", "")
-    store = tools = None
+    store = tools = history = None
     try:
         manage_sessions = args.list_sessions or args.delete_session
         if os.name not in {"posix", "nt"}:
@@ -131,7 +152,7 @@ def main(argv=None):
             raise ValueError("set SPRIG_API_KEY or OPENAI_API_KEY before using OpenAI")
         if args.tui:
             from .tui import run_tui
-            return run_tui(config, args.task, args.session_dir, args.save_session, args.resume)
+            return run_tui(config, args.task, args.session_dir, args.save_session, args.resume, change_dir=args.change_history_dir)
         emit = lambda text: print(terminal_text(redact(text, key)), flush=True)
         confirm = lambda text: approve(redact(text, key))
         emit_delta = lambda text: print(terminal_text(text), end="", flush=True)
@@ -148,7 +169,10 @@ def main(argv=None):
         emit("Prompts and tool results are sent to this endpoint. Commands are NOT sandboxed and may access outside files/network. Writes and commands require approval.")
         if store:
             emit("Local transcript saving enabled (not encrypted). Resume never replays pending actions.")
-        tools = Tools(config, confirm, emit_output=emit_delta)
+        history = ChangeHistory(config, args.change_history_dir)
+        if args.change_history_dir:
+            emit("Exact edit backups persist locally (not encrypted). Only file-tool edits can be undone; commands are not tracked.")
+        tools = Tools(config, confirm, emit_output=emit_delta, history=history)
         agent = Agent(config, Provider(config), tools, emit, checkpoint, emit_delta=emit_delta)
         if args.chat:
             return chat(agent, args.task, messages, emit)
@@ -157,11 +181,13 @@ def main(argv=None):
     except KeyboardInterrupt:
         print("Interrupted; no pending actions will be replayed on resume", file=sys.stderr)
         return 130
-    except (OSError, ValueError, ProviderError, SessionError) as exc:
+    except (OSError, ValueError, ChangeError, ProviderError, SessionError) as exc:
         print("Error: " + terminal_text(redact(str(exc), key)), file=sys.stderr)
         return 1
     finally:
         if tools:
             tools.close()
+        elif history:
+            history.close()
         if store:
             store.close()

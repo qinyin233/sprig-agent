@@ -121,7 +121,9 @@ class ChatTests(unittest.TestCase):
         with patch("builtins.input", side_effect=["/help", "/status", "/unknown", "", "next", "/exit"]):
             result = cli.chat(agent, "start", None, emitted.append)
         self.assertEqual(result, 0)
-        self.assertEqual([call.args for call in agent.run.call_args_list], [("start", None), ("next", first)])
+        self.assertEqual(agent.run.call_args_list[0].args[0], "start")
+        self.assertEqual(agent.run.call_args_list[0].args[1][0]["role"], "system")
+        self.assertEqual(agent.run.call_args_list[1].args, ("next", first))
         self.assertTrue(any("Messages: 1" in line for line in emitted))
 
     def test_no_initial_task_or_eof_does_not_contact_provider(self):
