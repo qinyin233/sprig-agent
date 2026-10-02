@@ -16,7 +16,8 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 from sprig_agent import cli
 from sprig_agent.agent import Agent
 from sprig_agent.config import Config
-from sprig_agent.session import validate_history
+from sprig_agent.provider import ProviderError
+from sprig_agent.session import SessionStore, validate_history
 from sprig_agent.tools import Tools
 
 
@@ -132,6 +133,14 @@ class ChatTests(unittest.TestCase):
             self.assertEqual(cli.chat(agent, None, None, lambda _: None), 0)
         agent.run.assert_not_called()
 
+    def test_continue_without_history_and_interrupting_input_do_not_call_model(self):
+        agent, emitted = Mock(), []
+        with patch("builtins.input", side_effect=[KeyboardInterrupt(), "/continue", "/exit"]):
+            self.assertEqual(cli.chat(agent, None, None, emitted.append), 0)
+        agent.run.assert_not_called()
+        self.assertTrue(any("Input cancelled" in line for line in emitted))
+        self.assertTrue(any("No task to continue" in line for line in emitted))
+
     def test_git_commands_show_local_results_without_uploading_them(self):
         agent, emitted = Mock(), []
         agent.config.api_key = "fake-secret"
@@ -158,6 +167,140 @@ class ChatTests(unittest.TestCase):
                 redirect_stdout(io.StringIO()), redirect_stderr(io.StringIO()):
             self.assertEqual(cli.main(["--chat", "--model", "test"]), 1)
         provider.assert_not_called()
+
+
+class ChatRecoveryTests(unittest.TestCase):
+    def setUp(self):
+        temporary = tempfile.TemporaryDirectory()
+        self.addCleanup(temporary.cleanup)
+        self.parent = Path(temporary.name)
+        self.root = self.parent / "workspace"
+        self.root.mkdir()
+        self.config = Config(self.root, "test", api_key="fixture-secret")
+        self.store = SessionStore(self.parent / "sessions", self.config)
+        self.addCleanup(self.store.close)
+        self.store.ensure_new("chat")
+        self.tools = Tools(self.config, lambda _: True)
+        self.addCleanup(self.tools.close)
+        self.emitted, self.requests = [], []
+
+    def agent(self, replies):
+        replies = iter(replies)
+        provider = Mock()
+
+        def complete(messages, tools):
+            self.requests.append(copy.deepcopy(messages))
+            reply = next(replies)
+            if isinstance(reply, BaseException):
+                raise reply
+            return reply
+
+        provider.complete.side_effect = complete
+        return Agent(self.config, provider, self.tools, self.emitted.append,
+                     lambda history: self.store.save("chat", history))
+
+    def test_cancelled_request_keeps_saved_history_and_does_not_restart_for_local_controls(self):
+        agent = self.agent([KeyboardInterrupt()])
+        with patch("builtins.input", side_effect=["/status", "/context", "/changes", "/exit"]):
+            self.assertEqual(cli.chat(agent, "keep this request", None, self.emitted.append), 130)
+        self.assertEqual(len(self.requests), 1)
+        self.assertEqual(self.store.load("chat")[-1], {"role": "user", "content": "keep this request"})
+        self.assertTrue(any("last status: 130" in line for line in self.emitted))
+
+    def test_explicit_continue_retains_request_without_duplicating_it_after_network_error(self):
+        agent = self.agent([ProviderError("fixture connection failed"), {"role": "assistant", "content": "Recovered"}])
+
+        def read(_):
+            if len(self.requests) == 1:
+                self.assertEqual(self.store.load("chat")[-1]["content"], "original request")
+                return "/continue"
+            return "/exit"
+
+        with patch("builtins.input", side_effect=read):
+            self.assertEqual(cli.chat(agent, "original request", None, self.emitted.append), 0)
+        self.assertEqual(len(self.requests), 2)
+        self.assertEqual([message["content"] for message in self.requests[1] if message["role"] == "user"], ["original request"])
+
+    def test_interrupted_file_edit_is_saved_as_uncertain_and_never_replayed_on_continue(self):
+        edit = {"role": "assistant", "content": None, "tool_calls": [{"id": "edit", "type": "function", "function": {
+            "name": "edit_file", "arguments": json.dumps({"path": "value.txt", "old": "", "new": "written"})}}]}
+        agent = self.agent([edit, {"role": "assistant", "content": "Inspect the saved result"}])
+        execute = self.tools.execute
+
+        def interrupt(name, arguments):
+            result = execute(name, arguments)
+            self.assertTrue(result["changed"])
+            raise KeyboardInterrupt
+
+        def read(_):
+            if len(self.requests) == 1:
+                saved = self.store.load("chat")
+                self.assertIn("NOT replayed", saved[-1]["content"])
+                self.assertEqual((self.root / "value.txt").read_text(), "written")
+                return "/continue"
+            return "/exit"
+
+        with patch.object(self.tools, "execute", side_effect=interrupt) as tool, patch("builtins.input", side_effect=read):
+            self.assertEqual(cli.chat(agent, "write once", None, self.emitted.append), 0)
+        self.assertEqual(tool.call_count, 1)
+        self.assertIn("NOT replayed", self.requests[1][-1]["content"])
+        self.assertEqual(self.store.load("chat"), validate_history(self.store.load("chat")))
+
+    def test_undo_checkpoint_error_preserves_actual_change_and_keeps_local_controls_usable(self):
+        edit = {"role": "assistant", "content": None, "tool_calls": [{"id": "edit", "type": "function", "function": {
+            "name": "edit_file", "arguments": json.dumps({"path": "value.txt", "old": "", "new": "written"})}}]}
+        agent = self.agent([edit, {"role": "assistant", "content": "Done"}])
+        original = agent.checkpoint
+        failures = []
+
+        def checkpoint(history):
+            if history[-1].get("role") == "user" and "User local undo" in history[-1]["content"] and not failures:
+                failures.append(True)
+                raise OSError("fixture-secret disk full")
+            original(history)
+
+        agent.checkpoint = checkpoint
+        with patch("builtins.input", side_effect=["/undo", "/status", "/changes", "/exit"]):
+            self.assertEqual(cli.chat(agent, "write", None, self.emitted.append), 1)
+        self.assertFalse((self.root / "value.txt").exists())
+        self.assertEqual(len(self.requests), 2)
+        self.assertIn("stale", self.store.load("chat")[-1]["content"])
+        self.assertNotIn("fixture-secret", "".join(self.emitted))
+        self.assertTrue(any("last status: 1" in line for line in self.emitted))
+
+    def test_local_command_invalidates_prior_conclusions_without_uploading_its_output(self):
+        agent = self.agent([{"role": "assistant", "content": "Done"}])
+        with patch.object(self.tools, "execute", return_value={"approved": True, "returncode": 0, "output": "LOCAL_ONLY"}), \
+                patch("builtins.input", side_effect=["/git", "/status", "/exit"]):
+            self.assertEqual(cli.chat(agent, "task", None, self.emitted.append), 2)
+        self.assertEqual(len(self.requests), 1)
+        saved = self.store.load("chat")
+        self.assertIn("stale", saved[-1]["content"])
+        self.assertNotIn("LOCAL_ONLY", json.dumps(saved))
+        self.assertTrue(any("LOCAL_ONLY" in line for line in self.emitted))
+
+    def test_failed_history_validation_blocks_further_model_requests(self):
+        agent = self.agent([ProviderError("fixture error")])
+        original = agent.checkpoint
+
+        def corrupt(messages):
+            original(messages)
+            messages.append({"role": "bad", "content": "invalid"})
+            raise OSError("fixture checkpoint error")
+
+        agent.checkpoint = corrupt
+        with patch("builtins.input", side_effect=["/continue", "new request", "/exit"]):
+            self.assertEqual(cli.chat(agent, "task", None, self.emitted.append), 1)
+        self.assertEqual(len(self.requests), 0)
+        self.assertTrue(any("no model request sent" in line for line in self.emitted))
+
+    def test_interrupted_local_command_records_uncertainty_and_keeps_chat_open(self):
+        agent = self.agent([{"role": "assistant", "content": "Done"}])
+        with patch.object(self.tools, "execute", side_effect=KeyboardInterrupt()), \
+                patch("builtins.input", side_effect=["/git", "/status", "/exit"]):
+            self.assertEqual(cli.chat(agent, "task", None, self.emitted.append), 130)
+        self.assertEqual(len(self.requests), 1)
+        self.assertIn("prior acceptance is stale", self.store.load("chat")[-1]["content"])
 
 
 if __name__ == "__main__":

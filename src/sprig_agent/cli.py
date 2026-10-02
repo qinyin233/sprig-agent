@@ -37,11 +37,36 @@ def check_argv(text):
 
 
 def chat(agent, task, messages, emit):
-    """Keep context across terminal turns; slash commands never call a model."""
+    """Keep context across turns; only a new task or /continue calls the model."""
     status = 0
+    history_ready = True
+
+    def recover(cancelled, error=None):
+        nonlocal messages, status, history_ready
+        status = 130 if cancelled else 1
+        label = "Task cancelled" if cancelled else "Error: " + redact(str(error), agent.config.api_key)
+        if messages:
+            try:
+                messages = validate_history(messages)
+            except SessionError as recovery_error:
+                history_ready = False
+                status = 1
+                emit(label + "; history validation failed: " + redact(str(recovery_error), agent.config.api_key)
+                     + ". Model requests are blocked; use local controls or /exit and start a new session.")
+                return
+            try:
+                agent.checkpoint(messages)
+            except (OSError, ValueError, ChangeError, SessionError) as save_error:
+                status = 1
+                emit("Conversation retained in memory, but saving failed: " + redact(str(save_error), agent.config.api_key))
+        emit(label + "; conversation retained. Pending actions will NOT be replayed. Use /continue or enter a new request when ready.")
 
     def run(task):
         nonlocal messages, status
+        if not history_ready:
+            status = 1
+            emit("History is not valid; no model request sent. Use local controls or /exit and start a new session.")
+            return
         # Own the list before entering the agent so a budget/network/checkpoint
         # error does not throw away the turn and prevent local recovery commands.
         if not messages:
@@ -49,48 +74,74 @@ def chat(agent, task, messages, emit):
         try:
             messages, complete = agent.run(task, messages)
             status = 0 if complete else 2
-        except (OSError, ValueError, ProviderError, SessionError) as error:
-            messages = validate_history(messages)
-            emit("Error: " + redact(str(error), agent.config.api_key) + "; conversation retained. Use local controls or enter a new request.")
-            status = 1
+        except KeyboardInterrupt:
+            recover(True)
+        except (OSError, ValueError, ChangeError, ProviderError, SessionError) as error:
+            recover(False, error)
 
     if task or messages is not None:
         run(task)
-    emit("Chat ready. Enter a task; /help, /status, /context, /compact, /changes, /undo, /redo, /diff, /git or /exit.")
+    emit("Chat ready. Enter a task; /continue, /help, /status, /context, /compact, /changes, /undo, /redo, /diff, /git or /exit.")
     while True:
         try:
             task = input("sprig> ").strip()
         except EOFError:
             return status
+        except KeyboardInterrupt:
+            emit("Input cancelled; conversation retained. Use /exit to close chat.")
+            continue
         if not task:
             continue
         if task == "/exit":
             return status
-        if task == "/help":
-            emit("Enter a task to continue the same conversation. /status shows local context; /context previews the request budget; /compact confirms request-only elision; /changes lists exact edit backups; /undo and /redo require diff approval; /discard-history confirms removal of backups; /diff and /git show Git changes with approval; /exit closes chat.")
-        elif task == "/status":
-            emit(f"Messages: {len(messages or [])} | model: {agent.config.model} | acceptance checks: {len(agent.config.checks)}")
-        elif task == "/context":
-            emit(json.dumps(agent.context_preview(messages), ensure_ascii=False, indent=2))
-        elif task == "/compact":
-            preview = agent.context_preview(messages)
-            emit(json.dumps(preview, ensure_ascii=False, indent=2))
-            if approve("Enable request-only elision of older successful tool output? User instructions, failures, refusals and the last six messages are preserved; saved history is unchanged."):
-                agent.compact_context = True
-        elif task in {"/changes", "/undo", "/redo", "/discard-history"}:
-            result = agent.tools.change_action(task[1:])
-            agent.record_workspace_change(messages, result)
-            emit(json.dumps(result, ensure_ascii=False, indent=2))
-            if result.get("changed") or "error" in result or result.get("approved") is False:
-                status = 2
-        elif task in {"/diff", "/git"}:
-            argv = ["git", "diff", "--", "."] if task == "/diff" else ["git", "status", "--short", "--", "."]
-            result = agent.tools.execute("run", {"argv": argv})
-            emit(json.dumps(redact(result, agent.config.api_key), ensure_ascii=False))
-        elif task.startswith("/"):
-            emit("Unknown chat command. Use /help.")
-        else:
-            run(task)
+        try:
+            if task == "/help":
+                emit("Enter a task to continue the same conversation. /continue explicitly continues retained history without adding a duplicate request; /status shows local context; /context previews the request budget; /compact confirms request-only elision; /changes lists exact edit backups; /undo and /redo require diff approval; /discard-history confirms removal of backups; /diff and /git show Git changes with approval; /exit closes chat.")
+            elif task == "/continue":
+                if messages and len(messages) >= 2:
+                    run(None)
+                else:
+                    emit("No task to continue. Enter a task first.")
+            elif task == "/status":
+                emit(f"Messages: {len(messages or [])} | model: {agent.config.model} | acceptance checks: {len(agent.config.checks)} | last status: {status}")
+            elif task == "/context":
+                emit(json.dumps(agent.context_preview(messages), ensure_ascii=False, indent=2))
+            elif task == "/compact":
+                preview = agent.context_preview(messages)
+                emit(json.dumps(preview, ensure_ascii=False, indent=2))
+                if approve("Enable request-only elision of older successful tool output? User instructions, failures, refusals and the last six messages are preserved; saved history is unchanged."):
+                    agent.compact_context = True
+            elif task in {"/changes", "/undo", "/redo", "/discard-history"}:
+                result = agent.tools.change_action(task[1:])
+                if result.get("changed") or result.get("outcome") == "uncertain":
+                    status = 2
+                elif ("error" in result or result.get("approved") is False) and status == 0:
+                    status = 2
+                if history_ready:
+                    agent.record_workspace_change(messages, result)
+                emit(json.dumps(result, ensure_ascii=False, indent=2))
+            elif task in {"/diff", "/git"}:
+                argv = ["git", "diff", "--", "."] if task == "/diff" else ["git", "status", "--short", "--", "."]
+                result = agent.tools.execute("run", {"argv": argv})
+                if result.get("approved") and messages:
+                    status = 2
+                    if history_ready:
+                        agent.record_workspace_change(messages, {"action": "command", "path": ".", "outcome": "uncertain"})
+                elif ("error" in result or result.get("approved") is False or result.get("returncode", 0) != 0) and status == 0:
+                    status = 2
+                emit(json.dumps(redact(result, agent.config.api_key), ensure_ascii=False))
+            elif task.startswith("/"):
+                emit("Unknown chat command. Use /help.")
+            else:
+                run(task)
+        except KeyboardInterrupt:
+            if task in {"/diff", "/git"} and messages and history_ready:
+                # An interrupt can occur after an approved command starts.
+                # Retain only the uncertainty notice, never local command output.
+                messages.append({"role": "user", "content": "A local command was interrupted and may have changed the workspace; prior acceptance is stale. Inspect current files before continuing."})
+            recover(True)
+        except (OSError, ValueError, ChangeError, ProviderError, SessionError) as error:
+            recover(False, error)
 
 
 def main(argv=None):
