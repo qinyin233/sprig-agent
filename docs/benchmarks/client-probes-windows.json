@@ -1,0 +1,215 @@
+{
+  "scope": "native metadata/help probe; mini uses a help-only prompt IO adapter; no model requests, task scores, TUI readiness or total memory comparison",
+  "platform": "Windows-11-10.0.26300-SP0",
+  "controller_python": "3.13.0",
+  "repeat": 5,
+  "recorded_at_utc": "2026-10-03T17:17:35.535152+00:00",
+  "driver_sha256": "c5c2f970978d7928ea081151a813074cab29cbe49cf41abc00e1a8713b882977",
+  "child_sha256": "c19191011d9cc162357ca218b9695594eac0ca33aed459568d75f68f48c9b343",
+  "mini_help_sha256": "0ab6518ded43110b02785af1befdd0a267f029ea3bbe8e8dd38b7efce9d75f10",
+  "locks": {
+    "sprig": "7c931de334968246daedac504a0612b0afe6575f91416a5918cbc95068231ef7",
+    "aider": "3f257144eac41c5248631a8c5a6ac827c2c8e44081f68b5653262df3dad91568",
+    "mini": "b9c51fe7beacbc9536101272c1cbe518158e1339f898bc8d58e289c8cf6f8387",
+    "node": "2b170458aa273187c31eb354ce15a0b8892c71f76bb70fba0610cebb467712a3"
+  },
+  "clients": [
+    {
+      "client": "sprig",
+      "expected_version": "0.1.0",
+      "entry_sha256": "54b03e855f97486e599dc3a167ddae797cef3361484bdc7ad9e4af614f652cf8",
+      "success": true,
+      "runtime": {
+        "name": "python",
+        "version": "3.13.0",
+        "valid": true
+      },
+      "invocations": [
+        {
+          "option": "--version",
+          "runs": 5,
+          "valid": true,
+          "first_ms": 242.77,
+          "median_ms": 255.166,
+          "max_ms": 285.545,
+          "output_bytes": [
+            7,
+            7,
+            7,
+            7,
+            7
+          ]
+        },
+        {
+          "option": "--help",
+          "runs": 1,
+          "valid": true,
+          "first_ms": 237.756,
+          "median_ms": 237.756,
+          "max_ms": 237.756,
+          "output_bytes": [
+            2634
+          ]
+        }
+      ],
+      "entry_unchanged": true
+    },
+    {
+      "client": "aider",
+      "expected_version": "0.86.2",
+      "entry_sha256": "960fed19f6b5c07636c9aeb2e6882986d8a7762d29b5e62da53344036e736768",
+      "success": true,
+      "runtime": {
+        "name": "python",
+        "version": "3.12.12",
+        "valid": true
+      },
+      "invocations": [
+        {
+          "option": "--version",
+          "runs": 5,
+          "valid": true,
+          "first_ms": 1042.535,
+          "median_ms": 1061.698,
+          "max_ms": 1095.946,
+          "output_bytes": [
+            20,
+            20,
+            20,
+            20,
+            20
+          ]
+        },
+        {
+          "option": "--help",
+          "runs": 1,
+          "valid": true,
+          "first_ms": 1100.815,
+          "median_ms": 1100.815,
+          "max_ms": 1100.815,
+          "output_bytes": [
+            30960
+          ]
+        }
+      ],
+      "entry_unchanged": true
+    },
+    {
+      "client": "opencode",
+      "expected_version": "1.18.34",
+      "entry_sha256": "5283c2cd5b4285855daa97e6f7d17bf48146227cdf2a940e79e0f2b7869fd06e",
+      "success": true,
+      "runtime": null,
+      "invocations": [
+        {
+          "option": "--version",
+          "runs": 5,
+          "valid": true,
+          "first_ms": 598.081,
+          "median_ms": 598.081,
+          "max_ms": 609.751,
+          "output_bytes": [
+            8,
+            8,
+            8,
+            8,
+            8
+          ]
+        },
+        {
+          "option": "--help",
+          "runs": 1,
+          "valid": true,
+          "first_ms": 618.469,
+          "median_ms": 618.469,
+          "max_ms": 618.469,
+          "output_bytes": [
+            4291
+          ]
+        }
+      ],
+      "entry_unchanged": true
+    },
+    {
+      "client": "pi",
+      "expected_version": "1.0.0",
+      "entry_sha256": "e79626f2dd6f94aa45d30f3fa63cd84319a6eefcd150b353cfaf274366926774",
+      "success": true,
+      "runtime": {
+        "name": "node",
+        "version": "24.11.1",
+        "valid": true
+      },
+      "invocations": [
+        {
+          "option": "--version",
+          "runs": 5,
+          "valid": true,
+          "first_ms": 307.337,
+          "median_ms": 306.773,
+          "max_ms": 317.693,
+          "output_bytes": [
+            6,
+            6,
+            6,
+            6,
+            6
+          ]
+        },
+        {
+          "option": "--help",
+          "runs": 1,
+          "valid": true,
+          "first_ms": 371.936,
+          "median_ms": 371.936,
+          "max_ms": 371.936,
+          "output_bytes": [
+            10325
+          ]
+        }
+      ],
+      "entry_unchanged": true
+    },
+    {
+      "client": "mini",
+      "expected_version": "2.4.6",
+      "entry_sha256": "960fed19f6b5c07636c9aeb2e6882986d8a7762d29b5e62da53344036e736768",
+      "success": true,
+      "runtime": {
+        "name": "python",
+        "version": "3.12.12",
+        "valid": true
+      },
+      "invocations": [
+        {
+          "option": "distribution-version",
+          "runs": 5,
+          "valid": true,
+          "first_ms": 211.824,
+          "median_ms": 213.535,
+          "max_ms": 232.301,
+          "output_bytes": [
+            7,
+            7,
+            7,
+            7,
+            7
+          ]
+        },
+        {
+          "option": "--help",
+          "runs": 1,
+          "valid": true,
+          "first_ms": 1347.956,
+          "median_ms": 1347.956,
+          "max_ms": 1347.956,
+          "output_bytes": [
+            4490
+          ]
+        }
+      ],
+      "entry_unchanged": true
+    }
+  ],
+  "success": true
+}

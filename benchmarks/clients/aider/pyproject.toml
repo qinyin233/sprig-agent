@@ -1,0 +1,11 @@
+[project]
+name = "sprig-aider-comparison"
+version = "0.1.0"
+requires-python = ">=3.12,<3.13"
+dependencies = [
+    "aider-chat==0.86.2",
+]
+
+[[tool.uv.index]]
+url = "https://pypi.org/simple"
+default = true

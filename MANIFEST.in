@@ -1,4 +1,9 @@
 include .python-version uv.lock
 recursive-include docs *.md *.json
 recursive-include scripts *.py *.ps1
-recursive-include benchmarks *.py *.json
+recursive-include benchmarks/coding *.py *.json
+include benchmarks/clients/probe_child.py
+include benchmarks/clients/mini_help.py
+include benchmarks/clients/aider/pyproject.toml benchmarks/clients/aider/uv.lock benchmarks/clients/aider/.python-version
+include benchmarks/clients/mini/pyproject.toml benchmarks/clients/mini/uv.lock benchmarks/clients/mini/.python-version
+include benchmarks/clients/node/package.json benchmarks/clients/node/package-lock.json

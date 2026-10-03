@@ -30,3 +30,30 @@ jobs:
       - run: uv run --frozen --python ${{ matrix.python }} python -m unittest discover -s tests -v
       - run: uv run --frozen --python ${{ matrix.python }} sprig --help
       - run: uv build --sdist --wheel
+  client-probes:
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
+        with:
+          node-version: '24'
+          package-manager-cache: false
+      - uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9 # v9.0.0
+        with:
+          enable-cache: true
+      - run: uv sync --locked --python 3.12
+      - run: uv sync --project benchmarks/clients/aider --locked --python 3.12
+      - run: uv sync --project benchmarks/clients/mini --locked --python 3.12
+      - run: npm ci --ignore-scripts --no-audit --no-fund
+        working-directory: benchmarks/clients/node
+      - run: node node_modules/opencode-ai/postinstall.mjs
+        working-directory: benchmarks/clients/node
+      - run: uv run --locked --python 3.12 python scripts/benchmark-clients.py --repeat 1

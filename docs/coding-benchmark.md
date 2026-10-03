@@ -42,6 +42,8 @@ JavaScript 任务需要 Node.js。CI 显式安装 Node 24，在 Windows、Linux�
 
 ## 竞品使用相同输入
 
+固定 Aider、OpenCode、Pi、mini-SWE-agent 的环境与跨平台元数据/帮助检查见 [客户端对照准备](client-comparison.md)。这是安装和接口验证，尚未完成竞品真实任务运行适配。
+
 ```powershell
 uv run --locked python scripts/benchmark-tasks.py --prepare C:\Users\25079\AppData\Local\Temp\sprig-comparison-01 --case py-pagination
 ```
