@@ -21,6 +21,7 @@ from .index import SymbolIndex, language_for
 from .map_selection import MapSelection, encoded_size
 from .policy import FilePolicy, command_environment
 from .output import CommandOutput
+from .syntax import IndexUnavailable
 
 MAX_FILE = 512 * 1024
 MAX_READ = 8 * 1024 * 1024
@@ -342,6 +343,9 @@ class Tools:
                                         record["symbols_unavailable"] = True
                                     else:
                                         record["symbols"] = symbols
+                                except IndexUnavailable:
+                                    truncated = True
+                                    record["symbols_unavailable"] = True
                                 except (ValueError, ToolError):
                                     record["symbols_unavailable"] = True
                         if selection is not None:

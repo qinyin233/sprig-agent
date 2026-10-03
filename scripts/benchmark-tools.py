@@ -16,6 +16,7 @@ import sys
 import tarfile
 import tempfile
 import time
+import tracemalloc
 
 REPO = Path(__file__).resolve().parents[1]
 
@@ -64,9 +65,47 @@ def measure(source, repeat):
                 digest.update(file.relative_to(source).as_posix().encode() + b"\0" + file.read_bytes())
             return {"source_sha256": digest.hexdigest(), "ranged_reads": ranged, "cases": cases, "project_map": mapping,
                     "multilingual_map": measure_multilingual(Config, Tools, unexpected_approval, repeat),
-                    "focused_map": measure_focused_map(Config, Tools, unexpected_approval, repeat)}
+                    "focused_map": measure_focused_map(Config, Tools, unexpected_approval, repeat),
+                    "python_index_bounds": measure_index_bounds(Config, Tools, unexpected_approval, repeat)}
         finally:
             tools.close()
+
+
+def measure_index_bounds(Config, Tools, approve, repeat):
+    fixtures = {
+        "qualified_name_amplification": "class " + "A" * 20000 + ":\n" + "".join(f"    def f{number}(self): pass\n" for number in range(512)),
+        "many_declarations": "\n".join(f"def f{number}(): pass" for number in range(4097)),
+        "ordinary_class": "class Service:\n" + "".join(f"    def f{number}(self): pass\n" for number in range(128)),
+    }
+    cases = []
+    with tempfile.TemporaryDirectory(prefix="sprig-index-bound-bench-") as temporary:
+        root = Path(temporary)
+        for name, body in fixtures.items():
+            (root / "sample.py").write_text(body, encoding="utf-8", newline="")
+            timings, peaks, bodies = [], [], []
+            for _ in range(repeat):
+                # Fresh index every time. Trace only the actual map call, not
+                # fixture construction, imports or encoding the final report.
+                tools = Tools(Config(root, "offline", read_only=True, max_output=1000000), approve)
+                try:
+                    tracemalloc.start()
+                    started = time.perf_counter()
+                    result = tools.execute("project_map", {})
+                    timings.append((time.perf_counter() - started) * 1000)
+                    peaks.append(tracemalloc.get_traced_memory()[1])
+                finally:
+                    tracemalloc.stop()
+                    tools.close()
+                bodies.append(json.dumps(result, sort_keys=True, ensure_ascii=False, separators=(",", ":")).encode())
+            cases.append({"case": name, "source_bytes": len(body.encode()), "source_sha256": hashlib.sha256(body.encode()).hexdigest(),
+                          "runs": repeat, "median_ms": round(statistics.median(timings), 3), "max_ms": round(max(timings), 3),
+                          "median_traced_peak_bytes": int(statistics.median(peaks)), "max_traced_peak_bytes": max(peaks),
+                          "returned_symbols": sum(len(file.get("symbols", [])) for file in result.get("files", [])),
+                          "symbols_unavailable": any(file.get("symbols_unavailable") for file in result.get("files", [])),
+                          "truncated": result.get("truncated"), "tool_result_bytes": len(bodies[0]),
+                          "result_sha256": hashlib.sha256(bodies[0]).hexdigest(), "results_identical": len(set(bodies)) == 1})
+    return {"scope": "fresh Python map calls with tracemalloc; traced Python allocation peak, not total process RSS or native memory",
+            "max_output": 1000000, "cases": cases}
 
 
 def measure_map(root, Config, Tools, approve, repeat):
@@ -243,6 +282,7 @@ def main():
                   "textual", "tree-sitter", "tree-sitter-javascript", "tree-sitter-typescript",
                   "tree-sitter-rust", "tree-sitter-go", "tree-sitter-c", "tree-sitter-cpp", "tree-sitter-java")},
               "revision": git("rev-parse", "HEAD").decode().strip(),
+              "driver_sha256": hashlib.sha256(Path(__file__).read_bytes()).hexdigest(),
               "dirty": bool(git("status", "--porcelain")), "repeat": args.repeat,
               "current": worker(REPO / "src", args.repeat)}
     if args.compare_ref:

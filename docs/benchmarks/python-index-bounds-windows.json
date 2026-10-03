@@ -1,0 +1,355 @@
+{
+  "scope": "offline retrieval and multilingual parsing; no model/API or coding-task success comparison",
+  "python": "3.13.0",
+  "platform": "Windows-11-10.0.26300-SP0",
+  "dependencies": {
+    "textual": "8.2.8",
+    "tree-sitter": "0.25.2",
+    "tree-sitter-javascript": "0.25.0",
+    "tree-sitter-typescript": "0.23.2",
+    "tree-sitter-rust": "0.24.2",
+    "tree-sitter-go": "0.25.0",
+    "tree-sitter-c": "0.24.2",
+    "tree-sitter-cpp": "0.23.4",
+    "tree-sitter-java": "0.23.5"
+  },
+  "revision": "e51079965f25f0993734ad00a0ab0c8ea2ae9d15",
+  "driver_sha256": "69972da5055f809c1b063b3a3838d12d40042703d6ed1b47bb41ef141ab847ea",
+  "dirty": true,
+  "repeat": 11,
+  "current": {
+    "source_sha256": "600551d5cb42acb9866780b7ff1b95c13bda30965f7d19f18b9e89a7d8fdcc76",
+    "ranged_reads": true,
+    "cases": [
+      {
+        "case": "small.py",
+        "target_found_runs": 11,
+        "runs": 11,
+        "median_ms": 5.767,
+        "max_ms": 26.661,
+        "tool_result_bytes": 167,
+        "stable_result_size": true,
+        "tool_calls_per_run": 2
+      },
+      {
+        "case": "early.py",
+        "target_found_runs": 11,
+        "runs": 11,
+        "median_ms": 7.909,
+        "max_ms": 9.395,
+        "tool_result_bytes": 166,
+        "stable_result_size": true,
+        "tool_calls_per_run": 2
+      },
+      {
+        "case": "late.py",
+        "target_found_runs": 11,
+        "runs": 11,
+        "median_ms": 7.8,
+        "max_ms": 9.09,
+        "tool_result_bytes": 175,
+        "stable_result_size": true,
+        "tool_calls_per_run": 2
+      }
+    ],
+    "project_map": {
+      "files": 103,
+      "symbols": 10003,
+      "first_ms": 183.402,
+      "median_repeated_ms": 44.354,
+      "max_repeated_ms": 51.264,
+      "repeated_runs": 11,
+      "first_parse_calls": 103,
+      "repeated_parse_calls": 0,
+      "tool_result_bytes": 611052,
+      "result_sha256": "b962a3e5a26690f040c6b9d571cf33173eb1396b34e205bdeea6630f3579ffee",
+      "results_identical": true
+    },
+    "multilingual_map": {
+      "files": 80,
+      "complete_declaration_files": 80,
+      "expected_symbols": 810,
+      "returned_symbols": 810,
+      "first_ms": 46.114,
+      "median_repeated_ms": 15.606,
+      "max_repeated_ms": 17.86,
+      "repeated_runs": 11,
+      "first_parse_calls": 80,
+      "repeated_parse_calls": 0,
+      "tool_result_bytes": 50699,
+      "result_sha256": "d69e87a42ad0ca8e1b79468807178b6a8d83e0c7de533cb2fa867fd10ff7d1a0",
+      "results_identical": true
+    },
+    "focused_map": {
+      "scope": "one 1,001-declaration fixture; target lookup intentionally omits other declarations, not identical full-map contents or model success",
+      "supports_query": true,
+      "fixture_sha256": "83af6f8dccfb3410e219a4050426d634f17d832c10bca0c5cb13a447b163c42b",
+      "cases": [
+        {
+          "case": "default_budget_full_map",
+          "max_output": 16000,
+          "query_used": false,
+          "target_found_runs": 0,
+          "runs": 11,
+          "first_ms": 9.278,
+          "median_repeated_ms": 1.423,
+          "max_repeated_ms": 2.19,
+          "tool_result_bytes": 77,
+          "returned_symbols": 0,
+          "truncated": true,
+          "results_identical": true
+        },
+        {
+          "case": "complete_budget_full_map",
+          "max_output": 1000000,
+          "query_used": false,
+          "target_found_runs": 11,
+          "runs": 11,
+          "first_ms": 6.58,
+          "median_repeated_ms": 2.006,
+          "max_repeated_ms": 2.413,
+          "tool_result_bytes": 50910,
+          "returned_symbols": 1001,
+          "truncated": false,
+          "results_identical": true
+        },
+        {
+          "case": "default_budget_target_lookup",
+          "max_output": 16000,
+          "query_used": true,
+          "target_found_runs": 11,
+          "runs": 11,
+          "first_ms": 5.551,
+          "median_repeated_ms": 1.313,
+          "max_repeated_ms": 1.758,
+          "tool_result_bytes": 169,
+          "returned_symbols": 1,
+          "truncated": false,
+          "results_identical": true
+        }
+      ]
+    },
+    "python_index_bounds": {
+      "scope": "fresh Python map calls with tracemalloc; traced Python allocation peak, not total process RSS or native memory",
+      "max_output": 1000000,
+      "cases": [
+        {
+          "case": "qualified_name_amplification",
+          "source_bytes": 32698,
+          "source_sha256": "11a106b52658502d272e0e3fccbd4af0c1cf8615c322cf8556be09ec6547a325",
+          "runs": 11,
+          "median_ms": 16.201,
+          "max_ms": 18.144,
+          "median_traced_peak_bytes": 2345024,
+          "max_traced_peak_bytes": 2388981,
+          "returned_symbols": 0,
+          "symbols_unavailable": true,
+          "truncated": true,
+          "tool_result_bytes": 76,
+          "result_sha256": "763705e4cc3d89d5efc8c4223e508fdd143a432438db00d2ed83bcbb5e99f245",
+          "results_identical": true
+        },
+        {
+          "case": "many_declarations",
+          "source_bytes": 72635,
+          "source_sha256": "f3daa4968b98eb6f766633b897b60a74df9e56c00cbf67afa6a98f55a2aad260",
+          "runs": 11,
+          "median_ms": 98.128,
+          "max_ms": 103.38,
+          "median_traced_peak_bytes": 12287490,
+          "max_traced_peak_bytes": 12451976,
+          "returned_symbols": 0,
+          "symbols_unavailable": true,
+          "truncated": true,
+          "tool_result_bytes": 76,
+          "result_sha256": "763705e4cc3d89d5efc8c4223e508fdd143a432438db00d2ed83bcbb5e99f245",
+          "results_identical": true
+        },
+        {
+          "case": "ordinary_class",
+          "source_bytes": 3105,
+          "source_sha256": "8ace7eec77c0adf34c57a65aed1ef053e7ef0692b0c15cd09369c84319327344",
+          "runs": 11,
+          "median_ms": 5.938,
+          "max_ms": 6.341,
+          "median_traced_peak_bytes": 556213,
+          "max_traced_peak_bytes": 571149,
+          "returned_symbols": 129,
+          "symbols_unavailable": false,
+          "truncated": false,
+          "tool_result_bytes": 6673,
+          "result_sha256": "7c459b2121f91e63802eade191b550324f900b8f8ed459341961981a6ec07daf",
+          "results_identical": true
+        }
+      ]
+    }
+  },
+  "baseline": {
+    "revision": "e51079965f25f0993734ad00a0ab0c8ea2ae9d15",
+    "source_sha256": "87fd4f19026c9381a80a345a5bf1854829e82580e7547ce8b0d8fe61304a2ac1",
+    "ranged_reads": true,
+    "cases": [
+      {
+        "case": "small.py",
+        "target_found_runs": 11,
+        "runs": 11,
+        "median_ms": 5.761,
+        "max_ms": 11.052,
+        "tool_result_bytes": 167,
+        "stable_result_size": true,
+        "tool_calls_per_run": 2
+      },
+      {
+        "case": "early.py",
+        "target_found_runs": 11,
+        "runs": 11,
+        "median_ms": 8.026,
+        "max_ms": 8.995,
+        "tool_result_bytes": 166,
+        "stable_result_size": true,
+        "tool_calls_per_run": 2
+      },
+      {
+        "case": "late.py",
+        "target_found_runs": 11,
+        "runs": 11,
+        "median_ms": 7.861,
+        "max_ms": 9.873,
+        "tool_result_bytes": 175,
+        "stable_result_size": true,
+        "tool_calls_per_run": 2
+      }
+    ],
+    "project_map": {
+      "files": 103,
+      "symbols": 10003,
+      "first_ms": 134.754,
+      "median_repeated_ms": 45.266,
+      "max_repeated_ms": 54.429,
+      "repeated_runs": 11,
+      "first_parse_calls": 103,
+      "repeated_parse_calls": 0,
+      "tool_result_bytes": 611052,
+      "result_sha256": "b962a3e5a26690f040c6b9d571cf33173eb1396b34e205bdeea6630f3579ffee",
+      "results_identical": true
+    },
+    "multilingual_map": {
+      "files": 80,
+      "complete_declaration_files": 80,
+      "expected_symbols": 810,
+      "returned_symbols": 810,
+      "first_ms": 38.181,
+      "median_repeated_ms": 17.298,
+      "max_repeated_ms": 19.547,
+      "repeated_runs": 11,
+      "first_parse_calls": 80,
+      "repeated_parse_calls": 0,
+      "tool_result_bytes": 50699,
+      "result_sha256": "d69e87a42ad0ca8e1b79468807178b6a8d83e0c7de533cb2fa867fd10ff7d1a0",
+      "results_identical": true
+    },
+    "focused_map": {
+      "scope": "one 1,001-declaration fixture; target lookup intentionally omits other declarations, not identical full-map contents or model success",
+      "supports_query": true,
+      "fixture_sha256": "83af6f8dccfb3410e219a4050426d634f17d832c10bca0c5cb13a447b163c42b",
+      "cases": [
+        {
+          "case": "default_budget_full_map",
+          "max_output": 16000,
+          "query_used": false,
+          "target_found_runs": 0,
+          "runs": 11,
+          "first_ms": 6.961,
+          "median_repeated_ms": 1.456,
+          "max_repeated_ms": 2.264,
+          "tool_result_bytes": 77,
+          "returned_symbols": 0,
+          "truncated": true,
+          "results_identical": true
+        },
+        {
+          "case": "complete_budget_full_map",
+          "max_output": 1000000,
+          "query_used": false,
+          "target_found_runs": 11,
+          "runs": 11,
+          "first_ms": 6.06,
+          "median_repeated_ms": 2.06,
+          "max_repeated_ms": 2.664,
+          "tool_result_bytes": 50910,
+          "returned_symbols": 1001,
+          "truncated": false,
+          "results_identical": true
+        },
+        {
+          "case": "default_budget_target_lookup",
+          "max_output": 16000,
+          "query_used": true,
+          "target_found_runs": 11,
+          "runs": 11,
+          "first_ms": 5.643,
+          "median_repeated_ms": 1.363,
+          "max_repeated_ms": 1.727,
+          "tool_result_bytes": 169,
+          "returned_symbols": 1,
+          "truncated": false,
+          "results_identical": true
+        }
+      ]
+    },
+    "python_index_bounds": {
+      "scope": "fresh Python map calls with tracemalloc; traced Python allocation peak, not total process RSS or native memory",
+      "max_output": 1000000,
+      "cases": [
+        {
+          "case": "qualified_name_amplification",
+          "source_bytes": 32698,
+          "source_sha256": "11a106b52658502d272e0e3fccbd4af0c1cf8615c322cf8556be09ec6547a325",
+          "runs": 11,
+          "median_ms": 94.276,
+          "max_ms": 96.999,
+          "median_traced_peak_bytes": 31024709,
+          "max_traced_peak_bytes": 31062650,
+          "returned_symbols": 0,
+          "symbols_unavailable": true,
+          "truncated": true,
+          "tool_result_bytes": 76,
+          "result_sha256": "763705e4cc3d89d5efc8c4223e508fdd143a432438db00d2ed83bcbb5e99f245",
+          "results_identical": true
+        },
+        {
+          "case": "many_declarations",
+          "source_bytes": 72635,
+          "source_sha256": "f3daa4968b98eb6f766633b897b60a74df9e56c00cbf67afa6a98f55a2aad260",
+          "runs": 11,
+          "median_ms": 149.546,
+          "max_ms": 161.065,
+          "median_traced_peak_bytes": 12287490,
+          "max_traced_peak_bytes": 12451976,
+          "returned_symbols": 4097,
+          "symbols_unavailable": false,
+          "truncated": false,
+          "tool_result_bytes": 190404,
+          "result_sha256": "fc4413bb17bb1a0b26f4e6d543ab484464e461f2b161e839e46cfa59cd8fe5a9",
+          "results_identical": true
+        },
+        {
+          "case": "ordinary_class",
+          "source_bytes": 3105,
+          "source_sha256": "8ace7eec77c0adf34c57a65aed1ef053e7ef0692b0c15cd09369c84319327344",
+          "runs": 11,
+          "median_ms": 6.189,
+          "max_ms": 6.641,
+          "median_traced_peak_bytes": 556213,
+          "max_traced_peak_bytes": 557349,
+          "returned_symbols": 129,
+          "symbols_unavailable": false,
+          "truncated": false,
+          "tool_result_bytes": 6673,
+          "result_sha256": "7c459b2121f91e63802eade191b550324f900b8f8ed459341961981a6ec07daf",
+          "results_identical": true
+        }
+      ]
+    }
+  }
+}

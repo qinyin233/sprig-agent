@@ -14,6 +14,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
 from sprig_agent.config import Config
 from sprig_agent.index import SymbolIndex
+from sprig_agent.syntax import IndexUnavailable
 from sprig_agent.tools import Tools
 
 
@@ -98,8 +99,65 @@ class IndexTests(unittest.TestCase):
         self.tools.close()
         self.assertEqual((len(self.tools.index.entries), self.tools.index.bytes), (0, 0))
 
+    def test_overlong_python_names_are_unavailable_in_full_and_filtered_maps(self):
+        source = "class " + "A" * 20000 + ":\n" + "".join(f"    def f{number}(self): pass\n" for number in range(512))
+        file = self.root / "large.py"
+        file.write_text(source, encoding="utf-8")
+        for query in ("", "large.py", "f511"):
+            with self.subTest(query=query):
+                result = self.tools.project_map(query=query)
+                expected = [] if query == "f511" else [{"path": "large.py", "symbols_unavailable": True}]
+                self.assertEqual(result["files"], expected)
+                self.assertTrue(result["truncated"])
+                self.assertFalse(self.tools.index.entries)
+        file.write_text("class Fixed:\n    def f511(self): pass\n", encoding="utf-8")
+        self.assertEqual(self.tools.project_map(query="f511")["files"][0]["symbols"][0]["name"], "Fixed.f511")
+
 
 class CacheBoundTests(unittest.TestCase):
+    def test_unicode_qualified_names_are_limited_by_bytes_before_caching(self):
+        cache = SymbolIndex()
+        for source in ("def " + "名" * 350 + "(): pass",
+                       "class " + "A" * 800 + ":\n    def " + "名" * 100 + "(self): pass"):
+            with self.subTest(source_bytes=len(source.encode("utf-8"))):
+                with self.assertRaises(IndexUnavailable):
+                    cache.python(source)
+                self.assertEqual((len(cache.entries), cache.bytes), (0, 0))
+        self.assertEqual(cache.python("def " + "名" * 341 + "(): pass")[0]["name"], "名" * 341)
+
+    def test_python_symbol_and_traversal_limits_discard_and_recover(self):
+        for bound in ("MAX_NODES", "MAX_SYMBOLS"):
+            with self.subTest(bound=bound):
+                source = "def first(): pass\ndef second(): pass"
+                cache = SymbolIndex()
+                with patch("sprig_agent.index." + bound, 1):
+                    with self.assertRaises(IndexUnavailable):
+                        cache.python(source)
+                self.assertEqual((len(cache.entries), cache.bytes), (0, 0))
+                self.assertEqual(len(cache.python(source)), 2)
+
+    def test_python_actual_symbol_limit_in_a_small_valid_file(self):
+        cache = SymbolIndex()
+        source = "\n".join(f"def f{number}(): pass" for number in range(4096))
+        self.assertLess(len(source.encode("utf-8")), 512 * 1024)
+        self.assertEqual(len(cache.python(source)), 4096)
+        with self.assertRaises(IndexUnavailable):
+            cache.python(source + "\ndef extra(): pass")
+        self.assertEqual(len(cache.entries), 1)
+
+    def test_cancellation_during_python_walk_does_not_cache_partial_symbols(self):
+        cache = SymbolIndex()
+        calls = 0
+        def cancelled():
+            nonlocal calls
+            calls += 1
+            if calls == 5:
+                raise KeyboardInterrupt
+        with self.assertRaises(KeyboardInterrupt):
+            cache.symbols("class Service:\n    def run(self): pass", "python", cancelled)
+        self.assertEqual((len(cache.entries), cache.bytes), (0, 0))
+        self.assertEqual(cache.python("class Service:\n    def run(self): pass")[1]["name"], "Service.run")
+
     def test_entry_limit_evicts_least_recently_used_and_reparses_evicted_content(self):
         cache = SymbolIndex()
         with patch("sprig_agent.index.MAX_CACHE_ENTRIES", 2), patch("sprig_agent.index.ast.parse", wraps=ast.parse) as parse:
