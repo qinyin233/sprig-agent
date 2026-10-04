@@ -41,6 +41,7 @@ class WindowsTests(unittest.TestCase):
             with self.subTest(path=path):
                 self.assertIn("error", self.tools.execute("read_file", {"path": path}))
                 self.assertIn("error", self.tools.execute("read_file", {"path": path, "limit": 1}))
+                self.assertIn("error", self.tools.execute("search", {"query": "hidden", "path": path, "context": 1}))
                 self.assertIn("error", self.tools.execute("edit_file", {"path": path, "old": "", "new": "bad"}))
         self.assertEqual(self.tools.execute("list_files", {})["entries"], [])
         self.assertEqual(self.tools.execute("search", {"query": "hidden"})["matches"], [])
@@ -63,6 +64,8 @@ class WindowsTests(unittest.TestCase):
         try:
             for name, args in (("read_file", {"path": "link/a"}),
                                ("read_file", {"path": "link/a", "limit": 1}),
+                               ("search", {"query": "secret", "path": "link/a", "context": 1}),
+                               ("search", {"query": "secret", "path": "link", "glob": "*"}),
                                ("edit_file", {"path": "link/a", "old": "secret", "new": "bad"}),
                                ("run", {"argv": [sys.executable, "-V"], "cwd": "link"})):
                 self.assertIn("error", self.tools.execute(name, args))

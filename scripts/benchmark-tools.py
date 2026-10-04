@@ -2,7 +2,10 @@
 
 import argparse
 import ast
+from contextlib import contextmanager
+from datetime import datetime, timezone
 import hashlib
+import importlib.util
 import inspect
 from importlib.metadata import version
 import io
@@ -19,6 +22,105 @@ import time
 import tracemalloc
 
 REPO = Path(__file__).resolve().parents[1]
+
+
+def source_digest(source):
+    digest = hashlib.sha256()
+    for file in sorted(source.rglob("*.py")):
+        digest.update(file.relative_to(source).as_posix().encode() + b"\0" + file.read_bytes())
+    return digest.hexdigest()
+
+
+def measure_click_search(source, fixture, repeat):
+    """Compare actual retrieval of the same known code window, without a model."""
+    sys.path.insert(0, str(source))
+    from sprig_agent.config import Config
+    from sprig_agent.filesystem import Directory
+    from sprig_agent.tools import Tools
+    if Path(inspect.getfile(Tools)).resolve().parent.parent != source.resolve():
+        raise ValueError("benchmark loaded the wrong source revision")
+    spec = importlib.util.spec_from_file_location("click_snapshot", REPO / "scripts/benchmark-edit-repo.py")
+    click = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(click)
+    files = click.load(fixture, "base")
+    scoped = {"glob", "context"} <= set(inspect.signature(Tools.search).parameters)
+    cases = []
+    with click.bench.disposable() as root:
+        click.bench.suite.seed(root, files)
+        for name, path, query, mode, context in (
+            ("known_source_file", "src/click/core.py", "def format_commands(", "file", 2),
+            ("test_file_filter", "tests/test_options.py", "def test_unknown_options(", "glob", 2),
+            ("unscoped_search_control", "src/click/core.py", "def format_commands(", "directory", 0),
+        ):
+            lines = [line.rstrip("\r\n") for line in io.StringIO(files[path].decode("utf-8"), newline="")]
+            hits = [index for index, line in enumerate(lines) if query in line]
+            if len(hits) != 1:
+                raise ValueError("pinned target is no longer unique")
+            line = hits[0] + 1
+            offset, stop = max(1, line - context), min(len(lines), line + context)
+            expected = lines[offset - 1:stop]
+            rows = []
+            for _ in range(repeat):
+                def unexpected_approval(_):
+                    raise AssertionError("read-only retrieval requested approval")
+                tools = Tools(Config(root, "offline", read_only=True), unexpected_approval)
+                counters = {"content_file_reads": 0, "content_bytes_read": 0}
+                original_open = Directory.open_read
+                @contextmanager
+                def counted_open(directory, filename, **options):
+                    with original_open(directory, filename, **options) as reader:
+                        counters["content_file_reads"] += 1
+                        class Reader:
+                            def fileno(self):
+                                return reader.fileno()
+                            def read(self, *arguments):
+                                body = reader.read(*arguments)
+                                counters["content_bytes_read"] += len(body)
+                                return body
+                        yield Reader()
+                arguments = {"query": query, "path": str(Path(path).parent).replace("\\", "/")}
+                if scoped:
+                    arguments.update(context=context)
+                    if mode == "file":
+                        arguments["path"] = path
+                    elif mode == "glob":
+                        arguments["glob"] = path
+                try:
+                    Directory.open_read = counted_open
+                    started = time.perf_counter()
+                    search = tools.execute("search", arguments)
+                    results = [search]
+                    if not scoped and context:
+                        results.append(tools.execute("read_file", {
+                            "path": path, "offset": offset, "limit": stop - offset + 1}))
+                    elapsed = (time.perf_counter() - started) * 1000
+                finally:
+                    Directory.open_read = original_open
+                    tools.close()
+                if (any("error" in result for result in results) or search.get("truncated")
+                        or (len(results) > 1 and results[1].get("line_truncated"))):
+                    raise ValueError("retrieval was incomplete")
+                matches = [hit for hit in search["matches"] if hit["path"] == path]
+                if len(matches) != 1 or matches[0]["line"] != line:
+                    raise ValueError("retrieval did not find the fixed target")
+                hit = matches[0]
+                if not context:
+                    actual = [hit["text"]]
+                elif scoped:
+                    actual = hit["before"] + [hit["text"]] + hit["after"]
+                else:
+                    actual = [text.rstrip("\r\n") for text in io.StringIO(results[1]["content"], newline="")]
+                if actual != expected:
+                    raise ValueError("retrieved context differs from pinned source")
+                rows.append({**counters, "tool_calls": len(results), "tool_ms": round(elapsed, 3),
+                             "tool_result_bytes": sum(len(json.dumps(result, ensure_ascii=False).encode()) for result in results),
+                             "context_sha256": hashlib.sha256(json.dumps(actual, ensure_ascii=False).encode()).hexdigest()})
+            cases.append({"case": name, "path": path, "query": query, "line": line, "context": context,
+                          "max_output": 16000, "scoped_search": scoped and mode != "directory", "context_exact_runs": repeat,
+                          "target_source_sha256": hashlib.sha256(files[path]).hexdigest(), "runs": rows,
+                          "median_ms": round(statistics.median(row["tool_ms"] for row in rows), 3)})
+    return {"source_sha256": source_digest(source), "snapshot_sha256": click.PINS["base"][2],
+            "upstream_commit": click.PINS["base"][0], "cases": cases}
 
 
 def measure(source, repeat):
@@ -146,13 +248,15 @@ def measure_map(root, Config, Tools, approve, repeat):
         tools.close()
 
 
-def worker(source, repeat):
+def worker(source, repeat, click_fixture=None):
     # Both revisions use the same managed interpreter, fixture, and options.
     environment = dict(os.environ)
     for key in ("SPRIG_API_KEY", "OPENAI_API_KEY"):
         environment.pop(key, None)
-    result = subprocess.run([sys.executable, str(Path(__file__).resolve()), "--worker", "--source", str(source),
-                             "--repeat", str(repeat)], cwd=REPO, env=environment,
+    command = [sys.executable, str(Path(__file__).resolve()), "--worker", "--source", str(source), "--repeat", str(repeat)]
+    if click_fixture is not None:
+        command.extend(("--click-fixture", str(click_fixture)))
+    result = subprocess.run(command, cwd=REPO, env=environment,
                             capture_output=True, check=True, timeout=60)
     return json.loads(result.stdout)
 
@@ -268,23 +372,34 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--repeat", type=int, default=11)
     parser.add_argument("--compare-ref", help="trusted local Git revision to measure in an isolated source directory")
+    parser.add_argument("--click-fixture", type=Path, help="measure only scoped retrieval from the checksum-verified Click snapshot")
     parser.add_argument("--worker", action="store_true", help=argparse.SUPPRESS)
     parser.add_argument("--source", type=Path, default=REPO / "src", help=argparse.SUPPRESS)
     args = parser.parse_args()
     if not 1 <= args.repeat <= 50:
         parser.error("--repeat must be from 1 to 50")
+    if args.click_fixture is not None:
+        args.click_fixture = args.click_fixture.resolve()
     if args.worker:
-        print(json.dumps(measure(args.source, args.repeat)))
+        result = (measure_click_search(args.source, args.click_fixture, args.repeat) if args.click_fixture is not None
+                  else measure(args.source, args.repeat))
+        print(json.dumps(result))
         return 0
-    report = {"scope": "offline retrieval and multilingual parsing; no model/API or coding-task success comparison",
+    report = {"scope": ("pinned Click code windows; file tools only, no model/API or coding-task success comparison"
+                        if args.click_fixture is not None else "offline retrieval and multilingual parsing; no model/API or coding-task success comparison"),
               "python": platform.python_version(), "platform": platform.platform(),
+              "recorded_at_utc": datetime.now(timezone.utc).isoformat(),
               "dependencies": {name: version(name) for name in (
                   "textual", "tree-sitter", "tree-sitter-javascript", "tree-sitter-typescript",
                   "tree-sitter-rust", "tree-sitter-go", "tree-sitter-c", "tree-sitter-cpp", "tree-sitter-java")},
               "revision": git("rev-parse", "HEAD").decode().strip(),
               "driver_sha256": hashlib.sha256(Path(__file__).read_bytes()).hexdigest(),
+              "uv_lock_sha256": hashlib.sha256((REPO / "uv.lock").read_bytes()).hexdigest(),
               "dirty": bool(git("status", "--porcelain")), "repeat": args.repeat,
-              "current": worker(REPO / "src", args.repeat)}
+              "current": worker(REPO / "src", args.repeat, args.click_fixture)}
+    if args.click_fixture is not None:
+        report["support_sha256"] = {name: hashlib.sha256((REPO / name).read_bytes()).hexdigest() for name in (
+            "scripts/benchmark-edit-repo.py", "scripts/benchmark-tasks.py", "benchmarks/coding/suite.py")}
     if args.compare_ref:
         revision = git("rev-parse", "--verify", "--end-of-options", args.compare_ref + "^{commit}").decode().strip()
         archive = git("archive", "--format=tar", revision, "src")
@@ -301,7 +416,7 @@ def main():
                     target.parent.mkdir(parents=True, exist_ok=True)
                     with files.extractfile(member) as source:
                         target.write_bytes(source.read())
-            report["baseline"] = {"revision": revision, **worker(root / "src", args.repeat)}
+            report["baseline"] = {"revision": revision, **worker(root / "src", args.repeat, args.click_fixture)}
     print(json.dumps(report, ensure_ascii=False, indent=2))
     return 0
 

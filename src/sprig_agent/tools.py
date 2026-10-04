@@ -21,6 +21,7 @@ from .index import SymbolIndex, language_for
 from .map_selection import MapSelection, encoded_size
 from .policy import FilePolicy, command_environment
 from .output import CommandOutput
+from .search import FileGlob, matching_lines
 from .syntax import IndexUnavailable
 
 MAX_FILE = 512 * 1024
@@ -47,8 +48,10 @@ TOOL_SCHEMAS = [
     schema("read_file", "Read UTF-8 text. Use 1-based offset and limit to inspect specific lines or continue a large file. Ranged reads scan at most 8 MiB, enforce file privacy, and report next_offset; a single oversized line is explicitly marked incomplete.",
            {"path": STRING, "offset": {"type": "integer", "minimum": 1, "maximum": 1000000},
             "limit": {"type": "integer", "minimum": 1, "maximum": 10000}}, ["path"]),
-    schema("search", "Find literal text recursively in UTF-8 files, with bounded results.",
-           {"query": STRING, "path": STRING}, ["query"]),
+    schema("search", "Find literal text in a workspace file or recursively in a directory. Optional case-sensitive glob filters basenames (e.g. *.py) or workspace-relative paths (e.g. src/**/*.py; * does not cross /, ** is a whole path component). ignore_case uses Unicode case folding. context adds up to 10 physical lines before/after each hit; default limit is 100 matching lines. Full-file privacy checks, read/output budgets and cancellation still apply. Truncated results or skipped files cannot establish that no other matches exist.",
+           {"query": STRING, "path": STRING, "glob": {"type": "string", "minLength": 1, "maxLength": 256},
+            "ignore_case": {"type": "boolean"}, "context": {"type": "integer", "minimum": 0, "maximum": 10},
+            "limit": {"type": "integer", "minimum": 1, "maximum": 1000}}, ["query"]),
     schema("project_map", "Bounded workspace file map with declarations and 1-based lines for Python, JavaScript, TypeScript/TSX, Rust, Go, C/C++ and Java. Optional query is a case-insensitive literal path/declaration-name match; exact names then prefixes outrank substrings, and only matching declarations or files are returned. Use it when a full map omits relevant symbols. Syntax only; inspect relevant files afterwards. Unsupported files have paths only; unavailable or oversized parses are marked.",
            {"path": STRING, "query": {"type": "string", "minLength": 1, "maxLength": 256}}),
     schema("edit_file", "Edit one file after complete diff approval. Provide old/new for one replacement (empty old creates a new file only), OR edits for up to 32 replacements in an existing file. Every edits[].old must match exactly once in the ORIGINAL file; matches must not overlap. All replacements are validated before a single write, with one undo record. Parent directory must exist.",
@@ -244,54 +247,93 @@ class Tools:
                 "total_lines": total, "truncated": truncated, "line_truncated": partial,
                 "next_offset": end + 1 if truncated and not partial else None}
 
-    def search(self, query, path="."):
+    def search(self, query, path=".", *, glob=_MISSING, ignore_case=False, context=0, limit=100):
         if not isinstance(query, str) or not query or len(query) > 1000:
             raise ToolError("query must be a nonempty literal string (at most 1000 characters)")
+        if not isinstance(ignore_case, bool):
+            raise ToolError("ignore_case must be a boolean")
+        if isinstance(context, bool) or not isinstance(context, int) or not 0 <= context <= 10:
+            raise ToolError("context must be an integer between 0 and 10")
+        if isinstance(limit, bool) or not isinstance(limit, int) or not 1 <= limit <= 1000:
+            raise ToolError("limit must be an integer between 1 and 1000")
+        file_glob = FileGlob(glob) if glob is not _MISSING else None
         parts = self._parts(path)
-        matches, scanned, budget, output_size, truncated = [], 0, 8 * 1024 * 1024, 0, False
+        result = {"matches": [], "truncated": False, "skipped_files": 0,
+                  "files_read": 0, "bytes_read": 0, "entries_scanned": 0}
+        # Reserve the whole JSON envelope and counter growth, including redaction.
+        def measure(value):
+            size = encoded_size(value)
+            return max(size, encoded_size(redact(value, self.config.api_key))) if self.config.api_key else size
+        envelope = {**result, "skipped_files": 5000, "files_read": 5000,
+                    "bytes_read": 8 * 1024 * 1024 + 1, "entries_scanned": 5001}
+        remaining = self.config.max_output - measure(envelope)
+        budget, stopped = 8 * 1024 * 1024, False
+
+        def scan_file(directory, name, prefix):
+            nonlocal budget, remaining, stopped
+            self._check_cancelled()
+            if file_glob is not None and not file_glob.matches((*prefix, name)):
+                return
+            if budget <= 0:
+                result["truncated"] = stopped = True
+                return
+            raw = self._read(directory, name, min(MAX_FILE, budget))
+            self._check_cancelled()
+            budget -= len(raw)
+            result["bytes_read"] += len(raw)
+            result["files_read"] += 1
+            if len(raw) > MAX_FILE or budget < 0:
+                result["skipped_files"] += 1
+                result["truncated"] = True
+                return
+            text = self._decode(raw)  # Check all contents before returning even one hit.
+            for hit in matching_lines(text, query, ignore_case, context, self._check_cancelled):
+                self._check_cancelled()
+                match = {"path": "/".join((*prefix, name)), **hit}
+                size = measure(match) + 2
+                if len(result["matches"]) >= limit or size > remaining:
+                    result["truncated"] = stopped = True
+                    return
+                result["matches"].append(match)
+                remaining -= size
 
         def walk(fd, prefix, depth):
-            nonlocal scanned, budget, output_size, truncated
+            nonlocal stopped
             if depth > 32:
-                truncated = True
+                result["truncated"] = True
                 return
             with fd.scandir() as iterator:
                 for entry in iterator:
-                    scanned += 1
-                    if scanned > 5000 or budget <= 0 or output_size >= self.config.max_output:
-                        truncated = True
+                    self._check_cancelled()
+                    result["entries_scanned"] += 1
+                    if result["entries_scanned"] > 5000:
+                        result["truncated"] = stopped = True
                         return
                     if self.policy.excluded((*prefix, entry.name)) or is_link(entry):
                         continue
-                    relative = "/".join((*prefix, entry.name))
                     try:
                         if entry.is_dir(follow_symlinks=False):
                             if not skip_directory(entry.name):
                                 with fd.child(entry.name) as child:
                                     walk(child, (*prefix, entry.name), depth + 1)
                         elif entry.is_file(follow_symlinks=False):
-                            raw = self._read(fd, entry.name, min(MAX_FILE, budget))
-                            budget -= len(raw)
-                            if len(raw) > MAX_FILE or budget < 0:
-                                truncated = True
-                                continue
-                            for line_number, line in enumerate(io.StringIO(self._decode(raw), newline=""), 1):
-                                line = line.rstrip("\r\n")
-                                if query in line:
-                                    match = {"path": relative, "line": line_number, "text": line}
-                                    size = len(json.dumps(match).encode("utf-8"))
-                                    if output_size + size > self.config.max_output:
-                                        truncated = True
-                                        output_size = self.config.max_output
-                                        return
-                                    matches.append(match)
-                                    output_size += size
+                            scan_file(fd, entry.name, prefix)
                     except (OSError, ToolError, ValueError):
-                        continue  # Files may disappear or be unreadable/binary during traversal.
+                        result["skipped_files"] += 1
+                        result["truncated"] = True
+                    if stopped:
+                        return
 
-        with self._directory(parts) as fd:
-            walk(fd, parts, 0)
-        return {"matches": matches, "truncated": truncated}
+        self._check_cancelled()
+        with self._directory(parts[:-1]) as parent:
+            info = parent.stat(parts[-1]) if parts else None
+            if info is not None and stat.S_ISREG(info.st_mode):
+                scan_file(parent, parts[-1], parts[:-1])
+            else:
+                with self._directory(parts) as fd:
+                    walk(fd, parts, 0)
+        self._check_cancelled()
+        return result
 
     def project_map(self, path=".", query=""):
         if not isinstance(query, str) or len(query.encode("utf-8")) > 256 or any(ord(char) < 32 or ord(char) == 127 for char in query):

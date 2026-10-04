@@ -16,6 +16,7 @@
 2. **代码地图重复解析、跨语言声明与关键词筛选：已落实基础索引。** Python 使用 AST，JavaScript、TypeScript/TSX、Rust、Go、C/C++、Java 使用锁定的本地 Tree-sitter 语法包；按语言与内容摘要缓存到有界内存，每次仍读取和校验文件。新增按路径或声明名查询，在输出预算内优先保留精确匹配。Aider 的 [RepoMap](https://github.com/Aider-AI/aider/blob/main/aider/repomap.py)有缓存和多语言语法解析；Sprig 当前还没有依引用重要性选择地图内容的排序、完整语义索引或调用图。
 3. **请求、诊断任务与 mini SDK 参考入口已接入；真实对照仍待实施。** 尚未取得真实模型任务对比；Sprig 已记录请求/响应体字节、请求耗时、流式首段文本和服务报告的 token 用量，缺失或矛盾字段保持未知。[mini SDK 入口](mini-task-runner.md)保留上游行动循环并增加逐次批准、相同外部验收和数值报告。现已对齐实际 JSON 请求字节上限，关闭 SDK 自动重试并测量实际 HTTP 调用和原始响应用量；新增项使用本地 HTTP 夹具验证，本批跳过 CI，尚无新增项的远程 POSIX 结果。合成历史、真实运行、失败样本和其他客户端适配仍需补齐，只使用进程环境凭证和一次性工作区，不读取历史密钥或降低产品权限。
 4. **复杂任务工具与上下文：已有真实仓库的文件工具基线。** `edit_file` 新增同文件最多 32 个互不重叠片段，一次验证、审阅、写入和撤销记录。[Click 编辑基线](repository-edit-benchmark.md)以已接受的四文件修复对比实际新旧工具，结果逐字节相同且通过固定的 642 项上游检查；8 次调用和写入缩为 4 次。输入参数来自已知补丁，不是模型生成，所以尚未构成复杂任务的模型成绩或完整竞品对照。继续检查多文件编辑、测试反馈、检索范围、长历史和输出预算。
+5. **检索范围和直接上下文：新增文件搜索与筛选。** [Pi grep](https://github.com/earendil-works/pi/blob/main/packages/coding-agent/src/core/tools/grep.ts)提供文件 glob、大小写、上下文和匹配条数，OpenCode 的 [grep](https://github.com/anomalyco/opencode/blob/dev/packages/opencode/src/tool/grep.ts)提供文件筛选。Sprig 的字面搜索现可指定单文件、按 basename / 路径 glob 筛选、Unicode case folding、前后最多 10 行和最多 1,000 个命中行；继续执行完整文件隐私检查，严格计算正常结果的 JSON 输出预算，并在遍历和逐行匹配中检查取消。新增 [Click 检索对照](scoped-search-benchmark.md)比较相同的已知代码窗口，不能代表自然任务相关性、正则能力、模型成功率或竞品成绩。
 
 已有 [编码任务诊断入口](coding-benchmark.md)：八个 Python / JavaScript 小型任务、37 个独立行为检查，逐次批准的真实运行入口、数值报告及可供其他客户端使用的相同输入导出。mini 已接入七个诊断任务；新增外部 Click 已知补丁的文件工具验证。当前仍没有真实模型成绩、复杂仓库的自主编码或完整竞品对照，不能因此宣布达到目标。
 

@@ -87,6 +87,7 @@ class ToolTests(unittest.TestCase):
         for path in ("link/file", "local-link", "broken"):
             self.assertIn("error", self.call("read_file", path=path))
             self.assertIn("error", self.call("read_file", path=path, limit=1))
+            self.assertIn("error", self.call("search", query="inside", path=path, context=1))
             self.assertIn("error", self.call("edit_file", path=path, old="", new="bad"))
         self.assertIn("error", self.call("run", argv=[sys.executable, "--version"], cwd="link"))
         self.assertEqual(len(self.call("list_files")["entries"]), 1)
@@ -99,6 +100,7 @@ class ToolTests(unittest.TestCase):
         start = time.monotonic()
         self.assertIn("error", self.call("read_file", path="fifo"))
         self.assertIn("error", self.call("read_file", path="fifo", limit=1))
+        self.assertIn("error", self.call("search", query="anything", path="fifo", context=1))
         self.assertLess(time.monotonic() - start, 0.5)
 
     def test_edit_rejected_without_change(self):
