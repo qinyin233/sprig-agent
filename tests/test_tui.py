@@ -68,7 +68,8 @@ class TuiTests(unittest.IsolatedAsyncioTestCase):
             try:
                 if predicate():
                     await pilot.pause()  # Drain mount/layout events before interacting with a new screen.
-                    return
+                    if predicate():
+                        return  # The condition must still hold after queued UI events.
             except NoMatches:
                 pass  # Screen is on the stack before its children have mounted.
             await pilot.pause(0.02)
@@ -661,9 +662,10 @@ class TuiTests(unittest.IsolatedAsyncioTestCase):
             await self.until(pilot, lambda: not app.busy)
             self.assertEqual(app.last_status, 1)
             await self.click(pilot, "#map")
-            await self.until(pilot, lambda: not app.busy)
+            editor = app.query_one("#task", TextArea)
+            await self.until(pilot, lambda: not app.busy and app.screen.focused is editor)
             self.assertEqual(app.last_status, 1)
-            app.query_one("#task", TextArea).load_text("retry after fixing connection")
+            editor.load_text("retry after fixing connection")
             await pilot.press("enter")
             await self.until(pilot, lambda: not app.busy and len(attempts) == 2)
             self.assertEqual(app.last_status, 0)
