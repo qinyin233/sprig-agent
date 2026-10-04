@@ -217,7 +217,7 @@ class SprigApp(App[int]):
                             yield Button("查看项目地图", id="map")
                             yield Button("查看上下文预算", id="context-budget")
                             yield Button("查看请求统计", id="usage")
-                            yield Button("压缩旧工具输出", id="compact")
+                            yield Button("压缩旧工具记录", id="compact")
                             yield Button("查看修改记录", id="changes")
                             yield Button("撤销最近文件编辑", id="undo", disabled=self.config.read_only)
                             yield Button("重做文件编辑", id="redo", disabled=self.config.read_only)
@@ -683,7 +683,7 @@ class SprigApp(App[int]):
                         self.agent.compact_context = True
                         self.event("已启用请求上下文压缩；保存的完整对话保留")
 
-                self.push_screen(ApprovalScreen("仅压缩发送给模型的旧成功工具输出；用户要求、失败、拒绝和最近六条消息保留。完整会话文件保留。\n"
+                self.push_screen(ApprovalScreen("仅省略请求里的旧成功工具输出及已批准完成的旧编辑正文；用户要求、失败、拒绝和最近六条消息保留。完整会话文件保留。\n"
                                                + json.dumps(preview, ensure_ascii=False, indent=2)), compact)
             elif identity == "delete":
                 name = self.query_one("#session-name", Input).value.strip()

@@ -31,6 +31,34 @@ def source_digest(source):
     return digest.hexdigest()
 
 
+def measure_edit_context(source, repeat):
+    sys.path.insert(0, str(source))
+    from sprig_agent.agent import Agent
+    if Path(inspect.getfile(Agent)).resolve().parent.parent != source.resolve():
+        raise ValueError("benchmark loaded the wrong source revision")
+    spec = importlib.util.spec_from_file_location("context_replay", REPO / "benchmarks/context/replay.py")
+    replay = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(replay)
+    rows = []
+    for _ in range(repeat):
+        with tempfile.TemporaryDirectory(prefix="sprig-context-replay-") as temporary:
+            row = replay.run(Path(temporary), compact=True)
+        if (not row["wire_history_valid"] or not row["saved_arguments_full"]
+                or row["transport_requests"] != row["http_requests"]
+                or any(size > 131072 for size in row["request_bytes"])
+                or row["edit_approvals"] != row["changed_files"]):
+            raise ValueError("replay violated protocol, budget, approval or history invariants")
+        if row["complete"]:
+            if row["changed_files"] != replay.EDIT_COUNT or not row["checks_passed"] or row["check_approvals"] != 1:
+                raise ValueError("completed replay lacks fixed acceptance evidence")
+        elif not row["budget_blocked"] or row["check_approvals"]:
+            raise ValueError("unexpected replay failure")
+        rows.append(row)
+    return {"source_sha256": source_digest(source), "fixture": {"edits": replay.EDIT_COUNT,
+            "old_and_new_characters_each": replay.TEXT_LENGTH, "max_request_bytes": 131072,
+            "max_output": 65536, "compact_enabled": True}, "runs": rows}
+
+
 def measure_click_search(source, fixture, repeat):
     """Compare actual retrieval of the same known code window, without a model."""
     sys.path.insert(0, str(source))
@@ -248,7 +276,7 @@ def measure_map(root, Config, Tools, approve, repeat):
         tools.close()
 
 
-def worker(source, repeat, click_fixture=None):
+def worker(source, repeat, click_fixture=None, edit_context=False):
     # Both revisions use the same managed interpreter, fixture, and options.
     environment = dict(os.environ)
     for key in ("SPRIG_API_KEY", "OPENAI_API_KEY"):
@@ -256,6 +284,8 @@ def worker(source, repeat, click_fixture=None):
     command = [sys.executable, str(Path(__file__).resolve()), "--worker", "--source", str(source), "--repeat", str(repeat)]
     if click_fixture is not None:
         command.extend(("--click-fixture", str(click_fixture)))
+    if edit_context:
+        command.append("--edit-context")
     result = subprocess.run(command, cwd=REPO, env=environment,
                             capture_output=True, check=True, timeout=60)
     return json.loads(result.stdout)
@@ -372,7 +402,9 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--repeat", type=int, default=11)
     parser.add_argument("--compare-ref", help="trusted local Git revision to measure in an isolated source directory")
-    parser.add_argument("--click-fixture", type=Path, help="measure only scoped retrieval from the checksum-verified Click snapshot")
+    scenario = parser.add_mutually_exclusive_group()
+    scenario.add_argument("--click-fixture", type=Path, help="measure only scoped retrieval from the checksum-verified Click snapshot")
+    scenario.add_argument("--edit-context", action="store_true", help="replay fixed large edits over localhost HTTP; no model/API score")
     parser.add_argument("--worker", action="store_true", help=argparse.SUPPRESS)
     parser.add_argument("--source", type=Path, default=REPO / "src", help=argparse.SUPPRESS)
     args = parser.parse_args()
@@ -381,11 +413,15 @@ def main():
     if args.click_fixture is not None:
         args.click_fixture = args.click_fixture.resolve()
     if args.worker:
-        result = (measure_click_search(args.source, args.click_fixture, args.repeat) if args.click_fixture is not None
-                  else measure(args.source, args.repeat))
+        if args.edit_context:
+            result = measure_edit_context(args.source, args.repeat)
+        else:
+            result = (measure_click_search(args.source, args.click_fixture, args.repeat) if args.click_fixture is not None
+                      else measure(args.source, args.repeat))
         print(json.dumps(result))
         return 0
-    report = {"scope": ("pinned Click code windows; file tools only, no model/API or coding-task success comparison"
+    report = {"scope": ("scripted large edits over localhost HTTP; protocol, budget, tools and history, not model task success"
+                        if args.edit_context else "pinned Click code windows; file tools only, no model/API or coding-task success comparison"
                         if args.click_fixture is not None else "offline retrieval and multilingual parsing; no model/API or coding-task success comparison"),
               "python": platform.python_version(), "platform": platform.platform(),
               "recorded_at_utc": datetime.now(timezone.utc).isoformat(),
@@ -396,10 +432,13 @@ def main():
               "driver_sha256": hashlib.sha256(Path(__file__).read_bytes()).hexdigest(),
               "uv_lock_sha256": hashlib.sha256((REPO / "uv.lock").read_bytes()).hexdigest(),
               "dirty": bool(git("status", "--porcelain")), "repeat": args.repeat,
-              "current": worker(REPO / "src", args.repeat, args.click_fixture)}
+              "current": worker(REPO / "src", args.repeat, args.click_fixture, args.edit_context)}
     if args.click_fixture is not None:
         report["support_sha256"] = {name: hashlib.sha256((REPO / name).read_bytes()).hexdigest() for name in (
             "scripts/benchmark-edit-repo.py", "scripts/benchmark-tasks.py", "benchmarks/coding/suite.py")}
+    if args.edit_context:
+        name = "benchmarks/context/replay.py"
+        report["support_sha256"] = {name: hashlib.sha256((REPO / name).read_bytes()).hexdigest()}
     if args.compare_ref:
         revision = git("rev-parse", "--verify", "--end-of-options", args.compare_ref + "^{commit}").decode().strip()
         archive = git("archive", "--format=tar", revision, "src")
@@ -416,7 +455,7 @@ def main():
                     target.parent.mkdir(parents=True, exist_ok=True)
                     with files.extractfile(member) as source:
                         target.write_bytes(source.read())
-            report["baseline"] = {"revision": revision, **worker(root / "src", args.repeat, args.click_fixture)}
+            report["baseline"] = {"revision": revision, **worker(root / "src", args.repeat, args.click_fixture, args.edit_context)}
     print(json.dumps(report, ensure_ascii=False, indent=2))
     return 0
 

@@ -76,6 +76,7 @@ class Agent:
             raise ProviderError("context byte budget exceeded; no request sent. Review /context and explicitly /compact, or increase --max-context-bytes.")
         if report["changes"]:
             self.emit(f"[context] {report['before_bytes']} → {report['after_bytes']} bytes; saved history unchanged")
+        self._check_cancelled()  # A cancellation during local compaction must not start HTTP.
         if not self.config.stream or self.emit_delta is None:
             return self.provider.complete(messages, self.schemas)
         displayed = False

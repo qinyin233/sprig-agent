@@ -145,6 +145,7 @@ class TuiTests(unittest.IsolatedAsyncioTestCase):
             await self.until(pilot, lambda: '"budget_bytes"' in app.transcript)
             await self.click(pilot, "#compact")
             await self.until(pilot, lambda: isinstance(app.screen, ApprovalScreen))
+            self.assertIn("已批准完成的旧编辑正文", app.screen.description)
             await pilot.press("enter")
             await self.until(pilot, lambda: not isinstance(app.screen, ApprovalScreen))
             self.assertFalse(app.agent.compact_context)

@@ -2,6 +2,7 @@ include .python-version uv.lock
 recursive-include docs *.md *.json
 recursive-include scripts *.py *.ps1
 recursive-include benchmarks/coding *.py *.json
+include benchmarks/context/replay.py
 include benchmarks/clients/probe_child.py
 include benchmarks/clients/mini_help.py
 include benchmarks/clients/mini_environment.py benchmarks/clients/mini_task.py

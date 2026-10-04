@@ -111,7 +111,7 @@ def chat(agent, task, messages, emit):
             elif task == "/compact":
                 preview = agent.context_preview(messages)
                 emit(json.dumps(preview, ensure_ascii=False, indent=2))
-                if approve("Enable request-only elision of older successful tool output? User instructions, failures, refusals and the last six messages are preserved; saved history is unchanged."):
+                if approve("Enable request-only elision of older successful tool output and completed approved edit arguments? User instructions, failures, refusals and the last six messages are preserved; saved history is unchanged."):
                     agent.compact_context = True
             elif task in {"/changes", "/undo", "/redo", "/discard-history"}:
                 result = agent.tools.change_action(task[1:])
@@ -162,7 +162,7 @@ def main(argv=None):
     parser.add_argument("--read-only", action="store_true", help="allow file inspection only; block writes and all commands")
     parser.add_argument("--inherit-env", action="store_true", help="let approved commands inherit additional environment variables")
     parser.add_argument("--max-context-bytes", type=int, default=131072, help="maximum serialized model request size; not a token/cost estimate")
-    parser.add_argument("--compact-context", action="store_true", help="explicitly elide older successful tool output from requests; keep saved history")
+    parser.add_argument("--compact-context", action="store_true", help="explicitly elide old successful tool output and completed edit text from requests; keep saved history")
     interface = parser.add_mutually_exclusive_group()
     interface.add_argument("--chat", action="store_true", help="keep an interactive conversation open")
     interface.add_argument("--tui", action="store_true", help="open the full-screen terminal interface (streams by default)")
