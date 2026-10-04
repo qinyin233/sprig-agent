@@ -42,7 +42,7 @@ JavaScript 任务需要 Node.js。CI 显式安装 Node 24，在 Windows、Linux�
 
 ## 竞品使用相同输入
 
-固定 Aider、OpenCode、Pi、mini-SWE-agent 的环境与跨平台元数据/帮助检查见 [客户端对照准备](client-comparison.md)。这是安装和接口验证，尚未完成竞品真实任务运行适配。
+固定 Aider、OpenCode、Pi、mini-SWE-agent 的环境与跨平台元数据/帮助检查见 [客户端对照准备](client-comparison.md)。[mini SDK 任务入口](mini-task-runner.md)已接入七个相同初始代码/验收任务，保留 mini 自己的行动循环和逐动作批准；请求字节预算、合成历史和真实模型成绩仍未对齐或取得。
 
 ```powershell
 uv run --locked python scripts/benchmark-tasks.py --prepare C:\Users\25079\AppData\Local\Temp\sprig-comparison-01 --case py-pagination
@@ -52,4 +52,4 @@ uv run --locked python scripts/benchmark-tasks.py --prepare C:\Users\25079\AppDa
 
 `py-long-history` 的合成旧工具结果另放在 `initial-history.json`，当前仅用于 Sprig 历史压力诊断。其他客户端需要本机对话格式适配和单独的等价性验证；不能仅凭准备了相同文件宣称长会话输入相同，更不能把合成历史当作自然长任务成绩。
 
-正式比较还需记录每个 agent 的版本/commit、实际任务成功与失败类型、重复运行与波动、请求数、延迟、用量、工具开销、启动和内存。外部客户端缺失的统计必须标为未知，不能拿 Sprig 的计时字段代替。当前导出工具只为这种比较提供统一输入与验收，尚未实现竞品运行适配或完成真实性能对照。
+正式比较还需记录每个 agent 的版本/commit、实际任务成功与失败类型、重复运行与波动、请求数、延迟、用量、工具开销、启动和内存。外部客户端缺失的统计必须标为未知，不能拿 Sprig 的计时字段代替。当前工具提供统一输入与验收及 mini 的诊断适配，尚未完成相同完整预算下的真实性能对照。

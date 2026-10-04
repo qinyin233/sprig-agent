@@ -1,0 +1,259 @@
+"""Run a diagnostic task with upstream mini-SWE-agent; fresh approval required."""
+
+import argparse
+from contextlib import contextmanager, redirect_stdout, redirect_stderr
+from datetime import datetime, timezone
+import hashlib
+import importlib.util
+from importlib.metadata import version
+import json
+import logging
+import os
+from pathlib import Path
+import platform
+import sys
+import time
+
+REPO = Path(__file__).resolve().parents[2]
+sys.path.insert(0, str(REPO / "src"))
+sys.path.insert(0, str(REPO / "benchmarks" / "clients"))
+spec = importlib.util.spec_from_file_location("task_bench", REPO / "scripts" / "benchmark-tasks.py")
+bench = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(bench)
+
+from mini_environment import ApprovedEnvironment
+from probe_child import environment
+from sprig_agent.cli import approve
+from sprig_agent.config import Config, redact, terminal_text
+from sprig_agent.metrics import token_usage
+
+
+class Discard:
+    def write(self, text):
+        return len(text)
+    def flush(self):
+        pass
+
+
+@contextmanager
+def private_process(root, key):
+    original, disabled = dict(os.environ), logging.root.manager.disable
+    private = environment(root, original)
+    if key:
+        private["OPENAI_API_KEY"] = key
+    os.environ.clear()
+    os.environ.update(private)
+    logging.disable(logging.CRITICAL)
+    try:
+        yield
+    finally:
+        logging.disable(disabled)
+        os.environ.clear()
+        os.environ.update(original)
+
+
+def sdk_snapshot():
+    import minisweagent
+    source = Path(minisweagent.__file__).parent.resolve()
+    files, total = {}, 0
+    for visited, file in enumerate(source.rglob("*"), 1):
+        if visited > 5000 or file.is_symlink():
+            raise ValueError("SDK source inventory is not supported")
+        if file.is_file() and file.suffix in (".py", ".yaml"):
+            size = file.stat().st_size
+            if size > 1024 * 1024 or total + size > 8 * 1024 * 1024:
+                raise ValueError("SDK source snapshot exceeds limit")
+            with file.open('rb') as reader:
+                body = reader.read(size + 1)
+            if len(body) != size:
+                raise ValueError("SDK source changed during snapshot")
+            files[file.relative_to(source).as_posix()] = body
+            total += size
+
+    def intact():
+        try:
+            if source.is_symlink() or source.resolve() != source:
+                return False
+            found = set()
+            for visited, file in enumerate(source.rglob('*'), 1):
+                if visited > 5000 or file.is_symlink():
+                    return False
+                if file.is_file() and file.suffix in ('.py', '.yaml'):
+                    name = file.relative_to(source).as_posix()
+                    if name not in files or file.stat().st_size != len(files[name]):
+                        return False
+                    with file.open('rb') as reader:
+                        if reader.read(len(files[name]) + 1) != files[name]:
+                            return False
+                    found.add(name)
+            return found == set(files)
+        except (OSError, RuntimeError):
+            return False
+    return bench.suite.digest(files), intact
+
+
+def run_case(case, options, *, model_factory=None, confirm=approve, emit=None):
+    if case.get("history_reads"):
+        raise ValueError("synthetic history has no validated mini adapter")
+    key = options.get("api_key", "")
+    emit = emit or (lambda _: None)
+    with bench.disposable() as parent, private_process(parent / "profile", key):
+        # Import only after private HOME/config paths are set. No global config
+        # setup and no trajectory destination; SDK CLI prompt IO is unnecessary.
+        with redirect_stdout(Discard()), redirect_stderr(Discard()):
+            import minisweagent
+            from minisweagent.agents.default import DefaultAgent
+            from minisweagent.config import builtin_config_dir, get_config_from_spec
+            from minisweagent.exceptions import Submitted
+            from minisweagent.models.litellm_model import LitellmModel
+            import litellm
+        if minisweagent.__version__ != "2.4.6":
+            raise ValueError("installed mini version differs from the pinned client")
+        litellm.suppress_debug_info = True
+        litellm.telemetry = False
+        root = parent / "workspace"
+        root.mkdir()
+        files = bench.suite.fixture_files(case)
+        bench.suite.seed(root, files)
+        acceptance, verifier_signature, verifier_intact = bench.bundle(parent, case)
+        config = Config(root, checks=(acceptance,), **options)
+        source_signature, sdk_intact = sdk_snapshot()
+        protected = {path: (path.resolve(), path.read_bytes()) for path in (
+            Path(__file__), REPO / "benchmarks/clients/mini_environment.py", REPO / "benchmarks/clients/bash_command.py",
+            REPO / "benchmarks/clients/probe_child.py", REPO / "scripts/benchmark-tasks.py")}
+        def intact():
+            try:
+                for path, (original_path, body) in protected.items():
+                    if path.is_symlink() or path.resolve() != original_path or path.stat().st_size != len(body):
+                        return False
+                    with path.open('rb') as reader:
+                        if reader.read(len(body) + 1) != body:
+                            return False
+                return verifier_intact() and sdk_intact()
+            except (OSError, RuntimeError):
+                return False
+        env = ApprovedEnvironment(config, acceptance, intact, confirm, Submitted)
+        defaults = get_config_from_spec(builtin_config_dir / "mini.yaml")
+        template_signature = hashlib.sha256((builtin_config_dir / "mini.yaml").read_bytes()).hexdigest()
+        requests = []
+
+        class MeasuredModel(LitellmModel):
+            def _query(self, messages, **kwargs):
+                started, usage, outcome = time.perf_counter(), None, "error"
+                try:
+                    response = super()._query(messages, **kwargs)
+                    reported = getattr(response, "usage", None)
+                    usage = token_usage(reported.model_dump() if hasattr(reported, "model_dump") else reported)
+                    if usage and all(value == 0 for value in usage.values()):
+                        # Some SDK paths synthesize zero Usage for a missing
+                        # server field. Keep this ambiguous case unknown.
+                        usage = None
+                    outcome = "success"
+                    return response
+                except KeyboardInterrupt:
+                    outcome = "cancelled"
+                    raise
+                finally:
+                    requests.append({"backend_invocation": len(requests) + 1, "outcome": outcome, "usage": usage,
+                                     "elapsed_ms": round((time.perf_counter() - started) * 1000, 3),
+                                     "usage_source": "SDK returned fields; raw wire usage not independently captured",
+                                     "first_text_ms": None, "request_bytes": None, "response_bytes": None})
+
+            def query(self, messages, **kwargs):
+                if not intact():
+                    raise ValueError("benchmark verifier changed")
+                emit("[mini] model query")
+                # SDK errors/loggers may contain raw server data. Display only
+                # accepted model content through Sprig's key/control filtering.
+                with redirect_stdout(Discard()), redirect_stderr(Discard()):
+                    result = super().query(messages, **kwargs)
+                if result.get("content"):
+                    emit(terminal_text(redact(result["content"], key)))
+                return result
+
+        model_route = "openai/" + config.model.removeprefix("openai/")
+        model = model_factory(defaults) if model_factory else MeasuredModel(
+            **{**defaults["model"], "model_name": model_route, "cost_tracking": "ignore_errors",
+               "model_kwargs": {**defaults["model"].get("model_kwargs", {}), "api_base": config.base_url,
+                                "timeout": config.timeout, "num_retries": 0}})
+        agent = DefaultAgent(model, env, **{**defaults["agent"], "step_limit": config.max_steps, "cost_limit": 0.0,
+                                           "output_path": None, "wall_time_limit_seconds": 600})
+        started, outcome = time.perf_counter(), "not_completed"
+        try:
+            result = agent.run(case["task"])
+            statuses = {"Submitted": "acceptance_passed", "AcceptanceRejected": "acceptance_rejected",
+                        "LimitsExceeded": "limits_exceeded", "TimeExceeded": "time_exceeded", "RepeatedFormatError": "format_error"}
+            outcome = statuses.get(result.get("exit_status"), "not_completed")
+        except KeyboardInterrupt:
+            outcome = "cancelled"
+        except Exception:
+            outcome = "client_error"  # Never publish SDK exceptions, bodies or messages.
+        finally:
+            elapsed = (time.perf_counter() - started) * 1000
+            env.close()
+        valid = intact()
+        return redact({"schema": 1, "scope": "one diagnostic mini SDK task; no overall performance or top-agent parity claim",
+                       "model_mode": "scripted_protocol_fixture" if model_factory else "upstream_backend_transport",
+                       "client": "mini", "client_version": minisweagent.__version__, "sdk_sources_sha256": source_signature,
+                       "client_lock_sha256": hashlib.sha256((REPO / "benchmarks/clients/mini/uv.lock").read_bytes()).hexdigest(),
+                       "driver_sha256": hashlib.sha256(protected[Path(__file__)][1]).hexdigest(),
+                       "environment_sha256": hashlib.sha256(protected[REPO / "benchmarks/clients/mini_environment.py"][1]).hexdigest(),
+                       "shell_relay_sha256": hashlib.sha256(protected[REPO / "benchmarks/clients/bash_command.py"][1]).hexdigest(),
+                       "config_sha256": template_signature,
+                       "recorded_at_utc": datetime.now(timezone.utc).isoformat(), "python": platform.python_version(), "platform": platform.platform(),
+                       "case": case["id"], "fixture_sha256": bench.suite.digest(files), "verifier_sha256": verifier_signature,
+                       "task_sha256": hashlib.sha256(case["task"].encode()).hexdigest(), "verifier_intact": valid,
+                       "model": config.model, "sdk_model_route": model_route, "base_url": config.base_url,
+                       "max_steps": config.max_steps, "stream": False, "max_context_bytes": None,
+                       "context_budget": "upstream SDK default; byte cap not adapted", "cost": None,
+                       "model_queries": agent.n_calls, "requests": requests, "http_attempts": None,
+                       "outcome": outcome if valid else "verifier_modified", "acceptance_passed": env.acceptance_passed and valid,
+                       "elapsed_ms": round(elapsed, 3), "active_ms": round(max(0, elapsed - env.approvals["wait_ms"]), 3),
+                       "approvals": {**env.approvals, "wait_ms": round(env.approvals["wait_ms"], 3)}, "tools": env.records}, key)
+
+
+def main():
+    parser = argparse.ArgumentParser(description=__doc__)
+    mode = parser.add_mutually_exclusive_group(required=True)
+    mode.add_argument("--run", action="store_true")
+    mode.add_argument("--list", action="store_true")
+    parser.add_argument("--case", choices=bench.suite.cases())
+    parser.add_argument("--model", default=os.environ.get("SPRIG_MODEL", "agnes-3.0-flash"))
+    parser.add_argument("--base-url", default=os.environ.get("SPRIG_BASE_URL", "https://apihub.agnes-ai.com/v1"))
+    parser.add_argument("--max-steps", type=int, default=20)
+    parser.add_argument("--report", type=Path)
+    args = parser.parse_args()
+    if args.report and (args.report.exists() or args.report.is_symlink() or not args.report.parent.is_dir()):
+        parser.error("report must be a new file in an existing directory")
+    if args.list:
+        rendered = json.dumps([{key: case[key] for key in ("id", "language", "category")}
+                               for case in bench.suite.cases().values() if not case.get("history_reads")], indent=2) + "\n"
+        print(rendered, end="")
+        if args.report:
+            with args.report.open("x", encoding="utf-8", newline="\n") as target:
+                target.write(rendered)
+        return 0
+    if not args.case:
+        parser.error("a live run requires --case")
+    key = os.environ.get("SPRIG_API_KEY") or os.environ.get("OPENAI_API_KEY", "")
+    if not key or not sys.stdin.isatty() or not sys.stdout.isatty():
+        parser.error("live run requires process credentials and an interactive terminal for fresh approvals")
+    try:
+        report = run_case(bench.suite.cases()[args.case], {"model": args.model, "base_url": args.base_url, "api_key": key, "max_steps": args.max_steps},
+                          emit=lambda text: print(text, file=sys.stderr, flush=True))
+        rendered = json.dumps(report, ensure_ascii=True, indent=2) + "\n"
+        print(rendered, end="")
+        if args.report:
+            with args.report.open("x", encoding="utf-8", newline="\n") as target:
+                target.write(rendered)
+        return 130 if report["outcome"] == "cancelled" else (0 if report["acceptance_passed"] else 1)
+    except KeyboardInterrupt:
+        print("Reference task cancelled during setup.", file=sys.stderr)
+        return 130
+    except (OSError, ValueError, ImportError):
+        print("Reference task setup failed; raw exceptions are not published.", file=sys.stderr)
+        return 1
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

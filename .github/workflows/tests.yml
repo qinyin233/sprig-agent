@@ -57,3 +57,4 @@ jobs:
       - run: node node_modules/opencode-ai/postinstall.mjs
         working-directory: benchmarks/clients/node
       - run: uv run --locked --python 3.12 python scripts/benchmark-clients.py --repeat 1
+      - run: uv run --project benchmarks/clients/mini --locked python -I -B -m unittest discover -s benchmarks/clients/tests -v
