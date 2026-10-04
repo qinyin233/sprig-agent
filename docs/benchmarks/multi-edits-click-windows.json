@@ -1,0 +1,236 @@
+{
+  "scope": "Click issue 3107 / accepted PR 3228; selected upstream tests; no live agent score",
+  "recorded_at_utc": "2026-10-04T07:39:45.747289+00:00",
+  "revision": "e01ec46945a2da29ddfea0bdf4a3fac784624625",
+  "dirty": true,
+  "python": "3.12.12",
+  "platform": "Windows-11-10.0.26300-SP0",
+  "dependencies": {
+    "pytest": "8.4.2",
+    "textual": "8.2.8",
+    "tree-sitter": "0.25.2"
+  },
+  "uv_lock_sha256": "5212da8d99a878756adaa1f1be8c740bd2d1c37b23f551b0f180849936904fca",
+  "driver_sha256": "fa1066d54c2d9c57d6f1cfe4c8f7e3f2134cb3d4e1ce3412dd4450960376af42",
+  "fixture_sha256": "7d610833c8a6564f980f747e4601e7f4821872702c4a59f32ff9c5d653300d08",
+  "reference_sha256": "62d0162a63fa5322307e29d1710ec7624bd3ca20572329fddbdae1fe628f628d",
+  "base_commit": "19fd4d6e18bc9fce451f92f422696b11169faa57",
+  "reference_commit": "831c8f0948af519e45b90801d7430ff25451f972",
+  "acceptance": {
+    "base": {
+      "collected": 642,
+      "passed": 635,
+      "skipped": 0,
+      "failed": [
+        "tests/test_commands.py::test_suggest_possible_commands[pause-Did you mean 'push'?]",
+        "tests/test_commands.py::test_suggest_possible_commands[decline-(Did you mean one of: 'declare', 'refine'?)]",
+        "tests/test_options.py::test_unknown_options[--foo]",
+        "tests/test_options.py::test_unknown_options[-f]",
+        "tests/test_options.py::test_suggest_possible_options[--cat-Did you mean '--count'?]",
+        "tests/test_options.py::test_suggest_possible_options[--bounds-(Did you mean one of: '--bound', '--count'?)]",
+        "tests/test_options.py::test_suggest_possible_options[--bount-(Did you mean one of: '--bound', '--count'?)]"
+      ],
+      "returncode": 1
+    },
+    "reference": {
+      "collected": 642,
+      "passed": 642,
+      "skipped": 0,
+      "failed": [],
+      "returncode": 0
+    }
+  },
+  "current": {
+    "scope": "known patch on disposable inputs; no model, no user waiting time, no coding success score",
+    "multi_edit": true,
+    "source_sha256": "f4cbf8bf6eb08d3530d6735d2e29b8acdb022c1362790f3749f44c06ba938542",
+    "runs": [
+      {
+        "edit_calls": 4,
+        "approvals": 4,
+        "argument_bytes": 7026,
+        "tool_ms": 33.288,
+        "result_sha256": "ce34a6f2d752168e383480341a1f5848817af6218dcee65aef92b3363cce4b62"
+      },
+      {
+        "edit_calls": 4,
+        "approvals": 4,
+        "argument_bytes": 7026,
+        "tool_ms": 36.076,
+        "result_sha256": "ce34a6f2d752168e383480341a1f5848817af6218dcee65aef92b3363cce4b62"
+      },
+      {
+        "edit_calls": 4,
+        "approvals": 4,
+        "argument_bytes": 7026,
+        "tool_ms": 32.621,
+        "result_sha256": "ce34a6f2d752168e383480341a1f5848817af6218dcee65aef92b3363cce4b62"
+      },
+      {
+        "edit_calls": 4,
+        "approvals": 4,
+        "argument_bytes": 7026,
+        "tool_ms": 31.923,
+        "result_sha256": "ce34a6f2d752168e383480341a1f5848817af6218dcee65aef92b3363cce4b62"
+      },
+      {
+        "edit_calls": 4,
+        "approvals": 4,
+        "argument_bytes": 7026,
+        "tool_ms": 30.509,
+        "result_sha256": "ce34a6f2d752168e383480341a1f5848817af6218dcee65aef92b3363cce4b62"
+      },
+      {
+        "edit_calls": 4,
+        "approvals": 4,
+        "argument_bytes": 7026,
+        "tool_ms": 33.337,
+        "result_sha256": "ce34a6f2d752168e383480341a1f5848817af6218dcee65aef92b3363cce4b62"
+      },
+      {
+        "edit_calls": 4,
+        "approvals": 4,
+        "argument_bytes": 7026,
+        "tool_ms": 34.033,
+        "result_sha256": "ce34a6f2d752168e383480341a1f5848817af6218dcee65aef92b3363cce4b62"
+      },
+      {
+        "edit_calls": 4,
+        "approvals": 4,
+        "argument_bytes": 7026,
+        "tool_ms": 29.664,
+        "result_sha256": "ce34a6f2d752168e383480341a1f5848817af6218dcee65aef92b3363cce4b62"
+      },
+      {
+        "edit_calls": 4,
+        "approvals": 4,
+        "argument_bytes": 7026,
+        "tool_ms": 30.76,
+        "result_sha256": "ce34a6f2d752168e383480341a1f5848817af6218dcee65aef92b3363cce4b62"
+      },
+      {
+        "edit_calls": 4,
+        "approvals": 4,
+        "argument_bytes": 7026,
+        "tool_ms": 31.309,
+        "result_sha256": "ce34a6f2d752168e383480341a1f5848817af6218dcee65aef92b3363cce4b62"
+      },
+      {
+        "edit_calls": 4,
+        "approvals": 4,
+        "argument_bytes": 7026,
+        "tool_ms": 31.781,
+        "result_sha256": "ce34a6f2d752168e383480341a1f5848817af6218dcee65aef92b3363cce4b62"
+      }
+    ],
+    "median_tool_ms": 31.923,
+    "max_tool_ms": 36.076,
+    "files_changed": 4,
+    "hunks": 8,
+    "reference_bytes_exact": true,
+    "applied_acceptance": {
+      "collected": 642,
+      "passed": 642,
+      "skipped": 0,
+      "failed": [],
+      "returncode": 0
+    }
+  },
+  "baseline": {
+    "revision": "e01ec46945a2da29ddfea0bdf4a3fac784624625",
+    "scope": "known patch on disposable inputs; no model, no user waiting time, no coding success score",
+    "multi_edit": false,
+    "source_sha256": "1935fa48fa607e2015b56534c023b56566fb9de004a157eaf1a8214a2e0eb74f",
+    "runs": [
+      {
+        "edit_calls": 8,
+        "approvals": 8,
+        "argument_bytes": 7094,
+        "tool_ms": 77.973,
+        "result_sha256": "ce34a6f2d752168e383480341a1f5848817af6218dcee65aef92b3363cce4b62"
+      },
+      {
+        "edit_calls": 8,
+        "approvals": 8,
+        "argument_bytes": 7094,
+        "tool_ms": 76.354,
+        "result_sha256": "ce34a6f2d752168e383480341a1f5848817af6218dcee65aef92b3363cce4b62"
+      },
+      {
+        "edit_calls": 8,
+        "approvals": 8,
+        "argument_bytes": 7094,
+        "tool_ms": 76.052,
+        "result_sha256": "ce34a6f2d752168e383480341a1f5848817af6218dcee65aef92b3363cce4b62"
+      },
+      {
+        "edit_calls": 8,
+        "approvals": 8,
+        "argument_bytes": 7094,
+        "tool_ms": 80.04,
+        "result_sha256": "ce34a6f2d752168e383480341a1f5848817af6218dcee65aef92b3363cce4b62"
+      },
+      {
+        "edit_calls": 8,
+        "approvals": 8,
+        "argument_bytes": 7094,
+        "tool_ms": 81.939,
+        "result_sha256": "ce34a6f2d752168e383480341a1f5848817af6218dcee65aef92b3363cce4b62"
+      },
+      {
+        "edit_calls": 8,
+        "approvals": 8,
+        "argument_bytes": 7094,
+        "tool_ms": 78.499,
+        "result_sha256": "ce34a6f2d752168e383480341a1f5848817af6218dcee65aef92b3363cce4b62"
+      },
+      {
+        "edit_calls": 8,
+        "approvals": 8,
+        "argument_bytes": 7094,
+        "tool_ms": 76.487,
+        "result_sha256": "ce34a6f2d752168e383480341a1f5848817af6218dcee65aef92b3363cce4b62"
+      },
+      {
+        "edit_calls": 8,
+        "approvals": 8,
+        "argument_bytes": 7094,
+        "tool_ms": 79.963,
+        "result_sha256": "ce34a6f2d752168e383480341a1f5848817af6218dcee65aef92b3363cce4b62"
+      },
+      {
+        "edit_calls": 8,
+        "approvals": 8,
+        "argument_bytes": 7094,
+        "tool_ms": 79.64,
+        "result_sha256": "ce34a6f2d752168e383480341a1f5848817af6218dcee65aef92b3363cce4b62"
+      },
+      {
+        "edit_calls": 8,
+        "approvals": 8,
+        "argument_bytes": 7094,
+        "tool_ms": 78.375,
+        "result_sha256": "ce34a6f2d752168e383480341a1f5848817af6218dcee65aef92b3363cce4b62"
+      },
+      {
+        "edit_calls": 8,
+        "approvals": 8,
+        "argument_bytes": 7094,
+        "tool_ms": 82.365,
+        "result_sha256": "ce34a6f2d752168e383480341a1f5848817af6218dcee65aef92b3363cce4b62"
+      }
+    ],
+    "median_tool_ms": 78.499,
+    "max_tool_ms": 82.365,
+    "files_changed": 4,
+    "hunks": 8,
+    "reference_bytes_exact": true,
+    "applied_acceptance": {
+      "collected": 642,
+      "passed": 642,
+      "skipped": 0,
+      "failed": [],
+      "returncode": 0
+    }
+  }
+}

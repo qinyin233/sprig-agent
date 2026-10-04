@@ -25,6 +25,8 @@ from .syntax import IndexUnavailable
 
 MAX_FILE = 512 * 1024
 MAX_READ = 8 * 1024 * 1024
+MAX_EDITS = 32
+_MISSING = object()
 SKIP_DIRS = {"node_modules", ".venv", "__pycache__"}
 
 
@@ -49,8 +51,11 @@ TOOL_SCHEMAS = [
            {"query": STRING, "path": STRING}, ["query"]),
     schema("project_map", "Bounded workspace file map with declarations and 1-based lines for Python, JavaScript, TypeScript/TSX, Rust, Go, C/C++ and Java. Optional query is a case-insensitive literal path/declaration-name match; exact names then prefixes outrank substrings, and only matching declarations or files are returned. Use it when a full map omits relevant symbols. Syntax only; inspect relevant files afterwards. Unsupported files have paths only; unavailable or oversized parses are marked.",
            {"path": STRING, "query": {"type": "string", "minLength": 1, "maxLength": 256}}),
-    schema("edit_file", "Replace exactly one occurrence after diff approval. Empty old creates a new file only. Parent directory must exist.",
-           {"path": STRING, "old": STRING, "new": STRING}, ["path", "old", "new"]),
+    schema("edit_file", "Edit one file after complete diff approval. Provide old/new for one replacement (empty old creates a new file only), OR edits for up to 32 replacements in an existing file. Every edits[].old must match exactly once in the ORIGINAL file; matches must not overlap. All replacements are validated before a single write, with one undo record. Parent directory must exist.",
+           {"path": STRING, "old": STRING, "new": STRING,
+            "edits": {"type": "array", "minItems": 1, "maxItems": MAX_EDITS,
+                      "items": {"type": "object", "properties": {"old": STRING, "new": STRING},
+                                "required": ["old", "new"], "additionalProperties": False}}}, ["path"]),
     schema("run", "Run argv after explicit approval. NOT sandboxed; can access network and files outside workspace.",
            {"argv": {"type": "array", "items": STRING, "minItems": 1}, "cwd": STRING,
             "timeout": {"type": "number", "exclusiveMinimum": 0, "maximum": 120}}, ["argv"]),
@@ -457,24 +462,61 @@ class Tools:
         return {"approved": True, "changed": True, "path": path, "action": action,
                 "note": "Workspace changed; previous model conclusions and acceptance results need rechecking."}
 
-    def edit_file(self, path, old, new):
+    def edit_file(self, path, old=_MISSING, new=_MISSING, *, edits=_MISSING):
         if self.config.read_only:
             return {"approved": False, "changed": False, "error": "read-only mode blocks file writes"}
-        if not isinstance(old, str) or not isinstance(new, str):
-            raise ToolError("old and new must be strings")
-        if len(old.encode("utf-8")) > MAX_FILE or len(new.encode("utf-8")) > MAX_FILE:
-            raise ToolError("edit exceeds 512 KiB")
+        multiple = edits is not _MISSING
+        if multiple:
+            if old is not _MISSING or new is not _MISSING:
+                raise ToolError("provide old/new or edits, not both")
+            if not isinstance(edits, list) or not 1 <= len(edits) <= MAX_EDITS:
+                raise ToolError("edits must contain between 1 and 32 replacements")
+            if any(not isinstance(edit, dict) or set(edit) != {"old", "new"} for edit in edits):
+                raise ToolError("each edit must contain only old and new")
+            replacements = [(edit["old"], edit["new"]) for edit in edits]
+        else:
+            replacements = [(old, new)]
+        total = 0
+        for previous, replacement in replacements:
+            self._check_cancelled()
+            if not isinstance(previous, str) or not isinstance(replacement, str):
+                raise ToolError("old and new must be strings")
+            if multiple and not previous:
+                raise ToolError("edits require nonempty old text in an existing file")
+            sizes = len(previous.encode("utf-8")), len(replacement.encode("utf-8"))
+            if max(sizes) > MAX_FILE:
+                raise ToolError("edit exceeds 512 KiB")
+            total += sum(sizes)
+            if multiple and total > MAX_FILE:
+                raise ToolError("combined edits exceed 512 KiB")
         with self._parent(path) as (fd, name):
             before_raw, before_stat = self._snapshot(fd, name)
             before = self._decode(before_raw or b"")
             if before_stat is None:
+                if multiple:
+                    raise ToolError("edits require an existing file")
                 if old:
                     raise ToolError("new files require old to be empty")
                 after = new
             else:
-                if not old or before.count(old) != 1:
-                    raise ToolError("old must match exactly once in an existing file")
-                after = before.replace(old, new, 1)
+                spans = []
+                for previous, replacement in replacements:
+                    self._check_cancelled()
+                    start = before.find(previous) if previous else -1
+                    # Search from start+1: even overlapping repeated matches
+                    # are ambiguous (for example 'aa' within 'aaa').
+                    if start < 0 or before.find(previous, start + 1) >= 0:
+                        raise ToolError("old must match exactly once in an existing file")
+                    spans.append((start, start + len(previous), replacement))
+                spans.sort(key=lambda span: span[0])
+                if any(left[1] > right[0] for left, right in zip(spans, spans[1:])):
+                    raise ToolError("replacement matches overlap in the original file")
+                chunks, end = [], 0
+                for start, stop, replacement in spans:
+                    chunks.extend((before[end:start], replacement))
+                    end = stop
+                chunks.append(before[end:])
+                after = "".join(chunks)
             data = after.encode("utf-8")
             if len(data) > MAX_FILE:
                 raise ToolError("result exceeds 512 KiB")
