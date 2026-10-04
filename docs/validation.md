@@ -49,7 +49,7 @@ GitHub Actions 已配置 Ubuntu、Windows、macOS 与 Python 3.11–3.14 的矩�
 
 初次推送 `ba70294` 的[实际 CI](https://github.com/qinyin233/sprig-agent/actions/runs/37005909515)失败：Windows 替换私有文件时未复制安全描述符的所有者，在提升权限的 runner 上失去原所有者；macOS `/var` 是系统别名，会话目录的逐级无符号链接遍历拒绝了临时目录。Ubuntu 对应测试通过。
 
-修复保留 Windows 原文件所有者与 DACL，并仅规范化 macOS 的 `/var`、`/tmp`、`/etc` 已知系统别名；用户建立的符号链接仍被拒绝。新增 Windows 所有者回归测试，本地 152 项：139 通过、13 平台跳过。矩阵关闭提前取消，避免一个平台失败掩盖其他平台结果；每次推送必须等待对应 SHA 的完整 CI 结果，规则见仓库 `AGENTS.md`。
+修复保留 Windows 原文件所有者与 DACL，并仅规范化 macOS 的 `/var`、`/tmp`、`/etc` 已知系统别名；用户建立的符号链接仍被拒绝。新增 Windows 所有者回归测试，本地 152 项：139 通过、13 平台跳过。矩阵关闭提前取消，避免一个平台失败掩盖其他平台结果。当时每次推送都等待对应 SHA 的完整 CI；自 2026-10-04 起按用户要求节省 Actions 额度，小更新本地验证后使用 `[skip ci]` 推送，大更新再运行并等待完整 CI，当前规则见仓库 `AGENTS.md`。未运行 CI 的提交不能引用旧提交的绿色状态。
 
 随后修复 TUI 退出时的后台线程收尾，关闭文件与会话句柄前等待实际工作结束；UI 消息桥在界面卸载后中止等待，避免停用事件循环造成死锁。补充回归测试，并修复测试查询未挂载弹窗子节点的竞态。[`ee500b4` 的 CI](https://github.com/qinyin233/sprig-agent/actions/runs/37007902891)中，Ubuntu、Windows、macOS × Python 3.11–3.14 共 12 个任务全部成功，包括测试、CLI 启动与包构建。
 
