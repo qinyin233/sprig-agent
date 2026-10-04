@@ -42,7 +42,7 @@ JavaScript 任务需要 Node.js。CI 显式安装 Node 24，在 Windows、Linux�
 
 ## 竞品使用相同输入
 
-固定 Aider、OpenCode、Pi、mini-SWE-agent 的环境与跨平台元数据/帮助检查见 [客户端对照准备](client-comparison.md)。[mini SDK 任务入口](mini-task-runner.md)已接入七个相同初始代码/验收任务，保留 mini 自己的行动循环和逐动作批准；请求字节预算、合成历史和真实模型成绩仍未对齐或取得。
+固定 Aider、OpenCode、Pi、mini-SWE-agent 的环境与跨平台元数据/帮助检查见 [客户端对照准备](client-comparison.md)。[mini SDK 任务入口](mini-task-runner.md)已接入七个相同初始代码/验收任务，保留 mini 自己的行动循环和逐动作批准。两边默认限制实际 JSON 请求体 131,072 字节，关闭自动重试；mini 新增传输适配目前仅在 Windows 本地验证。合成历史仍未对齐，真实模型成绩仍未取得。
 
 ```powershell
 uv run --locked python scripts/benchmark-tasks.py --prepare C:\Users\25079\AppData\Local\Temp\sprig-comparison-01 --case py-pagination

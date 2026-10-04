@@ -26,15 +26,18 @@ class MiniTaskTests(unittest.TestCase):
         requests = []
         class Handler(BaseHTTPRequestHandler):
             def do_POST(self):
-                data = json.loads(self.rfile.read(int(self.headers['Content-Length'])))
+                raw = self.rfile.read(int(self.headers['Content-Length']))
+                data = json.loads(raw)
                 number = len(requests)
                 requests.append({'model': data.get('model'), 'bash_tool': data['tools'][0]['function']['name'] == 'bash',
-                                 'auth_ok': self.headers.get('Authorization') == 'Bearer fixture-private-marker'})
+                                 'auth_ok': self.headers.get('Authorization') == 'Bearer fixture-private-marker',
+                                 'request_bytes': len(raw), 'identity': self.headers.get('Accept-Encoding') == 'identity'})
                 body = json.dumps({'id': f'fixture-{number}', 'object': 'chat.completion', 'created': 1, 'model': 'fixture',
                                    'choices': [{'index': 0, 'finish_reason': 'tool_calls', 'message': {'role': 'assistant', 'content': None,
                                        'tool_calls': [{'id': f'call_{number}', 'type': 'function', 'function': {'name': 'bash',
                                                         'arguments': json.dumps({'command': commands[number]})}}]}}],
                                    'usage': {'prompt_tokens': 7, 'completion_tokens': 5, 'total_tokens': 12}}).encode()
+                requests[-1]['response_bytes'] = len(body)
                 self.send_response(200)
                 self.send_header('Content-Type', 'application/json')
                 self.send_header('Content-Length', str(len(body)))
@@ -55,10 +58,68 @@ class MiniTaskTests(unittest.TestCase):
         self.assertTrue(all(row['model'] == 'fixture' and row['bash_tool'] and row['auth_ok'] for row in requests))
         self.assertEqual(report['model_queries'], 3)
         self.assertEqual(len(report['requests']), 3)
-        self.assertEqual([row['usage']['total_tokens'] for row in report['requests']], [12, 12, 12])
+        wire = report['request_measurements']
+        self.assertEqual([row['usage']['total_tokens'] for row in wire['recent']], [12, 12, 12])
+        self.assertEqual([row['request_bytes'] for row in wire['recent']], [row['request_bytes'] for row in requests])
+        self.assertEqual([row['response_bytes'] for row in wire['recent']], [row['response_bytes'] for row in requests])
+        self.assertTrue(all(row['identity'] for row in requests))
+        self.assertTrue(all(row['http_attempts'] == 1 for row in report['requests']))
+        self.assertEqual(report['max_context_bytes'], 131072)
+        self.assertFalse(report['automatic_retries'])
         self.assertNotIn('fixture-private-marker', json.dumps(report))
         self.assertNotIn('arguments', json.dumps(report))
-        self.assertIsNone(report['http_attempts'])
+        self.assertEqual(report['http_attempts'], 3)
+
+    def test_actual_sdk_budget_stops_before_http_or_approval(self):
+        case = dict(driver.bench.suite.cases()['py-interval'])
+        case['task'] += '\n' + '中文' * 4096
+        calls = []
+        from mini_transport import MeasuredTransport
+        import httpx
+        original = MeasuredTransport.__init__
+        def init(transport, config):
+            original(transport, config, inner=httpx.MockTransport(lambda request: calls.append(True)))
+        with patch.object(MeasuredTransport, '__init__', init):
+            report = driver.run_case(case, {'model': 'fixture', 'api_key': 'fixture-private-marker', 'max_context_bytes': 4096},
+                                     confirm=lambda _: calls.append('approval'))
+        self.assertEqual(report['outcome'], 'request_budget_exceeded', report)
+        self.assertEqual(report['model_queries'], 1)
+        self.assertEqual(report['http_attempts'], 0)
+        self.assertEqual(report['request_measurements']['not_attempted'], 1)
+        self.assertGreater(report['request_measurements']['recent'][0]['request_bytes'], 4096)
+        self.assertFalse(calls)
+
+    def test_actual_sdk_does_not_retry_http_failure_or_read_remote_error_body(self):
+        requests = []
+        class Handler(BaseHTTPRequestHandler):
+            def do_POST(self):
+                self.rfile.read(int(self.headers['Content-Length']))
+                requests.append(True)
+                self.send_response(503)
+                self.send_header('Content-Length', '1000000')
+                self.end_headers()
+                # Never send the promised body. The runner must close at the
+                # status instead of waiting for SDK parsing or a retry.
+                self.close_connection = True
+            def log_message(self, *args):
+                pass
+        server = ThreadingHTTPServer(('127.0.0.1', 0), Handler)
+        thread = threading.Thread(target=server.serve_forever, daemon=True)
+        thread.start()
+        original_retry = os.environ.get('MSWEA_MODEL_RETRY_STOP_AFTER_ATTEMPT')
+        try:
+            report = driver.run_case(driver.bench.suite.cases()['py-interval'],
+                                     {'model': 'fixture', 'base_url': f'http://127.0.0.1:{server.server_port}/v1',
+                                      'api_key': 'fixture-private-marker'}, confirm=lambda _: self.fail('unexpected action'))
+        finally:
+            server.shutdown(); server.server_close(); thread.join(5)
+        self.assertEqual(report['outcome'], 'http_error', report)
+        self.assertEqual(report['model_queries'], 1)
+        self.assertEqual(report['http_attempts'], 1)
+        self.assertEqual(len(requests), 1)
+        self.assertEqual(report['request_measurements']['recent'][0]['http_status'], 503)
+        self.assertEqual(report['request_measurements']['response_bytes'], 0)
+        self.assertEqual(os.environ.get('MSWEA_MODEL_RETRY_STOP_AFTER_ATTEMPT'), original_retry)
 
     def model(self, commands, inspect=None):
         def factory(defaults):

@@ -1,7 +1,7 @@
 """Run a diagnostic task with upstream mini-SWE-agent; fresh approval required."""
 
 import argparse
-from contextlib import contextmanager, redirect_stdout, redirect_stderr
+from contextlib import contextmanager, redirect_stdout, redirect_stderr, ExitStack
 from datetime import datetime, timezone
 import hashlib
 import importlib.util
@@ -25,7 +25,6 @@ from mini_environment import ApprovedEnvironment
 from probe_child import environment
 from sprig_agent.cli import approve
 from sprig_agent.config import Config, redact, terminal_text
-from sprig_agent.metrics import token_usage
 
 
 class Discard:
@@ -39,6 +38,8 @@ class Discard:
 def private_process(root, key):
     original, disabled = dict(os.environ), logging.root.manager.disable
     private = environment(root, original)
+    # Match Sprig's no-automatic-retry policy, including mini's outer loop.
+    private["MSWEA_MODEL_RETRY_STOP_AFTER_ATTEMPT"] = "1"
     if key:
         private["OPENAI_API_KEY"] = key
     os.environ.clear()
@@ -97,7 +98,7 @@ def run_case(case, options, *, model_factory=None, confirm=approve, emit=None):
         raise ValueError("synthetic history has no validated mini adapter")
     key = options.get("api_key", "")
     emit = emit or (lambda _: None)
-    with bench.disposable() as parent, private_process(parent / "profile", key):
+    with bench.disposable() as parent, private_process(parent / "profile", key), ExitStack() as resources:
         # Import only after private HOME/config paths are set. No global config
         # setup and no trajectory destination; SDK CLI prompt IO is unnecessary.
         with redirect_stdout(Discard()), redirect_stderr(Discard()):
@@ -107,6 +108,9 @@ def run_case(case, options, *, model_factory=None, confirm=approve, emit=None):
             from minisweagent.exceptions import Submitted
             from minisweagent.models.litellm_model import LitellmModel
             import litellm
+            import httpx
+            from openai import OpenAI
+            from mini_transport import MeasuredTransport, TransportPolicyError
         if minisweagent.__version__ != "2.4.6":
             raise ValueError("installed mini version differs from the pinned client")
         litellm.suppress_debug_info = True
@@ -120,7 +124,8 @@ def run_case(case, options, *, model_factory=None, confirm=approve, emit=None):
         source_signature, sdk_intact = sdk_snapshot()
         protected = {path: (path.resolve(), path.read_bytes()) for path in (
             Path(__file__), REPO / "benchmarks/clients/mini_environment.py", REPO / "benchmarks/clients/bash_command.py",
-            REPO / "benchmarks/clients/probe_child.py", REPO / "scripts/benchmark-tasks.py")}
+            REPO / "benchmarks/clients/probe_child.py", REPO / "benchmarks/clients/mini_transport.py",
+            REPO / "scripts/benchmark-tasks.py")}
         def intact():
             try:
                 for path, (original_path, body) in protected.items():
@@ -136,28 +141,40 @@ def run_case(case, options, *, model_factory=None, confirm=approve, emit=None):
         defaults = get_config_from_spec(builtin_config_dir / "mini.yaml")
         template_signature = hashlib.sha256((builtin_config_dir / "mini.yaml").read_bytes()).hexdigest()
         requests = []
+        wire = None if model_factory else MeasuredTransport(config)
+        client = None if wire is None else resources.enter_context(OpenAI(
+            api_key=key, base_url=config.base_url, timeout=config.timeout, max_retries=0,
+            http_client=httpx.Client(transport=wire, timeout=config.timeout, trust_env=False,
+                                    follow_redirects=False, headers={"Accept-Encoding": "identity"})))
 
         class MeasuredModel(LitellmModel):
+            abort_exceptions = [*LitellmModel.abort_exceptions, TransportPolicyError]
+
             def _query(self, messages, **kwargs):
-                started, usage, outcome = time.perf_counter(), None, "error"
+                started, outcome = time.perf_counter(), "error"
+                attempts_before = wire.measurements.attempts
+                wire.last_failure = None
                 try:
-                    response = super()._query(messages, **kwargs)
-                    reported = getattr(response, "usage", None)
-                    usage = token_usage(reported.model_dump() if hasattr(reported, "model_dump") else reported)
-                    if usage and all(value == 0 for value in usage.values()):
-                        # Some SDK paths synthesize zero Usage for a missing
-                        # server field. Keep this ambiguous case unknown.
-                        usage = None
+                    # Inject per invocation, outside serializable model config.
+                    # This also bypasses LiteLLM's shared SDK-client cache.
+                    response = super()._query(messages, **{**kwargs, "client": client})
+                    if wire.measurements.attempts != attempts_before + 1:
+                        raise TransportPolicyError("transport_not_observed")
                     outcome = "success"
                     return response
                 except KeyboardInterrupt:
                     outcome = "cancelled"
                     raise
+                except Exception:
+                    # SDK wrappers can replace transport exception types. Keep
+                    # our fixed policy reason and stop before any outer retry.
+                    if wire.last_failure:
+                        raise TransportPolicyError(wire.last_failure) from None
+                    raise
                 finally:
-                    requests.append({"backend_invocation": len(requests) + 1, "outcome": outcome, "usage": usage,
+                    requests.append({"backend_invocation": len(requests) + 1, "outcome": outcome,
                                      "elapsed_ms": round((time.perf_counter() - started) * 1000, 3),
-                                     "usage_source": "SDK returned fields; raw wire usage not independently captured",
-                                     "first_text_ms": None, "request_bytes": None, "response_bytes": None})
+                                     "http_attempts": wire.measurements.attempts - attempts_before})
 
             def query(self, messages, **kwargs):
                 if not intact():
@@ -186,27 +203,34 @@ def run_case(case, options, *, model_factory=None, confirm=approve, emit=None):
             outcome = statuses.get(result.get("exit_status"), "not_completed")
         except KeyboardInterrupt:
             outcome = "cancelled"
+        except TransportPolicyError as error:
+            outcome = error.reason
         except Exception:
             outcome = "client_error"  # Never publish SDK exceptions, bodies or messages.
         finally:
             elapsed = (time.perf_counter() - started) * 1000
             env.close()
         valid = intact()
-        return redact({"schema": 1, "scope": "one diagnostic mini SDK task; no overall performance or top-agent parity claim",
+        return redact({"schema": 2, "scope": "one diagnostic mini SDK task; no overall performance or top-agent parity claim",
                        "model_mode": "scripted_protocol_fixture" if model_factory else "upstream_backend_transport",
                        "client": "mini", "client_version": minisweagent.__version__, "sdk_sources_sha256": source_signature,
                        "client_lock_sha256": hashlib.sha256((REPO / "benchmarks/clients/mini/uv.lock").read_bytes()).hexdigest(),
                        "driver_sha256": hashlib.sha256(protected[Path(__file__)][1]).hexdigest(),
                        "environment_sha256": hashlib.sha256(protected[REPO / "benchmarks/clients/mini_environment.py"][1]).hexdigest(),
                        "shell_relay_sha256": hashlib.sha256(protected[REPO / "benchmarks/clients/bash_command.py"][1]).hexdigest(),
+                       "transport_sha256": hashlib.sha256(protected[REPO / "benchmarks/clients/mini_transport.py"][1]).hexdigest(),
                        "config_sha256": template_signature,
                        "recorded_at_utc": datetime.now(timezone.utc).isoformat(), "python": platform.python_version(), "platform": platform.platform(),
                        "case": case["id"], "fixture_sha256": bench.suite.digest(files), "verifier_sha256": verifier_signature,
                        "task_sha256": hashlib.sha256(case["task"].encode()).hexdigest(), "verifier_intact": valid,
                        "model": config.model, "sdk_model_route": model_route, "base_url": config.base_url,
-                       "max_steps": config.max_steps, "stream": False, "max_context_bytes": None,
-                       "context_budget": "upstream SDK default; byte cap not adapted", "cost": None,
-                       "model_queries": agent.n_calls, "requests": requests, "http_attempts": None,
+                       "max_steps": config.max_steps, "stream": False,
+                       "max_context_bytes": config.max_context_bytes if wire else None,
+                       "context_budget": "actual serialized HTTP JSON body" if wire else "scripted fixture; no HTTP transport",
+                       "automatic_retries": False, "cost": None,
+                       "model_queries": agent.n_calls, "requests": requests,
+                       "http_attempts": wire.measurements.attempts if wire else None,
+                       "request_measurements": wire.report() if wire else None,
                        "outcome": outcome if valid else "verifier_modified", "acceptance_passed": env.acceptance_passed and valid,
                        "elapsed_ms": round(elapsed, 3), "active_ms": round(max(0, elapsed - env.approvals["wait_ms"]), 3),
                        "approvals": {**env.approvals, "wait_ms": round(env.approvals["wait_ms"], 3)}, "tools": env.records}, key)
@@ -221,6 +245,7 @@ def main():
     parser.add_argument("--model", default=os.environ.get("SPRIG_MODEL", "agnes-3.0-flash"))
     parser.add_argument("--base-url", default=os.environ.get("SPRIG_BASE_URL", "https://apihub.agnes-ai.com/v1"))
     parser.add_argument("--max-steps", type=int, default=20)
+    parser.add_argument("--max-context-bytes", type=int, default=131072)
     parser.add_argument("--report", type=Path)
     args = parser.parse_args()
     if args.report and (args.report.exists() or args.report.is_symlink() or not args.report.parent.is_dir()):
@@ -239,7 +264,8 @@ def main():
     if not key or not sys.stdin.isatty() or not sys.stdout.isatty():
         parser.error("live run requires process credentials and an interactive terminal for fresh approvals")
     try:
-        report = run_case(bench.suite.cases()[args.case], {"model": args.model, "base_url": args.base_url, "api_key": key, "max_steps": args.max_steps},
+        report = run_case(bench.suite.cases()[args.case], {"model": args.model, "base_url": args.base_url, "api_key": key,
+                                                       "max_steps": args.max_steps, "max_context_bytes": args.max_context_bytes},
                           emit=lambda text: print(text, file=sys.stderr, flush=True))
         rendered = json.dumps(report, ensure_ascii=True, indent=2) + "\n"
         print(rendered, end="")
