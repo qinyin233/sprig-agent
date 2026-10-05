@@ -113,6 +113,128 @@ class IndexTests(unittest.TestCase):
         file.write_text("class Fixed:\n    def f511(self): pass\n", encoding="utf-8")
         self.assertEqual(self.tools.project_map(query="f511")["files"][0]["symbols"][0]["name"], "Fixed.f511")
 
+    def test_complete_and_filtered_sweeps_larger_than_cache_keep_resident_hits(self):
+        for number in range(7):
+            (self.root / f"module_{number}.py").write_text(f"def function_{number}(): pass\n", encoding="utf-8")
+        for arguments in ({}, {"query": "function_6"}):
+            with self.subTest(arguments=arguments):
+                self.tools.index.clear()
+                with patch("sprig_agent.index.MAX_CACHE_ENTRIES", 2), patch("sprig_agent.index.ast.parse", wraps=ast.parse) as parse:
+                    first = self.tools.project_map(**arguments)
+                    self.assertFalse(first["truncated"])
+                    self.assertEqual(parse.call_count, 7)
+                    for _ in range(3):
+                        before = parse.call_count
+                        current = self.tools.project_map(**arguments)
+                        self.assertEqual(current, first)
+                        self.assertEqual(parse.call_count - before, 5)
+                        self.assertEqual(len(self.tools.index.entries), 2)
+                        self.assertEqual(self.tools.index.bytes, sum(entry[1] for entry in self.tools.index.entries.values()))
+
+    def test_byte_limited_sweeps_still_return_every_declaration(self):
+        for number in range(6):
+            (self.root / f"module_{number}.py").write_text(f"def function_{number}(): pass\n", encoding="utf-8")
+        with patch("sprig_agent.index.MAX_CACHE_BYTES", 256), patch("sprig_agent.index.ast.parse", wraps=ast.parse) as parse:
+            first = self.tools.project_map()
+            residents = len(self.tools.index.entries)
+            self.assertGreater(residents, 0)
+            self.assertLess(residents, 6)
+            for _ in range(3):
+                before = parse.call_count
+                self.assertEqual(self.tools.project_map(), first)
+                self.assertEqual(parse.call_count - before, 6 - residents)
+                self.assertLessEqual(self.tools.index.bytes, 256)
+                self.assertEqual(len(self.tools.index.entries), residents)
+        self.assertEqual(sum(len(file["symbols"]) for file in first["files"]), 6)
+
+    def test_native_language_sweeps_preserve_full_output_and_cache_hits(self):
+        for number in range(5):
+            (self.root / f"module_{number}.js").write_text(f"export function function_{number}() {{ return {number}; }}", encoding="utf-8")
+        with patch("sprig_agent.index.MAX_CACHE_ENTRIES", 2), \
+                patch.object(self.tools.index.syntax, "parse", wraps=self.tools.index.syntax.parse) as parse:
+            first = self.tools.project_map()
+            for _ in range(2):
+                before = parse.call_count
+                self.assertEqual(self.tools.project_map(), first)
+                self.assertEqual(parse.call_count - before, 3)
+        self.assertFalse(first["truncated"])
+        self.assertEqual(sum(len(file["symbols"]) for file in first["files"]), 5)
+
+    def test_failed_or_cancelled_sweep_does_not_retire_unvisited_residents(self):
+        for number in range(3):
+            (self.root / f"module_{number}.py").write_text(f"def function_{number}(): pass\n", encoding="utf-8")
+        with patch("sprig_agent.index.MAX_CACHE_ENTRIES", 2):
+            original = self.tools.project_map()
+            entries, size = list(self.tools.index.entries.items()), self.tools.index.bytes
+            read = self.tools._read
+            def cancelled(*args):
+                value = read(*args)
+                self.cancel.set()
+                return value
+            with patch.object(self.tools, "_read", side_effect=cancelled):
+                with self.assertRaises(KeyboardInterrupt):
+                    self.tools.project_map()
+            self.cancel.clear()
+            self.assertEqual(list(self.tools.index.entries.items()), entries)
+            self.assertEqual(self.tools.index.bytes, size)
+            self.assertIsNone(self.tools.index._scan)
+            with self.assertRaisesRegex(RuntimeError, "fixture failure"):
+                with self.tools.index.scan():
+                    self.tools.index.python("def new_unretained(): pass")
+                    raise RuntimeError("fixture failure")
+            self.assertEqual(list(self.tools.index.entries.items()), entries)
+            self.assertIsNone(self.tools.index._scan)
+            self.assertEqual(self.tools.project_map(), original)
+
+    def test_changed_tree_adapts_after_old_residents_retire(self):
+        for number in range(3):
+            (self.root / f"module_{number}.py").write_text(f"def before_{number}(): pass\n", encoding="utf-8")
+        with patch("sprig_agent.index.MAX_CACHE_ENTRIES", 2), patch("sprig_agent.index.ast.parse", wraps=ast.parse) as parse:
+            self.tools.project_map()
+            for number in range(3):
+                (self.root / f"module_{number}.py").write_text(f"def after_{number}(): pass\n", encoding="utf-8")
+            changed = self.tools.project_map()
+            self.assertEqual(len(self.tools.index.entries), 0)
+            self.assertNotIn("before_", json.dumps(changed))
+            self.assertEqual(self.tools.project_map(), changed)
+            before = parse.call_count
+            self.assertEqual(self.tools.project_map(), changed)
+            self.assertEqual(parse.call_count - before, 1)
+
+    def test_output_limited_sweep_keeps_unvisited_residents_for_next_full_map(self):
+        for number in range(6):
+            (self.root / f"module_{number}.py").write_text(f"def function_{number}(): pass\n", encoding="utf-8")
+        full = self.tools.project_map()
+        self.tools.config = Config(self.root, "test", read_only=True, max_output=256)
+        limited = self.tools.project_map()
+        self.assertTrue(limited["truncated"])
+        self.assertEqual(len(self.tools.index.entries), 6)
+        self.tools.config = Config(self.root, "test", read_only=True, max_output=1000000)
+        with patch("sprig_agent.index.ast.parse", wraps=ast.parse) as parse:
+            self.assertEqual(self.tools.project_map(), full)
+            parse.assert_not_called()
+
+    def test_private_files_retire_unused_metadata_and_are_never_returned(self):
+        (self.root / "public.py").write_text("def public(): pass\n", encoding="utf-8")
+        (self.root / "hidden.py").write_text("def previously_visible(): pass\n", encoding="utf-8")
+        self.tools.project_map()
+        (self.root / ".sprigignore").write_text("hidden.py\n.sprigignore\n", encoding="utf-8")
+        result = self.tools.project_map()
+        self.assertEqual(len(result["files"]), 1)
+        self.assertNotIn("previously_visible", json.dumps(result) + repr(self.tools.index.entries))
+
+    def test_nested_sweep_and_clear_leave_accounting_and_state_valid(self):
+        cache = self.tools.index
+        cache.python("def before(): pass")
+        with cache.scan():
+            with cache.scan():
+                cache.clear()
+                cache.python("def after(): pass")
+            self.assertIsNotNone(cache._scan)
+        self.assertIsNone(cache._scan)
+        self.assertEqual(len(cache.entries), 1)
+        self.assertEqual(cache.bytes, sum(entry[1] for entry in cache.entries.values()))
+
 
 class CacheBoundTests(unittest.TestCase):
     def test_unicode_qualified_names_are_limited_by_bytes_before_caching(self):

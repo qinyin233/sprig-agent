@@ -31,6 +31,118 @@ def source_digest(source):
     return digest.hexdigest()
 
 
+def measure_scan_cache(source, repeat):
+    """Complete sweeps across entry/byte bounds; no model or cached file reads."""
+    sys.path.insert(0, str(source))
+    from sprig_agent.config import Config
+    from sprig_agent.tools import Tools
+    from sprig_agent.index import MAX_CACHE_BYTES, MAX_CACHE_ENTRIES
+    if Path(inspect.getfile(Tools)).resolve().parent.parent != source.resolve():
+        raise ValueError("benchmark loaded the wrong source revision")
+    languages = ("py", "js", "ts", "tsx", "rs", "go", "c", "cpp", "java")
+    def unexpected_approval(action):
+        raise AssertionError("read-only scan requested approval")
+    cases = []
+    for label, count, declarations, mixed, filtered in (
+        ("fits_entry_limit", 128, 1, False, False),
+        ("one_over_entry_limit", 129, 100, False, True),
+        ("twice_entry_limit", 257, 50, False, True),
+        ("over_byte_limit", 65, 400, False, True),
+        ("nine_languages_over_entry_limit", 144, 1, True, True),
+    ):
+        with tempfile.TemporaryDirectory(prefix="sprig-scan-cache-bench-") as temporary:
+            root, digest, input_bytes = Path(temporary), hashlib.sha256(), 0
+            for module in range(count):
+                extension = languages[module % len(languages)] if mixed else "py"
+                rows = []
+                for number in range(declarations):
+                    name = f"function_{module:04}_{number:04}"
+                    rows.append({
+                        "py": f"def {name}(): return {number}",
+                        "js": f"export function {name}() {{ return {number}; }}",
+                        "ts": f"export function {name}(): number {{ return {number}; }}",
+                        "tsx": f"export function {name}() {{ return <span>{{{number}}}</span>; }}",
+                        "rs": f"pub fn {name}() -> i32 {{ {number} }}",
+                        "go": f"func {name}() int {{ return {number} }}",
+                        "c": f"int {name}(void) {{ return {number}; }}",
+                        "cpp": f"int {name}() {{ return {number}; }}",
+                        "java": f"public int {name}() {{ return {number}; }}",
+                    }[extension])
+                text = "\n".join(rows) + "\n"
+                if extension == "go":
+                    text = "package fixture\n" + text
+                if extension == "java":
+                    text = f"public class Module{module:04} {{\n" + text + "}\n"
+                filename, body = f"module_{module:04}.{extension}", text.encode("utf-8")
+                (root / filename).write_bytes(body)
+                digest.update(filename.encode() + b"\0" + body)
+                input_bytes += len(body)
+            query = f"function_{count - 1:04}_{declarations - 1:04}"
+            arguments = {"query": query} if filtered else {}
+            output_budget = 16000 if filtered else 1000000
+            tools = Tools(Config(root, "offline", read_only=True, max_output=output_budget),
+                          unexpected_approval)
+            counters = {"ast_parses": 0, "native_parses": 0, "file_reads": 0, "file_bytes": 0, "declarations_seen": 0}
+            originals = (ast.parse, tools.index.syntax.parse, tools._read, tools.index.symbols)
+            def count_ast(*args, **kwargs):
+                counters["ast_parses"] += 1
+                return originals[0](*args, **kwargs)
+            def count_native(*args, **kwargs):
+                counters["native_parses"] += 1
+                return originals[1](*args, **kwargs)
+            def count_read(*args, **kwargs):
+                value = originals[2](*args, **kwargs)
+                counters["file_reads"] += 1
+                counters["file_bytes"] += len(value)
+                return value
+            def count_symbols(*args, **kwargs):
+                value = originals[3](*args, **kwargs)
+                if isinstance(value, list):
+                    counters["declarations_seen"] += len(value)
+                return value
+            ast.parse, tools.index.syntax.parse, tools._read, tools.index.symbols = count_ast, count_native, count_read, count_symbols
+            runs, result_hashes = [], set()
+            try:
+                for iteration in range(repeat + 1):
+                    before = dict(counters)
+                    started = time.perf_counter()
+                    result = tools.execute("project_map", arguments)
+                    elapsed = (time.perf_counter() - started) * 1000
+                    encoded = json.dumps(result, sort_keys=True, ensure_ascii=False, separators=(",", ":")).encode()
+                    names = [symbol["name"] for file in result.get("files", []) for symbol in file.get("symbols", [])]
+                    if ("error" in result or result.get("truncated") or any(file.get("symbols_unavailable") for file in result.get("files", []))
+                            or (filtered and not any(name == query or name.endswith("." + query) for name in names))
+                            or (not filtered and len(result.get("files", [])) != count)):
+                        raise ValueError("cache scan did not return the complete required result")
+                    delta = {name: value - before[name] for name, value in counters.items()}
+                    if delta["file_reads"] != count or delta["file_bytes"] != input_bytes:
+                        raise ValueError("cache scan skipped fresh source reads")
+                    expected_declarations = count * declarations + (count // len(languages) if mixed else 0)
+                    if delta["declarations_seen"] != expected_declarations:
+                        raise ValueError("cache scan did not inspect every known declaration")
+                    if iteration == 0 and delta["ast_parses"] + delta["native_parses"] != count:
+                        raise ValueError("cache scan cold count does not match distinct source files")
+                    if len(tools.index.entries) > MAX_CACHE_ENTRIES or tools.index.bytes > MAX_CACHE_BYTES:
+                        raise ValueError("cache scan exceeded cache bounds")
+                    result_hashes.add(hashlib.sha256(encoded).hexdigest())
+                    runs.append({"iteration": iteration, "elapsed_ms": round(elapsed, 3), **delta,
+                                 "cache_entries": len(tools.index.entries), "cache_bytes": tools.index.bytes,
+                                 "tool_result_bytes": len(encoded)})
+            finally:
+                ast.parse, tools.index.syntax.parse, tools._read, tools.index.symbols = originals
+                tools.close()
+            if len(result_hashes) != 1:
+                raise ValueError("cache policy changed repeated tool contents")
+            cases.append({"case": label, "files": count, "declarations_per_file": declarations,
+                          "mixed_languages": mixed, "filtered": filtered, "max_output": output_budget,
+                          "source_bytes": input_bytes, "fixture_sha256": digest.hexdigest(),
+                          "result_sha256": next(iter(result_hashes)), "results_identical": True,
+                          "cold": runs[0], "warm": runs[1:],
+                          "median_warm_ms": round(statistics.median(row["elapsed_ms"] for row in runs[1:]), 3)})
+    return {"source_sha256": source_digest(source), "max_cache_entries": MAX_CACHE_ENTRIES,
+            "max_cache_bytes": MAX_CACHE_BYTES, "cases": cases}
+
+
 def measure_edit_context(source, repeat):
     sys.path.insert(0, str(source))
     from sprig_agent.agent import Agent
@@ -276,7 +388,7 @@ def measure_map(root, Config, Tools, approve, repeat):
         tools.close()
 
 
-def worker(source, repeat, click_fixture=None, edit_context=False):
+def worker(source, repeat, click_fixture=None, edit_context=False, scan_cache=False):
     # Both revisions use the same managed interpreter, fixture, and options.
     environment = dict(os.environ)
     for key in ("SPRIG_API_KEY", "OPENAI_API_KEY"):
@@ -286,6 +398,8 @@ def worker(source, repeat, click_fixture=None, edit_context=False):
         command.extend(("--click-fixture", str(click_fixture)))
     if edit_context:
         command.append("--edit-context")
+    if scan_cache:
+        command.append("--scan-cache")
     result = subprocess.run(command, cwd=REPO, env=environment,
                             capture_output=True, check=True, timeout=60)
     return json.loads(result.stdout)
@@ -405,6 +519,7 @@ def main():
     scenario = parser.add_mutually_exclusive_group()
     scenario.add_argument("--click-fixture", type=Path, help="measure only scoped retrieval from the checksum-verified Click snapshot")
     scenario.add_argument("--edit-context", action="store_true", help="replay fixed large edits over localhost HTTP; no model/API score")
+    scenario.add_argument("--scan-cache", action="store_true", help="measure complete map sweeps beyond cache bounds; no model/API score")
     parser.add_argument("--worker", action="store_true", help=argparse.SUPPRESS)
     parser.add_argument("--source", type=Path, default=REPO / "src", help=argparse.SUPPRESS)
     args = parser.parse_args()
@@ -413,14 +528,17 @@ def main():
     if args.click_fixture is not None:
         args.click_fixture = args.click_fixture.resolve()
     if args.worker:
-        if args.edit_context:
+        if args.scan_cache:
+            result = measure_scan_cache(args.source, args.repeat)
+        elif args.edit_context:
             result = measure_edit_context(args.source, args.repeat)
         else:
             result = (measure_click_search(args.source, args.click_fixture, args.repeat) if args.click_fixture is not None
                       else measure(args.source, args.repeat))
         print(json.dumps(result))
         return 0
-    report = {"scope": ("scripted large edits over localhost HTTP; protocol, budget, tools and history, not model task success"
+    report = {"scope": ("complete synthetic map sweeps across cache entry/byte bounds; no model/API or coding-task success comparison"
+                        if args.scan_cache else "scripted large edits over localhost HTTP; protocol, budget, tools and history, not model task success"
                         if args.edit_context else "pinned Click code windows; file tools only, no model/API or coding-task success comparison"
                         if args.click_fixture is not None else "offline retrieval and multilingual parsing; no model/API or coding-task success comparison"),
               "python": platform.python_version(), "platform": platform.platform(),
@@ -432,7 +550,7 @@ def main():
               "driver_sha256": hashlib.sha256(Path(__file__).read_bytes()).hexdigest(),
               "uv_lock_sha256": hashlib.sha256((REPO / "uv.lock").read_bytes()).hexdigest(),
               "dirty": bool(git("status", "--porcelain")), "repeat": args.repeat,
-              "current": worker(REPO / "src", args.repeat, args.click_fixture, args.edit_context)}
+              "current": worker(REPO / "src", args.repeat, args.click_fixture, args.edit_context, args.scan_cache)}
     if args.click_fixture is not None:
         report["support_sha256"] = {name: hashlib.sha256((REPO / name).read_bytes()).hexdigest() for name in (
             "scripts/benchmark-edit-repo.py", "scripts/benchmark-tasks.py", "benchmarks/coding/suite.py")}
@@ -455,7 +573,20 @@ def main():
                     target.parent.mkdir(parents=True, exist_ok=True)
                     with files.extractfile(member) as source:
                         target.write_bytes(source.read())
-            report["baseline"] = {"revision": revision, **worker(root / "src", args.repeat, args.click_fixture, args.edit_context)}
+            report["baseline"] = {"revision": revision, **worker(root / "src", args.repeat, args.click_fixture, args.edit_context, args.scan_cache)}
+        if args.scan_cache:
+            current, baseline = report["current"], report["baseline"]
+            for field in ("max_cache_entries", "max_cache_bytes"):
+                if current[field] != baseline[field]:
+                    raise ValueError("cache limits differ between revisions")
+            old_cases = {case["case"]: case for case in baseline["cases"]}
+            if set(old_cases) != {case["case"] for case in current["cases"]}:
+                raise ValueError("cache scenarios differ between revisions")
+            for case in current["cases"]:
+                for field in ("fixture_sha256", "result_sha256", "source_bytes", "files", "declarations_per_file", "max_output"):
+                    if case[field] != old_cases[case["case"]][field]:
+                        raise ValueError("cache comparison changed inputs or returned contents")
+            report["comparison_inputs_and_results_identical"] = True
     print(json.dumps(report, ensure_ascii=False, indent=2))
     return 0
 

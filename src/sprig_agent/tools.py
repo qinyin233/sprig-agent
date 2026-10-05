@@ -433,7 +433,7 @@ class Tools:
                     except (OSError, ToolError):
                         truncated = True
 
-        with self._directory(parts) as directory:
+        with self._directory(parts) as directory, self.index.scan(lambda: not truncated):
             walk(directory, parts, 0)
         if selection is not None:
             return selection.result(truncated, self._check_cancelled)
