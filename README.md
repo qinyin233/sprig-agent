@@ -22,7 +22,7 @@ uv run sprig --help
 uv run python -m unittest discover -s tests -v
 ```
 
-`.python-version` 固定开发主版本为 3.13，`.venv` 由 uv 管理，`uv.lock` 提交到 Git；包仍支持 Python 3.11+。`--managed-python` 使用 uv 管理的 CPython，避免选择 Microsoft Store 应用别名。无需手动激活环境或使用 pip 安装。Textual、Tree-sitter 和所需语法包由 uv 锁定安装，读取项目时只加载已安装的本地语法包；模型、文件、会话和命令核心仍使用标准库。构建由 uv 管理隔离的 `setuptools` / `wheel` 环境，离线使用需预先准备依赖和构建缓存。
+`.python-version` 固定开发主版本为 3.13，`.venv` 由 uv 管理，`uv.lock` 提交到 Git；包仍支持 Python 3.11+。`--managed-python` 使用 uv 管理的 CPython，避免选择 Microsoft Store 应用别名。无需手动激活环境或使用 pip 安装。Textual、Tree-sitter、所需语法包与 RE2 正则引擎由 uv 锁定安装，工具只加载已安装的本地包；模型传输、会话和命令核心使用标准库。构建由 uv 管理隔离的 `setuptools` / `wheel` 环境，离线使用需预先准备依赖和构建缓存。
 
 Windows 中文路径下若必须使用 Python 3.11，请在 `uv sync` 和 `uv run` 上都加 `--no-editable`，避开旧版 Python 对 editable `.pth` 路径的编码限制。默认的 3.13 开发环境无需此选项。
 
@@ -210,7 +210,7 @@ CLI 与 TUI 都实时显示命令输出，保留 UTF-8 分段，遮盖跨片段�
 | --- | --- |
 | `list_files(path=".")` | 列出目录内容 |
 | `read_file(path, offset=1, limit=...)` | 读取 UTF-8 文本文件；可按行读取，返回后续行号，仍受输出预算限制 |
-| `search(query, path=".", glob=..., ignore_case=False, context=0, limit=100)` | 搜索指定文件或目录中的字面字符串，可筛选文件、忽略大小写并返回上下文，不解释为正则表达式 |
+| `search(query, path=".", glob=..., ignore_case=False, regex=False, context=0, limit=100)` | 搜索指定文件或目录，默认字面字符串；可显式启用 RE2 正则、筛选文件、忽略大小写并返回上下文 |
 | `project_map(path=".", query=...)` | 返回有界文件地图和九种语言的声明名称与行号；可按路径或声明名筛选，优先保留精确匹配；不支持的语言只列路径 |
 | `edit_file(path, old, new)` 或 `edit_file(path, edits=[...])` | 单片段或同文件多片段替换，展示合并 diff，经确认后一次写入 |
 | `run(argv, cwd=".", timeout=...)` | 运行参数数组所指定的命令；可选超时不能超过全局上限 |
@@ -221,7 +221,9 @@ CLI 与 TUI 都实时显示命令输出，保留 UTF-8 分段，遮盖跨片段�
 
 `read_file` 不带范围时保留按输出预算读取文件开头的行为。指定 `offset` / `limit` 可精确读取后部代码；范围读取先检查完整的受限文件（最多 8 MiB），避免用干净页面绕过其他位置的凭证、二进制或编码检查。行号从 1 开始，`limit` 最多 10,000，省略时为 2,000；`next_offset` 指向下一页。返回尽可能完整的行，单行超过输出预算时仅返回该行开头，并标记 `line_truncated`，不生成无法推进的后续行号。换行和 UTF-8 字符保持原样，超限、取消或非法范围会明确失败。
 
-`search` 的 `path` 可指向一个文件。`glob="*.py"` 在任意层级筛选文件名，`glob="src/**/*.py"` 按工作空间相对路径筛选；`*` 不跨 `/`，完整组件 `**` 匹配零层或多层。glob 在所有平台区分大小写，支持 `*`、`?`、字符集合，最多 256 UTF-8 字节、32 个组件，不支持花括号扩展或排除式模式；筛选在读取内容前进行，仍受隐私规则约束。`ignore_case=True` 使用 Unicode case folding。
+`search` 的 `path` 可指向一个文件。`glob="*.py"` 在任意层级筛选文件名，`glob="src/**/*.py"` 按工作空间相对路径筛选；`*` 不跨 `/`，完整组件 `**` 匹配零层或多层。glob 在所有平台区分大小写，支持 `*`、`?`、字符集合，最多 256 UTF-8 字节、32 个组件，不支持花括号扩展或排除式模式；筛选在读取内容前进行，仍受隐私规则约束。`ignore_case=True` 在字面模式使用完整 Unicode case folding，正则模式使用 RE2 的简单 Unicode 折叠。
+
+`regex=True` 启用 RE2 语法，例如 `query=r"^(?:async )?def (?:load|save)_item\("` 可一次寻找两类函数定义。表达式最多 1,000 个字符，支持分支、分组、锚点、字符类、量词与 Unicode 属性；不支持回溯引用和 lookaround，不支持跨物理 CR/LF 行匹配。`\w`、`\d`、`\b` 按 ASCII 解释，Unicode 字符可用 `\p{L}`、`\p{Han}` 等属性。编译失败返回固定错误，不回显表达式。单次搜索的引擎程序/缓存预算为 1 MiB；编译和逐行匹配累计达到 1 秒时，在原生调用返回后的检查点停止并标记 `timed_out` / `truncated`，只保留已经完整的结果。这是协作式工作预算，不是强制中断原生调用或进程总内存上限。详见[正则检索与测量](docs/regex-search.md)。
 
 `context` 为 0–10，返回每个命中行的 `before` / `after` 字符串数组，分别对应紧邻前后物理行；默认不带这些字段。`limit` 默认 100、最多 1,000，计数的是命中行。同文件多处命中的上下文可能重复。完整文件先通过凭证、编码和二进制检查，再返回任何命中；单条结果连同上下文若超出剩余预算，会整体省略并标记截断，不切出不完整字符串。返回的 `files_read`、`bytes_read`、`entries_scanned` 为实际扫描统计；不可读、过大、二进制或含凭证的候选文件计入 `skipped_files` 并使结果不完整。遍历和逐行匹配都响应取消。
 

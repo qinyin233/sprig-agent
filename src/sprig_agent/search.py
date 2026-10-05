@@ -1,8 +1,65 @@
-"""Bounded literal search helpers; no subprocesses or runtime downloads."""
+"""Bounded literal/RE2 search helpers; no subprocesses or runtime downloads."""
 
 from collections import deque
 import fnmatch
 import io
+import time
+
+REGEX_MEMORY = 1024 * 1024
+REGEX_SECONDS = 1.0
+
+
+class RegexBudgetExceeded(Exception):
+    """Stop the entire search, preserving only already complete match records."""
+
+
+class RegexMatcher:
+    """One uncached non-backtracking pattern per search, checked between lines."""
+
+    def __init__(self, query, ignore_case, check_cancelled):
+        import re2
+
+        self.check_cancelled = check_cancelled
+        check_cancelled()
+        started = time.perf_counter()
+        options = re2.Options()
+        options.max_mem = REGEX_MEMORY
+        options.log_errors = False  # Native parse errors can otherwise print the query.
+        options.never_capture = True  # Only line membership is needed, not captured groups.
+        options.case_sensitive = not ignore_case
+        try:
+            # Use the locked binding's native boolean operation directly: public
+            # compile() caches 128 patterns, and search() builds unused captures
+            # and Unicode offsets. Keep pattern/native caches call-local instead.
+            self.pattern = re2._re2.RE2(query.encode("utf-8"), options)
+            if not self.pattern.ok():
+                raise ValueError("invalid, unsupported, or too complex RE2 pattern")
+        except (re2.error, UnicodeError):
+            raise ValueError("invalid, unsupported, or too complex RE2 pattern") from None
+        finally:
+            check_cancelled()
+        self.elapsed = time.perf_counter() - started
+        self.anchor = re2._re2.RE2.Anchor.UNANCHORED
+
+    def _search(self, line):
+        encoded = line.encode("utf-8")
+        return self.pattern.Match(self.anchor, encoded, 0, len(encoded))[0] != (-1, -1)
+
+    def __call__(self, line):
+        self.check_cancelled()
+        if self.elapsed >= REGEX_SECONDS:
+            raise RegexBudgetExceeded
+        started = time.perf_counter()
+        try:
+            found = self._search(line)
+        finally:
+            self.elapsed += time.perf_counter() - started
+            self.check_cancelled()
+        # This is a cooperative work budget, not preemption of a native call.
+        # RE2 also bounds pattern resources; Tools bounds the full input file.
+        if self.elapsed >= REGEX_SECONDS:
+            raise RegexBudgetExceeded
+        return found
 
 
 class FileGlob:
@@ -32,7 +89,7 @@ class FileGlob:
         return len(parts) in possible
 
 
-def matching_lines(text, query, ignore_case, context, check_cancelled):
+def matching_lines(text, query, ignore_case, context, check_cancelled, matcher=None):
     """Preserve physical CR/LF lines with at most 10 previous/pending rows."""
     needle = query.casefold() if ignore_case else query
     if not context:
@@ -40,7 +97,8 @@ def matching_lines(text, query, ignore_case, context, check_cancelled):
         for number, line in enumerate(io.StringIO(text, newline=""), 1):
             check_cancelled()
             line = line.rstrip("\r\n")
-            if needle in (line.casefold() if ignore_case else line):
+            if (matcher(line) if matcher is not None else
+                    needle in (line.casefold() if ignore_case else line)):
                 yield {"line": number, "text": line}
         return
     previous, pending = deque(maxlen=context), deque()
@@ -51,7 +109,8 @@ def matching_lines(text, query, ignore_case, context, check_cancelled):
             record["after"].append(line)
         if pending and len(pending[0]["after"]) == context:
             yield pending.popleft()
-        if needle in (line.casefold() if ignore_case else line):
+        if (matcher(line) if matcher is not None else
+                needle in (line.casefold() if ignore_case else line)):
             pending.append({"line": number, "text": line, "before": list(previous), "after": []})
         previous.append(line)
     for record in pending:

@@ -22,7 +22,7 @@ from .instructions import InstructionError, ProjectInstructions
 from .map_selection import MapSelection, encoded_size
 from .policy import FilePolicy, command_environment
 from .output import CommandOutput
-from .search import FileGlob, matching_lines
+from .search import FileGlob, RegexBudgetExceeded, RegexMatcher, matching_lines
 from .syntax import IndexUnavailable
 
 MAX_FILE = 512 * 1024
@@ -49,9 +49,10 @@ TOOL_SCHEMAS = [
     schema("read_file", "Read UTF-8 text. Use 1-based offset and limit to inspect specific lines or continue a large file. Ranged reads scan at most 8 MiB, enforce file privacy, and report next_offset; a single oversized line is explicitly marked incomplete.",
            {"path": STRING, "offset": {"type": "integer", "minimum": 1, "maximum": 1000000},
             "limit": {"type": "integer", "minimum": 1, "maximum": 10000}}, ["path"]),
-    schema("search", "Find literal text in a workspace file or recursively in a directory. Optional case-sensitive glob filters basenames (e.g. *.py) or workspace-relative paths (e.g. src/**/*.py; * does not cross /, ** is a whole path component). ignore_case uses Unicode case folding. context adds up to 10 physical lines before/after each hit; default limit is 100 matching lines. Full-file privacy checks, read/output budgets and cancellation still apply. Truncated results or skipped files cannot establish that no other matches exist.",
+    schema("search", "Find text in a workspace file or recursively in a directory. Default query is literal; regex=true enables RE2 syntax (alternation, classes, anchors, quantifiers, Unicode properties; no lookaround or backreferences), matched per physical CR/LF line. query: at most 1000 characters. Regex has a 1 MiB engine budget and a cooperative 1-second compile/match budget; timed_out means incomplete. ignore_case uses full Unicode folding for literal text, simple folding for RE2; RE2 \\w/\\d/\\b use ASCII semantics. Optional case-sensitive glob filters basenames (*.py) or workspace-relative paths (src/**/*.py; * does not cross /, ** is a whole component). context adds up to 10 lines before/after each hit; default limit 100 matching lines. Full-file privacy, read/output budgets and cancellation apply. Truncated results or skipped files cannot establish absence.",
            {"query": STRING, "path": STRING, "glob": {"type": "string", "minLength": 1, "maxLength": 256},
-            "ignore_case": {"type": "boolean"}, "context": {"type": "integer", "minimum": 0, "maximum": 10},
+            "ignore_case": {"type": "boolean"}, "regex": {"type": "boolean"},
+            "context": {"type": "integer", "minimum": 0, "maximum": 10},
             "limit": {"type": "integer", "minimum": 1, "maximum": 1000}}, ["query"]),
     schema("project_map", "Bounded workspace file map with declarations and 1-based lines for Python, JavaScript, TypeScript/TSX, Rust, Go, C/C++ and Java. Optional query is a case-insensitive literal path/declaration-name match; exact names then prefixes outrank substrings, and only matching declarations or files are returned. Use it when a full map omits relevant symbols. Syntax only; inspect relevant files afterwards. Unsupported files have paths only; unavailable or oversized parses are marked.",
            {"path": STRING, "query": {"type": "string", "minLength": 1, "maxLength": 256}}),
@@ -269,19 +270,24 @@ class Tools:
                 "total_lines": total, "truncated": truncated, "line_truncated": partial,
                 "next_offset": end + 1 if truncated and not partial else None}
 
-    def search(self, query, path=".", *, glob=_MISSING, ignore_case=False, context=0, limit=100):
+    def search(self, query, path=".", *, glob=_MISSING, ignore_case=False, regex=False, context=0, limit=100):
         if not isinstance(query, str) or not query or len(query) > 1000:
-            raise ToolError("query must be a nonempty literal string (at most 1000 characters)")
+            raise ToolError("query must be a nonempty string (at most 1000 characters)")
         if not isinstance(ignore_case, bool):
             raise ToolError("ignore_case must be a boolean")
+        if not isinstance(regex, bool):
+            raise ToolError("regex must be a boolean")
         if isinstance(context, bool) or not isinstance(context, int) or not 0 <= context <= 10:
             raise ToolError("context must be an integer between 0 and 10")
         if isinstance(limit, bool) or not isinstance(limit, int) or not 1 <= limit <= 1000:
             raise ToolError("limit must be an integer between 1 and 1000")
         file_glob = FileGlob(glob) if glob is not _MISSING else None
+        matcher = RegexMatcher(query, ignore_case, self._check_cancelled) if regex else None
         parts = self._parts(path)
         result = {"matches": [], "truncated": False, "skipped_files": 0,
                   "files_read": 0, "bytes_read": 0, "entries_scanned": 0}
+        if regex:
+            result["timed_out"] = False
         # Reserve the whole JSON envelope and counter growth, including redaction.
         def measure(value):
             size = encoded_size(value)
@@ -309,15 +315,18 @@ class Tools:
                 result["truncated"] = True
                 return
             text = self._decode(raw)  # Check all contents before returning even one hit.
-            for hit in matching_lines(text, query, ignore_case, context, self._check_cancelled):
-                self._check_cancelled()
-                match = {"path": "/".join((*prefix, name)), **hit}
-                size = measure(match) + 2
-                if len(result["matches"]) >= limit or size > remaining:
-                    result["truncated"] = stopped = True
-                    return
-                result["matches"].append(match)
-                remaining -= size
+            try:
+                for hit in matching_lines(text, query, ignore_case, context, self._check_cancelled, matcher):
+                    self._check_cancelled()
+                    match = {"path": "/".join((*prefix, name)), **hit}
+                    size = measure(match) + 2
+                    if len(result["matches"]) >= limit or size > remaining:
+                        result["truncated"] = stopped = True
+                        return
+                    result["matches"].append(match)
+                    remaining -= size
+            except RegexBudgetExceeded:
+                result["timed_out"] = result["truncated"] = stopped = True
 
         def walk(fd, prefix, depth):
             nonlocal stopped

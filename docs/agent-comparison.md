@@ -14,13 +14,13 @@ Sprig 能力表同步至 2026-10-05；每批实际本地与 CI 证据见[性能�
 | OpenCode | [README](https://github.com/anomalyco/opencode)、[session/processor.ts](https://github.com/anomalyco/opencode/blob/dev/packages/opencode/src/session/processor.ts) | 以事件区分文本、工具意图、结果、失败与取消；流式会话状态和修改快照 |
 | OpenHands | [OpenHands README](https://github.com/OpenHands/OpenHands)、[Software Agent SDK](https://github.com/OpenHands/software-agent-sdk) | 模型、工具、会话与工作空间分离；本地与容器工作空间；服务器和客户端边界 |
 
-Sprig 借鉴这些接口边界和交互流程。模型与工具核心使用 Python 标准库，终端 TUI 使用 Textual，所有依赖由 uv 管理。本轮实现没有复制这些项目的源码，没有引入它们的依赖或框架。
+Sprig 借鉴这些接口边界和交互流程。模型传输、会话和命令核心使用 Python 标准库，终端 TUI 使用 Textual，代码解析与正则检索使用本地 Tree-sitter / RE2，所有依赖由 uv 管理。本轮实现没有复制这些项目的源码，没有引入它们的依赖或框架。
 
 ## 本轮共同基础能力
 
 | 能力 | Sprig 当前实现 | 当前范围 |
 | --- | --- | --- |
-| 读取、搜索、编辑、终端执行 | 六个 function tools；按行读取、限定文件/范围的搜索、同文件多片段编辑、diff 与逐次确认 | UTF-8 文本；命令没有沙箱 |
+| 读取、搜索、编辑、终端执行 | 六个 function tools；按行读取、限定文件/范围的字面或 RE2 正则搜索、同文件多片段编辑、diff 与逐次确认 | UTF-8 文本；正则有资源/工作预算、不跨行；命令没有沙箱 |
 | 流式交互 | `--stream`，文本增量显示，工具参数按索引组装 | Chat Completions SSE；完整响应后才执行工具 |
 | 终端界面与连续对话 | `--tui`、Enter 发送、中途引导、实时模型/命令输出、确认窗、取消、会话管理；保留 `--chat` | 单一工作线程；新要求在安全节点生效；无交互式 stdin/PTY |
 | 安全操作模式 | 只读模式、敏感文件排除、`.sprigignore`、最小命令环境、增量密钥遮盖 | 应用层防护；编辑模式的获批命令仍没有操作系统沙箱 |

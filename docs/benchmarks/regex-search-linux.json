@@ -1,0 +1,405 @@
+{
+  "scope": "synthetic known definition windows: regex versus fixed literal queries; no model/API or coding-task success comparison",
+  "python": "3.12.13",
+  "platform": "Linux-6.18.40.1-microsoft-standard-WSL2-x86_64-with-glibc2.43",
+  "recorded_at_utc": "2026-10-05T15:14:02.488902+00:00",
+  "dependencies": {
+    "textual": "8.2.8",
+    "google-re2": "1.1.20251105",
+    "tree-sitter": "0.25.2",
+    "tree-sitter-javascript": "0.25.0",
+    "tree-sitter-typescript": "0.23.2",
+    "tree-sitter-rust": "0.24.2",
+    "tree-sitter-go": "0.25.0",
+    "tree-sitter-c": "0.24.2",
+    "tree-sitter-cpp": "0.23.4",
+    "tree-sitter-java": "0.23.5"
+  },
+  "revision": "2570de2acc1a5a73f75f60d519a1d8e825b42118",
+  "driver_sha256": "981245f7d5da14f7766903a0c9e5227291465301d6897a3206811d79cc6b8c35",
+  "uv_lock_sha256": "834405cf539c2a1803289a8f2e55955a53af7869bf931a33ce4d1f80e9010e17",
+  "dirty": true,
+  "repeat": 5,
+  "current": {
+    "source_sha256": "6201e570a7adc6dd80d9e4ea5943b8b9aeefbf8d86a98d5685dd8e8358c65a5c",
+    "supports_regex": true,
+    "scope": "scripted queries over synthetic Python fixtures; identical known windows, not model decisions or coding-task success",
+    "cases": [
+      {
+        "case": "many_files_three_definitions",
+        "files": 32,
+        "source_bytes": 14368,
+        "fixture_sha256": "42f05c7dc8d71ffb5e2fc679ed8c6d1f55411d94a522d3a464fa94cdf609d36c",
+        "calls": [
+          {
+            "path": ".",
+            "glob": "*.py",
+            "context": 1,
+            "limit": 1000,
+            "query": "^(?:async )?def (?:load|save|delete)_item\\(",
+            "regex": true
+          }
+        ],
+        "tool_calls_per_run": 1,
+        "matching_lines": 96,
+        "match_windows_sha256": "3f3b66bc4cab9775adef5f75d5ef36e3f3d57e3f837b93c4637606499e98ca9a",
+        "median_ms": 5.893,
+        "samples": [
+          {
+            "run": 1,
+            "ms": 52.488,
+            "files_read": 32,
+            "bytes_read": 14368,
+            "tool_result_bytes": 12251
+          },
+          {
+            "run": 2,
+            "ms": 3.232,
+            "files_read": 32,
+            "bytes_read": 14368,
+            "tool_result_bytes": 12251
+          },
+          {
+            "run": 3,
+            "ms": 6.358,
+            "files_read": 32,
+            "bytes_read": 14368,
+            "tool_result_bytes": 12251
+          },
+          {
+            "run": 4,
+            "ms": 5.893,
+            "files_read": 32,
+            "bytes_read": 14368,
+            "tool_result_bytes": 12251
+          },
+          {
+            "run": 5,
+            "ms": 3.377,
+            "files_read": 32,
+            "bytes_read": 14368,
+            "tool_result_bytes": 12251
+          }
+        ]
+      },
+      {
+        "case": "one_file_three_definitions",
+        "files": 1,
+        "source_bytes": 21113,
+        "fixture_sha256": "631a9559d9d41231f59de81545f64a01b9ddd1556fc2bcfac5b73f0acab5553c",
+        "calls": [
+          {
+            "path": ".",
+            "glob": "*.py",
+            "context": 1,
+            "limit": 1000,
+            "query": "^(?:async )?def (?:load|save|delete)_item\\(",
+            "regex": true
+          }
+        ],
+        "tool_calls_per_run": 1,
+        "matching_lines": 3,
+        "match_windows_sha256": "494eac49d99b90ef20103215758982f6cd7d9d12001e73a2387a438ffddb14a0",
+        "median_ms": 1.501,
+        "samples": [
+          {
+            "run": 1,
+            "ms": 1.596,
+            "files_read": 1,
+            "bytes_read": 21113,
+            "tool_result_bytes": 506
+          },
+          {
+            "run": 2,
+            "ms": 1.501,
+            "files_read": 1,
+            "bytes_read": 21113,
+            "tool_result_bytes": 506
+          },
+          {
+            "run": 3,
+            "ms": 1.501,
+            "files_read": 1,
+            "bytes_read": 21113,
+            "tool_result_bytes": 506
+          },
+          {
+            "run": 4,
+            "ms": 1.468,
+            "files_read": 1,
+            "bytes_read": 21113,
+            "tool_result_bytes": 506
+          },
+          {
+            "run": 5,
+            "ms": 1.439,
+            "files_read": 1,
+            "bytes_read": 21113,
+            "tool_result_bytes": 506
+          }
+        ]
+      },
+      {
+        "case": "literal_control",
+        "files": 32,
+        "source_bytes": 14368,
+        "fixture_sha256": "42f05c7dc8d71ffb5e2fc679ed8c6d1f55411d94a522d3a464fa94cdf609d36c",
+        "calls": [
+          {
+            "path": ".",
+            "glob": "*.py",
+            "context": 1,
+            "limit": 1000,
+            "query": "def load_item("
+          }
+        ],
+        "tool_calls_per_run": 1,
+        "matching_lines": 32,
+        "match_windows_sha256": "411c91f5d2afafd90a4ab57388813fac90d43e33cd2180b1c89e0e4db1deef52",
+        "median_ms": 1.78,
+        "samples": [
+          {
+            "run": 1,
+            "ms": 1.725,
+            "files_read": 32,
+            "bytes_read": 14368,
+            "tool_result_bytes": 4105
+          },
+          {
+            "run": 2,
+            "ms": 1.598,
+            "files_read": 32,
+            "bytes_read": 14368,
+            "tool_result_bytes": 4105
+          },
+          {
+            "run": 3,
+            "ms": 1.991,
+            "files_read": 32,
+            "bytes_read": 14368,
+            "tool_result_bytes": 4105
+          },
+          {
+            "run": 4,
+            "ms": 1.78,
+            "files_read": 32,
+            "bytes_read": 14368,
+            "tool_result_bytes": 4105
+          },
+          {
+            "run": 5,
+            "ms": 1.812,
+            "files_read": 32,
+            "bytes_read": 14368,
+            "tool_result_bytes": 4105
+          }
+        ]
+      }
+    ]
+  },
+  "baseline": {
+    "revision": "2570de2acc1a5a73f75f60d519a1d8e825b42118",
+    "source_sha256": "310b6f20d5782754d96e38ab2682da52c7cadb5779cc7013140f72e035cf468e",
+    "supports_regex": false,
+    "scope": "scripted queries over synthetic Python fixtures; identical known windows, not model decisions or coding-task success",
+    "cases": [
+      {
+        "case": "many_files_three_definitions",
+        "files": 32,
+        "source_bytes": 14368,
+        "fixture_sha256": "42f05c7dc8d71ffb5e2fc679ed8c6d1f55411d94a522d3a464fa94cdf609d36c",
+        "calls": [
+          {
+            "path": ".",
+            "glob": "*.py",
+            "context": 1,
+            "limit": 1000,
+            "query": "def load_item("
+          },
+          {
+            "path": ".",
+            "glob": "*.py",
+            "context": 1,
+            "limit": 1000,
+            "query": "def save_item("
+          },
+          {
+            "path": ".",
+            "glob": "*.py",
+            "context": 1,
+            "limit": 1000,
+            "query": "def delete_item("
+          }
+        ],
+        "tool_calls_per_run": 3,
+        "matching_lines": 96,
+        "match_windows_sha256": "3f3b66bc4cab9775adef5f75d5ef36e3f3d57e3f837b93c4637606499e98ca9a",
+        "median_ms": 6.346,
+        "samples": [
+          {
+            "run": 1,
+            "ms": 6.346,
+            "files_read": 96,
+            "bytes_read": 43104,
+            "tool_result_bytes": 12443
+          },
+          {
+            "run": 2,
+            "ms": 6.6,
+            "files_read": 96,
+            "bytes_read": 43104,
+            "tool_result_bytes": 12443
+          },
+          {
+            "run": 3,
+            "ms": 5.336,
+            "files_read": 96,
+            "bytes_read": 43104,
+            "tool_result_bytes": 12443
+          },
+          {
+            "run": 4,
+            "ms": 4.918,
+            "files_read": 96,
+            "bytes_read": 43104,
+            "tool_result_bytes": 12443
+          },
+          {
+            "run": 5,
+            "ms": 7.89,
+            "files_read": 96,
+            "bytes_read": 43104,
+            "tool_result_bytes": 12443
+          }
+        ]
+      },
+      {
+        "case": "one_file_three_definitions",
+        "files": 1,
+        "source_bytes": 21113,
+        "fixture_sha256": "631a9559d9d41231f59de81545f64a01b9ddd1556fc2bcfac5b73f0acab5553c",
+        "calls": [
+          {
+            "path": ".",
+            "glob": "*.py",
+            "context": 1,
+            "limit": 1000,
+            "query": "def load_item("
+          },
+          {
+            "path": ".",
+            "glob": "*.py",
+            "context": 1,
+            "limit": 1000,
+            "query": "def save_item("
+          },
+          {
+            "path": ".",
+            "glob": "*.py",
+            "context": 1,
+            "limit": 1000,
+            "query": "def delete_item("
+          }
+        ],
+        "tool_calls_per_run": 3,
+        "matching_lines": 3,
+        "match_windows_sha256": "494eac49d99b90ef20103215758982f6cd7d9d12001e73a2387a438ffddb14a0",
+        "median_ms": 1.893,
+        "samples": [
+          {
+            "run": 1,
+            "ms": 2.115,
+            "files_read": 3,
+            "bytes_read": 63339,
+            "tool_result_bytes": 694
+          },
+          {
+            "run": 2,
+            "ms": 1.884,
+            "files_read": 3,
+            "bytes_read": 63339,
+            "tool_result_bytes": 694
+          },
+          {
+            "run": 3,
+            "ms": 2.389,
+            "files_read": 3,
+            "bytes_read": 63339,
+            "tool_result_bytes": 694
+          },
+          {
+            "run": 4,
+            "ms": 1.893,
+            "files_read": 3,
+            "bytes_read": 63339,
+            "tool_result_bytes": 694
+          },
+          {
+            "run": 5,
+            "ms": 1.847,
+            "files_read": 3,
+            "bytes_read": 63339,
+            "tool_result_bytes": 694
+          }
+        ]
+      },
+      {
+        "case": "literal_control",
+        "files": 32,
+        "source_bytes": 14368,
+        "fixture_sha256": "42f05c7dc8d71ffb5e2fc679ed8c6d1f55411d94a522d3a464fa94cdf609d36c",
+        "calls": [
+          {
+            "path": ".",
+            "glob": "*.py",
+            "context": 1,
+            "limit": 1000,
+            "query": "def load_item("
+          }
+        ],
+        "tool_calls_per_run": 1,
+        "matching_lines": 32,
+        "match_windows_sha256": "411c91f5d2afafd90a4ab57388813fac90d43e33cd2180b1c89e0e4db1deef52",
+        "median_ms": 2.075,
+        "samples": [
+          {
+            "run": 1,
+            "ms": 1.855,
+            "files_read": 32,
+            "bytes_read": 14368,
+            "tool_result_bytes": 4105
+          },
+          {
+            "run": 2,
+            "ms": 2.392,
+            "files_read": 32,
+            "bytes_read": 14368,
+            "tool_result_bytes": 4105
+          },
+          {
+            "run": 3,
+            "ms": 2.017,
+            "files_read": 32,
+            "bytes_read": 14368,
+            "tool_result_bytes": 4105
+          },
+          {
+            "run": 4,
+            "ms": 2.075,
+            "files_read": 32,
+            "bytes_read": 14368,
+            "tool_result_bytes": 4105
+          },
+          {
+            "run": 5,
+            "ms": 2.328,
+            "files_read": 32,
+            "bytes_read": 14368,
+            "tool_result_bytes": 4105
+          }
+        ]
+      }
+    ]
+  },
+  "comparison_inputs_and_match_windows_identical": true
+}

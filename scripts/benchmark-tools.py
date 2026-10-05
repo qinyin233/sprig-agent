@@ -31,6 +31,81 @@ def source_digest(source):
     return digest.hexdigest()
 
 
+def measure_regex_search(source, repeat):
+    """Known definition windows: one regex versus three fixed literal queries."""
+    sys.path.insert(0, str(source))
+    from sprig_agent.config import Config
+    from sprig_agent.tools import Tools
+    if Path(inspect.getfile(Tools)).resolve().parent.parent != source.resolve():
+        raise ValueError("benchmark loaded the wrong source revision")
+    supports_regex = "regex" in inspect.signature(Tools.search).parameters
+    def unexpected_approval(action):
+        raise AssertionError("read-only search requested approval")
+    def encode(value):
+        return json.dumps(value, sort_keys=True, ensure_ascii=False, separators=(",", ":")).encode()
+    cases = []
+    for label, count, noise, focused in (("many_files_three_definitions", 32, 8, True),
+                                       ("one_file_three_definitions", 1, 512, True),
+                                       ("literal_control", 32, 8, False)):
+        with tempfile.TemporaryDirectory(prefix="sprig-regex-bench-") as temporary:
+            root, expected, digest, input_bytes = Path(temporary), [], hashlib.sha256(), 0
+            for module in range(count):
+                path = f"module_{module:03}.py"
+                rows = [row for number in range(noise) for row in (
+                    f"def noise_{number:04}():", "    return '值🙂'")]
+                positions = []
+                for operation in ("load", "save", "delete"):
+                    positions.append(len(rows) + 1)
+                    rows.extend((f"{'async ' if operation == 'save' else ''}def {operation}_item():",
+                                 f"    return '{operation}'"))
+                body = ("\r\n".join(rows) + "\r\n").encode()
+                (root / path).write_bytes(body)
+                digest.update(path.encode() + b"\0" + body)
+                input_bytes += len(body)
+                for line in positions if focused else positions[:1]:
+                    expected.append({"path": path, "line": line, "text": rows[line - 1],
+                                     "before": rows[max(0, line - 2):line - 1], "after": rows[line:line + 1]})
+            expected.sort(key=lambda hit: (hit["path"], hit["line"]))
+            common = {"path": ".", "glob": "*.py", "context": 1, "limit": 1000}
+            if focused and supports_regex:
+                calls = [{**common, "query": r"^(?:async )?def (?:load|save|delete)_item\(", "regex": True}]
+            else:
+                operations = ("load", "save", "delete") if focused else ("load",)
+                calls = [{**common, "query": f"def {operation}_item("} for operation in operations]
+            samples = []
+            for run in range(repeat):
+                tools = Tools(Config(root, "offline", read_only=True, max_output=256000), unexpected_approval)
+                try:
+                    started = time.perf_counter()
+                    results = [tools.execute("search", call) for call in calls]
+                    elapsed = (time.perf_counter() - started) * 1000
+                finally:
+                    tools.close()
+                if any(result.get("error") or result.get("truncated") or result.get("timed_out")
+                       or result.get("skipped_files") for result in results):
+                    raise ValueError("regex comparison produced incomplete retrieval")
+                matches = sorted((hit for result in results for hit in result["matches"]),
+                                 key=lambda hit: (hit["path"], hit["line"]))
+                if matches != expected:
+                    raise ValueError("regex comparison changed a known definition window")
+                reads = sum(result["files_read"] for result in results)
+                read_bytes = sum(result["bytes_read"] for result in results)
+                if reads != count * len(calls) or read_bytes != input_bytes * len(calls):
+                    raise ValueError("regex comparison read counters differ from fixture bytes")
+                samples.append({"run": run + 1, "ms": round(elapsed, 3),
+                                "files_read": reads, "bytes_read": read_bytes,
+                                "tool_result_bytes": sum(len(encode(result)) for result in results)})
+            cases.append({"case": label, "files": count, "source_bytes": input_bytes,
+                          "fixture_sha256": digest.hexdigest(), "calls": calls,
+                          "tool_calls_per_run": len(calls), "matching_lines": len(expected),
+                          "match_windows_sha256": hashlib.sha256(encode(expected)).hexdigest(),
+                          "median_ms": round(statistics.median(sample["ms"] for sample in samples), 3),
+                          "samples": samples})
+    return {"source_sha256": source_digest(source), "supports_regex": supports_regex,
+            "scope": "scripted queries over synthetic Python fixtures; identical known windows, not model decisions or coding-task success",
+            "cases": cases}
+
+
 def measure_scan_cache(source, repeat):
     """Complete sweeps across entry/byte bounds; no model or cached file reads."""
     sys.path.insert(0, str(source))
@@ -388,7 +463,7 @@ def measure_map(root, Config, Tools, approve, repeat):
         tools.close()
 
 
-def worker(source, repeat, click_fixture=None, edit_context=False, scan_cache=False):
+def worker(source, repeat, click_fixture=None, edit_context=False, scan_cache=False, regex_search=False):
     # Both revisions use the same managed interpreter, fixture, and options.
     environment = dict(os.environ)
     for key in ("SPRIG_API_KEY", "OPENAI_API_KEY"):
@@ -400,6 +475,8 @@ def worker(source, repeat, click_fixture=None, edit_context=False, scan_cache=Fa
         command.append("--edit-context")
     if scan_cache:
         command.append("--scan-cache")
+    if regex_search:
+        command.append("--regex-search")
     result = subprocess.run(command, cwd=REPO, env=environment,
                             capture_output=True, check=True, timeout=60)
     return json.loads(result.stdout)
@@ -520,6 +597,7 @@ def main():
     scenario.add_argument("--click-fixture", type=Path, help="measure only scoped retrieval from the checksum-verified Click snapshot")
     scenario.add_argument("--edit-context", action="store_true", help="replay fixed large edits over localhost HTTP; no model/API score")
     scenario.add_argument("--scan-cache", action="store_true", help="measure complete map sweeps beyond cache bounds; no model/API score")
+    scenario.add_argument("--regex-search", action="store_true", help="compare known definition windows from one regex or three literal searches; no model/API score")
     parser.add_argument("--worker", action="store_true", help=argparse.SUPPRESS)
     parser.add_argument("--source", type=Path, default=REPO / "src", help=argparse.SUPPRESS)
     args = parser.parse_args()
@@ -528,7 +606,9 @@ def main():
     if args.click_fixture is not None:
         args.click_fixture = args.click_fixture.resolve()
     if args.worker:
-        if args.scan_cache:
+        if args.regex_search:
+            result = measure_regex_search(args.source, args.repeat)
+        elif args.scan_cache:
             result = measure_scan_cache(args.source, args.repeat)
         elif args.edit_context:
             result = measure_edit_context(args.source, args.repeat)
@@ -537,20 +617,21 @@ def main():
                       else measure(args.source, args.repeat))
         print(json.dumps(result))
         return 0
-    report = {"scope": ("complete synthetic map sweeps across cache entry/byte bounds; no model/API or coding-task success comparison"
+    report = {"scope": ("synthetic known definition windows: regex versus fixed literal queries; no model/API or coding-task success comparison"
+                        if args.regex_search else "complete synthetic map sweeps across cache entry/byte bounds; no model/API or coding-task success comparison"
                         if args.scan_cache else "scripted large edits over localhost HTTP; protocol, budget, tools and history, not model task success"
                         if args.edit_context else "pinned Click code windows; file tools only, no model/API or coding-task success comparison"
                         if args.click_fixture is not None else "offline retrieval and multilingual parsing; no model/API or coding-task success comparison"),
               "python": platform.python_version(), "platform": platform.platform(),
               "recorded_at_utc": datetime.now(timezone.utc).isoformat(),
               "dependencies": {name: version(name) for name in (
-                  "textual", "tree-sitter", "tree-sitter-javascript", "tree-sitter-typescript",
+                  "textual", "google-re2", "tree-sitter", "tree-sitter-javascript", "tree-sitter-typescript",
                   "tree-sitter-rust", "tree-sitter-go", "tree-sitter-c", "tree-sitter-cpp", "tree-sitter-java")},
               "revision": git("rev-parse", "HEAD").decode().strip(),
               "driver_sha256": hashlib.sha256(Path(__file__).read_bytes()).hexdigest(),
               "uv_lock_sha256": hashlib.sha256((REPO / "uv.lock").read_bytes()).hexdigest(),
               "dirty": bool(git("status", "--porcelain")), "repeat": args.repeat,
-              "current": worker(REPO / "src", args.repeat, args.click_fixture, args.edit_context, args.scan_cache)}
+              "current": worker(REPO / "src", args.repeat, args.click_fixture, args.edit_context, args.scan_cache, args.regex_search)}
     if args.click_fixture is not None:
         report["support_sha256"] = {name: hashlib.sha256((REPO / name).read_bytes()).hexdigest() for name in (
             "scripts/benchmark-edit-repo.py", "scripts/benchmark-tasks.py", "benchmarks/coding/suite.py")}
@@ -573,7 +654,7 @@ def main():
                     target.parent.mkdir(parents=True, exist_ok=True)
                     with files.extractfile(member) as source:
                         target.write_bytes(source.read())
-            report["baseline"] = {"revision": revision, **worker(root / "src", args.repeat, args.click_fixture, args.edit_context, args.scan_cache)}
+            report["baseline"] = {"revision": revision, **worker(root / "src", args.repeat, args.click_fixture, args.edit_context, args.scan_cache, args.regex_search)}
         if args.scan_cache:
             current, baseline = report["current"], report["baseline"]
             for field in ("max_cache_entries", "max_cache_bytes"):
@@ -587,6 +668,16 @@ def main():
                     if case[field] != old_cases[case["case"]][field]:
                         raise ValueError("cache comparison changed inputs or returned contents")
             report["comparison_inputs_and_results_identical"] = True
+        if args.regex_search:
+            current, baseline = report["current"], report["baseline"]
+            old_cases = {case["case"]: case for case in baseline["cases"]}
+            if set(old_cases) != {case["case"] for case in current["cases"]}:
+                raise ValueError("regex scenarios differ between revisions")
+            for case in current["cases"]:
+                for field in ("fixture_sha256", "match_windows_sha256", "source_bytes", "files", "matching_lines"):
+                    if case[field] != old_cases[case["case"]][field]:
+                        raise ValueError("regex comparison changed inputs or returned windows")
+            report["comparison_inputs_and_match_windows_identical"] = True
     print(json.dumps(report, ensure_ascii=False, indent=2))
     return 0
 
