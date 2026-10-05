@@ -64,6 +64,7 @@ class Config:
     max_context_bytes: int = 131072
     compact_context: bool = False
     request_usage: bool = False
+    project_instructions: bool = True
 
     def __post_init__(self):
         root = Path(self.workdir).expanduser().resolve(strict=True)
@@ -94,6 +95,8 @@ class Config:
             raise ValueError("max-context-bytes must be between 4096 and 2097152")
         if not isinstance(self.compact_context, bool):
             raise ValueError("compact-context must be a boolean")
+        if not isinstance(self.project_instructions, bool):
+            raise ValueError("project-instructions must be a boolean")
         if not isinstance(self.checks, tuple) or len(self.checks) > 16:
             raise ValueError("at most 16 acceptance checks are supported")
         for argv in self.checks:
@@ -112,4 +115,6 @@ class Config:
             binding["read_only"] = True
         if self.inherit_env:
             binding["inherit_env"] = True
+        if not self.project_instructions:
+            binding["project_instructions"] = False
         return binding

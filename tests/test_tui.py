@@ -95,6 +95,29 @@ class TuiTests(unittest.IsolatedAsyncioTestCase):
         self.assertIs(pilot.app.get_widget_at(*point)[0], button, "button center must be visible: " + selector)
         self.assertTrue(await pilot.click(selector, offset=offset), "button must be visible: " + selector)
 
+    async def test_scoped_rules_replan_before_showing_fresh_edit_approval(self):
+        (self.root / "src").mkdir()
+        (self.root / "src/a.py").write_text("value = 1\n", encoding="utf-8")
+        (self.root / "AGENTS.md").write_text("Use the project checks.", encoding="utf-8")
+        (self.root / "src/AGENTS.md").write_text("SRC SPECIFIC RULE", encoding="utf-8")
+        arguments = {"path": "src/a.py", "old": "1", "new": "2"}
+        provider = ScriptedProvider([call("early", "edit_file", arguments),
+                                     call("fresh", "edit_file", arguments), response("Stopped after rejection")])
+        app = self.app(provider)
+        async with app.run_test(size=(110, 36)) as pilot:
+            app.query_one("#task", TextArea).load_text("Propose the value fix")
+            await pilot.press("enter")
+            await self.until(pilot, lambda: isinstance(app.screen, ApprovalScreen))
+            self.assertEqual(len(provider.calls), 2)
+            self.assertNotIn("SRC SPECIFIC RULE", provider.calls[0][0]["content"])
+            self.assertIn("SRC SPECIFIC RULE", provider.calls[1][0]["content"])
+            self.assertIn("instructions are new or changed", app.messages[3]["content"])
+            self.assertEqual((self.root / "src/a.py").read_text(), "value = 1\n")
+            await pilot.press("enter")  # Fresh guidance cannot turn default rejection into approval.
+            await self.until(pilot, lambda: not app.busy)
+            self.assertFalse(json.loads(app.messages[5]["content"])["approved"])
+            self.assertEqual((self.root / "src/a.py").read_text(), "value = 1\n")
+
     async def test_local_undo_redo_confirm_diff_and_mark_saved_acceptance_stale(self):
         provider = ScriptedProvider([call("write", "edit_file", {"path": "new.txt", "old": "", "new": "created content"}), response("Done")])
         app = self.app(provider, save_session="undo")

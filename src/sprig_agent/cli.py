@@ -163,6 +163,7 @@ def main(argv=None):
     parser.add_argument("--inherit-env", action="store_true", help="let approved commands inherit additional environment variables")
     parser.add_argument("--max-context-bytes", type=int, default=131072, help="maximum serialized model request size; not a token/cost estimate")
     parser.add_argument("--compact-context", action="store_true", help="explicitly elide old successful tool output and completed edit text from requests; keep saved history")
+    parser.add_argument("--no-project-instructions", action="store_true", help="disable automatic workspace AGENTS.md guidance; never reads parent/home directories")
     interface = parser.add_mutually_exclusive_group()
     interface.add_argument("--chat", action="store_true", help="keep an interactive conversation open")
     interface.add_argument("--tui", action="store_true", help="open the full-screen terminal interface (streams by default)")
@@ -193,7 +194,7 @@ def main(argv=None):
         config = Config(Path(args.workdir), args.model or ("session-manager" if manage_sessions else ""), args.base_url, key, args.max_steps, args.timeout, args.max_output,
                         stream=args.stream or args.tui, checks=tuple(args.check), read_only=args.read_only, inherit_env=args.inherit_env,
                         max_context_bytes=args.max_context_bytes, compact_context=args.compact_context,
-                        request_usage=args.request_usage)
+                        request_usage=args.request_usage, project_instructions=not args.no_project_instructions)
         if manage_sessions:
             store = SessionStore(args.session_dir, config)
             if args.list_sessions:

@@ -5,7 +5,7 @@
 - Python 3.11+，模型与文件执行核心使用标准库，TUI 使用 Textual，跨语言声明索引使用 Tree-sitter
 - Linux / macOS / Windows 10+ / Windows WSL
 - Chat Completions + function tools，可选 SSE 流式输出
-- 全屏终端 TUI、连续对话、项目代码地图与本地 Git 查看
+- 全屏终端 TUI、连续对话、项目代码地图、分目录 `AGENTS.md` 规则与本地 Git 查看
 - 用户固定验收命令：失败反馈修复，通过后才确认验收完成
 - 可选本地会话保存与恢复
 - 只读分析、上下文预算、敏感文件排除、可审阅的文件编辑撤销与重做
@@ -101,6 +101,7 @@ sprig [TASK] [--workdir PATH] [--model MODEL] [--base-url URL]
       [--stream] [--request-usage] [--metrics] [--chat | --tui] [--check JSON_ARGV ...]
       [--save-session NAME | --resume NAME] [--session-dir PATH]
       [--change-history-dir PATH]
+      [--no-project-instructions]
 ```
 
 `python -m sprig_agent` 使用相同接口。
@@ -121,6 +122,7 @@ sprig [TASK] [--workdir PATH] [--model MODEL] [--base-url URL]
 | `--inherit-env` | 显式允许获批命令继承更多环境变量；已知模型密钥仍移除 |
 | `--max-context-bytes` | 默认 131072；限制实际序列化请求大小，范围 4096–2097152；不等同 token 或费用预算 |
 | `--compact-context` | 显式省略旧成功工具输出和已批准完成的旧编辑正文；用户要求、失败、拒绝和最近六条消息保留 |
+| `--no-project-instructions` | 关闭自动加载工作目录内的 `AGENTS.md`；设置绑定到保存的会话 |
 | `--chat` | 可选；在同一上下文中连续输入任务，须在交互式终端运行 |
 | `--tui` | 全屏终端界面，自动启用流式输出；标准输入和输出都须连接终端 |
 | `--check JSON_ARGV` | 可重复指定固定验收命令，最多 16 条；每次执行都需要确认 |
@@ -130,6 +132,14 @@ sprig [TASK] [--workdir PATH] [--model MODEL] [--base-url URL]
 | `--list-sessions` | 列出本地会话元数据，无需模型或密钥，不上传对话 |
 | `--delete-session NAME` | 逐次确认后删除本地会话文件；非交互输入默认拒绝 |
 | `--change-history-dir PATH` | 显式持久化精确修改备份，目录须位于工作空间/仓库之外，使用所有者私有权限；不加密 |
+
+### 项目开发规则
+
+默认在首个模型请求前加载工作目录根部的 `AGENTS.md`。读取文件后，后续请求会加入该文件所在目录及祖先目录内的规则；规则按作用目录标注，较深目录的规则适用于其子树。每次请求重新检查已发现规则，恢复会话时也重新读取当前文件。不会向工作目录外、用户主目录或远程地址寻找规则。
+
+模型提出编辑或命令时，应用检查目标文件父目录或命令 `cwd` 的规则是否已出现在产生该响应的请求中；新规则或变更会阻止该动作，先把新规则交给模型重新规划。确认动作后还会重读规则，变化时拒绝写入或启动命令，要求重新确认。规则文件不能替用户批准、放开只读或修改固定验收条件；获批命令仍不受沙箱限制，应用不能从任意 argv 推断所有涉及文件的目录规则。
+
+读取遵循现有隐私、取消和文件句柄限制，排除项不加载。每份规则最多 16 KiB、全部规则 JSON 最多 64 KiB、已发现目录最多 128 个；无效 UTF-8、二进制、疑似凭据、不安全文件或超限会明确停止，不截断规则。规则同样占用请求字节预算，`/context` 预览包含它们，`/compact` 保留它们。可修正文件、缩小工作目录，或使用 `--no-project-instructions` 显式关闭。规则文本会发送到配置的模型服务，并进入已启用保存的会话。[详细行为与验证](docs/project-instructions.md)。
 
 ### 上下文预算
 

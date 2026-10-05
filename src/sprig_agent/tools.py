@@ -18,6 +18,7 @@ from .config import redact
 from .changes import ChangeError, ChangeHistory, unpack
 from .filesystem import Directory, is_link
 from .index import SymbolIndex, language_for
+from .instructions import InstructionError, ProjectInstructions
 from .map_selection import MapSelection, encoded_size
 from .policy import FilePolicy, command_environment
 from .output import CommandOutput
@@ -82,6 +83,25 @@ class Tools:
         self.policy = FilePolicy(self.root)
         self.index = SymbolIndex()
         self.emit_output = emit_output
+        self.instructions = ProjectInstructions(self._read_instruction, self._check_cancelled,
+                                                config.project_instructions)
+
+    def _read_instruction(self, path, limit):
+        self.policy.reload()
+        if self.policy.excluded(PurePosixPath(path).parts):
+            return None
+        try:
+            with self._parent(path) as (directory, name):
+                raw = self._read(directory, name, limit)
+            if len(raw) > limit:
+                raise InstructionError("project instruction file exceeds 16 KiB: " + path)
+            return redact(self._decode(raw).removeprefix("\ufeff"), self.config.api_key)
+        except FileNotFoundError:
+            return None
+        except (OSError, ValueError, ToolError):
+            # Fixed diagnostics: decoding and OS errors must not echo rule text.
+            raise InstructionError("cannot safely load project instructions: " + path
+                                   + "; check privacy, UTF-8, regular-file and 16 KiB limits, or explicitly use --no-project-instructions") from None
 
     def _check_cancelled(self):
         if self.cancel_event is not None and self.cancel_event.is_set():
@@ -185,6 +205,8 @@ class Tools:
             raise ToolError("offset must be an integer from 1 to 1000000 (1-based line number)")
         if limit is not None and (type(limit) is not int or not 1 <= limit <= 10000):
             raise ToolError("limit must be an integer from 1 to 10000")
+        if self.config.project_instructions:
+            self.instructions.register(self._parts(path)[:-1])
         if offset != 1 or limit is not None:
             return self._read_page(path, offset, limit or 2000)
         with self._parent(path) as (fd, name):
@@ -531,6 +553,8 @@ class Tools:
             total += sum(sizes)
             if multiple and total > MAX_FILE:
                 raise ToolError("combined edits exceed 512 KiB")
+        parts = self._parts(path)
+        rules = self.instructions.prepare_action(parts[:-1])
         with self._parent(path) as (fd, name):
             before_raw, before_stat = self._snapshot(fd, name)
             before = self._decode(before_raw or b"")
@@ -572,6 +596,7 @@ class Tools:
                 return {"approved": False, "changed": False}
             # Recheck after approval: an editor may have changed the file while the user read the diff.
             self._parts(path)
+            self.instructions.recheck_action(parts[:-1], rules)
             self._unchanged(fd, name, before_raw, before_stat)
             self._check_cancelled()
             mode = stat.S_IMODE(before_stat.st_mode) & 0o777 if before_stat else 0o600
@@ -598,6 +623,7 @@ class Tools:
         with self._directory(parts):
             pass
         directory = self.config.workdir.joinpath(*parts)
+        rules = self.instructions.prepare_action(parts)
         description = (f"RUN (NOT SANDBOXED; may access outside files/network)\n"
                        f"cwd: {json.dumps(str(directory))}\nargv: {json.dumps(argv)}\n"
                        f"timeout: {seconds}s; output cap: {self.config.max_output} bytes")
@@ -609,6 +635,7 @@ class Tools:
         with self._directory(parts):
             pass
         env = command_environment(self.config)
+        self.instructions.recheck_action(parts, rules)
         stream = CommandOutput(self.emit_output, self.config.api_key)
         if os.name == "nt":
             from .windows import run_command
