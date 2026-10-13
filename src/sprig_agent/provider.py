@@ -84,6 +84,9 @@ def validate_message(message):
     if content is not None and not isinstance(content, str):
         raise ProviderError("only text assistant content is supported")
     raw_calls = message.get("tool_calls", [])
+    # Compatible APIs may explicitly return null for an absent optional array.
+    if raw_calls is None:
+        raw_calls = []
     if not isinstance(raw_calls, list) or len(raw_calls) > MAX_TOOL_CALLS:
         raise ProviderError("invalid or too many tool calls")
     calls, ids = [], set()

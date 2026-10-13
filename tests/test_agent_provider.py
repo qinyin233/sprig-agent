@@ -138,6 +138,14 @@ class MessageValidationTests(unittest.TestCase):
         self.assertEqual(validate_message({"role": "assistant", "content": None, "refusal": "No"}),
                          assistant("No"))
 
+    def test_null_tool_calls_are_absent_but_reasoning_only_is_not_completion(self):
+        self.assertEqual(validate_message({"role": "assistant", "content": "Done", "tool_calls": None}),
+                         assistant("Done"))
+        self.assertEqual(validate_message({"role": "assistant", "content": None, "tool_calls": None, "refusal": "No"}),
+                         assistant("No"))
+        with self.assertRaises(ProviderError):
+            validate_message({"role": "assistant", "content": None, "tool_calls": None, "reasoning_content": "private"})
+
     def test_rejects_nontext_empty_and_wrong_role_messages(self):
         for message in (None, [], "text", {"role": "user", "content": "text"},
                         assistant([]), assistant({"text": "x"}), assistant(42),
@@ -202,6 +210,16 @@ class ProviderTests(ConfigCase):
         provider, opener, _ = self.provider(base_url="http://localhost:8080/v1")
         provider.complete([], [])
         self.assertIsNone(opener.open.call_args.args[0].get_header("Authorization"))
+
+    def test_nullable_tool_calls_response_keeps_only_final_text(self):
+        message = {"role": "assistant", "content": "Done", "tool_calls": None,
+                   "reasoning_content": "private reasoning"}
+        provider, opener, response = self.provider(raw=json.dumps(envelope(message)).encode())
+        displayed = []
+        self.assertEqual(provider.complete([], [], on_text=displayed.append), assistant("Done"))
+        self.assertNotIn("private reasoning", json.dumps(displayed))
+        self.assertEqual(opener.open.call_count, 1)
+        response.read.assert_called_once_with(MAX_RESPONSE + 1)
 
     def test_known_key_is_redacted_from_response_text_and_tool_arguments(self):
         message = assistant("key=secret", [call(arguments='{"path":"secret.txt"}')])
