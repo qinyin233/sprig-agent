@@ -114,14 +114,15 @@ def prepare(target, case):
             "note": "Prepared inputs only; no model or candidate commands were executed. Synthetic history needs a client-specific adapter and is not directly comparable."}
 
 
-def run_case(case, config_options, *, provider_factory=Provider, confirm=approve, emit=None, emit_delta=None):
+def run_case(case, config_options, *, provider_factory=Provider, confirm=approve, emit=None, emit_delta=None,
+             case_adapter=None):
     key = config_options.get("api_key", "")
     with disposable() as parent:
         root = parent / "workspace"
         root.mkdir()
-        files = suite.fixture_files(case)
+        files = case_adapter.files if case_adapter is not None else suite.fixture_files(case)
         suite.seed(root, files)
-        argv, signature, intact = bundle(parent, case)
+        argv, signature, intact = (case_adapter.bundle(parent, case) if case_adapter is not None else bundle(parent, case))
         config = Config(root, checks=(argv,), **config_options)
         lock_signature = hashlib.sha256((REPO / "uv.lock").read_bytes()).hexdigest()
         driver_signature = hashlib.sha256(Path(__file__).read_bytes()).hexdigest()
@@ -201,6 +202,9 @@ def run_case(case, config_options, *, provider_factory=Provider, confirm=approve
                   "elapsed_ms": round(elapsed, 3), "active_ms": round(max(0, elapsed - approvals["wait_ms"]), 3),
                   "approvals": {**approvals, "wait_ms": round(approvals["wait_ms"], 3)},
                   "tools": tool_records, "requests": agent.usage_report()}
+        if case_adapter is not None:
+            report.update(scope="one repository Sprig task; no overall performance or competitor ranking claim",
+                          repository_task=case_adapter.metadata)
         return redact(report, key)
 
 

@@ -43,4 +43,4 @@ npm 安装禁用脚本，随后只显式执行固定版本 OpenCode 的平台安
 
 [Windows 原始报告](benchmarks/client-probes-windows.json)记录本机 Python 3.13 控制器、Aider / mini 的 Python 3.12.12、Pi 的 Node 24.11.1，五个客户端元数据/帮助检查通过。计时包含适配进程和 Sprig 执行器，首次样本未清空 OS 缓存；它们不是模型请求、任务延迟、TUI 就绪或总内存测量。CI 不设置时间阈值，也不把平台跳过算通过。
 
-CI 在 Windows、Ubuntu、macOS 分别安装并检查实际客户端；原有三平台、四个 Python 版本的产品测试保留。按节省 Actions 额度的新策略，小更新本地检查后跳过 CI，大更新再运行完整矩阵。[任务诊断工具](coding-benchmark.md)可导出相同代码与外部验收，[mini SDK 任务入口](mini-task-runner.md)已接入逐动作批准及失败后修复，并对齐实际 JSON 请求字节上限、关闭自动重试、记录实际 HTTP 次数和响应体用量；传输新增项目前仅有 Windows 本地测试证据。其他客户端的编码适配、真实同模型成绩、复杂真实仓库、自然长会话、峰值内存仍待实施。真实任务需使用客户端正常流程，保留隐私限制、失败与超限记录；缺失统计标为未知。mini 帮助适配器不能用于任务，也不能用 OpenCode 自动批准换取速度。
+CI 配置在 Windows、Ubuntu、macOS 分别安装并检查实际客户端；原有三平台、四个 Python 版本的产品测试保留。按节省 Actions 额度的新策略，小更新本地检查后跳过 CI，大更新再运行完整矩阵。[任务诊断工具](coding-benchmark.md)可导出相同代码与外部验收，[mini SDK 任务入口](mini-task-runner.md)已接入逐动作批准及失败后修复，并对齐实际 JSON 请求字节上限、关闭自动重试、记录实际 HTTP 次数和响应体用量。[固定 Click 仓库任务](repository-task-benchmark.md)新增同输入、同验收的真实仓库入口，Windows/WSL 本地固定回复回归通过；该批没有远程 CI 结论。其他客户端的编码适配、真实同模型成绩、多仓库独立任务集、自然长会话、峰值内存仍待实施。真实任务需使用客户端正常流程，保留隐私限制、失败与超限记录；缺失统计标为未知。mini 帮助适配器不能用于任务，也不能用 OpenCode 自动批准换取速度。

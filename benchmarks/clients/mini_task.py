@@ -93,7 +93,7 @@ def sdk_snapshot():
     return bench.suite.digest(files), intact
 
 
-def run_case(case, options, *, model_factory=None, confirm=approve, emit=None):
+def run_case(case, options, *, model_factory=None, confirm=approve, emit=None, case_adapter=None):
     if case.get("history_reads"):
         raise ValueError("synthetic history has no validated mini adapter")
     key = options.get("api_key", "")
@@ -117,14 +117,16 @@ def run_case(case, options, *, model_factory=None, confirm=approve, emit=None):
         litellm.telemetry = False
         root = parent / "workspace"
         root.mkdir()
-        files = bench.suite.fixture_files(case)
+        files = case_adapter.files if case_adapter is not None else bench.suite.fixture_files(case)
         bench.suite.seed(root, files)
-        acceptance, verifier_signature, verifier_intact = bench.bundle(parent, case)
+        acceptance, verifier_signature, verifier_intact = (
+            case_adapter.bundle(parent, case) if case_adapter is not None else bench.bundle(parent, case))
         config = Config(root, checks=(acceptance,), **options)
         source_signature, sdk_intact = sdk_snapshot()
         protected = {path: (path.resolve(), path.read_bytes()) for path in (
             Path(__file__), REPO / "benchmarks/clients/mini_environment.py", REPO / "benchmarks/clients/bash_command.py",
             REPO / "benchmarks/clients/probe_child.py", REPO / "benchmarks/clients/mini_transport.py",
+            REPO / "benchmarks/clients/mini/uv.lock", REPO / "benchmarks/clients/mini/pyproject.toml",
             REPO / "scripts/benchmark-tasks.py")}
         def intact():
             try:
@@ -211,7 +213,9 @@ def run_case(case, options, *, model_factory=None, confirm=approve, emit=None):
             elapsed = (time.perf_counter() - started) * 1000
             env.close()
         valid = intact()
-        return redact({"schema": 2, "scope": "one diagnostic mini SDK task; no overall performance or top-agent parity claim",
+        scope = ("one repository mini SDK task; no overall performance or top-agent parity claim" if case_adapter is not None
+                 else "one diagnostic mini SDK task; no overall performance or top-agent parity claim")
+        return redact({"schema": 2, "scope": scope,
                        "model_mode": "scripted_protocol_fixture" if model_factory else "upstream_backend_transport",
                        "client": "mini", "client_version": minisweagent.__version__, "sdk_sources_sha256": source_signature,
                        "client_lock_sha256": hashlib.sha256((REPO / "benchmarks/clients/mini/uv.lock").read_bytes()).hexdigest(),
@@ -222,6 +226,7 @@ def run_case(case, options, *, model_factory=None, confirm=approve, emit=None):
                        "config_sha256": template_signature,
                        "recorded_at_utc": datetime.now(timezone.utc).isoformat(), "python": platform.python_version(), "platform": platform.platform(),
                        "case": case["id"], "fixture_sha256": bench.suite.digest(files), "verifier_sha256": verifier_signature,
+                       **({"repository_task": case_adapter.metadata} if case_adapter is not None else {}),
                        "task_sha256": hashlib.sha256(case["task"].encode()).hexdigest(), "verifier_intact": valid,
                        "model": config.model, "sdk_model_route": model_route, "base_url": config.base_url,
                        "max_steps": config.max_steps, "stream": False,

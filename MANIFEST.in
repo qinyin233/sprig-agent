@@ -13,3 +13,5 @@ include benchmarks/clients/aider/pyproject.toml benchmarks/clients/aider/uv.lock
 include benchmarks/clients/mini/pyproject.toml benchmarks/clients/mini/uv.lock benchmarks/clients/mini/.python-version
 include benchmarks/clients/node/package.json benchmarks/clients/node/package-lock.json
 include benchmarks/repositories/click/pyproject.toml benchmarks/repositories/click/uv.lock benchmarks/repositories/click/.python-version
+include benchmarks/repositories/click/task.py benchmarks/repositories/click/oracle.py
+recursive-include benchmarks/repositories/click/tests *.py

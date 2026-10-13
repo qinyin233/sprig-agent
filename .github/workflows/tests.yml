@@ -58,3 +58,11 @@ jobs:
         working-directory: benchmarks/clients/node
       - run: uv run --locked --python 3.12 python scripts/benchmark-clients.py --repeat 1
       - run: uv run --project benchmarks/clients/mini --locked python -I -B -m unittest discover -s benchmarks/clients/tests -v
+      - run: uv sync --project benchmarks/repositories/click --locked --python 3.12
+      - run: uv run --project benchmarks/repositories/click --locked python -I -B scripts/benchmark-edit-repo.py --fetch "${{ runner.temp }}/sprig-click-pinned"
+      - run: uv run --project benchmarks/repositories/click --locked python -I -B -m unittest discover -s benchmarks/repositories/click/tests -p test_repository.py -v
+        env:
+          SPRIG_CLICK_FIXTURE: ${{ runner.temp }}/sprig-click-pinned
+      - run: uv run --project benchmarks/clients/mini --locked python -I -B -m unittest discover -s benchmarks/repositories/click/tests -p test_mini_repository.py -v
+        env:
+          SPRIG_CLICK_FIXTURE: ${{ runner.temp }}/sprig-click-pinned
