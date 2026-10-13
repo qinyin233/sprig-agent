@@ -14,7 +14,7 @@ try {
     $env:SPRIG_BASE_URL = 'https://apihub.agnes-ai.com/v1'
     $env:PYTHONUTF8 = '1'
     $sprigHelpOnly = ($sprigArgs -contains '--help') -or ($sprigArgs -contains '-h') -or ($sprigArgs -contains '--version')
-    if (-not $sprigHelpOnly -and -not $env:SPRIG_API_KEY -and -not $env:OPENAI_API_KEY) {
+    if (-not $sprigHelpOnly -and -not $env:SPRIG_API_KEY -and -not $env:OPENAI_API_KEY -and -not $env:AGNES_API_KEY) {
         $sprigSecureKey = Read-Host 'Agnes API key (hidden)' -AsSecureString
         $sprigKeyPointer = [Runtime.InteropServices.Marshal]::SecureStringToBSTR($sprigSecureKey)
         try { $env:SPRIG_API_KEY = [Runtime.InteropServices.Marshal]::PtrToStringBSTR($sprigKeyPointer) }

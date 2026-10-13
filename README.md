@@ -71,7 +71,7 @@ export SPRIG_MODEL='替换为你的模型名'
 uv run sprig '阅读项目，说明结构并指出一个可以小幅改善的地方' --workdir ./my-project
 ```
 
-也支持环境变量 `OPENAI_API_KEY`，优先使用 `SPRIG_API_KEY`。密钥只从环境变量读取，不接受命令行密钥参数，也不读取配置文件或 `.env`。不要把密钥放进任务文本。
+优先使用 `SPRIG_API_KEY`。Agnes 的 HTTPS 地址 `https://apihub.agnes-ai.com`（默认端口或 443）还支持 `AGNES_API_KEY`，其优先级高于通用的 `OPENAI_API_KEY`，且不会作为其他地址的备用密钥。密钥只从环境变量读取，不接受命令行密钥参数，也不读取配置文件或 `.env`。不要把密钥放进任务文本。
 
 使用其他兼容服务时：
 

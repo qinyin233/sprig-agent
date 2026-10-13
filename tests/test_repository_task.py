@@ -100,7 +100,7 @@ class RepositoryTaskTests(unittest.TestCase):
             self.assertEqual(Path(report["workspace"]), parent / "prepared/workspace")
 
     def test_live_preflights_stop_before_fixture_loading_and_do_not_print_secrets(self):
-        scenarios = ({"SPRIG_API_KEY": "", "OPENAI_API_KEY": ""},
+        scenarios = ({"SPRIG_API_KEY": "", "OPENAI_API_KEY": "", "AGNES_API_KEY": ""},
                      {"SPRIG_API_KEY": "fixture-private-marker", "OPENAI_API_KEY": ""})
         for values in scenarios:
             errors = io.StringIO()

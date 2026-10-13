@@ -37,7 +37,7 @@ try {
     $env:SPRIG_BASE_URL = 'https://apihub.agnes-ai.com/v1'
     $env:PYTHONUTF8 = '1'
     $sprigBenchmarkHelp = ($sprigBenchmarkArgs -contains '--help') -or ($sprigBenchmarkArgs -contains '-h')
-    if (($sprigBenchmarkArgs -contains '--run') -and -not $sprigBenchmarkHelp -and -not $env:SPRIG_API_KEY -and -not $env:OPENAI_API_KEY) {
+    if (($sprigBenchmarkArgs -contains '--run') -and -not $sprigBenchmarkHelp -and -not $env:SPRIG_API_KEY -and -not $env:OPENAI_API_KEY -and -not $env:AGNES_API_KEY) {
         $sprigBenchmarkSecure = Read-Host 'Agnes API key (hidden; process only)' -AsSecureString
         $sprigBenchmarkPointer = [Runtime.InteropServices.Marshal]::SecureStringToBSTR($sprigBenchmarkSecure)
         try { $env:SPRIG_API_KEY = [Runtime.InteropServices.Marshal]::PtrToStringBSTR($sprigBenchmarkPointer) }

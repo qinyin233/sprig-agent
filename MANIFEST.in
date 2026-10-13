@@ -8,6 +8,7 @@ include benchmarks/clients/mini_help.py
 include benchmarks/clients/mini_environment.py benchmarks/clients/mini_task.py
 include benchmarks/clients/bash_command.py
 include benchmarks/clients/mini_transport.py
+include benchmarks/clients/request_pacing.py
 recursive-include benchmarks/clients/tests *.py
 include benchmarks/clients/aider/pyproject.toml benchmarks/clients/aider/uv.lock benchmarks/clients/aider/.python-version
 include benchmarks/clients/mini/pyproject.toml benchmarks/clients/mini/uv.lock benchmarks/clients/mini/.python-version

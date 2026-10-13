@@ -24,7 +24,8 @@ spec.loader.exec_module(bench)
 from mini_environment import ApprovedEnvironment
 from probe_child import environment
 from sprig_agent.cli import approve
-from sprig_agent.config import Config, redact, terminal_text
+from sprig_agent.config import Config, environment_api_key, redact, terminal_text
+from request_pacing import RequestPacer
 
 
 class Discard:
@@ -93,7 +94,10 @@ def sdk_snapshot():
     return bench.suite.digest(files), intact
 
 
-def run_case(case, options, *, model_factory=None, confirm=approve, emit=None, case_adapter=None):
+def run_case(case, options, *, model_factory=None, confirm=approve, emit=None, case_adapter=None, request_interval=0):
+    pacer = RequestPacer(request_interval)
+    if model_factory and request_interval:
+        raise ValueError("pacing requires the actual backend, not scripted model fixtures")
     if case.get("history_reads"):
         raise ValueError("synthetic history has no validated mini adapter")
     key = options.get("api_key", "")
@@ -127,6 +131,7 @@ def run_case(case, options, *, model_factory=None, confirm=approve, emit=None, c
             Path(__file__), REPO / "benchmarks/clients/mini_environment.py", REPO / "benchmarks/clients/bash_command.py",
             REPO / "benchmarks/clients/probe_child.py", REPO / "benchmarks/clients/mini_transport.py",
             REPO / "benchmarks/clients/mini/uv.lock", REPO / "benchmarks/clients/mini/pyproject.toml",
+            REPO / "benchmarks/clients/request_pacing.py",
             REPO / "scripts/benchmark-tasks.py")}
         def intact():
             try:
@@ -153,6 +158,7 @@ def run_case(case, options, *, model_factory=None, confirm=approve, emit=None, c
             abort_exceptions = [*LitellmModel.abort_exceptions, TransportPolicyError]
 
             def _query(self, messages, **kwargs):
+                pacer.wait()
                 started, outcome = time.perf_counter(), "error"
                 attempts_before = wire.measurements.attempts
                 wire.last_failure = None
@@ -195,8 +201,9 @@ def run_case(case, options, *, model_factory=None, confirm=approve, emit=None, c
             **{**defaults["model"], "model_name": model_route, "cost_tracking": "ignore_errors",
                "model_kwargs": {**defaults["model"].get("model_kwargs", {}), "api_base": config.base_url,
                                 "timeout": config.timeout, "num_retries": 0}})
+        wall_limit = 600 + pacer.interval * max(0, config.max_steps - 1)
         agent = DefaultAgent(model, env, **{**defaults["agent"], "step_limit": config.max_steps, "cost_limit": 0.0,
-                                           "output_path": None, "wall_time_limit_seconds": 600})
+                                           "output_path": None, "wall_time_limit_seconds": wall_limit})
         started, outcome = time.perf_counter(), "not_completed"
         try:
             result = agent.run(case["task"])
@@ -233,6 +240,7 @@ def run_case(case, options, *, model_factory=None, confirm=approve, emit=None, c
                        "max_context_bytes": config.max_context_bytes if wire else None,
                        "context_budget": "actual serialized HTTP JSON body" if wire else "scripted fixture; no HTTP transport",
                        "automatic_retries": False, "cost": None,
+                       "request_pacing": pacer.report(), "sdk_wall_time_limit_seconds": wall_limit,
                        "model_queries": agent.n_calls, "requests": requests,
                        "http_attempts": wire.measurements.attempts if wire else None,
                        "request_measurements": wire.report() if wire else None,
@@ -265,7 +273,7 @@ def main():
         return 0
     if not args.case:
         parser.error("a live run requires --case")
-    key = os.environ.get("SPRIG_API_KEY") or os.environ.get("OPENAI_API_KEY", "")
+    key = environment_api_key(args.base_url, os.environ)
     if not key or not sys.stdin.isatty() or not sys.stdout.isatty():
         parser.error("live run requires process credentials and an interactive terminal for fresh approvals")
     try:

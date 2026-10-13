@@ -1,0 +1,289 @@
+{
+  "schema": 2,
+  "scope": "one repository mini SDK task; no overall performance or top-agent parity claim",
+  "model_mode": "upstream_backend_transport",
+  "client": "mini",
+  "client_version": "2.4.6",
+  "sdk_sources_sha256": "0e69b25a0d648c733fbeea0084a442721d010e1457dd378d9acce66044cf16f6",
+  "client_lock_sha256": "1ceaddc62ff07567631b9d281a6124ff1afd720cbe173c81f6a711a8b41df805",
+  "driver_sha256": "b6609ac75011cf86289c762268871a591f2bdb35f78bf32f73be423ea9284fc4",
+  "environment_sha256": "ae31650206ace29185eec82d0e125acb9a43001700e96da06da9725cab9f4b96",
+  "shell_relay_sha256": "a6eadd5f8566c78e8f4dd4a04e81d0ed69d79fa3cadd9f3ce05ed90e7f076016",
+  "transport_sha256": "d8bfebe75ab1d64bf107f4279627d5a2616c0b6f411179a4212ff44a84c6d4e2",
+  "config_sha256": "b539a8965f5bf41dd0f32daafa5d2db22581923d13812fa378fd09569b9d6b0c",
+  "recorded_at_utc": "2026-10-13T02:11:46.134340+00:00",
+  "python": "3.12.12",
+  "platform": "Windows-11-10.0.26300-SP0",
+  "case": "click-command-suggestions",
+  "fixture_sha256": "7d610833c8a6564f980f747e4601e7f4821872702c4a59f32ff9c5d653300d08",
+  "verifier_sha256": "1ed6caa3e9de07f13ae2b603d177387767959014b55fffa06c92d5e7dc8c4d1e",
+  "repository_task": {
+    "protocol": 1,
+    "repository": "pallets/click",
+    "snapshot_files": 52,
+    "base_commit": "19fd4d6e18bc9fce451f92f422696b11169faa57",
+    "base_sha256": "7d610833c8a6564f980f747e4601e7f4821872702c4a59f32ff9c5d653300d08",
+    "acceptance_commit": "831c8f0948af519e45b90801d7430ff25451f972",
+    "acceptance_snapshot_sha256": "62d0162a63fa5322307e29d1710ec7624bd3ca20572329fddbdae1fe628f628d",
+    "expected_upstream_checks": 642,
+    "public_exception_contract": true,
+    "acceptance_python": "3.12",
+    "acceptance_pytest": "8.4.2",
+    "entry_sha256": "09120824b469dbd58ecaa18a57e66af4c9e7d122f403e0f3a531885dfb5e0a39",
+    "adapter_sha256": "9b24d6cd4892e7596eb6dc6bfa6989de6fde36be0a4a32c2feff1632136db97a",
+    "comparison_lock_sha256": "eb1207065a83573e2e9fd9a879694ffcb458c93f15a00a504a4c607a1d2e32e2",
+    "task_sha256": "2908db436a3b9ac92c17b2d60eed48baae6c6549b9a1c83bb775bc816bcf6273"
+  },
+  "task_sha256": "2908db436a3b9ac92c17b2d60eed48baae6c6549b9a1c83bb775bc816bcf6273",
+  "verifier_intact": true,
+  "model": "agnes-3.0-flash",
+  "sdk_model_route": "openai/agnes-3.0-flash",
+  "base_url": "https://apihub.agnes-ai.com/v1",
+  "max_steps": 20,
+  "stream": false,
+  "max_context_bytes": 131072,
+  "context_budget": "actual serialized HTTP JSON body",
+  "automatic_retries": false,
+  "cost": null,
+  "model_queries": 6,
+  "requests": [
+    {
+      "backend_invocation": 1,
+      "outcome": "success",
+      "elapsed_ms": 7063.737,
+      "http_attempts": 1
+    },
+    {
+      "backend_invocation": 2,
+      "outcome": "success",
+      "elapsed_ms": 8184.869,
+      "http_attempts": 1
+    },
+    {
+      "backend_invocation": 3,
+      "outcome": "success",
+      "elapsed_ms": 5485.044,
+      "http_attempts": 1
+    },
+    {
+      "backend_invocation": 4,
+      "outcome": "success",
+      "elapsed_ms": 8067.48,
+      "http_attempts": 1
+    },
+    {
+      "backend_invocation": 5,
+      "outcome": "success",
+      "elapsed_ms": 10401.712,
+      "http_attempts": 1
+    },
+    {
+      "backend_invocation": 6,
+      "outcome": "success",
+      "elapsed_ms": 5768.817,
+      "http_attempts": 1
+    }
+  ],
+  "http_attempts": 6,
+  "request_measurements": {
+    "available": true,
+    "scope": "mini HTTP transport; complete bounded body is transport success, SDK validation is separate",
+    "attempts": 6,
+    "not_attempted": 0,
+    "outcomes": {
+      "success": 6,
+      "error": 0,
+      "cancelled": 0
+    },
+    "request_bytes": 71444,
+    "response_bytes": 4293,
+    "elapsed_ms": 43049.66,
+    "usage": {
+      "prompt_tokens": {
+        "reported_sum": 19274,
+        "known_requests": 6,
+        "unknown_requests": 0,
+        "complete_sum": 19274
+      },
+      "completion_tokens": {
+        "reported_sum": 393,
+        "known_requests": 6,
+        "unknown_requests": 0,
+        "complete_sum": 393
+      },
+      "total_tokens": {
+        "reported_sum": 19667,
+        "known_requests": 6,
+        "unknown_requests": 0,
+        "complete_sum": 19667
+      }
+    },
+    "recent_limit": 128,
+    "recent_dropped": 0,
+    "recent": [
+      {
+        "attempted": true,
+        "streamed": false,
+        "outcome": "success",
+        "http_status": 200,
+        "request_bytes": 4302,
+        "response_bytes": 730,
+        "elapsed_ms": 5160.306,
+        "first_text_ms": null,
+        "usage": {
+          "prompt_tokens": 1161,
+          "completion_tokens": 64,
+          "total_tokens": 1225
+        },
+        "policy_failure": null
+      },
+      {
+        "attempted": true,
+        "streamed": false,
+        "outcome": "success",
+        "http_status": 200,
+        "request_bytes": 4838,
+        "response_bytes": 592,
+        "elapsed_ms": 8181.681,
+        "first_text_ms": null,
+        "usage": {
+          "prompt_tokens": 1266,
+          "completion_tokens": 30,
+          "total_tokens": 1296
+        },
+        "policy_failure": null
+      },
+      {
+        "attempted": true,
+        "streamed": false,
+        "outcome": "success",
+        "http_status": 200,
+        "request_bytes": 5622,
+        "response_bytes": 643,
+        "elapsed_ms": 5481.805,
+        "first_text_ms": null,
+        "usage": {
+          "prompt_tokens": 1618,
+          "completion_tokens": 50,
+          "total_tokens": 1668
+        },
+        "policy_failure": null
+      },
+      {
+        "attempted": true,
+        "streamed": false,
+        "outcome": "success",
+        "http_status": 200,
+        "request_bytes": 9392,
+        "response_bytes": 806,
+        "elapsed_ms": 8063.793,
+        "first_text_ms": null,
+        "usage": {
+          "prompt_tokens": 2778,
+          "completion_tokens": 102,
+          "total_tokens": 2880
+        },
+        "policy_failure": null
+      },
+      {
+        "attempted": true,
+        "streamed": false,
+        "outcome": "success",
+        "http_status": 200,
+        "request_bytes": 21184,
+        "response_bytes": 704,
+        "elapsed_ms": 10397.339,
+        "first_text_ms": null,
+        "usage": {
+          "prompt_tokens": 5662,
+          "completion_tokens": 61,
+          "total_tokens": 5723
+        },
+        "policy_failure": null
+      },
+      {
+        "attempted": true,
+        "streamed": false,
+        "outcome": "success",
+        "http_status": 200,
+        "request_bytes": 26106,
+        "response_bytes": 818,
+        "elapsed_ms": 5764.736,
+        "first_text_ms": null,
+        "usage": {
+          "prompt_tokens": 6789,
+          "completion_tokens": 86,
+          "total_tokens": 6875
+        },
+        "policy_failure": null
+      }
+    ],
+    "body_encoding": "identity; HTTP headers excluded"
+  },
+  "outcome": "time_exceeded",
+  "acceptance_passed": false,
+  "elapsed_ms": 643136.03,
+  "active_ms": 47888.517,
+  "approvals": {
+    "requests": 6,
+    "accepted": 5,
+    "rejected": 1,
+    "wait_ms": 595247.513
+  },
+  "tools": [
+    {
+      "tool": "bash",
+      "active_ms": 124.462,
+      "result_bytes": 19,
+      "approved": false,
+      "returncode": null,
+      "timed_out": null,
+      "output_limited": null
+    },
+    {
+      "tool": "bash",
+      "active_ms": 421.432,
+      "result_bytes": 513,
+      "approved": true,
+      "returncode": 0,
+      "timed_out": false,
+      "output_limited": false
+    },
+    {
+      "tool": "bash",
+      "active_ms": 320.609,
+      "result_bytes": 3407,
+      "approved": true,
+      "returncode": 0,
+      "timed_out": false,
+      "output_limited": false
+    },
+    {
+      "tool": "bash",
+      "active_ms": 355.678,
+      "result_bytes": 10806,
+      "approved": true,
+      "returncode": 0,
+      "timed_out": false,
+      "output_limited": false
+    },
+    {
+      "tool": "bash",
+      "active_ms": 292.257,
+      "result_bytes": 4416,
+      "approved": true,
+      "returncode": 0,
+      "timed_out": false,
+      "output_limited": false
+    },
+    {
+      "tool": "bash",
+      "active_ms": 316.88,
+      "result_bytes": 5483,
+      "approved": true,
+      "returncode": 0,
+      "timed_out": false,
+      "output_limited": false
+    }
+  ]
+}

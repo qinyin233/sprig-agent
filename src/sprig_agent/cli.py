@@ -9,7 +9,7 @@ import sys
 from . import __version__
 from .agent import Agent, SYSTEM_PROMPT
 from .changes import ChangeError, ChangeHistory
-from .config import Config, redact, terminal_text
+from .config import Config, environment_api_key, redact, terminal_text
 from .provider import Provider, ProviderError
 from .session import SessionError, SessionStore, validate_history
 from .tools import Tools
@@ -177,7 +177,7 @@ def main(argv=None):
     parser.add_argument("--session-dir", type=Path, default=Path.home() / ".local/state/sprig-agent/sessions")
     parser.add_argument("--change-history-dir", type=Path, help="explicitly persist exact edit backups in a private directory outside the repository (not encrypted)")
     args = parser.parse_args(argv)
-    key = os.environ.get("SPRIG_API_KEY") or os.environ.get("OPENAI_API_KEY", "")
+    key = environment_api_key(args.base_url, os.environ)
     store = tools = history = provider = None
     try:
         manage_sessions = args.list_sessions or args.delete_session
@@ -211,7 +211,7 @@ def main(argv=None):
                 return 2
             return 0
         if not key and config.base_url.startswith("https://api.openai.com/"):
-            raise ValueError("set SPRIG_API_KEY or OPENAI_API_KEY before using OpenAI")
+            raise ValueError("set SPRIG_API_KEY or OPENAI_API_KEY (AGNES_API_KEY also works at the Agnes HTTPS origin)")
         if args.tui:
             from .tui import run_tui
             return run_tui(config, args.task, args.session_dir, args.save_session, args.resume,

@@ -16,11 +16,13 @@ import time
 REPO = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REPO / "src"))
 sys.path.insert(0, str(REPO / "benchmarks" / "coding"))
+sys.path.insert(0, str(REPO / "benchmarks" / "clients"))
 
 import suite
 from sprig_agent.agent import Agent
 from sprig_agent.cli import approve
-from sprig_agent.config import Config, redact, terminal_text
+from sprig_agent.config import Config, environment_api_key, redact, terminal_text
+from request_pacing import PacedProvider, RequestPacer
 from sprig_agent.provider import Provider, ProviderError
 from sprig_agent.policy import command_environment
 from sprig_agent.tools import Tools
@@ -115,7 +117,8 @@ def prepare(target, case):
 
 
 def run_case(case, config_options, *, provider_factory=Provider, confirm=approve, emit=None, emit_delta=None,
-             case_adapter=None):
+             case_adapter=None, request_interval=0):
+    pacer = RequestPacer(request_interval)
     key = config_options.get("api_key", "")
     with disposable() as parent:
         root = parent / "workspace"
@@ -133,7 +136,7 @@ def run_case(case, config_options, *, provider_factory=Provider, confirm=approve
             text = version.stdout.decode("ascii", errors="ignore").strip()
             if version.returncode == 0 and len(text) < 32 and text.startswith("v") and all(part.isdecimal() for part in text[1:].split(".")):
                 node_version = text
-        provider = provider_factory(config)
+        provider = PacedProvider(provider_factory(config), pacer)
         history = suite.synthetic_history(case)
         approvals = {"requests": 0, "accepted": 0, "rejected": 0, "wait_ms": 0.0}
         tool_records = []
@@ -201,7 +204,7 @@ def run_case(case, config_options, *, provider_factory=Provider, confirm=approve
                   "outcome": outcome if valid else "verifier_modified", "acceptance_passed": completed and valid,
                   "elapsed_ms": round(elapsed, 3), "active_ms": round(max(0, elapsed - approvals["wait_ms"]), 3),
                   "approvals": {**approvals, "wait_ms": round(approvals["wait_ms"], 3)},
-                  "tools": tool_records, "requests": agent.usage_report()}
+                  "tools": tool_records, "requests": agent.usage_report(), "request_pacing": pacer.report()}
         if case_adapter is not None:
             report.update(scope="one repository Sprig task; no overall performance or competitor ranking claim",
                           repository_task=case_adapter.metadata)
@@ -241,7 +244,7 @@ def main():
             if args.prepare:
                 report = prepare(args.prepare.resolve(), case)
             else:
-                key = os.environ.get("SPRIG_API_KEY") or os.environ.get("OPENAI_API_KEY", "")
+                key = environment_api_key(args.base_url, os.environ)
                 if not key:
                     parser.error("live run requires SPRIG_API_KEY or OPENAI_API_KEY from the process environment")
                 if not sys.stdin.isatty() or not sys.stdout.isatty():

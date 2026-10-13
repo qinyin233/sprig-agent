@@ -11,13 +11,13 @@ import time
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
-from sprig_agent.config import Config, redact, terminal_text
+from sprig_agent.config import Config, environment_api_key, redact, terminal_text
 from sprig_agent.tui import ApprovalScreen, SprigApp
 from textual.widgets import TextArea
 
 
 async def smoke(snapshot=None, steer=False):
-    key = os.environ.get("SPRIG_API_KEY") or os.environ.get("OPENAI_API_KEY", "")
+    key = environment_api_key(os.environ.get("SPRIG_BASE_URL", "https://apihub.agnes-ai.com/v1"), os.environ)
     if not key:
         raise ValueError("set SPRIG_API_KEY or OPENAI_API_KEY")
     with tempfile.TemporaryDirectory(prefix="sprig-tui-smoke-") as temporary:
@@ -104,7 +104,7 @@ def main():
     try:
         return 0 if asyncio.run(smoke(args.snapshot, args.steer)) else 1
     except Exception as error:
-        key = os.environ.get("SPRIG_API_KEY") or os.environ.get("OPENAI_API_KEY", "")
+        key = environment_api_key(os.environ.get("SPRIG_BASE_URL", "https://apihub.agnes-ai.com/v1"), os.environ)
         print(terminal_text(redact(str(error), key)), file=sys.stderr)
         return 1
 

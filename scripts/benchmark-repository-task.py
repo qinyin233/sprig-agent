@@ -16,7 +16,7 @@ task_module = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(task_module)
 bench = task_module.fixture.bench
 
-from sprig_agent.config import Config, redact, terminal_text
+from sprig_agent.config import Config, environment_api_key, redact, terminal_text
 from sprig_agent.tools import Tools
 
 
@@ -84,13 +84,15 @@ def main():
     parser.add_argument("--base-url", default=os.environ.get("SPRIG_BASE_URL", "https://apihub.agnes-ai.com/v1"))
     parser.add_argument("--max-steps", type=int, default=20)
     parser.add_argument("--max-context-bytes", type=int, default=131072)
+    parser.add_argument("--request-interval", type=float, default=0, help="0-60 seconds between backend starts; no automatic retry")
     parser.add_argument("--report", type=Path, help="explicitly create a new numeric report; never overwrite a file")
     args = parser.parse_args()
     try:
+        bench.RequestPacer(args.request_interval)
         if args.report and (args.report.exists() or args.report.is_symlink() or not args.report.parent.is_dir()):
             parser.error("--report must be new, with an existing parent")
         if args.run:
-            key = os.environ.get("SPRIG_API_KEY") or os.environ.get("OPENAI_API_KEY", "")
+            key = environment_api_key(args.base_url, os.environ)
             if not key:
                 parser.error("live run requires a process environment API key")
             if not sys.stdin.isatty() or not sys.stdout.isatty():
@@ -110,6 +112,7 @@ def main():
                        "max_steps": args.max_steps, "max_context_bytes": args.max_context_bytes}
             entry = load_mini().run_case if args.client == "mini" else bench.run_case
             report = entry(adapter.case, options, case_adapter=adapter,
+                           request_interval=args.request_interval,
                            emit=lambda text: print(terminal_text(redact(text, key)), file=sys.stderr, flush=True))
         report["recorded_at_utc"] = datetime.now(timezone.utc).isoformat()
         rendered = json.dumps(report, ensure_ascii=True, indent=2) + "\n"

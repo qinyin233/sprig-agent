@@ -13,14 +13,14 @@ import tempfile
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
 from sprig_agent.agent import Agent
-from sprig_agent.config import Config
+from sprig_agent.config import Config, environment_api_key
 from sprig_agent.provider import Provider, ProviderError
 from sprig_agent.session import SessionStore
 from sprig_agent.tools import Tools
 
 
 def smoke(stream):
-    key = os.environ.get("SPRIG_API_KEY") or os.environ.get("OPENAI_API_KEY", "")
+    key = environment_api_key(os.environ.get("SPRIG_BASE_URL", "https://apihub.agnes-ai.com/v1"), os.environ)
     if not key:
         raise ValueError("set SPRIG_API_KEY or OPENAI_API_KEY")
     with tempfile.TemporaryDirectory(prefix="sprig-smoke-") as temporary:
@@ -79,7 +79,7 @@ def main():
     except (OSError, ValueError, ProviderError) as error:
         # Provider and tool errors are sanitized; do not print raw responses or env.
         from sprig_agent.config import redact, terminal_text
-        key = os.environ.get("SPRIG_API_KEY") or os.environ.get("OPENAI_API_KEY", "")
+        key = environment_api_key(os.environ.get("SPRIG_BASE_URL", "https://apihub.agnes-ai.com/v1"), os.environ)
         print(terminal_text(redact(str(error), key)), file=sys.stderr)
         return 1
 

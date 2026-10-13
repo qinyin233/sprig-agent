@@ -1,0 +1,546 @@
+{
+  "schema": 1,
+  "scope": "one repository Sprig task; no overall performance or competitor ranking claim",
+  "case": "click-command-suggestions",
+  "category": "repository-feature",
+  "language": "python",
+  "fixture_sha256": "7d610833c8a6564f980f747e4601e7f4821872702c4a59f32ff9c5d653300d08",
+  "verifier_sha256": "aa5034dad4e98f6b1043b6253252e1a798b3ff12fcd1abd8d9f5cec25bd2e752",
+  "verifier_intact": true,
+  "task_sha256": "2908db436a3b9ac92c17b2d60eed48baae6c6549b9a1c83bb775bc816bcf6273",
+  "initial_history_sha256": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+  "uv_lock_sha256": "834405cf539c2a1803289a8f2e55955a53af7869bf931a33ce4d1f80e9010e17",
+  "driver_sha256": "6cac60f912a739aa861970da211434a30d91d9f24b4642eae49cb34cd2b9cd1c",
+  "python": "3.12.12",
+  "platform": "Windows-11-10.0.26300-SP0",
+  "node": null,
+  "model": "agnes-3.0-flash",
+  "base_url": "https://apihub.agnes-ai.com/v1",
+  "stream": false,
+  "request_usage": false,
+  "max_steps": 20,
+  "max_context_bytes": 131072,
+  "compact_context": false,
+  "synthetic_history": false,
+  "outcome": "not_completed",
+  "acceptance_passed": false,
+  "elapsed_ms": 386014.158,
+  "active_ms": 386014.158,
+  "approvals": {
+    "requests": 0,
+    "accepted": 0,
+    "rejected": 0,
+    "wait_ms": 0.0
+  },
+  "tools": [
+    {
+      "tool": "list_files",
+      "active_ms": 0.526,
+      "result_bytes": 223
+    },
+    {
+      "tool": "list_files",
+      "active_ms": 1.572,
+      "result_bytes": 67
+    },
+    {
+      "tool": "list_files",
+      "active_ms": 0.727,
+      "result_bytes": 771
+    },
+    {
+      "tool": "list_files",
+      "active_ms": 2.261,
+      "result_bytes": 1094
+    },
+    {
+      "tool": "read_file",
+      "active_ms": 2.67,
+      "result_bytes": 10631
+    },
+    {
+      "tool": "read_file",
+      "active_ms": 3.23,
+      "result_bytes": 16546
+    },
+    {
+      "tool": "search",
+      "active_ms": 25.088,
+      "result_bytes": 1487
+    },
+    {
+      "tool": "search",
+      "active_ms": 25.631,
+      "result_bytes": 118
+    },
+    {
+      "tool": "read_file",
+      "active_ms": 3.346,
+      "result_bytes": 5349
+    },
+    {
+      "tool": "search",
+      "active_ms": 14.83,
+      "result_bytes": 254
+    },
+    {
+      "tool": "search",
+      "active_ms": 34.172,
+      "result_bytes": 118
+    },
+    {
+      "tool": "search",
+      "active_ms": 15.18,
+      "result_bytes": 239
+    },
+    {
+      "tool": "search",
+      "active_ms": 14.306,
+      "result_bytes": 118
+    },
+    {
+      "tool": "read_file",
+      "active_ms": 0.675,
+      "result_bytes": 4810
+    },
+    {
+      "tool": "search",
+      "active_ms": 14.743,
+      "result_bytes": 118
+    },
+    {
+      "tool": "search",
+      "active_ms": 11.898,
+      "result_bytes": 118
+    },
+    {
+      "tool": "search",
+      "active_ms": 12.637,
+      "result_bytes": 746
+    },
+    {
+      "tool": "read_file",
+      "active_ms": 0.94,
+      "result_bytes": 3169
+    },
+    {
+      "tool": "read_file",
+      "active_ms": 3.214,
+      "result_bytes": 1626
+    },
+    {
+      "tool": "search",
+      "active_ms": 15.107,
+      "result_bytes": 118
+    },
+    {
+      "tool": "search",
+      "active_ms": 14.331,
+      "result_bytes": 118
+    },
+    {
+      "tool": "search",
+      "active_ms": 14.581,
+      "result_bytes": 118
+    },
+    {
+      "tool": "search",
+      "active_ms": 14.396,
+      "result_bytes": 938
+    },
+    {
+      "tool": "read_file",
+      "active_ms": 3.407,
+      "result_bytes": 3541
+    },
+    {
+      "tool": "read_file",
+      "active_ms": 0.878,
+      "result_bytes": 1431
+    },
+    {
+      "tool": "read_file",
+      "active_ms": 2.545,
+      "result_bytes": 1741
+    },
+    {
+      "tool": "read_file",
+      "active_ms": 0.476,
+      "result_bytes": 1785
+    },
+    {
+      "tool": "read_file",
+      "active_ms": 3.417,
+      "result_bytes": 4285
+    },
+    {
+      "tool": "search",
+      "active_ms": 26.871,
+      "result_bytes": 3031
+    }
+  ],
+  "requests": {
+    "available": true,
+    "scope": "current provider instance; not persisted or sent to the model",
+    "attempts": 20,
+    "not_attempted": 0,
+    "outcomes": {
+      "success": 20,
+      "error": 0,
+      "cancelled": 0
+    },
+    "request_bytes": 992545,
+    "response_bytes": 15251,
+    "elapsed_ms": 147593.062,
+    "usage": {
+      "prompt_tokens": {
+        "reported_sum": 232439,
+        "known_requests": 20,
+        "unknown_requests": 0,
+        "complete_sum": 232439
+      },
+      "completion_tokens": {
+        "reported_sum": 1330,
+        "known_requests": 20,
+        "unknown_requests": 0,
+        "complete_sum": 1330
+      },
+      "total_tokens": {
+        "reported_sum": 233769,
+        "known_requests": 20,
+        "unknown_requests": 0,
+        "complete_sum": 233769
+      }
+    },
+    "recent_limit": 128,
+    "recent_dropped": 0,
+    "recent": [
+      {
+        "attempted": true,
+        "streamed": false,
+        "outcome": "success",
+        "http_status": 200,
+        "request_bytes": 6707,
+        "response_bytes": 660,
+        "elapsed_ms": 2304.847,
+        "first_text_ms": null,
+        "usage": {
+          "prompt_tokens": 1836,
+          "completion_tokens": 32,
+          "total_tokens": 1868
+        }
+      },
+      {
+        "attempted": true,
+        "streamed": false,
+        "outcome": "success",
+        "http_status": 200,
+        "request_bytes": 7318,
+        "response_bytes": 585,
+        "elapsed_ms": 2136.76,
+        "first_text_ms": null,
+        "usage": {
+          "prompt_tokens": 1956,
+          "completion_tokens": 25,
+          "total_tokens": 1981
+        }
+      },
+      {
+        "attempted": true,
+        "streamed": false,
+        "outcome": "success",
+        "http_status": 200,
+        "request_bytes": 7666,
+        "response_bytes": 727,
+        "elapsed_ms": 3041.346,
+        "first_text_ms": null,
+        "usage": {
+          "prompt_tokens": 2016,
+          "completion_tokens": 52,
+          "total_tokens": 2068
+        }
+      },
+      {
+        "attempted": true,
+        "streamed": false,
+        "outcome": "success",
+        "http_status": 200,
+        "request_bytes": 10359,
+        "response_bytes": 751,
+        "elapsed_ms": 7507.757,
+        "first_text_ms": null,
+        "usage": {
+          "prompt_tokens": 2681,
+          "completion_tokens": 59,
+          "total_tokens": 2740
+        }
+      },
+      {
+        "attempted": true,
+        "streamed": false,
+        "outcome": "success",
+        "http_status": 200,
+        "request_bytes": 39199,
+        "response_bytes": 1014,
+        "elapsed_ms": 4612.503,
+        "first_text_ms": null,
+        "usage": {
+          "prompt_tokens": 9057,
+          "completion_tokens": 138,
+          "total_tokens": 9195
+        }
+      },
+      {
+        "attempted": true,
+        "streamed": false,
+        "outcome": "success",
+        "http_status": 200,
+        "request_bytes": 41744,
+        "response_bytes": 799,
+        "elapsed_ms": 6512.044,
+        "first_text_ms": null,
+        "usage": {
+          "prompt_tokens": 9783,
+          "completion_tokens": 97,
+          "total_tokens": 9880
+        }
+      },
+      {
+        "attempted": true,
+        "streamed": false,
+        "outcome": "success",
+        "http_status": 200,
+        "request_bytes": 48099,
+        "response_bytes": 886,
+        "elapsed_ms": 18393.088,
+        "first_text_ms": null,
+        "usage": {
+          "prompt_tokens": 11225,
+          "completion_tokens": 93,
+          "total_tokens": 11318
+        }
+      },
+      {
+        "attempted": true,
+        "streamed": false,
+        "outcome": "success",
+        "http_status": 200,
+        "request_bytes": 49143,
+        "response_bytes": 832,
+        "elapsed_ms": 5711.71,
+        "first_text_ms": null,
+        "usage": {
+          "prompt_tokens": 11467,
+          "completion_tokens": 71,
+          "total_tokens": 11538
+        }
+      },
+      {
+        "attempted": true,
+        "streamed": false,
+        "outcome": "success",
+        "http_status": 200,
+        "request_bytes": 54841,
+        "response_bytes": 869,
+        "elapsed_ms": 5809.432,
+        "first_text_ms": null,
+        "usage": {
+          "prompt_tokens": 12693,
+          "completion_tokens": 83,
+          "total_tokens": 12776
+        }
+      },
+      {
+        "attempted": true,
+        "streamed": false,
+        "outcome": "success",
+        "http_status": 200,
+        "request_bytes": 55685,
+        "response_bytes": 769,
+        "elapsed_ms": 21751.664,
+        "first_text_ms": null,
+        "usage": {
+          "prompt_tokens": 12888,
+          "completion_tokens": 60,
+          "total_tokens": 12948
+        }
+      },
+      {
+        "attempted": true,
+        "streamed": false,
+        "outcome": "success",
+        "http_status": 200,
+        "request_bytes": 56906,
+        "response_bytes": 682,
+        "elapsed_ms": 3012.171,
+        "first_text_ms": null,
+        "usage": {
+          "prompt_tokens": 13199,
+          "completion_tokens": 56,
+          "total_tokens": 13255
+        }
+      },
+      {
+        "attempted": true,
+        "streamed": false,
+        "outcome": "success",
+        "http_status": 200,
+        "request_bytes": 60499,
+        "response_bytes": 996,
+        "elapsed_ms": 10399.126,
+        "first_text_ms": null,
+        "usage": {
+          "prompt_tokens": 14088,
+          "completion_tokens": 125,
+          "total_tokens": 14213
+        }
+      },
+      {
+        "attempted": true,
+        "streamed": false,
+        "outcome": "success",
+        "http_status": 200,
+        "request_bytes": 63024,
+        "response_bytes": 656,
+        "elapsed_ms": 9144.614,
+        "first_text_ms": null,
+        "usage": {
+          "prompt_tokens": 14702,
+          "completion_tokens": 35,
+          "total_tokens": 14737
+        }
+      },
+      {
+        "attempted": true,
+        "streamed": false,
+        "outcome": "success",
+        "http_status": 200,
+        "request_bytes": 63444,
+        "response_bytes": 673,
+        "elapsed_ms": 12259.141,
+        "first_text_ms": null,
+        "usage": {
+          "prompt_tokens": 14797,
+          "completion_tokens": 39,
+          "total_tokens": 14836
+        }
+      },
+      {
+        "attempted": true,
+        "streamed": false,
+        "outcome": "success",
+        "http_status": 200,
+        "request_bytes": 63881,
+        "response_bytes": 657,
+        "elapsed_ms": 7505.118,
+        "first_text_ms": null,
+        "usage": {
+          "prompt_tokens": 14896,
+          "completion_tokens": 35,
+          "total_tokens": 14931
+        }
+      },
+      {
+        "attempted": true,
+        "streamed": false,
+        "outcome": "success",
+        "http_status": 200,
+        "request_bytes": 65216,
+        "response_bytes": 681,
+        "elapsed_ms": 4083.101,
+        "first_text_ms": null,
+        "usage": {
+          "prompt_tokens": 15234,
+          "completion_tokens": 57,
+          "total_tokens": 15291
+        }
+      },
+      {
+        "attempted": true,
+        "streamed": false,
+        "outcome": "success",
+        "http_status": 200,
+        "request_bytes": 69184,
+        "response_bytes": 960,
+        "elapsed_ms": 6248.279,
+        "first_text_ms": null,
+        "usage": {
+          "prompt_tokens": 16110,
+          "completion_tokens": 127,
+          "total_tokens": 16237
+        }
+      },
+      {
+        "attempted": true,
+        "streamed": false,
+        "outcome": "success",
+        "http_status": 200,
+        "request_bytes": 73397,
+        "response_bytes": 652,
+        "elapsed_ms": 4207.437,
+        "first_text_ms": null,
+        "usage": {
+          "prompt_tokens": 17190,
+          "completion_tokens": 29,
+          "total_tokens": 17219
+        }
+      },
+      {
+        "attempted": true,
+        "streamed": false,
+        "outcome": "success",
+        "http_status": 200,
+        "request_bytes": 75712,
+        "response_bytes": 682,
+        "elapsed_ms": 8861.382,
+        "first_text_ms": null,
+        "usage": {
+          "prompt_tokens": 17732,
+          "completion_tokens": 58,
+          "total_tokens": 17790
+        }
+      },
+      {
+        "attempted": true,
+        "streamed": false,
+        "outcome": "success",
+        "http_status": 200,
+        "request_bytes": 80521,
+        "response_bytes": 720,
+        "elapsed_ms": 4091.542,
+        "first_text_ms": null,
+        "usage": {
+          "prompt_tokens": 18889,
+          "completion_tokens": 59,
+          "total_tokens": 18948
+        }
+      }
+    ]
+  },
+  "request_pacing": {
+    "interval_seconds": 20.0,
+    "backend_starts": 20,
+    "wait_ms": 235785.0,
+    "source_sha256": "ce4ba23779b65e448585d1ca8413ea67a1e31974a25cd50b5810160fe8527ea6",
+    "scope": "backend invocation starts; HTTP may be blocked by validation",
+    "automatic_retries": false
+  },
+  "repository_task": {
+    "protocol": 1,
+    "repository": "pallets/click",
+    "snapshot_files": 52,
+    "base_commit": "19fd4d6e18bc9fce451f92f422696b11169faa57",
+    "base_sha256": "7d610833c8a6564f980f747e4601e7f4821872702c4a59f32ff9c5d653300d08",
+    "acceptance_commit": "831c8f0948af519e45b90801d7430ff25451f972",
+    "acceptance_snapshot_sha256": "62d0162a63fa5322307e29d1710ec7624bd3ca20572329fddbdae1fe628f628d",
+    "expected_upstream_checks": 642,
+    "public_exception_contract": true,
+    "acceptance_python": "3.12",
+    "acceptance_pytest": "8.4.2",
+    "entry_sha256": "098ded48c64029d5db12b0f08a3dd9df8033c0eeb7787fcb551d5c0da47bd47e",
+    "adapter_sha256": "55034184dd7f31ed1029f9aae074811b54377c4b6b7bf9ad3b0bc8927bec404d",
+    "comparison_lock_sha256": "eb1207065a83573e2e9fd9a879694ffcb458c93f15a00a504a4c607a1d2e32e2",
+    "task_sha256": "2908db436a3b9ac92c17b2d60eed48baae6c6549b9a1c83bb775bc816bcf6273"
+  },
+  "recorded_at_utc": "2026-10-13T02:43:19.183088+00:00"
+}

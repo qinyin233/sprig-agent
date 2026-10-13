@@ -30,7 +30,7 @@ uv run --project benchmarks/repositories/click --locked python -I -B scripts/ben
 
 `--self-test` 在两个一次性候选工作区运行固定校准，不请求模型。`--prepare .\prepared-click` 只导出初始工作区、任务文字和外部验收，不启动候选程序或模型；目标必须是新目录。`--report` 只能显式创建新文件，不覆盖已有文件。
 
-真实运行需要在当前终端进程中提供 `SPRIG_API_KEY` 或 `OPENAI_API_KEY`。模型和地址可用参数或 `SPRIG_MODEL`、`SPRIG_BASE_URL` 设置，默认服务预设仍为 Agnes。两条命令需在交互式终端分别运行，报告使用不同的新路径：
+真实运行需要在当前终端进程中提供 `SPRIG_API_KEY` 或 `OPENAI_API_KEY`；Agnes HTTPS 原点也支持 `AGNES_API_KEY`，不把该别名发送到其他服务。模型和地址可用参数或 `SPRIG_MODEL`、`SPRIG_BASE_URL` 设置，默认服务预设仍为 Agnes。两条命令需在交互式终端分别运行，报告使用不同的新路径：
 
 ```powershell
 uv run --project benchmarks/repositories/click --locked python -I -B scripts/benchmark-repository-task.py --fixture .\click-pinned --run --client sprig --model agnes-3.0-flash --base-url https://apihub.agnes-ai.com/v1 --report .\click-sprig-01.json
@@ -38,6 +38,8 @@ uv run --project benchmarks/clients/mini --locked python -I -B scripts/benchmark
 ```
 
 POSIX 使用相同命令，把路径写成 `./click-pinned` 等。Windows 的 mini 需要 Git Bash，POSIX 需要 Bash。密钥不写入配置或报告，不提供自动批准选项。每次写入、Shell 操作和外部验收都需要新批准，默认拒绝。失败的验收回到各自 agent 的正常循环中继续修复；拒绝或取消不计成功。
+
+`--request-interval 20` 可让两边后端调用开始之间至少相隔 20 秒；默认 0，不等待。范围 0–60 秒，非有限值被拒绝。报告单列 `request_pacing` 的起始次数和等待时间；这些起始次数不是实际 HTTP 次数，后续校验仍可能阻止发送。总任务时间与扣除审批等待的时间都包含该等待，实际 HTTP 计时不含等待。它减少请求密度，不重试失败的 POST，也不能保证规避共享 token 限额或配额耗尽。mini 的轮次间壁钟上限调整为 `600 + interval * (max_steps - 1)` 秒，仍包含审批等待；不是与 Sprig 完全相同的硬时间预算。
 
 ## 验收边界和报告
 

@@ -2,9 +2,26 @@
 
 from dataclasses import dataclass, field
 import math
+import os
 from pathlib import Path
 import unicodedata
 from urllib.parse import urlsplit, urlunsplit
+
+
+def environment_api_key(base_url, environ=None):
+    """Explicit key wins; the Agnes alias is confined to its HTTPS origin."""
+    values = os.environ if environ is None else environ
+    if values.get("SPRIG_API_KEY"):
+        return values["SPRIG_API_KEY"]
+    try:
+        parsed = urlsplit(base_url)
+        agnes = parsed.scheme == "https" and parsed.netloc.lower() in {
+            "apihub.agnes-ai.com", "apihub.agnes-ai.com:443"}
+    except (ValueError, TypeError):
+        agnes = False
+    if agnes and values.get("AGNES_API_KEY"):
+        return values["AGNES_API_KEY"]
+    return values.get("OPENAI_API_KEY", "")
 
 
 def redact(value, secret):

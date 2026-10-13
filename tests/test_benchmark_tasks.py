@@ -128,7 +128,7 @@ class BenchmarkTests(unittest.TestCase):
         self.assertEqual(rejected["approvals"]["accepted"], 0)
 
     def test_live_cli_requires_credentials_and_interactive_approvals_before_running(self):
-        with patch.dict(os.environ, {"SPRIG_API_KEY": "", "OPENAI_API_KEY": ""}), \
+        with patch.dict(os.environ, {"SPRIG_API_KEY": "", "OPENAI_API_KEY": "", "AGNES_API_KEY": ""}), \
                 patch.object(sys, "argv", ["benchmark-tasks", "--run", "--case", "py-interval"]), \
                 patch.object(benchmark, "run_case") as run, patch("sys.stderr", io.StringIO()):
             with self.assertRaises(SystemExit) as error:
