@@ -22,6 +22,7 @@ from .instructions import InstructionError, ProjectInstructions
 from .map_selection import MapSelection, encoded_size
 from .policy import FilePolicy, command_environment
 from .output import CommandOutput
+from .edit_match import failure_details
 from .search import FileGlob, RegexBudgetExceeded, RegexMatcher, matching_lines
 from .syntax import IndexUnavailable
 
@@ -56,7 +57,7 @@ TOOL_SCHEMAS = [
             "limit": {"type": "integer", "minimum": 1, "maximum": 1000}}, ["query"]),
     schema("project_map", "Bounded workspace file map with declarations and 1-based lines for Python, JavaScript, TypeScript/TSX, Rust, Go, C/C++ and Java. Optional query is a case-insensitive literal path/declaration-name match; exact names then prefixes outrank substrings, and only matching declarations or files are returned. Use it when a full map omits relevant symbols. Syntax only; inspect relevant files afterwards. Unsupported files have paths only; unavailable or oversized parses are marked.",
            {"path": STRING, "query": {"type": "string", "minLength": 1, "maxLength": 256}}),
-    schema("edit_file", "Edit one file after complete diff approval. Provide old/new for one replacement (empty old creates a new file only), OR edits for up to 32 replacements in an existing file. Every edits[].old must match exactly once in the ORIGINAL file; matches must not overlap. All replacements are validated before a single write, with one undo record. Parent directory must exist.",
+    schema("edit_file", "Edit one file after complete diff approval. Provide old/new for one replacement (empty old creates a new file only), OR edits for up to 32 replacements in an existing file. Every edits[].old must match exactly once in the ORIGINAL file; matches must not overlap. All replacements are validated before a single write, with one undo record. Parent directory must exist. Match failures return a 1-based edit index, reason and bounded read_file offset/limit suggestions. These are navigation hints: reread actual text including whitespace and CR/LF, then submit a unique exact block.",
            {"path": STRING, "old": STRING, "new": STRING,
             "edits": {"type": "array", "minItems": 1, "maxItems": MAX_EDITS,
                       "items": {"type": "object", "properties": {"old": STRING, "new": STRING},
@@ -575,13 +576,16 @@ class Tools:
                 after = new
             else:
                 spans = []
-                for previous, replacement in replacements:
+                for index, (previous, replacement) in enumerate(replacements, 1):
                     self._check_cancelled()
                     start = before.find(previous) if previous else -1
                     # Search from start+1: even overlapping repeated matches
                     # are ambiguous (for example 'aa' within 'aaa').
-                    if start < 0 or before.find(previous, start + 1) >= 0:
-                        raise ToolError("old must match exactly once in an existing file")
+                    second = before.find(previous, start + 1) if start >= 0 else -1
+                    if start < 0 or second >= 0:
+                        return {"error": "old must match exactly once in an existing file", "changed": False,
+                                "edit_failure": failure_details(before, previous, index,
+                                    (start, second) if second >= 0 else (), self._check_cancelled)}
                     spans.append((start, start + len(previous), replacement))
                 spans.sort(key=lambda span: span[0])
                 if any(left[1] > right[0] for left, right in zip(spans, spans[1:])):
