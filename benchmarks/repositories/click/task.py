@@ -91,6 +91,7 @@ class ClickTask:
             "benchmarks/repositories/click/task.py", "benchmarks/repositories/click/oracle.py",
             "benchmarks/repositories/click/uv.lock", "uv.lock")]
         paths.append(REPO / "benchmarks/clients/request_pacing.py")
+        paths.append(REPO / "benchmarks/clients/tool_diagnostics.py")
         paths.extend((REPO / "src").rglob("*.py"))
         guards = {path: (path.resolve(), path.read_bytes()) for path in paths}
         def intact():

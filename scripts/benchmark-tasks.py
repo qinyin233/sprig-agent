@@ -23,6 +23,7 @@ from sprig_agent.agent import Agent
 from sprig_agent.cli import approve
 from sprig_agent.config import Config, environment_api_key, redact, terminal_text
 from request_pacing import PacedProvider, RequestPacer
+from tool_diagnostics import ToolDiagnostics
 from sprig_agent.provider import Provider, ProviderError
 from sprig_agent.policy import command_environment
 from sprig_agent.tools import Tools
@@ -140,6 +141,7 @@ def run_case(case, config_options, *, provider_factory=Provider, confirm=approve
         history = suite.synthetic_history(case)
         approvals = {"requests": 0, "accepted": 0, "rejected": 0, "wait_ms": 0.0}
         tool_records = []
+        diagnostics = ToolDiagnostics()
 
         def fresh_approval(description):
             if not intact():
@@ -167,6 +169,7 @@ def run_case(case, config_options, *, provider_factory=Provider, confirm=approve
                                          "active_ms": round(max(0, elapsed - (approvals["wait_ms"] - before)), 3),
                                          "result_bytes": None})
                 tool_records[-1]["result_bytes"] = len(json.dumps(result, ensure_ascii=True).encode("utf-8"))
+                tool_records[-1]["diagnostics"] = diagnostics.record(name, arguments, result)
                 if not intact():
                     return {"error": "benchmark verifier changed; run is invalid"}
                 return result
@@ -197,6 +200,7 @@ def run_case(case, config_options, *, provider_factory=Provider, confirm=approve
                   "driver_sha256": driver_signature,
                   "python": platform.python_version(), "platform": platform.platform(),
                   "node": node_version,
+                  "request_timeout_seconds": config.timeout,
                   "model": config.model, "base_url": config.base_url, "stream": config.stream,
                   "request_usage": config.request_usage, "max_steps": config.max_steps,
                   "max_context_bytes": config.max_context_bytes, "compact_context": config.compact_context,
@@ -204,7 +208,8 @@ def run_case(case, config_options, *, provider_factory=Provider, confirm=approve
                   "outcome": outcome if valid else "verifier_modified", "acceptance_passed": completed and valid,
                   "elapsed_ms": round(elapsed, 3), "active_ms": round(max(0, elapsed - approvals["wait_ms"]), 3),
                   "approvals": {**approvals, "wait_ms": round(approvals["wait_ms"], 3)},
-                  "tools": tool_records, "requests": agent.usage_report(), "request_pacing": pacer.report()}
+                  "tools": tool_records, "requests": agent.usage_report(), "request_pacing": pacer.report(),
+                  "tool_diagnostics": diagnostics.metadata()}
         if case_adapter is not None:
             report.update(scope="one repository Sprig task; no overall performance or competitor ranking claim",
                           repository_task=case_adapter.metadata)

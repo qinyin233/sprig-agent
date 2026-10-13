@@ -4,6 +4,7 @@ import argparse
 from datetime import datetime, timezone
 import importlib.util
 import json
+import math
 import os
 from pathlib import Path
 import platform
@@ -85,10 +86,13 @@ def main():
     parser.add_argument("--max-steps", type=int, default=20)
     parser.add_argument("--max-context-bytes", type=int, default=131072)
     parser.add_argument("--request-interval", type=float, default=0, help="0-60 seconds between backend starts; no automatic retry")
+    parser.add_argument("--request-timeout", type=float, default=30, help="backend timeout in seconds (0 < value <= 120)")
     parser.add_argument("--report", type=Path, help="explicitly create a new numeric report; never overwrite a file")
     args = parser.parse_args()
     try:
         bench.RequestPacer(args.request_interval)
+        if not math.isfinite(args.request_timeout) or not 0 < args.request_timeout <= 120:
+            parser.error("--request-timeout must be finite and greater than 0, at most 120 seconds")
         if args.report and (args.report.exists() or args.report.is_symlink() or not args.report.parent.is_dir()):
             parser.error("--report must be new, with an existing parent")
         if args.run:
@@ -109,7 +113,8 @@ def main():
             if version("pytest") != "8.4.2":
                 raise ValueError("acceptance dependencies differ from the pin")
             options = {"model": args.model, "base_url": args.base_url, "api_key": key,
-                       "max_steps": args.max_steps, "max_context_bytes": args.max_context_bytes}
+                       "max_steps": args.max_steps, "max_context_bytes": args.max_context_bytes,
+                       "timeout": args.request_timeout}
             entry = load_mini().run_case if args.client == "mini" else bench.run_case
             report = entry(adapter.case, options, case_adapter=adapter,
                            request_interval=args.request_interval,

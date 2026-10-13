@@ -10,6 +10,7 @@ from pathlib import Path
 import shlex
 import sys
 import threading
+from types import SimpleNamespace
 import unittest
 from unittest.mock import patch
 
@@ -159,6 +160,46 @@ class MiniTaskTests(unittest.TestCase):
         self.assertNotIn("fixture-private-marker", json.dumps(report) + "".join(observed))
         self.assertEqual(report["model_mode"], "scripted_protocol_fixture")
         self.assertIsNone(report["max_context_bytes"])
+
+    def test_repository_sdk_clock_does_not_charge_approval_wait_as_agent_failure(self):
+        import minisweagent.agents.default as sdk_agent
+        case = driver.bench.suite.cases()["py-interval"]
+        adapter = SimpleNamespace(files=driver.bench.suite.fixture_files(case), bundle=driver.bench.bundle,
+                                  metadata={"protocol_fixture": True})
+        clock = [0]
+        def approve(_):
+            clock[0] += 2000  # Simulated operator wait; no sleeping or model score.
+            return True
+        with patch.object(sdk_agent, "time", SimpleNamespace(time=lambda: clock[0])):
+            report = driver.run_case(case, {"model": "fixture", "max_steps": 3}, case_adapter=adapter,
+                                     model_factory=self.model([self.repair(case), "echo COMPLETE_TASK_AND_SUBMIT_FINAL_OUTPUT"]),
+                                     confirm=approve)
+        self.assertTrue(report["acceptance_passed"], report)
+        self.assertEqual(report["sdk_wall_time_limit_seconds"], 0)
+        self.assertEqual(report["model_queries"], 2)
+        clock[0] = 0
+        with patch.object(sdk_agent, "time", SimpleNamespace(time=lambda: clock[0])):
+            ordinary = driver.run_case(case, {"model": "fixture", "max_steps": 3},
+                                       model_factory=self.model([self.repair(case), "echo COMPLETE_TASK_AND_SUBMIT_FINAL_OUTPUT"]),
+                                       confirm=approve)
+        self.assertEqual(ordinary["sdk_wall_time_limit_seconds"], 600)
+        self.assertEqual(ordinary["outcome"], "time_exceeded")
+
+    def test_repository_sdk_step_limit_and_cancellation_remain_enforced(self):
+        case = driver.bench.suite.cases()["py-interval"]
+        adapter = SimpleNamespace(files=driver.bench.suite.fixture_files(case), bundle=driver.bench.bundle,
+                                  metadata={"protocol_fixture": True})
+        report = driver.run_case(case, {"model": "fixture", "max_steps": 1}, case_adapter=adapter,
+                                 model_factory=self.model(["echo first", "echo second"]), confirm=lambda _: True)
+        self.assertEqual(report["outcome"], "limits_exceeded")
+        self.assertEqual(report["model_queries"], 1)
+        self.assertEqual(report["approvals"]["requests"], 1)
+        def cancel(_):
+            raise KeyboardInterrupt
+        cancelled = driver.run_case(case, {"model": "fixture"}, case_adapter=adapter,
+                                    model_factory=self.model(["echo first"]), confirm=cancel)
+        self.assertEqual(cancelled["outcome"], "cancelled")
+        self.assertFalse(cancelled["acceptance_passed"])
 
     def test_refused_fixed_verification_never_counts_as_success(self):
         case = driver.bench.suite.cases()["py-interval"]

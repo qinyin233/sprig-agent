@@ -120,12 +120,16 @@ class BenchmarkTests(unittest.TestCase):
         self.assertTrue(asks[1].startswith("RUN"))
         self.assertEqual([row["tool"] for row in report["tools"]], ["edit_file", "run"])
         self.assertTrue(all(row["result_bytes"] is not None for row in report["tools"]))
+        self.assertTrue(all(not row["diagnostics"]["error"] for row in report["tools"]))
+        self.assertTrue(all(row["diagnostics"]["approved"] for row in report["tools"]))
+        self.assertEqual(report["tool_diagnostics"]["recent_inspection_limit"], 128)
         self.assertLessEqual(report["active_ms"], report["elapsed_ms"])
         self.assertFalse(report["requests"]["available"])  # A fake provider never supplies real request usage.
         rejected = benchmark.run_case(case, options, provider_factory=ScriptedProvider, confirm=lambda _: False)
         self.assertFalse(rejected["acceptance_passed"])
         self.assertEqual(rejected["outcome"], "not_completed")
         self.assertEqual(rejected["approvals"]["accepted"], 0)
+        self.assertFalse(rejected["tools"][0]["diagnostics"]["approved"])
 
     def test_live_cli_requires_credentials_and_interactive_approvals_before_running(self):
         with patch.dict(os.environ, {"SPRIG_API_KEY": "", "OPENAI_API_KEY": "", "AGNES_API_KEY": ""}), \
@@ -142,6 +146,29 @@ class BenchmarkTests(unittest.TestCase):
             with self.assertRaises(SystemExit):
                 benchmark.main()
             run.assert_not_called()
+
+    def test_actual_search_diagnostics_count_misses_repeats_and_regex_without_query_text(self):
+        class Searches:
+            def __init__(self, config):
+                self.calls = 0
+            def complete(self, messages, tools, on_text=None):
+                self.calls += 1
+                if self.calls > 1:
+                    return {"role": "assistant", "content": "Stopped"}
+                queries = [("private-query|contains", False), ("private-query|contains", False),
+                           ("private-query|contains", True)]
+                return {"role": "assistant", "content": None, "tool_calls": [
+                    {"id": str(i), "type": "function", "function": {"name": "search", "arguments": json.dumps({
+                        "path": "interval.py", "query": query, "regex": regex})}}
+                    for i, (query, regex) in enumerate(queries)]}
+        report = benchmark.run_case(suite.cases()["py-interval"], {"model": "offline", "max_steps": 2},
+                                    provider_factory=Searches, confirm=lambda _: False)
+        records = [row["diagnostics"] for row in report["tools"] if row["tool"] == "search"]
+        self.assertEqual([row["matched_lines"] for row in records], [0, 0, 1])
+        self.assertEqual([row["same_output_repeats"] for row in records], [0, 1, 0])
+        self.assertEqual([row["regex"] for row in records], [False, False, True])
+        self.assertTrue(all(row["files_read"] == 1 and not row["truncated"] for row in records))
+        self.assertNotIn("private-query", json.dumps(report))
 
     def test_existing_report_is_rejected_before_any_live_request(self):
         with benchmark.disposable() as parent:

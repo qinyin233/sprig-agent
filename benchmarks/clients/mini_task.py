@@ -132,6 +132,7 @@ def run_case(case, options, *, model_factory=None, confirm=approve, emit=None, c
             REPO / "benchmarks/clients/probe_child.py", REPO / "benchmarks/clients/mini_transport.py",
             REPO / "benchmarks/clients/mini/uv.lock", REPO / "benchmarks/clients/mini/pyproject.toml",
             REPO / "benchmarks/clients/request_pacing.py",
+            REPO / "benchmarks/clients/tool_diagnostics.py",
             REPO / "scripts/benchmark-tasks.py")}
         def intact():
             try:
@@ -201,7 +202,9 @@ def run_case(case, options, *, model_factory=None, confirm=approve, emit=None, c
             **{**defaults["model"], "model_name": model_route, "cost_tracking": "ignore_errors",
                "model_kwargs": {**defaults["model"].get("model_kwargs", {}), "api_base": config.base_url,
                                 "timeout": config.timeout, "num_retries": 0}})
-        wall_limit = 600 + pacer.interval * max(0, config.max_steps - 1)
+        # Repository comparisons share Sprig's step/body/per-action budgets.
+        # SDK 0 disables only the extra wall clock that includes approval waits.
+        wall_limit = 0 if case_adapter is not None else 600 + pacer.interval * max(0, config.max_steps - 1)
         agent = DefaultAgent(model, env, **{**defaults["agent"], "step_limit": config.max_steps, "cost_limit": 0.0,
                                            "output_path": None, "wall_time_limit_seconds": wall_limit})
         started, outcome = time.perf_counter(), "not_completed"
@@ -237,6 +240,7 @@ def run_case(case, options, *, model_factory=None, confirm=approve, emit=None, c
                        "task_sha256": hashlib.sha256(case["task"].encode()).hexdigest(), "verifier_intact": valid,
                        "model": config.model, "sdk_model_route": model_route, "base_url": config.base_url,
                        "max_steps": config.max_steps, "stream": False,
+                       "request_timeout_seconds": config.timeout,
                        "max_context_bytes": config.max_context_bytes if wire else None,
                        "context_budget": "actual serialized HTTP JSON body" if wire else "scripted fixture; no HTTP transport",
                        "automatic_retries": False, "cost": None,

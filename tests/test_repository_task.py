@@ -24,6 +24,16 @@ oracle = load("click_task_oracle", REPO / "benchmarks/repositories/click/oracle.
 
 
 class RepositoryTaskTests(unittest.TestCase):
+    def test_invalid_request_timeout_is_rejected_before_fixture_or_model_access(self):
+        for value in ("0", "-1", "121", "nan", "inf"):
+            with self.subTest(value=value), patch.object(sys, "argv", [
+                "repository-task", "--self-test", "--fixture", "unused", "--request-timeout", value
+            ]), patch.object(driver.task_module, "ClickTask") as adapter, patch("sys.stderr", io.StringIO()):
+                with self.assertRaises(SystemExit) as error:
+                    driver.main()
+                self.assertEqual(error.exception.code, 2)
+                adapter.assert_not_called()
+
     def adapter(self):
         base = {"src/click/__init__.py": b"baseline-source", "tests/test_commands.py": b"initial-test"}
         reference = {"src/click/__init__.py": b"reference-implementation-marker",
