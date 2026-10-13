@@ -36,7 +36,7 @@ class Agent:
     def context_preview(self, messages):
         selected = list(messages or [{"role": "system", "content": self._prompt()}])
         self._refresh_instructions(selected)
-        return prepare_context(self.config, selected, self.schemas, compact=True)[1]
+        return prepare_context(self.config, self._request_messages(selected, 1), self.schemas, compact=True)[1]
 
     def _prompt(self):
         prompt = SYSTEM_PROMPT
@@ -105,8 +105,23 @@ class Agent:
                 return self.tools.execute(name, arguments)
         return self.tools.execute(name, arguments)
 
-    def _complete(self, messages):
+    def _request_messages(self, messages, step):
+        # Runtime budget belongs to this invocation, not resumable history.
+        # Include it before sizing/compaction so it cannot bypass the byte cap.
+        messages = [dict(messages[0]), *messages[1:]]
+        messages[0]["content"] += (
+            f"\nCurrent run: model request {step} of {self.config.max_steps}; "
+            f"{self.config.max_steps - step} further model requests remain. "
+            "Use focused searches and ranged reads; avoid repeating unchanged inspections. "
+            "For implementation tasks, move from sufficient evidence to the smallest correct change "
+            "and leave time to verify it. For reviews or read-only tasks, finish findings when evidence permits. "
+            "Budget pressure never authorizes writes or commands, overrides rejection, or justifies guessing. "
+            "If unfinished, state what remains; do not claim completion without evidence.")
+        return messages
+
+    def _complete(self, messages, *, step):
         records = self._refresh_instructions(messages, save=True)
+        messages = self._request_messages(messages, step)
         messages, report = prepare_context(self.config, messages, self.schemas, self.compact_context)
         if not report["within_budget"]:
             raise ProviderError("context byte budget exceeded; no request sent. Review /context and explicitly /compact, or increase --max-context-bytes.")
@@ -179,10 +194,10 @@ class Agent:
             raise ValueError("a task is required for a new session")
         self.checkpoint(messages)
         seen_ids = {call["id"] for message in messages for call in message.get("tool_calls", [])}
-        for _ in range(self.config.max_steps):
+        for step in range(1, self.config.max_steps + 1):
             self._check_cancelled()
             self._steer(messages)
-            response = self._complete(messages)
+            response = self._complete(messages, step=step)
             self._check_cancelled()
             if self._steer(messages):
                 # This response was generated without the new instructions. Do

@@ -307,7 +307,9 @@ class InstructionTests(unittest.TestCase):
             agent, requests, _, _ = self.run_agent([response()], tools)
             messages, complete = agent.run("Read")
         self.assertTrue(complete)
-        self.assertEqual(requests[0][0]["content"], SYSTEM_PROMPT)
+        self.assertTrue(requests[0][0]["content"].startswith(SYSTEM_PROMPT))
+        self.assertNotIn("private", requests[0][0]["content"])
+        self.assertEqual(messages[0]["content"], SYSTEM_PROMPT)
         with closing(SessionStore(self.parent / "sessions", config)) as store:
             store.ensure_new("disabled")
             store.save("disabled", messages)

@@ -409,6 +409,22 @@ class AgentTests(ConfigCase):
         self.assertEqual(self.checkpoints[-1], messages)
         self.assertIn("Maximum model steps reached", self.emitted[-1])
 
+    def test_request_budget_advances_and_resets_without_polluting_saved_history(self):
+        agent, _, _ = self.runner([
+            assistant(calls=[call()]), assistant("Findings"), assistant("Updated findings"),
+        ], [{"content": "evidence"}], max_steps=2)
+        messages, complete = agent.run("Review the file")
+        self.assertTrue(complete)
+        self.assertIn("model request 1 of 2; 1 further", self.requests[0][0]["content"])
+        self.assertIn("model request 2 of 2; 0 further", self.requests[1][0]["content"])
+        self.assertTrue(agent.run("Continue the review", messages)[1])
+        self.assertIn("model request 1 of 2; 1 further", self.requests[2][0]["content"])
+        for request in self.requests:
+            self.assertEqual(request[0]["content"].count("Current run:"), 1)
+        for history in [messages, *self.checkpoints]:
+            self.assertEqual(history[0]["content"], SYSTEM_PROMPT)
+            self.assertNotIn("Current run:", history[0]["content"])
+
     def test_duplicate_ids_in_one_response_never_execute(self):
         agent, _, tools = self.runner([assistant(calls=[call(), call()])])
         with self.assertRaisesRegex(ProviderError, "duplicate"):

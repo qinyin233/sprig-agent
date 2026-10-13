@@ -8,7 +8,7 @@ import unittest
 from unittest.mock import Mock, patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
-from sprig_agent.agent import Agent
+from sprig_agent.agent import Agent, SYSTEM_PROMPT
 from sprig_agent import cli
 from sprig_agent.config import Config
 from sprig_agent.context import prepare_context, request_body
@@ -68,6 +68,20 @@ class ContextTests(unittest.TestCase):
         provider.complete.assert_not_called()
         tools.execute.assert_not_called()
         self.assertEqual(checkpoints[-1][-1]["content"], "x" * 20000)
+
+    def test_runtime_budget_notice_is_counted_before_http_and_preview_matches(self):
+        provider, tools = Mock(), Mock()
+        agent = Agent(self.config, provider, tools, lambda _: None)
+        baseline = [{"role": "system", "content": SYSTEM_PROMPT}, {"role": "user", "content": ""}]
+        task = "x" * (self.config.max_context_bytes - len(request_body(self.config, baseline, TOOL_SCHEMAS)))
+        baseline[-1]["content"] = task
+        self.assertEqual(len(request_body(self.config, baseline, TOOL_SCHEMAS)), self.config.max_context_bytes)
+        self.assertFalse(agent.context_preview(baseline)["within_budget"])
+        self.assertEqual(baseline[0]["content"], SYSTEM_PROMPT)
+        with self.assertRaisesRegex(ProviderError, "budget"):
+            agent.run(task)
+        provider.complete.assert_not_called()
+        tools.execute.assert_not_called()
 
     def test_uncompressible_instructions_still_block_and_config_is_bounded(self):
         history = [{"role": "system", "content": "system"}, {"role": "user", "content": "x" * 20000}]
