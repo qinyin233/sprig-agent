@@ -8,6 +8,8 @@ import stat
 
 class Directory:
     def __init__(self, path, *, parent=None, name=None):
+        if parent is not None:
+            parent.ensure_open()
         self.path = Path(path)
         self.fd = None
         if os.name == "nt":
@@ -19,6 +21,7 @@ class Directory:
                               dir_fd=parent.fd if parent else None)
 
     def __enter__(self):
+        self.ensure_open()
         return self
 
     def __exit__(self, *_):
@@ -34,18 +37,26 @@ class Directory:
             self.fd = None
 
     def child(self, name):
+        self.ensure_open()
         return Directory(self.path / name, parent=self, name=name)
 
+    def ensure_open(self):
+        if self.fd is None:
+            raise OSError("directory handle is closed")
+
     def scandir(self):
+        self.ensure_open()
         return os.scandir(self.path if os.name == "nt" else self.fd)
 
     def stat(self, name):
+        self.ensure_open()
         if os.name == "nt":
             return os.stat(self.path / name, follow_symlinks=False)
         return os.stat(name, dir_fd=self.fd, follow_symlinks=False)
 
     @contextmanager
     def open_read(self, name, *, private=False):
+        self.ensure_open()
         if os.name == "nt":
             from .windows import file_descriptor
             fd = file_descriptor(self.path / name, private=private)
@@ -64,6 +75,7 @@ class Directory:
             return handle.read(limit + 1)
 
     def write_new(self, name, data, mode=0o600, *, private=False, permissions_from=None):
+        self.ensure_open()
         if os.name == "nt":
             from .windows import file_descriptor
             fd = file_descriptor(self.path / name, create=True, private=private,
@@ -79,18 +91,21 @@ class Directory:
             os.fsync(handle.fileno())
 
     def replace(self, source, target):
+        self.ensure_open()
         if os.name == "nt":
             os.replace(self.path / source, self.path / target)
         else:
             os.replace(source, target, src_dir_fd=self.fd, dst_dir_fd=self.fd)
 
     def unlink(self, name):
+        self.ensure_open()
         if os.name == "nt":
             os.unlink(self.path / name)
         else:
             os.unlink(name, dir_fd=self.fd)
 
     def mkdir(self, name):
+        self.ensure_open()
         if os.name == "nt":
             from .windows import private_directory
             private_directory(self.path / name)
@@ -98,6 +113,7 @@ class Directory:
             os.mkdir(name, mode=0o700, dir_fd=self.fd)
 
     def check_private(self, name=None):
+        self.ensure_open()
         if os.name == "nt":
             from .windows import check_private, open_file, close_handle
             if name is None:
@@ -115,11 +131,13 @@ class Directory:
                 raise ValueError(f"session {'file' if name else 'directory'} must be owned by you with mode {mode:04o}")
 
     def sync(self):
+        self.ensure_open()
         if os.name != "nt":
             os.fsync(self.fd)
 
     def lock(self, name):
         """Hold a private, stable lock inode/handle until close or process exit."""
+        self.ensure_open()
         if os.name == "nt":
             from .windows import file_descriptor
             fd = file_descriptor(self.path / name, create=True, private=True, exclusive=True)

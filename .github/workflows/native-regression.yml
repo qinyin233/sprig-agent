@@ -1,0 +1,34 @@
+name: Native regression
+
+# Explicit dispatch only, for OS fixes without the full Python/client matrix.
+on:
+  workflow_dispatch:
+    inputs:
+      expected_sha:
+        description: Exact pushed commit SHA to verify
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  core:
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    env:
+      EXPECTED_SHA: ${{ inputs.expected_sha }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9 # v9.0.0
+        with:
+          enable-cache: true
+      - run: uv sync --locked --python 3.13
+      - name: Verify exact commit
+        run: uv run --locked python -c "import os; assert os.environ['GITHUB_SHA'] == os.environ['EXPECTED_SHA']"
+      - run: uv run --locked python -m unittest discover -s tests -q
+      - run: uv run --locked sprig --help

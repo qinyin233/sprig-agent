@@ -156,6 +156,8 @@ def main(argv=None):
     parser.add_argument("--max-steps", type=int, default=20)
     parser.add_argument("--timeout", type=float, default=30)
     parser.add_argument("--max-output", type=int, default=16000)
+    parser.add_argument("--max-tokens", type=int, help="request a provider output-token limit per model call (1-65536); not a total billing cap")
+    parser.add_argument("--thinking", action="store_true", help="request chat_template_kwargs.enable_thinking; provider support required, off unless selected")
     parser.add_argument("--stream", action="store_true", help="display model text as it arrives")
     parser.add_argument("--request-usage", action="store_true", help="request final stream token statistics; requires --stream or --tui and provider support")
     parser.add_argument("--metrics", action="store_true", help="print local numeric request measurements at CLI exit; missing token counts stay unknown")
@@ -194,7 +196,8 @@ def main(argv=None):
         config = Config(Path(args.workdir), args.model or ("session-manager" if manage_sessions else ""), args.base_url, key, args.max_steps, args.timeout, args.max_output,
                         stream=args.stream or args.tui, checks=tuple(args.check), read_only=args.read_only, inherit_env=args.inherit_env,
                         max_context_bytes=args.max_context_bytes, compact_context=args.compact_context,
-                        request_usage=args.request_usage, project_instructions=not args.no_project_instructions)
+                        request_usage=args.request_usage, project_instructions=not args.no_project_instructions,
+                        max_tokens=args.max_tokens, thinking=args.thinking)
         if manage_sessions:
             store = SessionStore(args.session_dir, config)
             if args.list_sessions:

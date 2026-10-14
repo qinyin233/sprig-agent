@@ -84,6 +84,8 @@ def main():
     parser.add_argument("--model", default=os.environ.get("SPRIG_MODEL", "agnes-3.0-flash"))
     parser.add_argument("--base-url", default=os.environ.get("SPRIG_BASE_URL", "https://apihub.agnes-ai.com/v1"))
     parser.add_argument("--max-steps", type=int, default=20)
+    parser.add_argument("--max-tokens", type=int)
+    parser.add_argument("--thinking", action="store_true")
     parser.add_argument("--max-context-bytes", type=int, default=131072)
     parser.add_argument("--request-interval", type=float, default=0, help="0-60 seconds between backend starts; no automatic retry")
     parser.add_argument("--request-timeout", type=float, default=30, help="backend timeout in seconds (0 < value <= 120)")
@@ -93,6 +95,8 @@ def main():
         bench.RequestPacer(args.request_interval)
         if not math.isfinite(args.request_timeout) or not 0 < args.request_timeout <= 120:
             parser.error("--request-timeout must be finite and greater than 0, at most 120 seconds")
+        if args.max_tokens is not None and not 1 <= args.max_tokens <= 65536:
+            parser.error("--max-tokens must be between 1 and 65536")
         if args.report and (args.report.exists() or args.report.is_symlink() or not args.report.parent.is_dir()):
             parser.error("--report must be new, with an existing parent")
         if args.run:
@@ -114,6 +118,7 @@ def main():
                 raise ValueError("acceptance dependencies differ from the pin")
             options = {"model": args.model, "base_url": args.base_url, "api_key": key,
                        "max_steps": args.max_steps, "max_context_bytes": args.max_context_bytes,
+                       "max_tokens": args.max_tokens, "thinking": args.thinking,
                        "timeout": args.request_timeout}
             entry = load_mini().run_case if args.client == "mini" else bench.run_case
             report = entry(adapter.case, options, case_adapter=adapter,

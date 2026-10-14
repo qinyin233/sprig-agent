@@ -82,6 +82,8 @@ class Config:
     compact_context: bool = False
     request_usage: bool = False
     project_instructions: bool = True
+    max_tokens: int | None = None
+    thinking: bool = False
 
     def __post_init__(self):
         root = Path(self.workdir).expanduser().resolve(strict=True)
@@ -114,6 +116,11 @@ class Config:
             raise ValueError("compact-context must be a boolean")
         if not isinstance(self.project_instructions, bool):
             raise ValueError("project-instructions must be a boolean")
+        if (self.max_tokens is not None and
+                (type(self.max_tokens) is not int or not 1 <= self.max_tokens <= 65536)):
+            raise ValueError("max-tokens must be between 1 and 65536")
+        if not isinstance(self.thinking, bool):
+            raise ValueError("thinking must be a boolean")
         if not isinstance(self.checks, tuple) or len(self.checks) > 16:
             raise ValueError("at most 16 acceptance checks are supported")
         for argv in self.checks:
@@ -123,6 +130,15 @@ class Config:
                 raise ValueError("each acceptance check must be a nonempty argv array")
             if self.api_key and any(self.api_key in arg for arg in argv):
                 raise ValueError("configured API key must not appear in acceptance arguments")
+
+    def generation_options(self):
+        """Only explicitly selected options; defaults leave the wire unchanged."""
+        options = {}
+        if self.max_tokens is not None:
+            options["max_tokens"] = self.max_tokens
+        if self.thinking:
+            options["chat_template_kwargs"] = {"enable_thinking": True}
+        return options
 
     def binding(self):
         binding = {"base_url": self.base_url, "model": self.model, "workdir": str(self.workdir)}
@@ -134,4 +150,8 @@ class Config:
             binding["inherit_env"] = True
         if not self.project_instructions:
             binding["project_instructions"] = False
+        if self.max_tokens is not None:
+            binding["max_tokens"] = self.max_tokens
+        if self.thinking:
+            binding["thinking"] = True
         return binding

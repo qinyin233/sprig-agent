@@ -201,6 +201,7 @@ def run_case(case, config_options, *, provider_factory=Provider, confirm=approve
                   "python": platform.python_version(), "platform": platform.platform(),
                   "node": node_version,
                   "request_timeout_seconds": config.timeout,
+                  "generation_options": config.generation_options(),
                   "model": config.model, "base_url": config.base_url, "stream": config.stream,
                   "request_usage": config.request_usage, "max_steps": config.max_steps,
                   "max_context_bytes": config.max_context_bytes, "compact_context": config.compact_context,
@@ -227,6 +228,8 @@ def main():
     parser.add_argument("--model", default=os.environ.get("SPRIG_MODEL", "agnes-3.0-flash"))
     parser.add_argument("--base-url", default=os.environ.get("SPRIG_BASE_URL", "https://apihub.agnes-ai.com/v1"))
     parser.add_argument("--max-steps", type=int, default=20)
+    parser.add_argument("--max-tokens", type=int)
+    parser.add_argument("--thinking", action="store_true")
     parser.add_argument("--max-context-bytes", type=int, default=131072)
     parser.add_argument("--compact-context", action="store_true")
     parser.add_argument("--stream", action="store_true")
@@ -256,6 +259,7 @@ def main():
                     parser.error("live run requires an interactive terminal for fresh write and command approvals")
                 report = run_case(case, {"model": args.model, "base_url": args.base_url, "api_key": key,
                                          "max_steps": args.max_steps, "stream": args.stream, "request_usage": args.request_usage,
+                                         "max_tokens": args.max_tokens, "thinking": args.thinking,
                                          "max_context_bytes": args.max_context_bytes, "compact_context": args.compact_context},
                                   emit=lambda text: print(terminal_text(redact(text, key)), file=sys.stderr, flush=True),
                                   emit_delta=(lambda text: print(terminal_text(redact(text, key)), end="", file=sys.stderr, flush=True))

@@ -5,6 +5,7 @@
 - Python 3.11+，模型与文件执行核心使用标准库，TUI 使用 Textual，跨语言声明索引使用 Tree-sitter
 - Linux / macOS / Windows 10+ / Windows WSL
 - Chat Completions + function tools，可选 SSE 流式输出
+- 可选每次模型输出 token 上限与兼容服务的思考模式
 - 全屏终端 TUI、连续对话、项目代码地图、分目录 `AGENTS.md` 规则与本地 Git 查看
 - 用户固定验收命令：失败反馈修复，通过后才确认验收完成
 - 可选本地会话保存与恢复
@@ -55,6 +56,8 @@ PowerShell 源码运行：`$env:PYTHONPATH = 'src'; python -m sprig_agent --help
 ```
 
 不带参数时进入全屏 TUI，默认流式输出。启动器使用 `uv run --locked --managed-python` 运行项目环境；未设置密钥环境变量时，会提示隐藏输入。模型和地址已有预设，密钥只进入当前进程环境，退出后恢复原环境，不写入 `.env`、源码、配置文件或会话。脚本遵循本机 PowerShell 执行策略。
+
+`--max-tokens 2048` 可请求限制每次模型输出；`--thinking` 可显式请求同一 Flash 模型的思考模式，默认不启用。参数、恢复规则与验证范围见[模型输出与思考配置](docs/model-generation.md)。
 
 ## 开始使用
 

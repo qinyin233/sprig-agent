@@ -5,6 +5,7 @@ from .config import redact
 
 def request_payload(config, messages, tools):
     payload = {"model": config.model, "messages": redact(messages, config.api_key), "tools": tools, "tool_choice": "auto"}
+    payload.update(config.generation_options())
     if config.stream:
         payload["stream"] = True
         if config.request_usage:

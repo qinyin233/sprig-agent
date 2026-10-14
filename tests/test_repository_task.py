@@ -24,6 +24,18 @@ oracle = load("click_task_oracle", REPO / "benchmarks/repositories/click/oracle.
 
 
 class RepositoryTaskTests(unittest.TestCase):
+    def test_invalid_output_cap_is_rejected_before_credentials_or_fixture_access(self):
+        for value in ("0", "-1", "65537"):
+            with self.subTest(value=value), patch.object(sys, "argv", [
+                "repository-task", "--run", "--fixture", "unused", "--max-tokens", value
+            ]), patch.object(driver.task_module, "ClickTask") as adapter, \
+                    patch.object(driver, "environment_api_key") as key, patch("sys.stderr", io.StringIO()):
+                with self.assertRaises(SystemExit) as error:
+                    driver.main()
+                self.assertEqual(error.exception.code, 2)
+                adapter.assert_not_called()
+                key.assert_not_called()
+
     def test_invalid_request_timeout_is_rejected_before_fixture_or_model_access(self):
         for value in ("0", "-1", "121", "nan", "inf"):
             with self.subTest(value=value), patch.object(sys, "argv", [

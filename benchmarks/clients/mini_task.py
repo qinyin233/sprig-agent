@@ -198,10 +198,16 @@ def run_case(case, options, *, model_factory=None, confirm=approve, emit=None, c
                 return result
 
         model_route = "openai/" + config.model.removeprefix("openai/")
+        model_kwargs = {**defaults["model"].get("model_kwargs", {}), "api_base": config.base_url,
+                        "timeout": config.timeout, "num_retries": 0}
+        if config.max_tokens is not None:
+            model_kwargs["max_tokens"] = config.max_tokens
+        if config.thinking:
+            model_kwargs["extra_body"] = {**(model_kwargs.get("extra_body") or {}),
+                                          "chat_template_kwargs": {"enable_thinking": True}}
         model = model_factory(defaults) if model_factory else MeasuredModel(
             **{**defaults["model"], "model_name": model_route, "cost_tracking": "ignore_errors",
-               "model_kwargs": {**defaults["model"].get("model_kwargs", {}), "api_base": config.base_url,
-                                "timeout": config.timeout, "num_retries": 0}})
+               "model_kwargs": model_kwargs})
         # Repository comparisons share Sprig's step/body/per-action budgets.
         # SDK 0 disables only the extra wall clock that includes approval waits.
         wall_limit = 0 if case_adapter is not None else 600 + pacer.interval * max(0, config.max_steps - 1)
@@ -241,6 +247,7 @@ def run_case(case, options, *, model_factory=None, confirm=approve, emit=None, c
                        "model": config.model, "sdk_model_route": model_route, "base_url": config.base_url,
                        "max_steps": config.max_steps, "stream": False,
                        "request_timeout_seconds": config.timeout,
+                       "generation_options": config.generation_options(),
                        "max_context_bytes": config.max_context_bytes if wire else None,
                        "context_budget": "actual serialized HTTP JSON body" if wire else "scripted fixture; no HTTP transport",
                        "automatic_retries": False, "cost": None,
@@ -262,6 +269,8 @@ def main():
     parser.add_argument("--model", default=os.environ.get("SPRIG_MODEL", "agnes-3.0-flash"))
     parser.add_argument("--base-url", default=os.environ.get("SPRIG_BASE_URL", "https://apihub.agnes-ai.com/v1"))
     parser.add_argument("--max-steps", type=int, default=20)
+    parser.add_argument("--max-tokens", type=int)
+    parser.add_argument("--thinking", action="store_true")
     parser.add_argument("--max-context-bytes", type=int, default=131072)
     parser.add_argument("--report", type=Path)
     args = parser.parse_args()
@@ -282,7 +291,8 @@ def main():
         parser.error("live run requires process credentials and an interactive terminal for fresh approvals")
     try:
         report = run_case(bench.suite.cases()[args.case], {"model": args.model, "base_url": args.base_url, "api_key": key,
-                                                       "max_steps": args.max_steps, "max_context_bytes": args.max_context_bytes},
+                                                       "max_steps": args.max_steps, "max_context_bytes": args.max_context_bytes,
+                                                       "max_tokens": args.max_tokens, "thinking": args.thinking},
                           emit=lambda text: print(text, file=sys.stderr, flush=True))
         rendered = json.dumps(report, ensure_ascii=True, indent=2) + "\n"
         print(rendered, end="")

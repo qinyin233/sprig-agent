@@ -131,6 +131,7 @@ class Tools:
 
     @contextmanager
     def _directory(self, parts):
+        self.root.ensure_open()
         directory = self.root
         opened = []
         try:
@@ -175,6 +176,7 @@ class Tools:
     def execute(self, name, arguments):
         self._check_cancelled()
         try:
+            self.root.ensure_open()
             if not isinstance(arguments, dict):
                 raise ToolError("tool arguments must be an object")
             method = {"list_files": self.list_files, "read_file": self.read_file,

@@ -22,6 +22,11 @@ spec.loader.exec_module(driver)
 
 class MiniTaskTests(unittest.TestCase):
     def test_real_sdk_http_transport_records_only_numeric_usage_and_routes_model(self):
+        for generation in ({}, {"max_tokens": 2048, "thinking": True}):
+            with self.subTest(generation=generation):
+                self.check_real_sdk_http(generation)
+
+    def check_real_sdk_http(self, generation):
         case = driver.bench.suite.cases()["py-interval"]
         commands = ["echo COMPLETE_TASK_AND_SUBMIT_FINAL_OUTPUT", self.repair(case), "echo COMPLETE_TASK_AND_SUBMIT_FINAL_OUTPUT"]
         requests = []
@@ -32,6 +37,7 @@ class MiniTaskTests(unittest.TestCase):
                 number = len(requests)
                 requests.append({'model': data.get('model'), 'bash_tool': data['tools'][0]['function']['name'] == 'bash',
                                  'auth_ok': self.headers.get('Authorization') == 'Bearer fixture-private-marker',
+                                 'max_tokens': data.get('max_tokens'), 'chat_template_kwargs': data.get('chat_template_kwargs'),
                                  'request_bytes': len(raw), 'identity': self.headers.get('Accept-Encoding') == 'identity'})
                 body = json.dumps({'id': f'fixture-{number}', 'object': 'chat.completion', 'created': 1, 'model': 'fixture',
                                    'choices': [{'index': 0, 'finish_reason': 'tool_calls', 'message': {'role': 'assistant', 'content': None,
@@ -51,7 +57,7 @@ class MiniTaskTests(unittest.TestCase):
         thread.start()
         try:
             report = driver.run_case(case, {'model': 'fixture', 'base_url': f'http://127.0.0.1:{server.server_port}/v1',
-                                           'api_key': 'fixture-private-marker'}, confirm=lambda _: True)
+                                           'api_key': 'fixture-private-marker', **generation}, confirm=lambda _: True)
         finally:
             server.shutdown(); server.server_close(); thread.join(5)
         self.assertTrue(report['acceptance_passed'], report)
@@ -70,6 +76,10 @@ class MiniTaskTests(unittest.TestCase):
         self.assertNotIn('fixture-private-marker', json.dumps(report))
         self.assertNotIn('arguments', json.dumps(report))
         self.assertEqual(report['http_attempts'], 3)
+        expected = ({'max_tokens': 2048, 'chat_template_kwargs': {'enable_thinking': True}} if generation else {})
+        self.assertEqual(report['generation_options'], expected)
+        self.assertTrue(all(row['max_tokens'] == generation.get('max_tokens') for row in requests))
+        self.assertTrue(all(row['chat_template_kwargs'] == expected.get('chat_template_kwargs') for row in requests))
 
     def test_actual_sdk_budget_stops_before_http_or_approval(self):
         case = dict(driver.bench.suite.cases()['py-interval'])
