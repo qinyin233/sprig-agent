@@ -14,14 +14,16 @@ class InstructionError(ValueError):
 
 
 class ProjectInstructions:
-    def __init__(self, read, check_cancelled, enabled=True):
-        self.read, self.check_cancelled, self.enabled = read, check_cancelled, enabled
+    def __init__(self, read, check_cancelled, enabled=True, files=()):
+        self.read, self.check_cancelled = read, check_cancelled
+        self.discover, self.files = enabled, files
+        self.enabled = enabled or bool(files)
         self.scopes = {()}
         self.served = None
         self.model_action_active = False
 
     def register(self, directory):
-        if not self.enabled:
+        if not self.discover:
             return
         scopes = {directory[:end] for end in range(len(directory) + 1)}
         if len(self.scopes | scopes) > MAX_RULE_SCOPES:
@@ -30,14 +32,20 @@ class ProjectInstructions:
 
     def _load(self, scopes):
         records = []
-        for directory in sorted(scopes, key=lambda parts: (len(parts), parts)):
+        candidates = {path: (path.rpartition("/")[0] or ".") if path.rpartition("/")[2] == "AGENTS.md" else "."
+                      for path in self.files}
+        if self.discover:
+            for directory in sorted(scopes, key=lambda parts: (len(parts), parts)):
+                candidates["/".join((*directory, "AGENTS.md"))] = "/".join(directory) or "."
+        for path, scope in candidates.items():
             self.check_cancelled()
-            path = "/".join((*directory, "AGENTS.md"))
             content = self.read(path, MAX_RULE_FILE)
+            if content is None and path in self.files:
+                raise InstructionError("configured instruction file is missing or excluded: " + path)
             if content is not None:
-                records.append({"path": path, "scope": "/".join(directory) or ".", "content": content})
+                records.append({"path": path, "scope": scope, "content": content})
                 if len(json.dumps(records, ensure_ascii=False).encode("utf-8")) > MAX_RULE_CONTEXT:
-                    raise InstructionError("project instruction context exceeds 64 KiB; shorten AGENTS.md files or explicitly use --no-project-instructions")
+                    raise InstructionError("project instruction context exceeds 64 KiB; shorten guidance files, reduce configured files or disable AGENTS.md discovery")
         self.check_cancelled()
         return records
 
@@ -74,9 +82,9 @@ class ProjectInstructions:
             raise InstructionError("model instruction context is unavailable; no action performed")
         scopes = {directory[:end] for end in range(len(directory) + 1)}
         current = self._fingerprints(self._load(scopes))
-        paths = {"/".join((*scope, "AGENTS.md")) for scope in scopes}
+        paths = {*self.files, *("/".join((*scope, "AGENTS.md")) for scope in scopes if self.discover)}
         if current != {path: value for path, value in self.served.items() if path in paths}:
-            raise InstructionError("project instructions are new or changed; no action performed. Review refreshed AGENTS.md guidance in the next model request, then propose the action again")
+            raise InstructionError("project instructions are new or changed; no action performed. Review refreshed development guidance in the next model request, then propose the action again")
         return current
 
     def recheck_action(self, directory, expected):

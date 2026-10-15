@@ -40,6 +40,16 @@ thinking = false
 # max_context_bytes = 131072
 # compact_context = true
 # checks = [["uv", "run", "python", "-m", "unittest", "discover", "-s", "tests", "-q"]]
+# check_before_task = true # requires checks; each command still asks approval
+
+[instructions]
+files = [] # e.g. ["CONTRIBUTING.md"], relative to the selected workspace
+# response_language = "English"
+
+# Optional additional shortcuts; Enter and approval keys remain fixed.
+# [tui.keybindings]
+# help = ["f1"]
+# toggle_sidebar = ["ctrl+b"]
 '''
 
 
@@ -100,10 +110,11 @@ GROUP_FIELDS = {
     "agent": set(AGENT_DEFAULTS), "generation": set(GENERATION_FIELDS), "tools": set(TOOL_NAMES),
     "files": {"exclude"}, "execution": {"inherit_env", "timeout", "max_output", "env_allowlist", "env"},
     "storage": {"session_dir", "change_history_dir", "auto_save_session"},
-    "tui": {"theme", "sidebar", "editor_height", "steering_mode", "metrics"},
+    "tui": {"theme", "sidebar", "editor_height", "steering_mode", "metrics", "keybindings"},
+    "instructions": {"files", "response_language"},
 }
 TUI_FIELDS = {"theme": "tui_theme", "sidebar": "tui_sidebar", "editor_height": "tui_editor_height",
-              "steering_mode": "steering_mode", "metrics": "show_metrics"}
+              "steering_mode": "steering_mode", "metrics": "show_metrics", "keybindings": "tui_keybindings"}
 TRANSPORT_FIELDS = {"request_timeout", "proxy", "api_key_header", "api_key_scheme"}
 IDENTIFIER = re.compile(r"[A-Za-z0-9_-]{1,64}")
 
@@ -135,6 +146,13 @@ def _flatten(layer, directory):
     if "exclude" in layer.get("files", {}):
         values["excluded_paths"] = tuple(layer["files"]["exclude"])
     values.update({TUI_FIELDS[name]: value for name, value in layer.get("tui", {}).items()})
+    if "tui_keybindings" in values:
+        values["tui_keybindings"] = tuple((name, tuple(keys)) for name, keys in values["tui_keybindings"].items())
+    instructions = layer.get("instructions", {})
+    if "files" in instructions:
+        values["instruction_files"] = tuple(instructions["files"])
+    if "response_language" in instructions:
+        values["response_language"] = instructions["response_language"]
     for name, value in layer.get("storage", {}).items():
         if name.endswith("_dir"):
             value = Path(value).expanduser()
@@ -162,6 +180,11 @@ def _validate_layer(layer, directory):
         raise ValueError("execution env must be a table")
     if "exclude" in layer.get("files", {}) and not isinstance(layer["files"]["exclude"], list):
         raise ValueError("files exclude must be an array")
+    if "files" in layer.get("instructions", {}) and not isinstance(layer["instructions"]["files"], list):
+        raise ValueError("instruction files must be an array")
+    shortcuts = layer.get("tui", {}).get("keybindings", {})
+    if not isinstance(shortcuts, dict) or any(not isinstance(keys, list) for keys in shortcuts.values()):
+        raise ValueError("TUI keybindings must map actions to arrays of keys")
     for name, value in layer.get("storage", {}).items():
         if name.endswith("_dir") and not _text(value):
             raise ValueError("storage directories must be nonempty paths")
@@ -206,6 +229,8 @@ def _validate(data, directory, *, project=False):
         # It cannot route credentials, inject environment, or persist transcripts.
         if set(data) & {"execution", "storage"}:
             raise ValueError("project configuration cannot change execution environment or storage")
+        if "keybindings" in data.get("tui", {}):
+            raise ValueError("project configuration cannot change trusted keyboard shortcuts")
         if any(data.get("agent", {}).get(name) for name in ("inherit_env", "checks")):
             raise ValueError("project configuration cannot inherit environment or add commands")
         if "profile" in data:
@@ -373,11 +398,26 @@ class Settings:
                 if env.get(variable):
                     headers[name] = env[variable]
         directory = self.path.parent if self.path else Path(options.get("workdir", ".")).resolve()
-        values = {**AGENT_DEFAULTS, **_flatten(self.data, directory), **selected.get("generation", {}),
-                  **model_settings.get("generation", {})}
+        values = dict(AGENT_DEFAULTS)
+        sources = {name: "default" for name in {*AGENT_DEFAULTS, *GENERATION_FIELDS, *TRANSPORT_FIELDS,
+                    *TUI_FIELDS.values(), "instruction_files", "response_language", "excluded_paths",
+                    "session_dir", "change_history_dir", "auto_save_session", "env_allowlist", "command_env"}}
+        def apply(entries, label):
+            if "tui_keybindings" in entries:
+                merged = dict(values.get("tui_keybindings", ()))
+                merged.update(entries["tui_keybindings"])
+                sources.update({"tui.keybindings." + action: label for action, _ in entries["tui_keybindings"]})
+                entries = {**entries, "tui_keybindings": tuple(merged.items())}
+            values.update(entries)
+            sources.update({name: label for name in entries})
+            if "tui_keybindings" in entries and entries["tui_keybindings"]:
+                sources["tui_keybindings"] = " + ".join(dict.fromkeys(sources["tui.keybindings." + action] for action, _ in entries["tui_keybindings"]))
+        apply(_flatten(self.data, directory), "user")
+        apply(selected.get("generation", {}), "provider")
+        apply(model_settings.get("generation", {}), "model")
         if "max_context_bytes" in model_settings:
-            values["max_context_bytes"] = model_settings["max_context_bytes"]
-        values.update(_flatten(profile, directory))
+            apply({"max_context_bytes": model_settings["max_context_bytes"]}, "model")
+        apply(_flatten(profile, directory), "profile")
         tool_policy = {**self.data.get("tools", {}), **profile.get("tools", {})}
         if self.project_path:
             project_values = _flatten(self.project_data, self.project_path.parent)
@@ -389,19 +429,39 @@ class Settings:
                 raise ValueError("project configuration cannot enable a disabled tool")
             if "excluded_paths" in project_values:
                 project_values["excluded_paths"] = tuple(dict.fromkeys((*values.get("excluded_paths", ()), *project_values["excluded_paths"])))
-            values.update(project_values)
+            previous_exclusions = sources["excluded_paths"] if values.get("excluded_paths") else None
+            apply(project_values, "project")
+            if previous_exclusions and "excluded_paths" in project_values:
+                sources["excluded_paths"] = previous_exclusions + " + project"
             tool_policy.update(self.project_data.get("tools", {}))
-        values.update({name: selected[name] for name in TRANSPORT_FIELDS if name in selected})
-        configurable = {*AGENT_DEFAULTS, *GENERATION_FIELDS, *TRANSPORT_FIELDS, "session_dir", "change_history_dir", "show_metrics"}
-        values.update({name: value for name, value in options.items() if name in configurable and value is not None})
+        apply({name: selected[name] for name in TRANSPORT_FIELDS if name in selected}, "provider")
+        configurable = {*AGENT_DEFAULTS, *GENERATION_FIELDS, *TRANSPORT_FIELDS, "session_dir", "change_history_dir", "show_metrics", "instruction_files", "response_language"}
+        apply({name: value for name, value in options.items() if name in configurable and value is not None}, "CLI")
+        if options.get("_tui_stream"):
+            sources["stream"] = "TUI"
         for name in options.get("disable_tool") or ():
             tool_policy[name] = False
         values["disabled_tools"] = tuple(name for name in TOOL_NAMES if tool_policy.get(name) is False)
         values["checks"] = tuple(tuple(argv) for argv in values["checks"])
+        if "instruction_files" in values:
+            values["instruction_files"] = tuple(values["instruction_files"])
+        for name in TOOL_NAMES:
+            sources["tools." + name] = ("CLI" if name in (options.get("disable_tool") or ()) else
+                "project" if name in self.project_data.get("tools", {}) else
+                "profile" if name in profile.get("tools", {}) else "user" if name in self.data.get("tools", {}) else "default")
+        def selection_source(entries):
+            return next((label for value, label in entries if value), "default")
+        sources["model"] = selection_source(((options.get("model"), "CLI"), (env.get("SPRIG_MODEL"), "environment"),
+            (self.project_data.get("model"), "project"), (profile_model, "profile"), (selected.get("model"), "provider")))
+        sources["provider"] = selection_source(((options.get("provider"), "CLI"), (env.get("SPRIG_PROVIDER"), "environment"),
+            (profile.get("provider"), "profile"), (self.data.get("provider"), "user")))
+        sources["base_url"] = selection_source(((options.get("base_url"), "CLI"), (env.get("SPRIG_BASE_URL"), "environment"),
+            (selected.get("base_url"), "provider")))
         config = Config(workdir=Path(options.get("workdir", ".")), model=model, base_url=url, api_key=key,
                         config_path=self.path, config_paths=(self.project_path,) if self.project_path else (),
                         provider_name=provider or None, profile_name=profile_name, credential_env_vars=tuple(sorted(names)),
-                        headers=tuple(headers.items()), secret_values=tuple(sorted(secrets)), model_catalog=self.catalog(), **values)
+                        headers=tuple(headers.items()), secret_values=tuple(sorted(secrets)), model_catalog=self.catalog(),
+                        setting_sources=tuple(sorted(sources.items())), **values)
         return config, {"provider": provider or None, "profile": profile_name, "api_key_source": source,
                         "config_file": str(self.path) if self.path else None,
                         "project_config_file": str(self.project_path) if self.project_path else None, "interface": interface}
@@ -443,9 +503,11 @@ def public_config(config, metadata):
                           "header_names": [name for name, _ in config.headers]},
             "tools": {name: name not in config.disabled_tools for name in TOOL_NAMES},
             "files": {"exclude": config.excluded_paths},
+            "instructions": {"files": config.instruction_files, "response_language": config.response_language},
             "execution": {"env_allowlist": config.env_allowlist, "env_names": [name for name, _ in config.command_env]},
             "storage": {"session_dir": str(config.session_dir) if config.session_dir else None,
                         "change_history_dir": str(config.change_history_dir) if config.change_history_dir else None,
                         "auto_save_session": config.auto_save_session},
-            "tui": {name: getattr(config, field) for name, field in TUI_FIELDS.items()},
+            "tui": {name: (dict(config.tui_keybindings) if name == "keybindings" else getattr(config, field)) for name, field in TUI_FIELDS.items()},
+            "setting_sources": dict(config.setting_sources),
             "approvals": "each write and command requires fresh approval", "command_sandbox": False}, config.secrets)

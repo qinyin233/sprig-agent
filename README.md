@@ -55,7 +55,7 @@ uv run --locked sprig --doctor
 uv run --locked sprig
 ```
 
-逐次确认后在 `~/.sprig/config.toml` 创建私有配置，预设 `agnes-3.0-flash`，引用现有 `AGNES_API_KEY`，不写入真实密钥。已存在的配置不会覆盖。最后一条命令打开 TUI；Enter 发送，执行中可继续输入引导，`/help` 查看本地操作。配置文件、密钥优先级及其他提供商见[配置与首次启动](docs/configuration.md)，完整示例见 [config.example.toml](config.example.toml)，主流开源 agent 的设置对照见[配置调研](docs/configuration-comparison.md)。
+逐次确认后在 `~/.sprig/config.toml` 创建私有配置，预设 `agnes-3.0-flash`，引用现有 `AGNES_API_KEY`，不写入真实密钥。已存在的配置不会覆盖。最后一条命令打开 TUI；Enter 发送，执行中可继续输入引导，`/help` 查看本地操作，`/keys` 查看快捷键。配置文件、附加规则/语言、profile、键位和设置来源见[配置与首次启动](docs/configuration.md)，完整示例见 [config.example.toml](config.example.toml)，Codex/OpenCode/Aider/Pi 的设置对照及未实现后端见[配置调研](docs/configuration-comparison.md)。
 
 ### Agnes 3.0 Flash 预设
 

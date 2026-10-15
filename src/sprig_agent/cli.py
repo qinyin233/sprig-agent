@@ -184,6 +184,8 @@ def main(argv=None):
     parser.add_argument("--max-context-bytes", type=int, help="maximum serialized model request size; not a token/cost estimate")
     parser.add_argument("--compact-context", action=argparse.BooleanOptionalAction, default=None, help="explicitly elide old successful tool output and completed edit text from requests; keep saved history")
     parser.add_argument("--project-instructions", action=argparse.BooleanOptionalAction, default=None, help="load workspace AGENTS.md guidance; never reads parent/home directories")
+    parser.add_argument("--instruction-file", dest="instruction_files", action="append", help="additional workspace-relative guidance file; repeatable, replaces configured files")
+    parser.add_argument("--response-language", help="preferred language for explanations; direct task requests take precedence")
     interface = parser.add_mutually_exclusive_group()
     interface.add_argument("--chat", dest="interface", action="store_const", const="chat", help="keep an interactive conversation open")
     interface.add_argument("--tui", dest="interface", action="store_const", const="tui", help="open the full-screen terminal interface (streams by default)")
@@ -247,6 +249,7 @@ def main(argv=None):
         options = vars(args).copy()
         if args.tui:
             options["stream"] = True
+            options["_tui_stream"] = True
         if manage_sessions or args.models or args.list_models:
             options["_manage_sessions"] = not args.list_models
             if args.list_models and not args.model:

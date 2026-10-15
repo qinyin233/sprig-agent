@@ -94,7 +94,7 @@ class Tools:
         self.index = SymbolIndex()
         self.emit_output = emit_output
         self.instructions = ProjectInstructions(self._read_instruction, self._check_cancelled,
-                                                config.project_instructions)
+                                                config.project_instructions, config.instruction_files)
 
     def _read_instruction(self, path, limit):
         self.policy.reload()
@@ -111,7 +111,7 @@ class Tools:
         except (OSError, ValueError, ToolError):
             # Fixed diagnostics: decoding and OS errors must not echo rule text.
             raise InstructionError("cannot safely load project instructions: " + path
-                                   + "; check privacy, UTF-8, regular-file and 16 KiB limits, or explicitly use --no-project-instructions") from None
+                                   + "; check privacy, UTF-8, regular-file and 16 KiB limits; remove invalid explicit files or disable AGENTS.md discovery") from None
 
     def _check_cancelled(self):
         if self.cancel_event is not None and self.cancel_event.is_set():

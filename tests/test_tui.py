@@ -124,6 +124,47 @@ class TuiTests(unittest.IsolatedAsyncioTestCase):
             self.assertEqual(app.take_pending(), ["second guidance"])
             self.assertEqual(app.pending_tasks, [])
 
+    async def test_configured_shortcuts_and_keys_keep_enter_and_modal_rejection(self):
+        from dataclasses import replace
+        self.config = replace(self.config, tui_keybindings=(("toggle_sidebar", ("ctrl+b",)), ("help", ("f1",)),
+                              ("new_conversation", ("f4",)), ("cancel", ("f6",))))
+        (self.root / "a.txt").write_text("old", encoding="utf-8")
+        provider = ScriptedProvider([call("edit", "edit_file", {"path": "a.txt", "old": "old", "new": "new"}),
+                                     response("Rejected")])
+        app = self.app(provider)
+        async with app.run_test(size=(110, 36)) as pilot:
+            self.assertTrue(app.query_one("#sidebar").display)
+            await pilot.press("ctrl+b")
+            self.assertFalse(app.query_one("#sidebar").display)
+            await pilot.press("f1")
+            self.assertIn("/keys", app.transcript)
+            await self.send_text(pilot, "/keys")
+            self.assertIn('"f6"', app.transcript)
+            self.assertEqual(provider.calls, [])
+            await self.send_text(pilot, "Propose change")
+            await self.until(pilot, lambda: isinstance(app.screen, ApprovalScreen))
+            await pilot.press("f4")
+            self.assertIsInstance(app.screen, ApprovalScreen)
+            self.assertEqual((self.root / "a.txt").read_text(), "old")
+            await pilot.press("enter")
+            await self.until(pilot, lambda: not app.busy)
+            self.assertEqual((self.root / "a.txt").read_text(), "old")
+            self.assertFalse(json.loads(app.messages[3]["content"])["approved"])
+
+    async def test_configured_cancel_shortcut_rejects_pending_action(self):
+        from dataclasses import replace
+        self.config = replace(self.config, tui_keybindings=(("cancel", ("ctrl+f6",)),))
+        (self.root / "a.txt").write_text("old", encoding="utf-8")
+        provider = ScriptedProvider([call("edit", "edit_file", {"path": "a.txt", "old": "old", "new": "new"})])
+        app = self.app(provider)
+        async with app.run_test(size=(110, 36)) as pilot:
+            await self.send_text(pilot, "Propose change")
+            await self.until(pilot, lambda: isinstance(app.screen, ApprovalScreen))
+            await pilot.press("ctrl+f6")
+            await self.until(pilot, lambda: not app.busy)
+            self.assertEqual((self.root / "a.txt").read_text(), "old")
+            self.assertEqual(len(provider.calls), 1)
+
     async def test_failed_startup_attachment_releases_session_reservation(self):
         with self.assertRaises(ValueError):
             SprigApp(self.config, session_dir=self.parent / "sessions", save_session="reserved",

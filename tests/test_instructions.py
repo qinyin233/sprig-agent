@@ -2,6 +2,7 @@
 
 import copy
 from contextlib import closing, redirect_stdout, redirect_stderr
+from dataclasses import replace
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 import json
 import io
@@ -80,6 +81,73 @@ class InstructionTests(unittest.TestCase):
         self.assertIn("cannot approve actions", prompt)
         self.assertTrue(saved)
         self.approve.assert_not_called()
+
+    def test_explicit_guidance_remains_enabled_without_agents_discovery(self):
+        (self.root / "AGENTS.md").write_bytes(b"\xffDO NOT READ")
+        self.rules("EXPLICIT ROOT GUIDANCE", "guide.md")
+        config = replace(self.config, project_instructions=False, instruction_files=("guide.md",), response_language="简体中文")
+        tools = self.tools(config)
+        agent, requests, _, _ = self.run_agent([response()], tools)
+        messages, done = agent.run("Explain")
+        self.assertTrue(done)
+        self.assertIn("EXPLICIT ROOT GUIDANCE", requests[0][0]["content"])
+        self.assertIn("简体中文", requests[0][0]["content"])
+        self.assertNotIn("DO NOT READ", json.dumps(messages))
+        self.assertEqual(tools.instructions.context(), [{"path": "guide.md", "scope": ".", "content": "EXPLICIT ROOT GUIDANCE"}])
+        self.approve.assert_not_called()
+
+    def test_explicit_nested_agents_preserves_scope_before_any_discovery(self):
+        self.rules("NESTED ONLY", "src/AGENTS.md")
+        self.rules("ROOT GUIDANCE", "guide.md")
+        for discovery in (True, False):
+            tools = self.tools(replace(self.config, project_instructions=discovery,
+                                       instruction_files=("src/AGENTS.md", "guide.md")))
+            before = tools.instructions.context()
+            self.assertEqual({record["path"]: record["scope"] for record in before},
+                             {"src/AGENTS.md": "src", "guide.md": "."})
+            tools.instructions.register(("src",))
+            self.assertEqual(tools.instructions.context(), before)
+
+    def test_required_guidance_errors_stop_before_model_without_exposing_text(self):
+        for mode in ("missing", "excluded", "binary", "secret", "oversized"):
+            with self.subTest(mode=mode):
+                path = self.root / "guide.md"
+                path.unlink(missing_ok=True)
+                (self.root / ".sprigignore").unlink(missing_ok=True)
+                if mode == "excluded":
+                    path.write_text("PRIVATE GUIDANCE", encoding="utf-8")
+                    (self.root / ".sprigignore").write_text("guide.md\n", encoding="utf-8")
+                elif mode == "binary":
+                    path.write_bytes(b"PRIVATE GUIDANCE\0")
+                elif mode == "secret":
+                    path.write_text("PRIVATE GUIDANCE sk-" + "x" * 32, encoding="utf-8")
+                elif mode == "oversized":
+                    path.write_text("x" * 16385, encoding="utf-8")
+                tools = self.tools(replace(self.config, instruction_files=("guide.md",)))
+                agent, requests, emitted, _ = self.run_agent([response()], tools)
+                with self.assertRaises(InstructionError) as error:
+                    agent.run("Explain")
+                self.assertEqual(requests, [])
+                self.assertNotIn("PRIVATE GUIDANCE", str(error.exception) + str(emitted))
+        self.approve.assert_not_called()
+
+    def test_configured_guidance_change_before_and_during_approval_blocks_edit(self):
+        self.rules("OLD CUSTOM RULE", "guide.md")
+        config = replace(self.config, instruction_files=("guide.md",))
+        tools = self.tools(config)
+        tools.instructions.mark_served(tools.instructions.context())
+        self.rules("CHANGED CUSTOM RULE", "guide.md")
+        with tools.instructions.model_action():
+            stale = tools.execute("edit_file", {"path": "src/a.py", "old": "1", "new": "2"})
+        self.assertIn("instructions are new or changed", stale["error"])
+        self.approve.assert_not_called()
+        tools.instructions.mark_served(tools.instructions.context())
+        self.approve.side_effect = lambda _: (self.rules("CHANGED DURING REVIEW", "guide.md") or True)
+        with tools.instructions.model_action():
+            stale = tools.execute("edit_file", {"path": "src/a.py", "old": "1", "new": "2"})
+        self.assertIn("changed during approval", stale["error"])
+        self.assertEqual((self.root / "src/a.py").read_text(), "value = 1\n")
+        self.assertEqual(tools.history.summary()["records"], [])
 
     def test_read_and_edit_in_same_response_requires_guidance_in_next_request(self):
         self.rules("ROOT RULE")

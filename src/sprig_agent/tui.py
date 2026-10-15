@@ -17,7 +17,7 @@ from textual.worker import get_current_worker
 
 from .agent import Agent
 from .changes import ChangeHistory
-from .config import redact, terminal_text
+from .config import SHORTCUT_ACTIONS, redact, terminal_text
 from .provider import Provider
 from .session import SessionError, SessionStore, validate_history
 from .settings import public_config
@@ -110,6 +110,10 @@ class SprigApp(App[int]):
         Binding("ctrl+c", "cancel", "取消", priority=True),
         Binding("ctrl+q", "quit", "退出", priority=True),
         Binding("ctrl+l", "focus_task", "任务输入", priority=True),
+        # Textual named actions need a nonempty base key. These identifiers
+        # are never terminal events; set_keymap activates configured aliases.
+        *(Binding("sprig_unbound_" + action, "configured_shortcut(" + repr(action) + ")", "",
+                  id="sprig." + action, show=False, priority=True) for action in SHORTCUT_ACTIONS),
     ]
     CSS = """
     #context { height: auto; max-height: 3; padding: 0 1; color: $text-muted; }
@@ -134,6 +138,7 @@ class SprigApp(App[int]):
     def __init__(self, config, task=None, session_dir=None, save_session=None, resume=None, provider=None, change_dir=None, files=()):
         super().__init__()
         self.config = config
+        self.set_keymap({"sprig." + action: ",".join(keys) for action, keys in config.tui_keybindings if keys})
         self.initial_task = task
         self.session_dir = Path(session_dir or Path.home() / ".local/state/sprig-agent/sessions")
         self.session_name = save_session or resume
@@ -701,17 +706,41 @@ class SprigApp(App[int]):
         else:
             reset()
 
+    def action_configured_shortcut(self, action):
+        # Aliases never approve a modal or replace the fixed composer keys.
+        if isinstance(self.screen, ModalScreen):
+            if action in {"cancel", "quit"}:
+                (self.action_cancel if action == "cancel" else self.action_quit)()
+            return
+        if action == "cancel":
+            self.action_cancel()
+        elif action == "quit":
+            self.action_quit()
+        elif action == "focus_input":
+            self.action_focus_task()
+        elif action == "toggle_sidebar":
+            sidebar = self.query_one("#sidebar")
+            sidebar.display = not sidebar.display
+        elif action == "help":
+            self.slash_command("/help")
+        elif action == "new_conversation" and not self.busy:
+            self.new_conversation()
+
     def slash_command(self, text):
         command, _, argument = text.partition(" ")
         argument = argument.strip()
         if command == "/help":
             self.append("\n本地命令（不发送给模型）：\n"
-                        "/help /status /config /models /context /usage /cancel /exit\n"
+                        "/help /keys /status /config /models /context /usage /cancel /exit\n"
                         "/continue /new /add 文件路径 /map [名称或路径查询] /git /diff /compact\n"
                         "/changes /undo /redo /discard-history /sessions\n"
                         "/save [名称] /restore [名称] /delete [名称]\n"
                         "执行中可输入普通消息调整引导。// 开头发送以 / 开头的普通消息。\n"
                         "提供商和模型通过 config.toml 或启动参数选择；恢复时仍校验绑定。\n")
+            return
+        if command == "/keys":
+            self.append("\n[快捷键] Enter 发送；Shift+Enter / Ctrl+J 换行；Ctrl+C 取消；Ctrl+Q 退出；Ctrl+L 输入。审批默认拒绝。\n"
+                        + json.dumps(dict(self.config.tui_keybindings), ensure_ascii=False, indent=2) + "\n")
             return
         if command == "/status":
             self.append(f"\n[本地状态] {self.task_message} | 执行中: {self.busy} | 消息: {len(self.messages or [])} | 本次基线: {self.agent.baseline_status} | 待处理引导: {len(self.pending_tasks)}\n")

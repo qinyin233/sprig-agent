@@ -1,6 +1,6 @@
 """Editor assistance for the TOML configuration; runtime validation is authoritative."""
 
-from .config import RESERVED_BODY_FIELDS, TOOL_NAMES
+from .config import RESERVED_BODY_FIELDS, TOOL_NAMES, SHORTCUT_ACTIONS
 
 
 def configuration_schema():
@@ -41,8 +41,13 @@ def configuration_schema():
                           "env": {"type": "object", "maxProperties": 32, "propertyNames": environment,
                                   "additionalProperties": {"type": "string", "maxLength": 8192}}}),
         "storage": obj({"session_dir": text, "change_history_dir": text, "auto_save_session": boolean}),
+        "instructions": obj({"files": {"type": "array", "maxItems": 16, "items": {**text, "maxLength": 256},
+                                      "description": "Required workspace-relative UTF-8 files; no globs. Existing privacy and instruction limits apply."},
+                             "response_language": {**text, "maxLength": 80}}),
         "tui": obj({"theme": {"enum": ["textual-dark", "textual-light", "nord", "gruvbox", "dracula", "monokai", "tokyo-night", "solarized-dark", "solarized-light"]},
-                    "sidebar": boolean, "editor_height": integer(3, 12), "steering_mode": {"enum": ["all", "one-at-a-time"]}, "metrics": boolean}),
+                    "sidebar": boolean, "editor_height": integer(3, 12), "steering_mode": {"enum": ["all", "one-at-a-time"]}, "metrics": boolean,
+                    "keybindings": obj({action: {"type": "array", "maxItems": 4, "items": {"type": "string",
+                        "pattern": r"^(?:(?:ctrl|alt|shift)\+)*(?:f(?:[1-9]|1[0-2])|[a-z0-9]|home|end|pageup|pagedown|up|down|left|right)$"}} for action in SHORTCUT_ACTIONS})}),
     }
     interface = {"enum": ["cli", "chat", "tui"]}
     model = obj({"id": model_name, "generation": generation, "max_context_bytes": integer(4096, 2097152)}, required=["id"])

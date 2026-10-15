@@ -249,6 +249,29 @@
       },
       "additionalProperties": false
     },
+    "instructions": {
+      "type": "object",
+      "properties": {
+        "files": {
+          "type": "array",
+          "maxItems": 16,
+          "items": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 256,
+            "pattern": "^[^\\x00-\\x1f]+$"
+          },
+          "description": "Required workspace-relative UTF-8 files; no globs. Existing privacy and instruction limits apply."
+        },
+        "response_language": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 80,
+          "pattern": "^[^\\x00-\\x1f]+$"
+        }
+      },
+      "additionalProperties": false
+    },
     "tui": {
       "type": "object",
       "properties": {
@@ -281,6 +304,60 @@
         },
         "metrics": {
           "type": "boolean"
+        },
+        "keybindings": {
+          "type": "object",
+          "properties": {
+            "cancel": {
+              "type": "array",
+              "maxItems": 4,
+              "items": {
+                "type": "string",
+                "pattern": "^(?:(?:ctrl|alt|shift)\\+)*(?:f(?:[1-9]|1[0-2])|[a-z0-9]|home|end|pageup|pagedown|up|down|left|right)$"
+              }
+            },
+            "quit": {
+              "type": "array",
+              "maxItems": 4,
+              "items": {
+                "type": "string",
+                "pattern": "^(?:(?:ctrl|alt|shift)\\+)*(?:f(?:[1-9]|1[0-2])|[a-z0-9]|home|end|pageup|pagedown|up|down|left|right)$"
+              }
+            },
+            "focus_input": {
+              "type": "array",
+              "maxItems": 4,
+              "items": {
+                "type": "string",
+                "pattern": "^(?:(?:ctrl|alt|shift)\\+)*(?:f(?:[1-9]|1[0-2])|[a-z0-9]|home|end|pageup|pagedown|up|down|left|right)$"
+              }
+            },
+            "toggle_sidebar": {
+              "type": "array",
+              "maxItems": 4,
+              "items": {
+                "type": "string",
+                "pattern": "^(?:(?:ctrl|alt|shift)\\+)*(?:f(?:[1-9]|1[0-2])|[a-z0-9]|home|end|pageup|pagedown|up|down|left|right)$"
+              }
+            },
+            "help": {
+              "type": "array",
+              "maxItems": 4,
+              "items": {
+                "type": "string",
+                "pattern": "^(?:(?:ctrl|alt|shift)\\+)*(?:f(?:[1-9]|1[0-2])|[a-z0-9]|home|end|pageup|pagedown|up|down|left|right)$"
+              }
+            },
+            "new_conversation": {
+              "type": "array",
+              "maxItems": 4,
+              "items": {
+                "type": "string",
+                "pattern": "^(?:(?:ctrl|alt|shift)\\+)*(?:f(?:[1-9]|1[0-2])|[a-z0-9]|home|end|pageup|pagedown|up|down|left|right)$"
+              }
+            }
+          },
+          "additionalProperties": false
         }
       },
       "additionalProperties": false
@@ -834,6 +911,29 @@
             },
             "additionalProperties": false
           },
+          "instructions": {
+            "type": "object",
+            "properties": {
+              "files": {
+                "type": "array",
+                "maxItems": 16,
+                "items": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 256,
+                  "pattern": "^[^\\x00-\\x1f]+$"
+                },
+                "description": "Required workspace-relative UTF-8 files; no globs. Existing privacy and instruction limits apply."
+              },
+              "response_language": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 80,
+                "pattern": "^[^\\x00-\\x1f]+$"
+              }
+            },
+            "additionalProperties": false
+          },
           "tui": {
             "type": "object",
             "properties": {
@@ -866,6 +966,60 @@
               },
               "metrics": {
                 "type": "boolean"
+              },
+              "keybindings": {
+                "type": "object",
+                "properties": {
+                  "cancel": {
+                    "type": "array",
+                    "maxItems": 4,
+                    "items": {
+                      "type": "string",
+                      "pattern": "^(?:(?:ctrl|alt|shift)\\+)*(?:f(?:[1-9]|1[0-2])|[a-z0-9]|home|end|pageup|pagedown|up|down|left|right)$"
+                    }
+                  },
+                  "quit": {
+                    "type": "array",
+                    "maxItems": 4,
+                    "items": {
+                      "type": "string",
+                      "pattern": "^(?:(?:ctrl|alt|shift)\\+)*(?:f(?:[1-9]|1[0-2])|[a-z0-9]|home|end|pageup|pagedown|up|down|left|right)$"
+                    }
+                  },
+                  "focus_input": {
+                    "type": "array",
+                    "maxItems": 4,
+                    "items": {
+                      "type": "string",
+                      "pattern": "^(?:(?:ctrl|alt|shift)\\+)*(?:f(?:[1-9]|1[0-2])|[a-z0-9]|home|end|pageup|pagedown|up|down|left|right)$"
+                    }
+                  },
+                  "toggle_sidebar": {
+                    "type": "array",
+                    "maxItems": 4,
+                    "items": {
+                      "type": "string",
+                      "pattern": "^(?:(?:ctrl|alt|shift)\\+)*(?:f(?:[1-9]|1[0-2])|[a-z0-9]|home|end|pageup|pagedown|up|down|left|right)$"
+                    }
+                  },
+                  "help": {
+                    "type": "array",
+                    "maxItems": 4,
+                    "items": {
+                      "type": "string",
+                      "pattern": "^(?:(?:ctrl|alt|shift)\\+)*(?:f(?:[1-9]|1[0-2])|[a-z0-9]|home|end|pageup|pagedown|up|down|left|right)$"
+                    }
+                  },
+                  "new_conversation": {
+                    "type": "array",
+                    "maxItems": 4,
+                    "items": {
+                      "type": "string",
+                      "pattern": "^(?:(?:ctrl|alt|shift)\\+)*(?:f(?:[1-9]|1[0-2])|[a-z0-9]|home|end|pageup|pagedown|up|down|left|right)$"
+                    }
+                  }
+                },
+                "additionalProperties": false
               }
             },
             "additionalProperties": false

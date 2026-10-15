@@ -66,6 +66,10 @@ project_instructions = true
 checks = [] # arrays of argv; each command still asks for fresh approval
 check_before_task = false # opt in only with nonempty checks; final checks still run
 
+[instructions]
+files = [] # e.g. ["CONTRIBUTING.md", "docs/coding-style.md"]; required if listed
+response_language = "简体中文" # explanations only; direct user requests take precedence
+
 [tools]
 list_files = true
 read_file = true
@@ -93,6 +97,14 @@ editor_height = 5
 steering_mode = "all" # or one-at-a-time, at safe agent-loop boundaries
 metrics = false
 
+[tui.keybindings]
+help = ["f1"]
+toggle_sidebar = ["ctrl+b"]
+focus_input = ["f3"]
+# cancel = ["f6"]
+# quit = ["ctrl+f10"]
+# new_conversation = ["ctrl+shift+n"] # still asks before clearing a conversation
+
 [profiles.review]
 provider = "agnes"
 model = "fast"
@@ -101,6 +113,7 @@ interface = "tui"
 [profiles.review.agent]
 read_only = true
 checks = []
+check_before_task = false
 
 [profiles.review.tools]
 edit_file = false

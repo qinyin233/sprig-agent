@@ -62,6 +62,8 @@ uv run --locked sprig --no-config --model local-model --base-url http://localhos
 
 `--show-config` 显示生效设置、密钥是否存在及来源类别，密钥值不显示。`--doctor` 检查配置、工作目录/`.sprigignore`、必要依赖和平台，不连接模型、不执行项目命令、不创建会话。它不能证明模型支持工具调用、服务在线或实际 OS 隔离。无效配置的错误不会回显 TOML 原文。
 
+`setting_sources` 标明主要运行字段来自 `default`、`user`、`provider`、`model`、`profile`、`project`、`CLI`、`environment` 或强制流式的 `TUI`；合并的排除规则会保留组合来源。字段名为运行时名称，例如 `instruction_files` 对应 `[instructions].files`、`tui_editor_height` 对应 `[tui].editor_height`。凭据仍只显示是否存在和来源类别。
+
 活动配置若显式位于工作区内，文件工具仍排除它；`.sprig` 目录始终排除。获批子进程即使开启 `inherit_env`，也移除标准模型密钥变量、所有配置声明的密钥变量及包含当前密钥的值。**这些保护不构成命令沙箱**：获批任意代码仍以当前用户权限运行，可自行读取主目录文件。
 
 ## TUI 本地命令
@@ -75,6 +77,22 @@ uv run --locked sprig --no-config --model local-model --base-url http://localhos
 这些 slash 命令用于 TUI；旧 `--chat` 保留自己的 `/help` 所列命令。
 
 ## 主动附加文件上下文
+
+### 开发规则与回复语言
+
+用户文件和 profile 可配置：
+
+```toml
+[instructions]
+files = ["CONTRIBUTING.md", "docs/coding-style.md"]
+response_language = "简体中文"
+```
+
+路径以 `--workdir` 为根，使用相对 POSIX 路径，Windows 也用 `/`；至多 16 个明确文件，不展开 glob、不读取工作区外文件或远程内容。数组在高层整体替换。受限项目层可指定工作区规则和语言，不能借此改变工具审批、凭据、只读或路径策略。`--instruction-file PATH` 可重复并替换文件列表，`--response-language` 覆盖语言偏好；本次任务的明确要求优先于偏好。
+
+文件默认适用于整个工作区；文件名为 AGENTS.md 时始终保留其目录作用域和更深规则优先级，包括第一次请求前或关闭自动发现时。`--no-project-instructions` 只关闭自动 AGENTS.md 发现，显式列出的文件仍加载。要完全关闭规则，应同时清空 `[instructions].files`。每个文件最多 16 KiB，全部规则序列化后最多 64 KiB，另受完整请求预算限制。
+
+列出的文件必须存在并通过原有 UTF-8、隐私、无符号链接/重解析点、普通文件校验；缺失、排除、敏感或超限会在模型请求前失败，不静默跳过或截断。`--doctor` 离线检查当前规则是否可读，但不输出正文。规则在后续请求前刷新；模型提案或审批期间内容变化时，先停止操作，要求读取新规则并重新提议。规则不能批准操作。文件列表和语言绑定会话，改变后不能直接恢复发送旧历史；正文仍可能进入显式保存的未加密会话。
 
 ```sh
 uv run --locked sprig --cli --file src/main.py --file tests/test_main.py "检查这两个文件的接口是否一致"
@@ -177,12 +195,28 @@ uv run --locked sprig --config-schema
 - `steering_mode`：all（默认）或 one-at-a-time，决定在 agent 安全边界一次注入全部或一条已排队的新要求；不会放行待审批操作。
 - `metrics`：退出时输出本地用量统计；CLI `--metrics` / `--no-metrics` 可覆盖。
 
+`[tui.keybindings]` 可给本地动作设置附加快捷键：
+
+```toml
+[tui.keybindings]
+help = ["f1"]
+toggle_sidebar = ["ctrl+b"]
+focus_input = ["f3"]
+cancel = ["f6"]
+quit = ["ctrl+f10"]
+new_conversation = ["ctrl+shift+n"]
+```
+
+支持上述六个动作，每动作至多四个键。用户/profile 按动作合并，较高层的同名数组整体替换；设置 `help=[]` 仅关闭该动作的附加别名。F1–F12 可单独绑定；字母、数字、home/end/pageup/pagedown/up/down/left/right 需带 Ctrl 或 Alt，可另加 Shift。修饰键顺序归一化，跨层重复或冲突也报错；终端是否报告某个组合仍取决于终端。`/keys` 查看生效别名。配置采用启动快照，修改后重启；规则/语言以外的界面偏好不改变会话绑定。
+
+Enter、Shift+Enter、Ctrl+J、Esc、Tab、Ctrl+C/Q/L 和选择/剪贴板键保持固定，不提供审批动作绑定。模态审批中，取消/退出别名走原有取消流程，其余别名无效；不会因快捷键批准操作。新对话仍执行已有确认。项目层不能改变可信键位。
+
 ## 显式项目设置
 
 ```sh
 uv run --locked sprig --project-config /trusted/private/project.toml
 ```
 
-项目文件也需私有权限，并显式指定；不会沿工作区父目录搜索。允许 `model`、`interface`、`generation`、`agent`、`tools`、`files`、`tui`、`schema_version=1`。禁止 providers、profile、execution、storage；不能添加 checks 命令或开启 inherit_env，不能关闭用户/profile 只读、启用已关闭的工具或移除其文件排除。CLI 的显式用户选择仍最高优先级。
+项目文件也需私有权限，并显式指定；不会沿工作区父目录搜索。允许 `model`、`interface`、`generation`、`agent`、`tools`、`files`、`instructions`、`tui`（不含 keybindings）、`schema_version=1`。禁止 providers、profile、execution、storage；不能添加 checks 命令或开启 inherit_env，不能关闭用户/profile 只读或已启用基线、启用已关闭的工具或移除其文件排除。CLI 的显式用户选择仍最高优先级。
 
 MCP、插件、hooks、沙箱、自动批准等没有对应执行后端的字段都会报错。后续功能需要同时实现后端与安全测试，不能只添加一个可解析开关。

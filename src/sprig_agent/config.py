@@ -10,6 +10,7 @@ import unicodedata
 from urllib.parse import urlsplit, urlunsplit
 
 TOOL_NAMES = ("list_files", "read_file", "search", "project_map", "edit_file", "run")
+SHORTCUT_ACTIONS = ("cancel", "quit", "focus_input", "toggle_sidebar", "help", "new_conversation")
 GENERATION_FIELDS = ("max_tokens", "thinking", "temperature", "top_p", "reasoning_effort", "seed", "token_limit_field", "extra_body")
 RESERVED_BODY_FIELDS = {"model", "messages", "tools", "tool_choice", "stream", "stream_options", "n",
                         "max_tokens", "max_completion_tokens", "temperature", "top_p", "reasoning_effort", "seed",
@@ -140,6 +141,10 @@ class Config:
     show_metrics: bool = False
     model_catalog: tuple = field(default=(), repr=False, compare=False)
     check_before_task: bool = False
+    instruction_files: tuple = ()
+    response_language: str | None = None
+    tui_keybindings: tuple = ()
+    setting_sources: tuple = field(default=(), repr=False, compare=False)
 
     def __post_init__(self):
         root = Path(self.workdir).expanduser().resolve(strict=True)
@@ -172,6 +177,46 @@ class Config:
             raise ValueError("compact-context must be a boolean")
         if not isinstance(self.project_instructions, bool):
             raise ValueError("project-instructions must be a boolean")
+        if (not isinstance(self.instruction_files, tuple) or len(self.instruction_files) > 16
+                or any(not isinstance(path, str) or not path or len(path) > 256
+                       or path.startswith("/") or any(c in path for c in "\\:*?[]")
+                       or any(part in {"", ".", ".."} for part in path.split("/"))
+                       or any(ord(c) < 32 for c in path) for path in self.instruction_files)):
+            raise ValueError("instruction files accept at most 16 workspace-relative POSIX file paths; no globs")
+        object.__setattr__(self, "instruction_files", tuple(dict.fromkeys(self.instruction_files)))
+        if self.response_language is not None and (not isinstance(self.response_language, str)
+                or not self.response_language.strip() or len(self.response_language) > 80
+                or any(unicodedata.category(c).startswith("C") for c in self.response_language)):
+            raise ValueError("response-language must be a nonempty language name of at most 80 characters")
+        if not isinstance(self.tui_keybindings, tuple) or len(self.tui_keybindings) > len(SHORTCUT_ACTIONS):
+            raise ValueError("invalid TUI keybindings")
+        assigned, actions, normalized = set(), set(), []
+        for entry in self.tui_keybindings:
+            if not isinstance(entry, tuple) or len(entry) != 2:
+                raise ValueError("invalid TUI keybindings")
+            action, keys = entry
+            if (not isinstance(action, str) or action not in SHORTCUT_ACTIONS or action in actions
+                    or not isinstance(keys, tuple) or len(keys) > 4):
+                raise ValueError("unknown or duplicate TUI action; at most four shortcut keys per action")
+            actions.add(action)
+            canonical = []
+            for key in keys:
+                if not isinstance(key, str) or not re.fullmatch(r"(?:(?:ctrl|alt|shift)\+)*(?:f(?:[1-9]|1[0-2])|[a-z0-9]|home|end|pageup|pagedown|up|down|left|right)", key):
+                    raise ValueError("invalid TUI alias; use a function key or modified letter, digit or navigation key")
+                parts = key.split("+")
+                modifiers = parts[:-1]
+                if len(set(modifiers)) != len(modifiers):
+                    raise ValueError("duplicate TUI key modifier")
+                value = "+".join([name for name in ("ctrl", "alt", "shift") if name in modifiers] + [parts[-1]])
+                if ((not re.fullmatch(r"f(?:[1-9]|1[0-2])", parts[-1]) and not ({"ctrl", "alt"} & set(modifiers)))
+                        or value in {"ctrl+c", "ctrl+q", "ctrl+l", "ctrl+j", "ctrl+a", "ctrl+v", "ctrl+x", "ctrl+z"}):
+                    raise ValueError("TUI aliases cannot replace fixed safety, input, selection or clipboard keys")
+                if value in assigned:
+                    raise ValueError("conflicting TUI shortcut keys")
+                assigned.add(value)
+                canonical.append(value)
+            normalized.append((action, tuple(canonical)))
+        object.__setattr__(self, "tui_keybindings", tuple(normalized))
         if (self.max_tokens is not None and
                 (type(self.max_tokens) is not int or not 1 <= self.max_tokens <= 65536)):
             raise ValueError("max-tokens must be between 1 and 65536")
@@ -322,6 +367,10 @@ class Config:
             binding["inherit_env"] = True
         if not self.project_instructions:
             binding["project_instructions"] = False
+        if self.instruction_files:
+            binding["instruction_files"] = list(self.instruction_files)
+        if self.response_language is not None:
+            binding["response_language"] = self.response_language
         if self.max_tokens is not None:
             binding["max_tokens"] = self.max_tokens
         if self.thinking:
