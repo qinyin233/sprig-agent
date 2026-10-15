@@ -82,7 +82,7 @@ class Tools:
         self.cancel_event = cancel_event
         self.root = Directory(config.workdir)
         self.history = history or ChangeHistory(config)
-        self.policy = FilePolicy(self.root)
+        self.policy = FilePolicy(self.root, config.config_path)
         self.index = SymbolIndex()
         self.emit_output = emit_output
         self.instructions = ProjectInstructions(self._read_instruction, self._check_cancelled,

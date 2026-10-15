@@ -20,6 +20,7 @@ from .changes import ChangeHistory
 from .config import redact, terminal_text
 from .provider import Provider
 from .session import SessionError, SessionStore, validate_history
+from .settings import public_config
 from .tools import Tools
 
 
@@ -212,6 +213,7 @@ class SprigApp(App[int]):
                     with TabPane("操作", id="actions-tab"):
                         with VerticalScroll(id="operations"):
                             yield Button("继续当前对话", id="continue")
+                            yield Button("新建对话", id="new")
                             yield Button("查看 Git diff", id="diff", disabled=self.config.read_only)
                             yield Button("查看 Git 状态", id="git", disabled=self.config.read_only)
                             yield Button("查看项目地图", id="map")
@@ -238,6 +240,7 @@ class SprigApp(App[int]):
         self.set_interval(self.OUTPUT_REFRESH_SECONDS, self.flush_output)
         self.action_focus_task()
         self.append("Sprig 就绪。任务、读取内容和工具结果会发送到所示服务。\n写入和命令逐次确认；命令没有沙箱。\n")
+        self.append("输入 /help 查看本地命令；Enter 发送，Shift+Enter / Ctrl+J 换行。\n")
         if self.tools.history.store is not None:
             self.append("已显式启用本地修改备份（不加密）；仅记录文件工具编辑，命令修改不在撤销范围内。\n")
         if self.messages:
@@ -315,7 +318,7 @@ class SprigApp(App[int]):
 
     def set_busy(self, busy):
         self.busy = busy
-        for identity in ("continue", "diff", "git", "map", "context-budget", "usage", "compact", "changes", "undo", "redo", "discard-history", "save", "restore", "sessions", "delete", "session-name"):
+        for identity in ("continue", "new", "diff", "git", "map", "context-budget", "usage", "compact", "changes", "undo", "redo", "discard-history", "save", "restore", "sessions", "delete", "session-name"):
             self.query_one("#" + identity).disabled = busy or (self.config.read_only and identity in {"diff", "git", "undo", "redo"})
         self.query_one("#cancel", Button).disabled = not busy
         if not busy:
@@ -563,6 +566,11 @@ class SprigApp(App[int]):
         if isinstance(self.screen, ModalScreen) and not (
                 isinstance(self.screen, ApprovalScreen) and self.screen.allow_steering):
             return
+        if task.startswith("//"):
+            task = task[1:]  # A literal task starting with a slash.
+        elif task.startswith("/"):
+            self.slash_command(task)
+            return
         if self.busy:
             self.pending_tasks.append(task)
             self.set_task_result(2, "新要求待处理，等待更新后的结果")
@@ -648,9 +656,82 @@ class SprigApp(App[int]):
         else:
             load()
 
+    def new_conversation(self):
+        def reset(approved=True):
+            if not approved or self.busy:
+                return
+            # Detach autosave before replacing history: never overwrite the old
+            # session on the next turn, and release its interprocess lease.
+            if self.store and self.session_name:
+                self.store.release(self.session_name)
+            self.session_name = None
+            self.messages = None
+            self.pending_tasks = []
+            self.query_one("#session-name", Input).value = ""
+            self.transcript = ""
+            self.query_one("#transcript", TextArea).load_text("")
+            self.set_task_result(2, "新对话，尚未运行任务")
+            self.set_state("就绪")
+            self.append("新对话已就绪；工作区和已保存会话保留。修改备份仍可查看。\n")
+        if self.messages or self.pending_tasks:
+            self.push_screen(ApprovalScreen("新建对话将清除当前内存对话并停止向原会话自动保存。\n未保存的对话将丢失；工作区、修改备份和已保存会话保留。"), reset)
+        else:
+            reset()
+
+    def slash_command(self, text):
+        command, _, argument = text.partition(" ")
+        argument = argument.strip()
+        if command == "/help":
+            self.append("\n本地命令（不发送给模型）：\n"
+                        "/help /status /config /context /usage /cancel /exit\n"
+                        "/continue /new /map [名称或路径查询] /git /diff /compact\n"
+                        "/changes /undo /redo /discard-history /sessions\n"
+                        "/save [名称] /restore [名称] /delete [名称]\n"
+                        "执行中可输入普通消息调整引导。// 开头发送以 / 开头的普通消息。\n"
+                        "提供商和模型通过 config.toml 或启动参数选择；恢复时仍校验绑定。\n")
+            return
+        if command == "/status":
+            self.append(f"\n[本地状态] {self.task_message} | 执行中: {self.busy} | 消息: {len(self.messages or [])} | 待处理引导: {len(self.pending_tasks)}\n")
+            return
+        if command == "/config":
+            details = {"provider": self.config.provider_name,
+                       "config_file": str(self.config.config_path) if self.config.config_path else None}
+            self.append("\n[生效配置；密钥值不显示]\n" + json.dumps(public_config(self.config, details), ensure_ascii=False, indent=2) + "\n")
+            return
+        if command in {"/cancel", "/exit"}:
+            (self.action_cancel if command == "/cancel" else self.action_quit)()
+            return
+        actions = {"/continue": "continue", "/new": "new", "/map": "map", "/git": "git", "/diff": "diff",
+                   "/context": "context-budget", "/usage": "usage", "/compact": "compact",
+                   "/changes": "changes", "/undo": "undo", "/redo": "redo", "/discard-history": "discard-history",
+                   "/sessions": "sessions", "/save": "save", "/restore": "restore", "/delete": "delete"}
+        if command not in actions:
+            self.append("\n未知本地命令；输入 /help。消息未发送给模型。\n")
+            return
+        if self.busy:
+            self.append("\n该本地操作需要等待当前任务结束；可用 /cancel，或发送普通消息调整任务。\n")
+            return
+        if argument and command not in {"/map", "/save", "/restore", "/delete"}:
+            self.append("\n该命令不接受参数；输入 /help。\n")
+            return
+        if command in {"/save", "/restore", "/delete"} and argument:
+            self.query_one("#session-name", Input).value = argument
+        if command == "/map" and argument:
+            self.start(local=("project_map", {"query": argument}))
+        else:
+            try:
+                self.local_control(actions[command])
+            except (OSError, ValueError, SessionError) as error:
+                self.append("\n本地操作失败: " + self.safe(error) + "\n")
+
     @on(Button.Pressed)
     def buttons(self, event):
-        identity = event.button.id
+        self.local_control(event.button.id)
+
+    def local_control(self, identity):
+        if self.config.read_only and identity in {"diff", "git", "undo", "redo"}:
+            self.append("\n只读模式禁止命令和文件修改。\n")
+            return
         if identity == "send":
             self.action_submit()
         elif identity == "cancel":
@@ -658,6 +739,8 @@ class SprigApp(App[int]):
         elif not self.busy:
             if identity == "continue":
                 self.start()
+            elif identity == "new":
+                self.new_conversation()
             elif identity in {"diff", "git"}:
                 argv = ["git", "diff", "--", "."] if identity == "diff" else ["git", "status", "--short", "--", "."]
                 self.start(local=("run", {"argv": argv}))

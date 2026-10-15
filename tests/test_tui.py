@@ -63,6 +63,113 @@ class TuiTests(unittest.IsolatedAsyncioTestCase):
         self.addCleanup(app.close)
         return app
 
+    async def send_text(self, pilot, text):
+        editor = pilot.app.query_one("#task", TextArea)
+        editor.load_text(text)
+        editor.focus()
+        await pilot.press("enter")
+
+    async def test_slash_controls_are_local_and_config_keys_are_withheld(self):
+        from dataclasses import replace
+        self.config = replace(self.config, api_key="fixture-private-config-key")
+        (self.root / "sample.py").write_text("def selected_function():\n    pass\n", encoding="utf-8")
+        provider = ScriptedProvider([])
+        app = self.app(provider)
+        async with app.run_test(size=(110, 36)) as pilot:
+            for command in ("/help", "/config", "/status", "/usage", "/context", "/not-a-command"):
+                await self.send_text(pilot, command)
+            await self.send_text(pilot, "/map selected_function")
+            await self.until(pilot, lambda: not app.busy and "selected_function" in app.transcript)
+            self.assertNotIn(self.config.api_key, app.transcript)
+            self.assertIn('"api_key_present": true', app.transcript)
+            self.assertIn("未知本地命令", app.transcript)
+            self.assertEqual(provider.calls, [])
+            self.assertIsNone(app.messages)
+
+    async def test_slash_readonly_cannot_bypass_disabled_buttons_or_approval(self):
+        from dataclasses import replace
+        self.config = replace(self.config, read_only=True)
+        provider = ScriptedProvider([])
+        app = self.app(provider)
+        async with app.run_test(size=(110, 36)) as pilot:
+            for command in ("/diff", "/git", "/undo", "/redo"):
+                await self.send_text(pilot, command)
+                self.assertFalse(app.busy)
+                self.assertNotIsInstance(app.screen, ApprovalScreen)
+            self.assertIn("只读模式禁止", app.transcript)
+            self.assertEqual(provider.calls, [])
+
+    async def test_new_conversation_confirms_detaches_autosave_and_releases_lease(self):
+        provider = ScriptedProvider([response("first result"), response("second result")])
+        app = self.app(provider, save_session="original")
+        async with app.run_test(size=(110, 36)) as pilot:
+            await self.send_text(pilot, "first task")
+            await self.until(pilot, lambda: not app.busy)
+            saved = copy.deepcopy(app.messages)
+            await self.send_text(pilot, "/new")
+            await self.until(pilot, lambda: isinstance(app.screen, ApprovalScreen))
+            await pilot.press("enter")
+            self.assertEqual(app.messages, saved)
+            self.assertEqual(app.session_name, "original")
+            await self.send_text(pilot, "/new")
+            await self.until(pilot, lambda: isinstance(app.screen, ApprovalScreen))
+            await self.click(pilot, "#approve")
+            self.assertIsNone(app.messages)
+            self.assertIsNone(app.session_name)
+            self.assertEqual(app.pending_tasks, [])
+            other = SessionStore(self.parent / "sessions", self.config)
+            try:
+                self.assertEqual(other.load("original"), saved)  # Lease was released.
+                await self.send_text(pilot, "second task")
+                await self.until(pilot, lambda: not app.busy)
+                self.assertNotIn("first task", json.dumps(provider.calls[-1]))
+                self.assertEqual(other.load("original"), saved)  # Old autosave was detached.
+            finally:
+                other.close()
+            self.assertEqual(len(provider.calls), 2)
+
+    async def test_save_as_command_forks_transcript_without_overwriting_old_session(self):
+        provider = ScriptedProvider([response("first"), response("second")])
+        app = self.app(provider, save_session="original")
+        async with app.run_test(size=(110, 36)) as pilot:
+            await self.send_text(pilot, "first task")
+            await self.until(pilot, lambda: not app.busy)
+            saved = copy.deepcopy(app.messages)
+            await self.send_text(pilot, "/save fork")
+            self.assertEqual(app.session_name, "fork")
+            await self.send_text(pilot, "next task")
+            await self.until(pilot, lambda: not app.busy)
+            self.assertEqual(app.store.load("original"), saved)
+            self.assertEqual(app.store.load("fork"), app.messages)
+            self.assertEqual(len(provider.calls), 2)
+
+    async def test_local_commands_during_generation_do_not_become_model_guidance(self):
+        entered, gate = threading.Event(), threading.Event()
+        provider = ScriptedProvider([response("cancelled")])
+        original = provider.complete
+
+        def complete(messages, tools, on_text=None):
+            entered.set()
+            gate.wait(15)
+            return original(messages, tools, on_text)
+
+        provider.complete = complete
+        app = self.app(provider, task="original")
+        try:
+            async with app.run_test(size=(110, 36)) as pilot:
+                await self.until(pilot, entered.is_set)
+                await self.send_text(pilot, "/status")
+                await self.send_text(pilot, "/new")
+                self.assertEqual(app.pending_tasks, [])
+                self.assertNotIsInstance(app.screen, ApprovalScreen)
+                await self.send_text(pilot, "/cancel")
+                gate.set()
+                await self.until(pilot, lambda: not app.busy)
+                self.assertEqual(app.last_status, 130)
+                self.assertNotIn("/cancel", json.dumps(app.messages))
+        finally:
+            gate.set()
+
     async def until(self, pilot, predicate):
         for _ in range(150):
             try:
@@ -1006,7 +1113,7 @@ class TuiCliTests(unittest.TestCase):
             with patch.object(cli.sys.stdin, "isatty", return_value=stdin), \
                     patch.object(cli.sys.stdout, "isatty", return_value=stdout), \
                     patch.object(cli, "Provider") as provider, redirect_stdout(io.StringIO()), redirect_stderr(io.StringIO()):
-                self.assertEqual(cli.main(["--tui", "--model", "test"]), 1)
+                self.assertEqual(cli.main(["--no-config", "--tui", "--model", "test"]), 1)
                 provider.assert_not_called()
 
     def test_tui_default_stream_and_saved_session_arguments_are_forwarded(self):
@@ -1015,7 +1122,7 @@ class TuiCliTests(unittest.TestCase):
                     patch.object(cli.sys.stdout, "isatty", return_value=True), \
                     patch("sprig_agent.tui.run_tui", return_value=0) as run, \
                     patch.dict(os.environ, {"SPRIG_API_KEY": "", "OPENAI_API_KEY": ""}):
-                self.assertEqual(cli.main(["--tui", "--model", "test", "--workdir", root,
+                self.assertEqual(cli.main(["--no-config", "--tui", "--model", "test", "--workdir", root,
                                            "--base-url", "http://localhost/v1", "--resume", "demo",
                                            "--metrics", "--request-usage"]), 0)
             self.assertTrue(run.call_args.args[0].stream)

@@ -324,7 +324,7 @@ class InstructionTests(unittest.TestCase):
         (self.root / "AGENTS.md").write_bytes(b"\xffprivate")
         with patch.object(cli, "Provider") as provider, redirect_stdout(io.StringIO()), redirect_stderr(io.StringIO()):
             provider.return_value.complete.return_value = response()
-            status = cli.main(["Read", "--workdir", str(self.root), "--model", "offline-rules",
+            status = cli.main(["--no-config", "Read", "--workdir", str(self.root), "--model", "offline-rules",
                                "--base-url", "http://localhost/v1", "--no-project-instructions"])
         self.assertEqual(status, 0)
         self.assertFalse(provider.call_args.args[0].project_instructions)

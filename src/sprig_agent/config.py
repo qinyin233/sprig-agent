@@ -1,4 +1,4 @@
-"""Configuration and small shared safety helpers; no on-disk secrets."""
+"""Validated runtime configuration and shared safety helpers."""
 
 from dataclasses import dataclass, field
 import math
@@ -84,6 +84,9 @@ class Config:
     project_instructions: bool = True
     max_tokens: int | None = None
     thinking: bool = False
+    config_path: Path | None = field(default=None, repr=False, compare=False)
+    credential_env_vars: tuple = field(default=(), repr=False, compare=False)
+    provider_name: str | None = field(default=None, compare=False)
 
     def __post_init__(self):
         root = Path(self.workdir).expanduser().resolve(strict=True)
@@ -92,7 +95,7 @@ class Config:
         object.__setattr__(self, "workdir", root)
         object.__setattr__(self, "base_url", endpoint(self.base_url))
         if not isinstance(self.model, str) or not self.model or len(self.model) > 200 or any(ord(c) < 32 for c in self.model):
-            raise ValueError("a valid model is required (--model or SPRIG_MODEL)")
+            raise ValueError("a valid model is required (--model, SPRIG_MODEL or config.toml); use --init-config for a template")
         if not isinstance(self.max_steps, int) or isinstance(self.max_steps, bool) or not 1 <= self.max_steps <= 100:
             raise ValueError("max-steps must be between 1 and 100")
         if isinstance(self.timeout, bool) or not isinstance(self.timeout, (int, float)) or not math.isfinite(self.timeout) or not 0 < self.timeout <= 120:

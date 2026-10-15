@@ -165,7 +165,7 @@ class ChatTests(unittest.TestCase):
         self.assertEqual(cli.check_argv('["python","-m","unittest"]'), ("python", "-m", "unittest"))
         with patch.object(cli.sys.stdin, "isatty", return_value=False), patch.object(cli, "Provider") as provider, \
                 redirect_stdout(io.StringIO()), redirect_stderr(io.StringIO()):
-            self.assertEqual(cli.main(["--chat", "--model", "test"]), 1)
+            self.assertEqual(cli.main(["--no-config", "--chat", "--model", "test"]), 1)
         provider.assert_not_called()
 
 

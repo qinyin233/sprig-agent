@@ -212,13 +212,13 @@ class MetricTests(unittest.TestCase):
         args = ["task", "--model", "test", "--workdir", str(self.root), "--base-url", "http://localhost/v1", "--metrics"]
         output, errors = io.StringIO(), io.StringIO()
         with patch.object(cli, "Provider", return_value=provider), redirect_stdout(output), redirect_stderr(errors):
-            self.assertEqual(cli.main(args), 0)
+            self.assertEqual(cli.main(["--no-config", *args]), 0)
         self.assertIn('[usage]', errors.getvalue())
         self.assertIn('"complete_sum": 120', errors.getvalue())
         output, errors = io.StringIO(), io.StringIO()
         provider.opener.open.side_effect = TimeoutError()
         with patch.object(cli, "Provider", return_value=provider), redirect_stdout(output), redirect_stderr(errors):
-            self.assertEqual(cli.main(args), 1)
+            self.assertEqual(cli.main(["--no-config", *args]), 1)
         self.assertIn('"error": 1', errors.getvalue())
         self.assertNotIn('fake-secret', errors.getvalue())
 

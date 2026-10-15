@@ -6,6 +6,7 @@
 - Linux / macOS / Windows 10+ / Windows WSL
 - Chat Completions + function tools，可选 SSE 流式输出
 - 可选每次模型输出 token 上限与兼容服务的思考模式
+- 用户级 `config.toml`、命名提供商、环境变量密钥引用、配置初始化与离线诊断
 - 全屏终端 TUI、连续对话、项目代码地图、分目录 `AGENTS.md` 规则与本地 Git 查看
 - 用户固定验收命令：失败反馈修复，通过后才确认验收完成
 - 可选本地会话保存与恢复
@@ -43,6 +44,16 @@ PYTHONPATH=src python -m sprig_agent --help
 
 PowerShell 源码运行：`$env:PYTHONPATH = 'src'; python -m sprig_agent --help`。
 
+### 首次配置
+
+```sh
+uv run --locked sprig --init-config
+uv run --locked sprig --doctor
+uv run --locked sprig
+```
+
+逐次确认后在 `~/.sprig/config.toml` 创建私有配置，预设 `agnes-3.0-flash`，引用现有 `AGNES_API_KEY`，不写入真实密钥。已存在的配置不会覆盖。最后一条命令打开 TUI；Enter 发送，执行中可继续输入引导，`/help` 查看本地操作。配置文件、密钥优先级及其他提供商见[配置与首次启动](docs/configuration.md)。
+
 ### Agnes 3.0 Flash 预设
 
 已按 Agnes 的[模型说明](https://wiki.agnes-ai.com/en/docs/agnes-30-flash)接入 `agnes-3.0-flash`，Base URL 为 `https://apihub.agnes-ai.com/v1`。
@@ -61,7 +72,7 @@ PowerShell 源码运行：`$env:PYTHONPATH = 'src'; python -m sprig_agent --help
 
 ## 开始使用
 
-选择支持普通 Chat Completions function tools 的模型。模型名没有默认值，须通过 `--model` 或 `SPRIG_MODEL` 指定。
+选择支持普通 Chat Completions function tools 的模型。模型名须通过 `config.toml`、`--model` 或 `SPRIG_MODEL` 指定；没有自动选择的备用模型。
 
 以下密钥输入示例适用于 Bash，输入不会回显，也不会把密钥文字写入命令历史：
 
@@ -74,7 +85,7 @@ export SPRIG_MODEL='替换为你的模型名'
 uv run sprig '阅读项目，说明结构并指出一个可以小幅改善的地方' --workdir ./my-project
 ```
 
-优先使用 `SPRIG_API_KEY`。Agnes 的 HTTPS 地址 `https://apihub.agnes-ai.com`（默认端口或 443）还支持 `AGNES_API_KEY`，其优先级高于通用的 `OPENAI_API_KEY`，且不会作为其他地址的备用密钥。密钥只从环境变量读取，不接受命令行密钥参数，也不读取配置文件或 `.env`。不要把密钥放进任务文本。
+显式 `SPRIG_API_KEY` 优先，然后使用选定提供商的 `api_key_env` 或私有文件中的 `api_key`。未配置提供商密钥时，Agnes HTTPS 原点的 `AGNES_API_KEY` 优先于通用的 `OPENAI_API_KEY`；该别名不用于其他地址。不接受命令行密钥参数，不读取 `.env`。完整优先级与地址绑定规则见[配置说明](docs/configuration.md)。不要把密钥放进任务文本。
 
 使用其他兼容服务时：
 
@@ -100,6 +111,8 @@ uv run sprig '为现有函数补一个最小测试，并运行测试' --workdir 
 
 ```text
 sprig [TASK] [--workdir PATH] [--model MODEL] [--base-url URL]
+      [--config PATH | --no-config] [--provider NAME]
+      [--init-config | --show-config | --doctor]
       [--max-steps INT] [--timeout SECONDS] [--max-output INT]
       [--stream] [--request-usage] [--metrics] [--chat | --tui] [--check JSON_ARGV ...]
       [--save-session NAME | --resume NAME] [--session-dir PATH]
@@ -113,8 +126,12 @@ sprig [TASK] [--workdir PATH] [--model MODEL] [--base-url URL]
 | --- | --- |
 | `TASK` | 新会话必填；使用 `--chat`、`--tui` 或恢复会话时可省略 |
 | `--workdir` | `.`，文件工具的工作根目录 |
-| `--model` | `SPRIG_MODEL`；必须指定 |
-| `--base-url` | `SPRIG_BASE_URL`，否则为 `https://api.openai.com/v1` |
+| `--config PATH` / `--no-config` | 显式可信 TOML 路径 / 禁用文件；默认用户 `~/.sprig/config.toml`，不搜索仓库 |
+| `--provider` | 选择命名提供商；否则 `SPRIG_PROVIDER` 或配置默认提供商 |
+| `--init-config` / `--show-config` / `--doctor` | 确认创建私有模板 / 密钥值不显示的生效配置 / 离线诊断 |
+| `--model` | `SPRIG_MODEL`，否则选定提供商的模型；必须配置 |
+| `--base-url` | `SPRIG_BASE_URL`、选定提供商，最后为 `https://api.openai.com/v1`；覆盖地址不自动转发配置密钥 |
+| `--cli` | 单次执行，覆盖配置里的 TUI/chat 界面偏好 |
 | `--max-steps` | `20`，限制本次代理循环的模型调用次数 |
 | `--timeout` | `30` 秒；网络 socket 的等待超时（非整个请求的总时限），命令的墙钟时限 |
 | `--max-output` | `16000` 字节，工具输出上限；读取 / 搜索结果可截断，命令超出上限会被终止 |
@@ -370,6 +387,7 @@ uv run python scripts/live-tui-smoke.py
 - `src/sprig_agent/cli.py` / `__main__.py`：参数解析与命令行入口
 - `src/sprig_agent/tui.py`：Textual 全屏终端界面、确认窗、任务取消与本地会话操作
 - `src/sprig_agent/config.py`：环境变量与运行配置校验
+- `src/sprig_agent/settings.py` / `diagnostics.py`：私有 TOML、提供商选择、密钥引用、初始化及离线诊断
 - `src/sprig_agent/provider.py`：Chat Completions HTTP 请求
 - `src/sprig_agent/streaming.py`：有界 SSE 解码、文本遮盖和工具片段组装
 - `src/sprig_agent/agent.py`：模型与工具之间的代理循环
@@ -382,6 +400,7 @@ uv run python scripts/live-tui-smoke.py
 - `scripts/run-agnes.ps1`：不存储密钥的 Agnes PowerShell 启动器
 - `scripts/live-smoke.py` / `live-tui-smoke.py`：可选真实 API 端到端测试，仅批准精确的临时夹具操作
 - [同类项目对照与开发路线](docs/agent-comparison.md)：参考实现、当前覆盖和后续差距
+- [产品能力与达标差距](docs/development-readiness.md)：完整基础能力盘点、未完成项和验收条件，区分功能交付与模型性能证据
 - [差异化调研与产品提案](docs/sprig-differentiation.md)：现有先例、需求变更工作台与分阶段验收标准；提案功能尚未实现
 - [其他产品方向调研](docs/sprig-alternative-directions.md)：首次跑通项目、失败复现卡、编程陪练等较小范围的产品方案
 

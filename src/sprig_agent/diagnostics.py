@@ -1,0 +1,33 @@
+"""Offline startup diagnostics; no model connection or command execution."""
+
+from importlib import metadata
+import os
+import platform
+
+from .filesystem import Directory
+from .policy import FilePolicy
+from .settings import public_config
+
+
+def diagnose(config, details):
+    checks = []
+    try:
+        with Directory(config.workdir) as root:
+            FilePolicy(root, config.config_path).reload()
+        checks.append({"check": "workspace and .sprigignore", "ok": True})
+    except (OSError, ValueError, UnicodeError):
+        checks.append({"check": "workspace and .sprigignore", "ok": False,
+                       "detail": "cannot safely inspect workspace or privacy rules"})
+    for package in ("textual", "tree-sitter", "google-re2"):
+        try:
+            version = metadata.version(package)
+            checks.append({"check": package, "ok": True, "version": version})
+        except metadata.PackageNotFoundError:
+            checks.append({"check": package, "ok": False, "detail": "run uv sync --locked"})
+    checks.append({"check": "platform", "ok": os.name in {"nt", "posix"}})
+    if config.base_url.startswith("https://api.openai.com/") and not config.api_key:
+        checks.append({"check": "provider credential", "ok": False, "detail": "API key is not set"})
+    return {"ok": all(check["ok"] for check in checks), "network_contacted": False,
+            "provider_compatibility": "not tested; offline diagnostics do not validate a real model",
+            "python": platform.python_version(), "platform": platform.system(),
+            "config": public_config(config, details), "checks": checks}

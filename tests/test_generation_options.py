@@ -24,11 +24,13 @@ from sprig_agent.tools import Tools
 
 
 @contextmanager
-def local_backend(body, requests):
+def local_backend(body, requests, authorizations=None):
     class Handler(BaseHTTPRequestHandler):
         def do_POST(self):
             raw = self.rfile.read(int(self.headers["Content-Length"]))
             requests.append((json.loads(raw), len(raw)))
+            if authorizations is not None:
+                authorizations.append(self.headers.get("Authorization"))
             self.send_response(200)
             self.send_header("Content-Length", str(len(body)))
             self.end_headers()
@@ -173,12 +175,12 @@ class GenerationOptionsTests(unittest.TestCase):
     def test_cli_passes_controls_to_tui_and_invalid_cap_blocks_provider(self):
         with patch("sys.stdin.isatty", return_value=True), patch("sys.stdout.isatty", return_value=True), \
                 patch("sprig_agent.tui.run_tui", return_value=0) as tui:
-            self.assertEqual(cli.main(["--tui", "--workdir", str(self.root), "--model", "fixture",
+            self.assertEqual(cli.main(["--no-config", "--tui", "--workdir", str(self.root), "--model", "fixture",
                                        "--base-url", "http://localhost/v1", "--max-tokens", "2048", "--thinking"]), 0)
             self.assertEqual(tui.call_args.args[0].generation_options(), {
                 "max_tokens": 2048, "chat_template_kwargs": {"enable_thinking": True}})
         with patch.object(cli, "Provider") as provider, redirect_stdout(io.StringIO()), redirect_stderr(io.StringIO()):
-            self.assertEqual(cli.main(["task", "--workdir", str(self.root), "--model", "fixture", "--max-tokens", "0"]), 1)
+            self.assertEqual(cli.main(["--no-config", "task", "--workdir", str(self.root), "--model", "fixture", "--max-tokens", "0"]), 1)
             provider.assert_not_called()
 
 

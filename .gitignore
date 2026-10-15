@@ -12,4 +12,5 @@ htmlcov/
 .pytest_cache/
 .env
 .env.*
+.sprig/
 .DS_Store

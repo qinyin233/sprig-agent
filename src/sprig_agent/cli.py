@@ -9,9 +9,11 @@ import sys
 from . import __version__
 from .agent import Agent, SYSTEM_PROMPT
 from .changes import ChangeError, ChangeHistory
-from .config import Config, environment_api_key, redact, terminal_text
+from .config import redact, terminal_text
+from .diagnostics import diagnose
 from .provider import Provider, ProviderError
 from .session import SessionError, SessionStore, validate_history
+from .settings import Settings, default_config_path, initialize_config, load_settings, public_config
 from .tools import Tools
 
 
@@ -151,53 +153,83 @@ def main(argv=None):
     parser.add_argument("task", nargs="?", help="task; optional when resuming")
     parser.add_argument("--version", action="version", version=__version__)
     parser.add_argument("--workdir", default=".")
-    parser.add_argument("--model", default=os.environ.get("SPRIG_MODEL", ""))
-    parser.add_argument("--base-url", default=os.environ.get("SPRIG_BASE_URL", "https://api.openai.com/v1"))
-    parser.add_argument("--max-steps", type=int, default=20)
-    parser.add_argument("--timeout", type=float, default=30)
-    parser.add_argument("--max-output", type=int, default=16000)
+    configuration = parser.add_mutually_exclusive_group()
+    configuration.add_argument("--config", type=Path, help="explicit trusted TOML path (or SPRIG_CONFIG); default: ~/.sprig/config.toml")
+    configuration.add_argument("--no-config", action="store_true", help="ignore configuration files, including SPRIG_CONFIG")
+    parser.add_argument("--provider", help="select a named configured provider (or SPRIG_PROVIDER)")
+    parser.add_argument("--model", help="model override (or SPRIG_MODEL)")
+    parser.add_argument("--base-url", help="API root override (or SPRIG_BASE_URL); configured credentials cannot follow a changed URL")
+    parser.add_argument("--max-steps", type=int)
+    parser.add_argument("--timeout", type=float)
+    parser.add_argument("--max-output", type=int)
     parser.add_argument("--max-tokens", type=int, help="request a provider output-token limit per model call (1-65536); not a total billing cap")
-    parser.add_argument("--thinking", action="store_true", help="request chat_template_kwargs.enable_thinking; provider support required, off unless selected")
-    parser.add_argument("--stream", action="store_true", help="display model text as it arrives")
-    parser.add_argument("--request-usage", action="store_true", help="request final stream token statistics; requires --stream or --tui and provider support")
+    parser.add_argument("--thinking", action=argparse.BooleanOptionalAction, default=None, help="request chat_template_kwargs.enable_thinking; provider support required, off unless selected")
+    parser.add_argument("--stream", action=argparse.BooleanOptionalAction, default=None, help="display model text as it arrives")
+    parser.add_argument("--request-usage", action=argparse.BooleanOptionalAction, default=None, help="request final stream token statistics; requires --stream or --tui and provider support")
     parser.add_argument("--metrics", action="store_true", help="print local numeric request measurements at CLI exit; missing token counts stay unknown")
-    parser.add_argument("--read-only", action="store_true", help="allow file inspection only; block writes and all commands")
-    parser.add_argument("--inherit-env", action="store_true", help="let approved commands inherit additional environment variables")
-    parser.add_argument("--max-context-bytes", type=int, default=131072, help="maximum serialized model request size; not a token/cost estimate")
-    parser.add_argument("--compact-context", action="store_true", help="explicitly elide old successful tool output and completed edit text from requests; keep saved history")
-    parser.add_argument("--no-project-instructions", action="store_true", help="disable automatic workspace AGENTS.md guidance; never reads parent/home directories")
+    parser.add_argument("--read-only", action=argparse.BooleanOptionalAction, default=None, help="allow file inspection only; block writes and all commands")
+    parser.add_argument("--inherit-env", action=argparse.BooleanOptionalAction, default=None, help="let approved commands inherit additional environment variables")
+    parser.add_argument("--max-context-bytes", type=int, help="maximum serialized model request size; not a token/cost estimate")
+    parser.add_argument("--compact-context", action=argparse.BooleanOptionalAction, default=None, help="explicitly elide old successful tool output and completed edit text from requests; keep saved history")
+    parser.add_argument("--project-instructions", action=argparse.BooleanOptionalAction, default=None, help="load workspace AGENTS.md guidance; never reads parent/home directories")
     interface = parser.add_mutually_exclusive_group()
-    interface.add_argument("--chat", action="store_true", help="keep an interactive conversation open")
-    interface.add_argument("--tui", action="store_true", help="open the full-screen terminal interface (streams by default)")
-    parser.add_argument("--check", action="append", type=check_argv, default=[], metavar="JSON_ARGV",
+    interface.add_argument("--chat", dest="interface", action="store_const", const="chat", help="keep an interactive conversation open")
+    interface.add_argument("--tui", dest="interface", action="store_const", const="tui", help="open the full-screen terminal interface (streams by default)")
+    interface.add_argument("--cli", dest="interface", action="store_const", const="cli", help="one-shot interface; override the configured interface")
+    parser.add_argument("--check", dest="checks", action="append", type=check_argv, metavar="JSON_ARGV",
                         help="fixed acceptance command, repeatable; execution still requires approval")
     group = parser.add_mutually_exclusive_group()
     group.add_argument("--save-session", metavar="NAME")
     group.add_argument("--resume", metavar="NAME")
     group.add_argument("--list-sessions", action="store_true", help="list local session metadata without contacting a model")
     group.add_argument("--delete-session", metavar="NAME", help="delete one local session after confirmation")
+    group.add_argument("--init-config", action="store_true", help="confirm creation of a private TOML template; never overwrite an existing file")
+    group.add_argument("--show-config", action="store_true", help="show effective settings with credential values withheld; no model request")
+    group.add_argument("--doctor", action="store_true", help="check configuration, workspace privacy rules and dependencies offline")
     parser.add_argument("--session-dir", type=Path, default=Path.home() / ".local/state/sprig-agent/sessions")
     parser.add_argument("--change-history-dir", type=Path, help="explicitly persist exact edit backups in a private directory outside the repository (not encrypted)")
     args = parser.parse_args(argv)
-    key = environment_api_key(args.base_url, os.environ)
+    key = ""
     store = tools = history = provider = None
     try:
         manage_sessions = args.list_sessions or args.delete_session
+        local_configuration = args.init_config or args.show_config or args.doctor
         if os.name not in {"posix", "nt"}:
             raise ValueError("Sprig requires Linux/macOS or Windows 10+")
-        if manage_sessions and (args.task or args.chat or args.tui or args.check):
-            raise ValueError("session management cannot be combined with tasks or interactive interfaces")
-        if not manage_sessions and not args.resume and not args.task and not args.chat and not args.tui:
+        if (manage_sessions or local_configuration) and (args.task or args.interface in {"chat", "tui"} or args.checks or args.resume):
+            raise ValueError("local management cannot be combined with tasks or interactive interfaces")
+        config_path = args.config or os.environ.get("SPRIG_CONFIG")
+        if args.init_config:
+            if args.no_config:
+                raise ValueError("--init-config cannot be combined with --no-config")
+            if initialize_config(config_path or default_config_path(), approve):
+                print("Private configuration created: " + terminal_text(str(Path(config_path or default_config_path()).expanduser().absolute())))
+                print("Set the referenced environment variable, then use --doctor and start sprig.")
+                return 0
+            return 2
+        settings = Settings() if args.no_config or manage_sessions else load_settings(config_path, required=bool(config_path))
+        selected_interface = args.interface or settings.data.get("interface")
+        if selected_interface is None:
+            selected_interface = "tui" if not (args.task or args.resume or manage_sessions or local_configuration) and sys.stdin.isatty() and sys.stdout.isatty() else "cli"
+        args.chat, args.tui = selected_interface == "chat", selected_interface == "tui"
+        if not (manage_sessions or local_configuration or args.resume or args.task or args.chat or args.tui):
             raise ValueError("provide a task, --chat, --tui, or --resume NAME")
-        if args.chat and not sys.stdin.isatty():
+        if not local_configuration and args.chat and not sys.stdin.isatty():
             raise ValueError("--chat requires an interactive terminal")
-        if args.tui and (not sys.stdin.isatty() or not sys.stdout.isatty()):
+        if not local_configuration and args.tui and (not sys.stdin.isatty() or not sys.stdout.isatty()):
             raise ValueError("--tui requires an interactive terminal (stdin and stdout)")
-        config = Config(Path(args.workdir), args.model or ("session-manager" if manage_sessions else ""), args.base_url, key, args.max_steps, args.timeout, args.max_output,
-                        stream=args.stream or args.tui, checks=tuple(args.check), read_only=args.read_only, inherit_env=args.inherit_env,
-                        max_context_bytes=args.max_context_bytes, compact_context=args.compact_context,
-                        request_usage=args.request_usage, project_instructions=not args.no_project_instructions,
-                        max_tokens=args.max_tokens, thinking=args.thinking)
+        options = vars(args).copy()
+        if args.tui:
+            options["stream"] = True
+        if manage_sessions:
+            options.update(model="session-manager", provider=None)
+        config, details = settings.resolve(options, {} if manage_sessions else os.environ)
+        details["interface"] = selected_interface
+        key = config.api_key
+        if local_configuration:
+            report = diagnose(config, details) if args.doctor else public_config(config, details)
+            print(terminal_text(json.dumps(report, ensure_ascii=False, indent=2)))
+            return 0 if report.get("ok", True) else 1
         if manage_sessions:
             store = SessionStore(args.session_dir, config)
             if args.list_sessions:

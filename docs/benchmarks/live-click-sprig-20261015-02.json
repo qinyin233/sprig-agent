@@ -1,0 +1,213 @@
+{
+  "schema": 1,
+  "scope": "one repository Sprig task; no overall performance or competitor ranking claim",
+  "case": "click-command-suggestions",
+  "category": "repository-feature",
+  "language": "python",
+  "fixture_sha256": "7d610833c8a6564f980f747e4601e7f4821872702c4a59f32ff9c5d653300d08",
+  "verifier_sha256": "d47ffa2a071ddbb89ed92b4562768ad4650434d4764557a9356514c41eabfc69",
+  "verifier_intact": true,
+  "task_sha256": "2908db436a3b9ac92c17b2d60eed48baae6c6549b9a1c83bb775bc816bcf6273",
+  "initial_history_sha256": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+  "uv_lock_sha256": "834405cf539c2a1803289a8f2e55955a53af7869bf931a33ce4d1f80e9010e17",
+  "driver_sha256": "47ff705db9c0363754dd9711c03e1a747d1e3ab145b0d110bba73916ea70c706",
+  "python": "3.12.12",
+  "platform": "Windows-11-10.0.26300-SP0",
+  "node": null,
+  "request_timeout_seconds": 60.0,
+  "generation_options": {
+    "max_tokens": 2048,
+    "chat_template_kwargs": {
+      "enable_thinking": true
+    }
+  },
+  "model": "agnes-3.0-flash",
+  "base_url": "https://apihub.agnes-ai.com/v1",
+  "stream": false,
+  "request_usage": false,
+  "max_steps": 12,
+  "max_context_bytes": 65536,
+  "compact_context": false,
+  "synthetic_history": false,
+  "outcome": "provider_error",
+  "acceptance_passed": false,
+  "elapsed_ms": 121109.279,
+  "active_ms": 121109.279,
+  "approvals": {
+    "requests": 0,
+    "accepted": 0,
+    "rejected": 0,
+    "wait_ms": 0.0
+  },
+  "tools": [
+    {
+      "tool": "list_files",
+      "active_ms": 1.671,
+      "result_bytes": 223,
+      "diagnostics": {
+        "error": false,
+        "truncated": false,
+        "listed_entries": 5,
+        "same_output_repeats": 0
+      }
+    },
+    {
+      "tool": "list_files",
+      "active_ms": 0.594,
+      "result_bytes": 771,
+      "diagnostics": {
+        "error": false,
+        "truncated": false,
+        "listed_entries": 18,
+        "same_output_repeats": 0
+      }
+    },
+    {
+      "tool": "list_files",
+      "active_ms": 0.523,
+      "result_bytes": 1094,
+      "diagnostics": {
+        "error": false,
+        "truncated": false,
+        "listed_entries": 23,
+        "same_output_repeats": 0
+      }
+    },
+    {
+      "tool": "read_file",
+      "active_ms": 3.28,
+      "result_bytes": 10631,
+      "diagnostics": {
+        "error": false,
+        "truncated": false,
+        "content_bytes": 10123,
+        "same_output_repeats": 0
+      }
+    }
+  ],
+  "requests": {
+    "available": true,
+    "scope": "current provider instance; not persisted or sent to the model",
+    "attempts": 4,
+    "not_attempted": 0,
+    "outcomes": {
+      "success": 3,
+      "error": 1,
+      "cancelled": 0
+    },
+    "request_bytes": 52059,
+    "response_bytes": 2446,
+    "elapsed_ms": 75653.601,
+    "usage": {
+      "prompt_tokens": {
+        "reported_sum": 7295,
+        "known_requests": 3,
+        "unknown_requests": 1,
+        "complete_sum": null
+      },
+      "completion_tokens": {
+        "reported_sum": 163,
+        "known_requests": 3,
+        "unknown_requests": 1,
+        "complete_sum": null
+      },
+      "total_tokens": {
+        "reported_sum": 7458,
+        "known_requests": 3,
+        "unknown_requests": 1,
+        "complete_sum": null
+      }
+    },
+    "recent_limit": 128,
+    "recent_dropped": 0,
+    "recent": [
+      {
+        "attempted": true,
+        "streamed": false,
+        "outcome": "success",
+        "http_status": 200,
+        "request_bytes": 8389,
+        "response_bytes": 776,
+        "elapsed_ms": 3526.732,
+        "first_text_ms": null,
+        "usage": {
+          "prompt_tokens": 2135,
+          "completion_tokens": 46,
+          "total_tokens": 2181
+        }
+      },
+      {
+        "attempted": true,
+        "streamed": false,
+        "outcome": "success",
+        "http_status": 200,
+        "request_bytes": 8927,
+        "response_bytes": 885,
+        "elapsed_ms": 4254.406,
+        "first_text_ms": null,
+        "usage": {
+          "prompt_tokens": 2248,
+          "completion_tokens": 67,
+          "total_tokens": 2315
+        }
+      },
+      {
+        "attempted": true,
+        "streamed": false,
+        "outcome": "success",
+        "http_status": 200,
+        "request_bytes": 11623,
+        "response_bytes": 785,
+        "elapsed_ms": 6764.489,
+        "first_text_ms": null,
+        "usage": {
+          "prompt_tokens": 2912,
+          "completion_tokens": 50,
+          "total_tokens": 2962
+        }
+      },
+      {
+        "attempted": true,
+        "streamed": false,
+        "outcome": "error",
+        "http_status": null,
+        "request_bytes": 23120,
+        "response_bytes": 0,
+        "elapsed_ms": 61107.974,
+        "first_text_ms": null,
+        "usage": null
+      }
+    ]
+  },
+  "request_pacing": {
+    "interval_seconds": 20.0,
+    "backend_starts": 4,
+    "wait_ms": 45109.0,
+    "source_sha256": "ce4ba23779b65e448585d1ca8413ea67a1e31974a25cd50b5810160fe8527ea6",
+    "scope": "backend invocation starts; HTTP may be blocked by validation",
+    "automatic_retries": false
+  },
+  "tool_diagnostics": {
+    "source_sha256": "cc45dc00d3a1bad227fc61346f17361fd95e55097aaa603b0c58bdafed3a5c29",
+    "recent_inspection_limit": 128,
+    "scope": "numeric tool results; repeats require identical arguments and output within the retained window; no inspection skipped"
+  },
+  "repository_task": {
+    "protocol": 1,
+    "repository": "pallets/click",
+    "snapshot_files": 52,
+    "base_commit": "19fd4d6e18bc9fce451f92f422696b11169faa57",
+    "base_sha256": "7d610833c8a6564f980f747e4601e7f4821872702c4a59f32ff9c5d653300d08",
+    "acceptance_commit": "831c8f0948af519e45b90801d7430ff25451f972",
+    "acceptance_snapshot_sha256": "62d0162a63fa5322307e29d1710ec7624bd3ca20572329fddbdae1fe628f628d",
+    "expected_upstream_checks": 642,
+    "public_exception_contract": true,
+    "acceptance_python": "3.12",
+    "acceptance_pytest": "8.4.2",
+    "entry_sha256": "4495f2690deb7871dcf66921ecd7749a4e75a638a5284f0f5dcdc70245a56ebf",
+    "adapter_sha256": "309d80e760b4203ca0ad8548a7d841eb6b3f54ec39792d6c7724dca4826b08b8",
+    "comparison_lock_sha256": "eb1207065a83573e2e9fd9a879694ffcb458c93f15a00a504a4c607a1d2e32e2",
+    "task_sha256": "2908db436a3b9ac92c17b2d60eed48baae6c6549b9a1c83bb775bc816bcf6273"
+  },
+  "recorded_at_utc": "2026-10-15T06:49:28.772762+00:00"
+}

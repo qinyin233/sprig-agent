@@ -564,7 +564,7 @@ class CLITests(ConfigCase):
                 patch.object(cli, "SessionStore") as store, redirect_stdout(stdout), redirect_stderr(stderr):
             agent.return_value.run.return_value = ([], complete)
             agent.return_value.run.side_effect = error
-            result = cli.main(["--workdir", str(self.root), *args])
+            result = cli.main(["--no-config", "--workdir", str(self.root), *args])
         return SimpleNamespace(result=result, out=stdout.getvalue(), err=stderr.getvalue(),
                                tools=tools, provider=provider, agent=agent, store=store)
 
