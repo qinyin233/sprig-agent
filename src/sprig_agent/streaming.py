@@ -38,7 +38,7 @@ def events(response):
                     data.append(value.removeprefix(b" ") if separator else b"")
 
 
-class TextOutput:
+class _SecretOutput:
     """Withhold a possible key prefix so split deltas cannot leak the key."""
 
     def __init__(self, emit, secret):
@@ -70,6 +70,28 @@ class TextOutput:
         if self.emit and self.pending:
             self.emit(redact(self.pending, self.secret))
         self.pending = ""
+
+
+class TextOutput:
+    """Compose bounded prefix filters for all known credential values."""
+
+    def __init__(self, emit, secret):
+        values = secret if isinstance(secret, (list, tuple)) else (secret,)
+        self.filters = []
+        callback = emit
+        for value in reversed(tuple(dict.fromkeys(value for value in values if value))):
+            stage = _SecretOutput(callback, value)
+            self.filters.insert(0, stage)
+            callback = stage.write
+        self.emit = callback
+
+    def write(self, text):
+        if self.emit:
+            self.emit(text)
+
+    def finish(self):
+        for stage in self.filters:
+            stage.finish()
 
 
 def complete_stream(response, on_text, secret, *, on_usage=None, on_delta=None):

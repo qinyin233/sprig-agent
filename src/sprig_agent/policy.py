@@ -2,6 +2,7 @@
 import fnmatch
 import os
 import re
+from .config import validate_exclusions
 
 SENSITIVE = {".git", ".sprig", ".env", ".ssh", ".aws", ".azure", ".kube", ".gnupg", ".netrc", ".npmrc", ".pypirc",
              "id_rsa", "id_ed25519", "id_ecdsa", "credentials", "credentials.json", "secrets.json"}
@@ -11,24 +12,33 @@ ENVIRONMENT = {"PATH", "PATHEXT", "SYSTEMROOT", "WINDIR", "COMSPEC", "HOME", "US
 
 
 def command_environment(config):
-    return {key: value for key, value in os.environ.items()
-            if (config.inherit_env or key.upper() in ENVIRONMENT or key.upper().startswith("LC_"))
+    allowed = {name.upper() if os.name == "nt" else name for name in config.env_allowlist}
+    values = {key: value for key, value in os.environ.items()
+            if (config.inherit_env or key.upper() in ENVIRONMENT or key.upper().startswith("LC_")
+                or (key.upper() if os.name == "nt" else key) in allowed)
             and key.upper() not in {"SPRIG_API_KEY", "OPENAI_API_KEY", "AGNES_API_KEY",
                                     *(name.upper() for name in config.credential_env_vars)}
-            and not (config.api_key and config.api_key in value)}
+            and not any(secret in value for secret in config.credential_secrets)}
+    values.update(config.command_env)
+    return values
 
 
 class FilePolicy:
-    def __init__(self, directory, config_path=None):
+    def __init__(self, directory, config_path=None, patterns=()):
         self.directory = directory
         self.patterns = []
-        self.config_parts = None
-        if config_path is not None:
+        self.config_patterns = validate_exclusions(patterns)
+        self.config_parts = []
+        paths = config_path if isinstance(config_path, (tuple, list)) else (config_path,)
+        for path in paths:
+            if path is None:
+                continue
             from pathlib import Path
             try:
-                self.config_parts = Path(config_path).absolute().relative_to(directory.path.absolute()).parts
+                parts = Path(path).absolute().relative_to(directory.path.absolute()).parts
                 if os.name == "nt":
-                    self.config_parts = tuple(p.lower() for p in self.config_parts)
+                    parts = tuple(p.lower() for p in parts)
+                self.config_parts.append(parts)
             except ValueError:
                 pass
 
@@ -36,19 +46,17 @@ class FilePolicy:
         try:
             raw = self.directory.read(".sprigignore", 32768)
         except FileNotFoundError:
-            self.patterns = []
+            self.patterns = self.config_patterns
             return
         if len(raw) > 32768:
             raise ValueError(".sprigignore exceeds 32 KiB")
         patterns = [line.strip() for line in raw.decode("utf-8").splitlines() if line.strip() and not line.lstrip().startswith("#")]
-        if len(patterns) > 256 or any(p.startswith(("!", "/")) or "\\" in p or ".." in p.split("/") or "\0" in p for p in patterns):
-            raise ValueError(".sprigignore accepts at most 256 relative exclusion patterns; negation is not supported")
-        self.patterns = patterns
+        self.patterns = validate_exclusions((*self.config_patterns, *patterns))
 
     def excluded(self, parts):
         if os.name == "nt":
             parts = tuple(part.lower() for part in parts)
-        if self.config_parts is not None and tuple(parts) == self.config_parts:
+        if tuple(parts) in self.config_parts:
             return True
         if any(part in SENSITIVE or part.startswith(".env.") or part.endswith((".pem", ".p12", ".pfx", ".key")) for part in parts):
             return True

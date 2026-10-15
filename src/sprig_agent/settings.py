@@ -8,7 +8,7 @@ import re
 import sys
 import tomllib
 
-from .config import Config, endpoint, environment_api_key, redact
+from .config import Config, ENV_NAME, GENERATION_FIELDS, TOOL_NAMES, endpoint, environment_api_key, redact
 from .filesystem import Directory
 
 MAX_CONFIG = 65536
@@ -96,72 +96,312 @@ def initialize_config(path, approve):
     return True
 
 
-def _text(value, *, empty=False, limit=4096):
-    return (isinstance(value, str) and (empty or bool(value)) and len(value) <= limit
-            and not any(ord(ch) < 32 for ch in value))
+GROUP_FIELDS = {
+    "agent": set(AGENT_DEFAULTS), "generation": set(GENERATION_FIELDS), "tools": set(TOOL_NAMES),
+    "files": {"exclude"}, "execution": {"inherit_env", "timeout", "max_output", "env_allowlist", "env"},
+    "storage": {"session_dir", "change_history_dir", "auto_save_session"},
+    "tui": {"theme", "sidebar", "editor_height", "steering_mode", "metrics"},
+}
+TUI_FIELDS = {"theme": "tui_theme", "sidebar": "tui_sidebar", "editor_height": "tui_editor_height",
+              "steering_mode": "steering_mode", "metrics": "show_metrics"}
+TRANSPORT_FIELDS = {"request_timeout", "proxy", "api_key_header", "api_key_scheme"}
+IDENTIFIER = re.compile(r"[A-Za-z0-9_-]{1,64}")
+
+
+def _text(value, *, limit=4096):
+    return isinstance(value, str) and bool(value) and len(value) <= limit and not any(ord(ch) < 32 for ch in value)
+
+
+def _table(value, fields, label):
+    if not isinstance(value, dict) or set(value) - set(fields):
+        raise ValueError("unknown " + label + " setting or invalid table (values withheld)")
+    return value
+
+
+def _generation(value):
+    _table(value, GENERATION_FIELDS, "generation")
+    return value
+
+
+def _flatten(layer, directory):
+    """Translate only documented keys; never evaluate substitutions or commands."""
+    values = {**layer.get("agent", {}), **layer.get("generation", {})}
+    execution = layer.get("execution", {})
+    values.update({name: execution[name] for name in ("inherit_env", "timeout", "max_output") if name in execution})
+    if "env_allowlist" in execution:
+        values["env_allowlist"] = tuple(execution["env_allowlist"])
+    if "env" in execution:
+        values["command_env"] = tuple(execution["env"].items())
+    if "exclude" in layer.get("files", {}):
+        values["excluded_paths"] = tuple(layer["files"]["exclude"])
+    values.update({TUI_FIELDS[name]: value for name, value in layer.get("tui", {}).items()})
+    for name, value in layer.get("storage", {}).items():
+        if name.endswith("_dir"):
+            value = Path(value).expanduser()
+            value = value if value.is_absolute() else directory / value
+        values[name] = value
+    if "checks" in values:
+        values["checks"] = tuple(tuple(argv) for argv in values["checks"])
+    return values
+
+
+def _validate_layer(layer, directory):
+    for name, fields in GROUP_FIELDS.items():
+        entry = _table(layer.get(name, {}), fields, name)
+        if name == "tools" and any(type(value) is not bool for value in entry.values()):
+            raise ValueError("tool settings must be booleans")
+    checks = layer.get("agent", {}).get("checks", [])
+    if not isinstance(checks, list) or any(not isinstance(argv, list) for argv in checks):
+        raise ValueError("agent checks must be an array of argv arrays")
+    execution = layer.get("execution", {})
+    if "env_allowlist" in execution and not isinstance(execution["env_allowlist"], list):
+        raise ValueError("execution env_allowlist must be an array")
+    if "env" in execution and not isinstance(execution["env"], dict):
+        raise ValueError("execution env must be a table")
+    if "exclude" in layer.get("files", {}) and not isinstance(layer["files"]["exclude"], list):
+        raise ValueError("files exclude must be an array")
+    for name, value in layer.get("storage", {}).items():
+        if name.endswith("_dir") and not _text(value):
+            raise ValueError("storage directories must be nonempty paths")
+    values = {**AGENT_DEFAULTS, **_flatten(layer, directory)}
+    values["disabled_tools"] = tuple(name for name, enabled in layer.get("tools", {}).items() if not enabled)
+    try:
+        # A higher-precedence spelling must not hide an invalid lower one.
+        # Validate each group as well as the final combination.
+        for name in GROUP_FIELDS:
+            if name in layer:
+                separate = {**AGENT_DEFAULTS, **_flatten({name: layer[name]}, directory)}
+                if name != "agent":
+                    separate["stream"] = values["stream"]
+                Config(directory, "configuration-validation", **separate)
+        Config(directory, "configuration-validation", **values)
+    except (OSError, ValueError, TypeError):
+        raise ValueError("invalid agent/generation/runtime setting; check types, bounds and incompatible options (values withheld)") from None
+
+
+def _validate(data, directory, *, project=False):
+    allowed = {*GROUP_FIELDS, "interface", "schema_version"}
+    if project:
+        allowed |= {"model", "profile"}
+    else:
+        allowed |= {"provider", "providers", "profiles", "profile"}
+    _table(data, allowed, "top-level configuration")
+    if "schema_version" in data and (type(data["schema_version"]) is not int or data["schema_version"] != 1):
+        raise ValueError("unsupported configuration schema_version; expected 1")
+    if "interface" in data and data["interface"] not in ("cli", "chat", "tui"):
+        raise ValueError("configuration interface must be cli, chat or tui")
+    if "model" in data and not _text(data["model"], limit=200):
+        raise ValueError("invalid model selection")
+    _validate_layer(data, directory)
+    if project:
+        # An explicit repository file may tune requests and tighten tool policy.
+        # It cannot route credentials, inject environment, or persist transcripts.
+        if set(data) & {"execution", "storage"}:
+            raise ValueError("project configuration cannot change execution environment or storage")
+        if any(data.get("agent", {}).get(name) for name in ("inherit_env", "checks")):
+            raise ValueError("project configuration cannot inherit environment or add commands")
+        if "profile" in data:
+            raise ValueError("select trusted profiles with --profile or the user configuration")
+        return
+    providers = data.get("providers", {})
+    if not isinstance(providers, dict) or len(providers) > 32:
+        raise ValueError("providers must be a table with at most 32 entries")
+    for name, entry in providers.items():
+        if not IDENTIFIER.fullmatch(name):
+            raise ValueError("invalid provider name")
+        _table(entry, {"model", "base_url", "api_key_env", "api_key", "headers", "headers_env", "models", "generation", *TRANSPORT_FIELDS}, "provider")
+        for key in ("model", "base_url", "api_key_env", "api_key"):
+            if key in entry and not _text(entry[key], limit=200 if key == "model" else 4096):
+                raise ValueError("provider strings must be nonempty and contain no control characters")
+        if "api_key" in entry and "api_key_env" in entry:
+            raise ValueError("choose either api_key_env or api_key for each provider")
+        if "api_key_env" in entry and not ENV_NAME.fullmatch(entry["api_key_env"]):
+            raise ValueError("invalid api_key_env variable name")
+        try:
+            url = endpoint(entry.get("base_url", DEFAULT_URL))
+        except (ValueError, TypeError):
+            raise ValueError("invalid provider base URL") from None
+        headers = entry.get("headers", {})
+        header_env = entry.get("headers_env", {})
+        if not isinstance(headers, dict) or not isinstance(header_env, dict):
+            raise ValueError("headers and headers_env must be tables")
+        if any(not isinstance(value, str) or not ENV_NAME.fullmatch(value) for value in header_env.values()):
+            raise ValueError("headers_env values must be environment variable names")
+        generation = _generation(entry.get("generation", {}))
+        try:
+            Config(directory, "configuration-validation", base_url=url, **generation,
+                   **{key: entry[key] for key in TRANSPORT_FIELDS if key in entry},
+                   headers=tuple(headers.items()) + tuple((key, "validation") for key in header_env))
+        except (OSError, ValueError, TypeError):
+            raise ValueError("invalid provider transport, header or generation setting (values withheld)") from None
+        models = entry.get("models", {})
+        if not isinstance(models, dict) or len(models) > 64:
+            raise ValueError("models must be a table with at most 64 aliases per provider")
+        ids = set()
+        for alias, model in models.items():
+            if not IDENTIFIER.fullmatch(alias):
+                raise ValueError("invalid model alias")
+            _table(model, {"id", "generation", "max_context_bytes"}, "model")
+            if not _text(model.get("id"), limit=200) or model["id"] in ids:
+                raise ValueError("each model alias requires a unique nonempty id")
+            ids.add(model["id"])
+            try:
+                Config(directory, model["id"], **_generation(model.get("generation", {})),
+                       **({"max_context_bytes": model["max_context_bytes"]} if "max_context_bytes" in model else {}))
+            except (OSError, ValueError, TypeError):
+                raise ValueError("invalid model generation or context setting (values withheld)") from None
+    if "provider" in data and (not isinstance(data["provider"], str) or data["provider"] not in providers):
+        raise ValueError("default provider is not defined")
+    profiles = data.get("profiles", {})
+    if not isinstance(profiles, dict) or len(profiles) > 32:
+        raise ValueError("profiles must be a table with at most 32 entries")
+    for name, profile in profiles.items():
+        if not IDENTIFIER.fullmatch(name):
+            raise ValueError("invalid profile name")
+        _table(profile, {*GROUP_FIELDS, "provider", "model", "interface"}, "profile")
+        if "provider" in profile and (not isinstance(profile["provider"], str) or profile["provider"] not in providers):
+            raise ValueError("profile provider is not defined")
+        if "model" in profile and not _text(profile["model"], limit=200):
+            raise ValueError("invalid profile model")
+        if "interface" in profile and profile["interface"] not in ("cli", "chat", "tui"):
+            raise ValueError("invalid profile interface")
+        _validate_layer(profile, directory)
+    if "profile" in data and (not isinstance(data["profile"], str) or data["profile"] not in profiles):
+        raise ValueError("default profile is not defined")
 
 
 @dataclass(frozen=True)
 class Settings:
     path: Path | None = None
     data: dict = field(default_factory=dict, repr=False)
+    project_path: Path | None = None
+    project_data: dict = field(default_factory=dict, repr=False)
+
+    def with_project(self, path):
+        project = load_settings(path, required=True, project=True)
+        return Settings(self.path, self.data, project.path, project.data)
+
+    def selection(self, options, env):
+        name = options.get("profile") or env.get("SPRIG_PROFILE") or self.data.get("profile")
+        if name and name not in self.data.get("profiles", {}):
+            raise ValueError("selected profile is not defined")
+        profile = self.data.get("profiles", {}).get(name, {})
+        interface = options.get("interface") or self.project_data.get("interface") or profile.get("interface") or self.data.get("interface")
+        return name, profile, interface
+
+    def catalog(self):
+        return tuple({"provider": name, "alias": alias, "id": model["id"],
+                      "generation": model.get("generation", {}),
+                      **({"max_context_bytes": model["max_context_bytes"]} if "max_context_bytes" in model else {})}
+                     for name, entry in self.data.get("providers", {}).items()
+                     for alias, model in entry.get("models", {}).items())
 
     def resolve(self, options, environ=None):
-        """CLI > environment > selected provider / agent defaults > built-ins."""
+        """CLI > project > profile > model > provider > user > built-ins.
+
+        Provider/model/profile environment selectors sit immediately below CLI.
+        A project layer can only tighten trusted read-only/tool/file policy.
+        """
         env = os.environ if environ is None else environ
-        provider = options.get("provider") or env.get("SPRIG_PROVIDER") or self.data.get("provider", "")
+        profile_name, profile, interface = self.selection(options, env)
         providers = self.data.get("providers", {})
+        provider = options.get("provider") or env.get("SPRIG_PROVIDER") or profile.get("provider") or self.data.get("provider", "")
         if provider and provider not in providers:
             raise ValueError("selected provider is not defined in the configuration")
         selected = providers.get(provider, {})
-        model = options.get("model") or env.get("SPRIG_MODEL") or selected.get("model", "")
+        profile_model = profile.get("model") if not profile.get("provider") or profile["provider"] == provider else None
+        alias = options.get("model") or env.get("SPRIG_MODEL") or self.project_data.get("model") or profile_model or selected.get("model", "")
+        models = selected.get("models", {})
+        model_settings = models.get(alias, next((entry for entry in models.values() if entry["id"] == alias), {}))
+        model = model_settings.get("id", alias)
+        managing = options.get("_manage_sessions", False)
+        if managing:
+            model = "session-manager"
         url = options.get("base_url") or env.get("SPRIG_BASE_URL") or selected.get("base_url", DEFAULT_URL)
         try:
             url = endpoint(url)
         except (ValueError, TypeError):
             raise ValueError("invalid configured base URL; use an HTTPS API root without credentials, query or fragment") from None
-        key_env = selected.get("api_key_env")
-        # A configured key is bound to its configured endpoint. An explicit URL
-        # override must bring its own key; never forward a provider secret elsewhere.
         configured_url = endpoint(selected.get("base_url", DEFAULT_URL))
+        key_env = selected.get("api_key_env")
         key, source = "", "none"
-        if env.get("SPRIG_API_KEY"):
-            key, source = env["SPRIG_API_KEY"], "SPRIG_API_KEY"
-        elif key_env or "api_key" in selected:
-            if url != configured_url:
-                raise ValueError("provider credentials cannot be used with an overridden base URL; set SPRIG_API_KEY explicitly")
-            if key_env:
-                if key_env.upper() == "AGNES_API_KEY" and not environment_api_key(url, {"AGNES_API_KEY": "present"}):
-                    raise ValueError("AGNES_API_KEY is restricted to the Agnes HTTPS origin")
-                if not env.get(key_env):
-                    raise ValueError("configured api_key_env is unset or empty; set it in the process environment")
-                key, source = env[key_env], "configured environment variable"
+        if not managing:
+            if env.get("SPRIG_API_KEY"):
+                key, source = env["SPRIG_API_KEY"], "SPRIG_API_KEY"
+            elif key_env or "api_key" in selected:
+                if url != configured_url:
+                    raise ValueError("provider credentials cannot be used with an overridden base URL; set SPRIG_API_KEY explicitly")
+                if key_env:
+                    if key_env.upper() == "AGNES_API_KEY" and not environment_api_key(url, {"AGNES_API_KEY": "present"}):
+                        raise ValueError("AGNES_API_KEY is restricted to the Agnes HTTPS origin")
+                    if not env.get(key_env):
+                        raise ValueError("configured api_key_env is unset or empty; set it in the process environment")
+                    key, source = env[key_env], "configured environment variable"
+                else:
+                    key, source = selected["api_key"], "private config file"
             else:
-                key, source = selected["api_key"], "private config file"
-        else:
-            key = environment_api_key(url, env)
-            source = "AGNES_API_KEY" if key and environment_api_key(url, {"AGNES_API_KEY": env.get("AGNES_API_KEY", "")}) else ("OPENAI_API_KEY" if key else "none")
-        values = {**AGENT_DEFAULTS, **self.data.get("agent", {})}
-        values.update({name: value for name, value in options.items()
-                       if name in AGENT_DEFAULTS and value is not None})
+                key = environment_api_key(url, env)
+                source = "AGNES_API_KEY" if key and environment_api_key(url, {"AGNES_API_KEY": env.get("AGNES_API_KEY", "")}) else ("OPENAI_API_KEY" if key else "none")
+        # All configured credentials are protected, including unused providers.
+        names = set()
+        secrets = set(value for name in ("SPRIG_API_KEY", "OPENAI_API_KEY", "AGNES_API_KEY") if (value := env.get(name)))
+        for entry in providers.values():
+            names.update(entry.get("headers_env", {}).values())
+            if entry.get("api_key_env"):
+                names.add(entry["api_key_env"])
+            secrets.update(entry.get("headers", {}).values())
+            if entry.get("api_key"):
+                secrets.add(entry["api_key"])
+        secrets.update(env[name] for name in names if env.get(name))
+        headers = dict(selected.get("headers", {}))
+        if headers or selected.get("headers_env"):
+            if url != configured_url:
+                raise ValueError("configured headers cannot follow an overridden base URL")
+            for name, variable in selected.get("headers_env", {}).items():
+                if variable.upper() == "AGNES_API_KEY" and not environment_api_key(url, {"AGNES_API_KEY": "present"}):
+                    raise ValueError("AGNES_API_KEY is restricted to the Agnes HTTPS origin")
+                if not managing and not env.get(variable):
+                    raise ValueError("configured header environment variable is unset or empty")
+                if env.get(variable):
+                    headers[name] = env[variable]
+        directory = self.path.parent if self.path else Path(options.get("workdir", ".")).resolve()
+        values = {**AGENT_DEFAULTS, **_flatten(self.data, directory), **selected.get("generation", {}),
+                  **model_settings.get("generation", {})}
+        if "max_context_bytes" in model_settings:
+            values["max_context_bytes"] = model_settings["max_context_bytes"]
+        values.update(_flatten(profile, directory))
+        tool_policy = {**self.data.get("tools", {}), **profile.get("tools", {})}
+        if self.project_path:
+            project_values = _flatten(self.project_data, self.project_path.parent)
+            if values.get("read_only") and project_values.get("read_only") is False:
+                raise ValueError("project configuration cannot disable trusted read-only policy")
+            if any(enabled and tool_policy.get(name) is False for name, enabled in self.project_data.get("tools", {}).items()):
+                raise ValueError("project configuration cannot enable a disabled tool")
+            if "excluded_paths" in project_values:
+                project_values["excluded_paths"] = tuple(dict.fromkeys((*values.get("excluded_paths", ()), *project_values["excluded_paths"])))
+            values.update(project_values)
+            tool_policy.update(self.project_data.get("tools", {}))
+        values.update({name: selected[name] for name in TRANSPORT_FIELDS if name in selected})
+        configurable = {*AGENT_DEFAULTS, *GENERATION_FIELDS, *TRANSPORT_FIELDS, "session_dir", "change_history_dir", "show_metrics"}
+        values.update({name: value for name, value in options.items() if name in configurable and value is not None})
+        for name in options.get("disable_tool") or ():
+            tool_policy[name] = False
+        values["disabled_tools"] = tuple(name for name in TOOL_NAMES if tool_policy.get(name) is False)
         values["checks"] = tuple(tuple(argv) for argv in values["checks"])
-        config = Config(workdir=Path(options.get("workdir", ".")), model=model,
-                        base_url=url, api_key=key, config_path=self.path, provider_name=provider or None,
-                        credential_env_vars=tuple(p["api_key_env"] for p in providers.values() if "api_key_env" in p),
-                        **values)
-        return config, {"provider": provider or None, "api_key_source": source,
+        config = Config(workdir=Path(options.get("workdir", ".")), model=model, base_url=url, api_key=key,
+                        config_path=self.path, config_paths=(self.project_path,) if self.project_path else (),
+                        provider_name=provider or None, profile_name=profile_name, credential_env_vars=tuple(sorted(names)),
+                        headers=tuple(headers.items()), secret_values=tuple(sorted(secrets)), model_catalog=self.catalog(), **values)
+        return config, {"provider": provider or None, "profile": profile_name, "api_key_source": source,
                         "config_file": str(self.path) if self.path else None,
-                        "interface": self.data.get("interface")}
+                        "project_config_file": str(self.project_path) if self.project_path else None, "interface": interface}
 
 
-def load_settings(path=None, *, required=False):
+def load_settings(path=None, *, required=False, project=False):
     path = Path(os.path.abspath(Path(path or default_config_path()).expanduser()))
     try:
         with config_parent(path) as (directory, name):
             raw = directory.read(name, MAX_CONFIG, private=True)
-            # Keep the canonical system-alias path used by the no-follow walk;
-            # the workspace root is canonical too. Privacy exclusion must name
-            # this same file on macOS /var -> /private/var and /tmp aliases.
             path = directory.path / name
     except FileNotFoundError:
         if required:
@@ -173,51 +413,29 @@ def load_settings(path=None, *, required=False):
         raise ValueError("configuration exceeds 64 KiB")
     try:
         data = tomllib.loads(raw.decode("utf-8-sig"))
-    except (UnicodeError, ValueError, RecursionError):
-        # TOMLDecodeError can include the actual secret: never display it.
-        raise ValueError("invalid UTF-8 TOML configuration; check syntax locally (values withheld)") from None
-    if set(data) - {"provider", "providers", "agent", "interface"}:
-        raise ValueError("unknown top-level configuration setting")
-    if "interface" in data and data["interface"] not in ("cli", "chat", "tui"):
-        raise ValueError("configuration interface must be cli, chat or tui")
-    providers = data.get("providers", {})
-    if not isinstance(providers, dict) or len(providers) > 32:
-        raise ValueError("providers must be a table with at most 32 entries")
-    for name, entry in providers.items():
-        if not re.fullmatch(r"[A-Za-z0-9_-]{1,64}", name) or not isinstance(entry, dict):
-            raise ValueError("invalid provider name or table")
-        if set(entry) - {"model", "base_url", "api_key_env", "api_key"}:
-            raise ValueError("unknown provider setting")
-        if any(not _text(value) for value in entry.values()):
-            raise ValueError("provider settings must be nonempty strings without control characters")
-        if "api_key" in entry and "api_key_env" in entry:
-            raise ValueError("choose either api_key_env or api_key for each provider")
-        if "api_key_env" in entry and not re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]{0,127}", entry["api_key_env"]):
-            raise ValueError("invalid api_key_env variable name")
-        try:
-            endpoint(entry.get("base_url", DEFAULT_URL))
-        except (ValueError, TypeError):
-            raise ValueError("invalid provider base URL") from None
-    if "provider" in data and (not isinstance(data["provider"], str) or data["provider"] not in providers):
-        raise ValueError("default provider is not defined")
-    agent = data.get("agent", {})
-    if not isinstance(agent, dict) or set(agent) - set(AGENT_DEFAULTS):
-        raise ValueError("unknown agent setting or invalid agent table")
-    checks = agent.get("checks", [])
-    if not isinstance(checks, list) or any(not isinstance(argv, list) for argv in checks):
-        raise ValueError("agent checks must be an array of argv arrays")
-    # Validate every configured agent field even if a flag overrides it later.
-    try:
-        validated = {**AGENT_DEFAULTS, **agent, "checks": tuple(tuple(argv) for argv in checks)}
-        Config(path.parent, "configuration-validation", **validated)
-    except (OSError, ValueError, TypeError):
-        raise ValueError("invalid agent setting; check types, bounds and incompatible options") from None
+    except (UnicodeError, ValueError, RecursionError) as error:
+        # Python 3.11 puts position in the message; 3.14 exposes attributes.
+        position = re.search(r"\(at line (\d+), column (\d+)\)", str(error))
+        suffix = " at line " + position[1] + ", column " + position[2] if position else ""
+        raise ValueError("invalid UTF-8 TOML configuration" + suffix + "; check syntax locally (values withheld)") from None
+    _validate(data, path.parent, project=project)
     return Settings(path, data)
 
 
 def public_config(config, metadata):
-    """Deliberate allowlist: no raw provider table, key value or environment dump."""
+    """Deliberate allowlist; header/environment/credential values stay private."""
     return redact({**metadata, "model": config.model, "base_url": config.base_url,
             "api_key_present": bool(config.api_key), "workdir": str(config.workdir),
             "agent": {name: getattr(config, name) for name in AGENT_DEFAULTS},
-            "approvals": "each write and command requires fresh approval", "command_sandbox": False}, config.api_key)
+            "generation": config.generation_options(),
+            "transport": {"request_timeout": config.request_timeout, "proxy": config.proxy,
+                          "api_key_header": config.api_key_header, "api_key_scheme": config.api_key_scheme,
+                          "header_names": [name for name, _ in config.headers]},
+            "tools": {name: name not in config.disabled_tools for name in TOOL_NAMES},
+            "files": {"exclude": config.excluded_paths},
+            "execution": {"env_allowlist": config.env_allowlist, "env_names": [name for name, _ in config.command_env]},
+            "storage": {"session_dir": str(config.session_dir) if config.session_dir else None,
+                        "change_history_dir": str(config.change_history_dir) if config.change_history_dir else None,
+                        "auto_save_session": config.auto_save_session},
+            "tui": {name: getattr(config, field) for name, field in TUI_FIELDS.items()},
+            "approvals": "each write and command requires fresh approval", "command_sandbox": False}, config.secrets)

@@ -5,11 +5,12 @@ import json
 import os
 from pathlib import Path
 import sys
+import uuid
 
 from . import __version__
 from .agent import Agent, SYSTEM_PROMPT
 from .changes import ChangeError, ChangeHistory
-from .config import redact, terminal_text
+from .config import TOOL_NAMES, redact, terminal_text
 from .diagnostics import diagnose
 from .provider import Provider, ProviderError
 from .session import SessionError, SessionStore, validate_history
@@ -46,21 +47,21 @@ def chat(agent, task, messages, emit, *, autostart=True):
     def recover(cancelled, error=None):
         nonlocal messages, status, history_ready
         status = 130 if cancelled else 1
-        label = "Task cancelled" if cancelled else "Error: " + redact(str(error), agent.config.api_key)
+        label = "Task cancelled" if cancelled else "Error: " + redact(str(error), agent.config.secrets)
         if messages:
             try:
                 messages = validate_history(messages)
             except SessionError as recovery_error:
                 history_ready = False
                 status = 1
-                emit(label + "; history validation failed: " + redact(str(recovery_error), agent.config.api_key)
+                emit(label + "; history validation failed: " + redact(str(recovery_error), agent.config.secrets)
                      + ". Model requests are blocked; use local controls or /exit and start a new session.")
                 return
             try:
                 agent.checkpoint(messages)
             except (OSError, ValueError, ChangeError, SessionError) as save_error:
                 status = 1
-                emit("Conversation retained in memory, but saving failed: " + redact(str(save_error), agent.config.api_key))
+                emit("Conversation retained in memory, but saving failed: " + redact(str(save_error), agent.config.secrets))
         emit(label + "; conversation retained. Pending actions will NOT be replayed. Use /continue or enter a new request when ready.")
 
     def run(task):
@@ -133,7 +134,7 @@ def chat(agent, task, messages, emit, *, autostart=True):
                         agent.record_workspace_change(messages, {"action": "command", "path": ".", "outcome": "uncertain"})
                 elif ("error" in result or result.get("approved") is False or result.get("returncode", 0) != 0) and status == 0:
                     status = 2
-                emit(json.dumps(redact(result, agent.config.api_key), ensure_ascii=False))
+                emit(json.dumps(redact(result, agent.config.secrets), ensure_ascii=False))
             elif task.startswith("/"):
                 emit("Unknown chat command. Use /help.")
             else:
@@ -158,16 +159,26 @@ def main(argv=None):
     configuration.add_argument("--config", type=Path, help="explicit trusted TOML path (or SPRIG_CONFIG); default: ~/.sprig/config.toml")
     configuration.add_argument("--no-config", action="store_true", help="ignore configuration files, including SPRIG_CONFIG")
     parser.add_argument("--provider", help="select a named configured provider (or SPRIG_PROVIDER)")
+    parser.add_argument("--profile", help="select a trusted named profile (or SPRIG_PROFILE)")
+    parser.add_argument("--project-config", type=Path, help="explicit private project TOML; request/UI preferences and tighter policy only; never auto-discovered")
     parser.add_argument("--model", help="model override (or SPRIG_MODEL)")
     parser.add_argument("--base-url", help="API root override (or SPRIG_BASE_URL); configured credentials cannot follow a changed URL")
     parser.add_argument("--max-steps", type=int)
     parser.add_argument("--timeout", type=float)
     parser.add_argument("--max-output", type=int)
     parser.add_argument("--max-tokens", type=int, help="request a provider output-token limit per model call (1-65536); not a total billing cap")
+    parser.add_argument("--temperature", type=float)
+    parser.add_argument("--top-p", type=float)
+    parser.add_argument("--seed", type=int)
+    parser.add_argument("--reasoning-effort", choices=("none", "minimal", "low", "medium", "high", "xhigh", "max"))
+    parser.add_argument("--token-limit-field", choices=("max_tokens", "max_completion_tokens"))
+    parser.add_argument("--request-timeout", type=float, help="HTTP timeout; separate from approved command timeout")
+    parser.add_argument("--proxy", help="system, direct, or credential-free HTTP(S) proxy URL")
+    parser.add_argument("--disable-tool", action="append", choices=TOOL_NAMES, help="disable a tool in schemas and execution; repeatable")
     parser.add_argument("--thinking", action=argparse.BooleanOptionalAction, default=None, help="request chat_template_kwargs.enable_thinking; provider support required, off unless selected")
     parser.add_argument("--stream", action=argparse.BooleanOptionalAction, default=None, help="display model text as it arrives")
     parser.add_argument("--request-usage", action=argparse.BooleanOptionalAction, default=None, help="request final stream token statistics; requires --stream or --tui and provider support")
-    parser.add_argument("--metrics", action="store_true", help="print local numeric request measurements at CLI exit; missing token counts stay unknown")
+    parser.add_argument("--metrics", dest="show_metrics", action=argparse.BooleanOptionalAction, default=None, help="print local numeric request measurements at CLI exit; missing token counts stay unknown")
     parser.add_argument("--read-only", action=argparse.BooleanOptionalAction, default=None, help="allow file inspection only; block writes and all commands")
     parser.add_argument("--inherit-env", action=argparse.BooleanOptionalAction, default=None, help="let approved commands inherit additional environment variables")
     parser.add_argument("--max-context-bytes", type=int, help="maximum serialized model request size; not a token/cost estimate")
@@ -187,19 +198,27 @@ def main(argv=None):
     group.add_argument("--init-config", action="store_true", help="confirm creation of a private TOML template; never overwrite an existing file")
     group.add_argument("--show-config", action="store_true", help="show effective settings with credential values withheld; no model request")
     group.add_argument("--doctor", action="store_true", help="check configuration, workspace privacy rules and dependencies offline")
-    parser.add_argument("--session-dir", type=Path, default=Path.home() / ".local/state/sprig-agent/sessions")
+    group.add_argument("--models", action="store_true", help="list configured model aliases offline; no provider request")
+    group.add_argument("--list-models", action="store_true", help="explicit GET /models on the selected provider; no chat completion")
+    group.add_argument("--config-schema", action="store_true", help="print the configuration JSON schema offline")
+    parser.add_argument("--session-dir", type=Path)
     parser.add_argument("--change-history-dir", type=Path, help="explicitly persist exact edit backups in a private directory outside the repository (not encrypted)")
     args = parser.parse_args(argv)
     key = ""
     store = tools = history = provider = None
+    show_metrics = False
     try:
         manage_sessions = args.list_sessions or args.delete_session
-        local_configuration = args.init_config or args.show_config or args.doctor
+        local_configuration = args.init_config or args.show_config or args.doctor or args.models or args.list_models or args.config_schema
         if os.name not in {"posix", "nt"}:
             raise ValueError("Sprig requires Linux/macOS or Windows 10+")
         if (manage_sessions or local_configuration) and (args.task or args.file or args.interface in {"chat", "tui"} or args.checks or args.resume):
             raise ValueError("local management cannot be combined with tasks or interactive interfaces")
         config_path = args.config or os.environ.get("SPRIG_CONFIG")
+        if args.config_schema:
+            from .configuration_schema import configuration_schema
+            print(json.dumps(configuration_schema(), ensure_ascii=False, indent=2))
+            return 0
         if args.init_config:
             if args.no_config:
                 raise ValueError("--init-config cannot be combined with --no-config")
@@ -208,8 +227,12 @@ def main(argv=None):
                 print("Set the referenced environment variable, then use --doctor and start sprig.")
                 return 0
             return 2
-        settings = Settings() if args.no_config or manage_sessions else load_settings(config_path, required=bool(config_path))
-        selected_interface = args.interface or settings.data.get("interface")
+        settings = Settings() if args.no_config or (manage_sessions and args.session_dir) else load_settings(config_path, required=bool(config_path))
+        if args.project_config:
+            if args.no_config:
+                raise ValueError("--project-config cannot be combined with --no-config")
+            settings = settings.with_project(args.project_config)
+        selected_interface = settings.selection(vars(args), os.environ)[2]
         if selected_interface is None:
             selected_interface = "tui" if not (args.task or args.resume or manage_sessions or local_configuration) and sys.stdin.isatty() and sys.stdout.isatty() else "cli"
         args.chat, args.tui = selected_interface == "chat", selected_interface == "tui"
@@ -222,17 +245,28 @@ def main(argv=None):
         options = vars(args).copy()
         if args.tui:
             options["stream"] = True
-        if manage_sessions:
-            options.update(model="session-manager", provider=None)
-        config, details = settings.resolve(options, {} if manage_sessions else os.environ)
+        if manage_sessions or args.models or args.list_models:
+            options["_manage_sessions"] = not args.list_models
+            if args.list_models and not args.model:
+                options["model"] = "model-catalog"
+        config, details = settings.resolve(options, os.environ)
         details["interface"] = selected_interface
-        key = config.api_key
+        key = config.secrets
+        show_metrics = config.show_metrics
+        session_dir = config.session_dir or Path.home() / ".local/state/sprig-agent/sessions"
+        change_dir = config.change_history_dir
+        if args.models:
+            print(terminal_text(json.dumps(redact({"models": config.model_catalog, "network_contacted": False}, key), ensure_ascii=False, indent=2)))
+            return 0
+        if args.list_models:
+            print(terminal_text(json.dumps(Provider(config).list_models(), ensure_ascii=False, indent=2)))
+            return 0
         if local_configuration:
             report = diagnose(config, details) if args.doctor else public_config(config, details)
             print(terminal_text(json.dumps(report, ensure_ascii=False, indent=2)))
             return 0 if report.get("ok", True) else 1
         if manage_sessions:
-            store = SessionStore(args.session_dir, config)
+            store = SessionStore(session_dir, config)
             if args.list_sessions:
                 listing = store.scan()
                 print(terminal_text(json.dumps(listing["sessions"], ensure_ascii=False, indent=2)))
@@ -246,30 +280,31 @@ def main(argv=None):
             else:
                 return 2
             return 0
-        if not key and config.base_url.startswith("https://api.openai.com/"):
+        if not config.api_key and config.base_url.startswith("https://api.openai.com/"):
             raise ValueError("set SPRIG_API_KEY or OPENAI_API_KEY (AGNES_API_KEY also works at the Agnes HTTPS origin)")
         if args.tui:
             from .tui import run_tui
-            return run_tui(config, args.task, args.session_dir, args.save_session, args.resume,
-                           change_dir=args.change_history_dir, show_metrics=args.metrics, files=args.file)
+            save_name = args.save_session or ("auto-" + uuid.uuid4().hex if config.auto_save_session and not args.resume else None)
+            return run_tui(config, args.task, session_dir, save_name, args.resume,
+                           change_dir=change_dir, show_metrics=show_metrics, files=args.file)
         emit = lambda text: print(terminal_text(redact(text, key)), flush=True)
         confirm = lambda text: approve(redact(text, key))
         emit_delta = lambda text: print(terminal_text(text), end="", flush=True)
         messages, checkpoint = None, None
-        session_name = args.resume or args.save_session
+        session_name = args.resume or args.save_session or ("auto-" + uuid.uuid4().hex if config.auto_save_session else None)
         if session_name:
-            store = SessionStore(args.session_dir, config)
+            store = SessionStore(session_dir, config)
             if args.resume:
                 messages = store.load(args.resume)
             else:
-                store.ensure_new(args.save_session)
+                store.ensure_new(session_name)
             checkpoint = lambda history: store.save(session_name, history)
         emit(f"Sprig | model: {config.model} | endpoint: {config.base_url} | workdir: {config.workdir}")
         emit("Prompts and tool results are sent to this endpoint. Commands are NOT sandboxed and may access outside files/network. Writes and commands require approval.")
         if store:
             emit("Local transcript saving enabled (not encrypted). Resume never replays pending actions.")
-        history = ChangeHistory(config, args.change_history_dir)
-        if args.change_history_dir:
+        history = ChangeHistory(config, change_dir)
+        if change_dir:
             emit("Exact edit backups persist locally (not encrypted). Only file-tool edits can be undone; commands are not tracked.")
         tools = Tools(config, confirm, emit_output=emit_delta, history=history)
         provider = Provider(config)
@@ -288,7 +323,7 @@ def main(argv=None):
         print("Error: " + terminal_text(redact(str(exc), key)), file=sys.stderr)
         return 1
     finally:
-        if args.metrics and provider is not None:
+        if show_metrics and provider is not None:
             print("[usage] " + json.dumps(provider.measurements.report(), ensure_ascii=False), file=sys.stderr, flush=True)
         if tools:
             tools.close()

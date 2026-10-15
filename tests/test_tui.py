@@ -95,6 +95,35 @@ class TuiTests(unittest.IsolatedAsyncioTestCase):
             self.assertEqual(len(provider.calls), 1)
             self.assertIn("value = 456", json.dumps(provider.calls[0]))
 
+    async def test_configured_theme_composer_sidebar_and_local_models(self):
+        from dataclasses import replace
+        self.config = replace(self.config, tui_theme="nord", tui_sidebar=False, tui_editor_height=8,
+                              disabled_tools=("run", "edit_file", "project_map"),
+                              model_catalog=({"provider": "fixture", "alias": "fast", "id": "raw-model"},))
+        provider = ScriptedProvider([])
+        app = self.app(provider)
+        async with app.run_test(size=(110, 36)) as pilot:
+            self.assertEqual(app.theme, "nord")
+            self.assertFalse(app.query_one("#sidebar").display)
+            self.assertEqual(app.query_one("#task").styles.height.value, 8)
+            self.assertTrue(app.query_one("#undo").disabled)
+            self.assertTrue(app.query_one("#diff").disabled)
+            await self.send_text(pilot, "/models")
+            await pilot.pause()
+            self.assertIn("raw-model", app.transcript)
+            self.assertEqual(provider.calls, [])
+
+    async def test_one_at_a_time_steering_preserves_queue_order(self):
+        from dataclasses import replace
+        self.config = replace(self.config, steering_mode="one-at-a-time")
+        app = self.app(ScriptedProvider([]))
+        async with app.run_test(size=(110, 36)):
+            app.pending_tasks = ["first guidance", "second guidance"]
+            self.assertEqual(app.take_pending(), ["first guidance"])
+            self.assertEqual(app.pending_tasks, ["second guidance"])
+            self.assertEqual(app.take_pending(), ["second guidance"])
+            self.assertEqual(app.pending_tasks, [])
+
     async def test_failed_startup_attachment_releases_session_reservation(self):
         with self.assertRaises(ValueError):
             SprigApp(self.config, session_dir=self.parent / "sessions", save_session="reserved",

@@ -144,6 +144,7 @@ class ChatTests(unittest.TestCase):
     def test_git_commands_show_local_results_without_uploading_them(self):
         agent, emitted = Mock(), []
         agent.config.api_key = "fake-secret"
+        agent.config.secrets = ("fake-secret",)
         agent.tools.execute.return_value = {"approved": True, "output": "diff fake-secret"}
         with patch("builtins.input", side_effect=["/diff", "/git", "/exit"]):
             self.assertEqual(cli.chat(agent, None, None, emitted.append), 0)

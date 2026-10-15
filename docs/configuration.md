@@ -39,13 +39,13 @@ thinking = false
 ## 选择与优先级
 
 - 文件：`--no-config` 禁用全部文件；否则 `--config PATH` > `SPRIG_CONFIG` > 用户默认路径。显式文件缺失时报错；缺失的默认文件允许使用旧环境变量/参数方式。
-- 提供商：`--provider NAME` > `SPRIG_PROVIDER` > 顶层 `provider`。可定义至多 32 个命名提供商，没有自动切换或失败后备用模型。
-- 模型与地址：`--model` / `--base-url` > `SPRIG_MODEL` / `SPRIG_BASE_URL` > 选定提供商。没有模型时明确报错；未选提供商时保留原 OpenAI 地址默认值。
+- 提供商：`--provider NAME` > `SPRIG_PROVIDER` > 选定 profile 的 `provider` > 顶层 `provider`。可定义至多 32 个命名提供商，没有自动切换或失败后备用模型。
+- 模型：`--model` > `SPRIG_MODEL` > 显式项目文件的 `model` > profile 的 `model` > 选定提供商的 `model`。地址：`--base-url` > `SPRIG_BASE_URL` > 选定提供商的 `base_url`。没有模型时明确报错；未选提供商时保留原 OpenAI 地址默认值。
 - 密钥：显式 `SPRIG_API_KEY` > 选定提供商的 `api_key_env` 或 `api_key` > 旧环境别名。声明了 `api_key_env` 却未设置时停止，不挪用另一个提供商的全局密钥。旧别名仍为 Agnes HTTPS 原点的 `AGNES_API_KEY`，然后 `OPENAI_API_KEY`。
 - 配置密钥绑定该提供商的完整基础地址。覆盖地址时，必须另设显式 `SPRIG_API_KEY`，避免把原密钥转发到别处。`AGNES_API_KEY`（含大小写变体）的特殊引用始终限于其 HTTPS 原点。
-- 运行参数：显式 CLI > `[agent]` > 原有默认值。布尔参数支持 `--no-stream`、`--no-thinking`、`--no-compact-context` 等覆盖。TUI 始终流式；选择 `--cli --no-stream` 使用非流式单次执行。
+- 运行参数：显式 CLI > 显式项目文件 > profile > 模型条目 > 提供商生成设置 > 用户全局设置 > 内置默认值。布尔参数支持 `--no-stream`、`--no-thinking`、`--no-compact-context` 等覆盖。TUI 始终流式；选择 `--cli --no-stream` 使用非流式单次执行。
 
-Sprig 不自动读取项目或父目录的配置，也不加载 `.env`、远程配置、配置脚本或动态环境替换。这样下载的仓库不能改变接收密钥和代码的服务地址。`--config` 是对该文件的显式信任，应先检查其内容。
+Sprig 不自动读取项目或父目录的配置；`--project-config PATH` 显式启用受限项目层。也不加载 `.env`、远程配置、配置脚本或动态环境替换。这样下载的仓库不能改变接收密钥和代码的服务地址。`--config` 是对该文件的显式信任，应先检查其内容。
 
 `[agent]` 支持 `max_steps`、`timeout`、`max_output`、`stream`、`request_usage`、`read_only`、`inherit_env`、`max_context_bytes`、`compact_context`、`project_instructions`、`max_tokens`、`thinking`、`checks`。均执行现有类型、范围和组合校验；未知设置报错，不能通过配置自动批准、关闭隐私检查或绕开只读。`checks` 是 argv 数组的数组，启动参数 `--check` 替换整组；恢复会话仍核对模型、地址、工作目录、固定验收和生成参数。
 
@@ -64,7 +64,7 @@ uv run --locked sprig --no-config --model local-model --base-url http://localhos
 
 ## TUI 本地命令
 
-`/help` 列出命令；`/config` 和 `/status` 查看本地状态。`/context`、`/usage`、`/map [查询]`、`/git`、`/diff`、`/compact`、`/changes`、`/undo`、`/redo`、`/discard-history` 对应侧栏操作，保留原先的审批和只读限制。
+`/help` 列出命令；`/config` 和 `/status` 查看本地状态，`/models` 离线查看启动时加载的模型目录。`/context`、`/usage`、`/map [查询]`、`/git`、`/diff`、`/compact`、`/changes`、`/undo`、`/redo`、`/discard-history` 对应侧栏操作，保留原先的审批和只读限制。
 
 `/save 名称` 保存或另存当前对话；另存新名称可分支后续对话，旧会话保留。`/restore 名称`、`/sessions`、`/delete 名称` 管理本地会话。`/new` 确认后开始新对话，解除原会话的自动保存和锁，不覆盖它，也不回滚工作区。提供商/模型通过配置或下次启动参数选择，当前会话不偷偷换服务。
 
@@ -86,3 +86,101 @@ TUI 内也可输入 `/add src/main.py`；路径有空格时整段作为一个相
 每次最多 16 个文件、每个至多 32 KiB 且受 `max_output` 限制、合计至多 128 KiB。读取还执行完整的 8 MiB 扫描和 10,000 行窗口上限。二进制、敏感文件、活动配置、路径越界和不完整内容都拒绝；先检查完整受限文件，不能借附件上传干净前缀而绕过文件后部的凭据检查。任何一个失败，该批都不加入对话；实际序列化上下文超限时也不加入、不发请求。大文件可在任务中明确路径，让模型按范围读取必要部分。
 
 目前没有 `@` 模糊选择、实时引用集合或自动文件补全。
+
+
+## 完整配置与模型目录
+
+可复制的所有设置见 [`config.example.toml`](../config.example.toml)；开源样本的文件格式、设置范围与 Sprig 对应情况见[调研表](configuration-comparison.md)。示例不含真实密钥。旧 `[agent].max_tokens/thinking` 继续兼容；同层 `[generation]` 的同名设置优先。表以键合并，标量和数组以高优先级整体替换；`extra_body` 整个对象替换，不隐式深合并。文件排除在项目层与用户/profile 排除合并。
+
+```toml
+provider = "USTC"
+interface = "tui"
+
+[providers.USTC]
+model = "fast"
+base_url = "https://api.llm.ustc.edu.cn/v1"
+api_key_env = "USTC_API_KEY"
+request_timeout = 60
+proxy = "system"
+
+[providers.USTC.models.fast]
+id = "deepseek-flash"
+max_context_bytes = 65536
+
+[providers.USTC.models.fast.generation]
+max_tokens = 2048
+temperature = 0.2
+
+[profiles.review]
+provider = "USTC"
+model = "fast"
+[profiles.review.agent]
+read_only = true
+checks = []
+```
+
+`--profile review` > `SPRIG_PROFILE` > 顶层 `profile`；profile 不继承其他 profile。最多 32 个提供商、32 个 profile，每提供商 64 个模型别名。同提供商每条模型 ID 唯一。`--model fast` 或该条目的真实 ID 都应用条目设置；未列入目录的真实模型名仍可显式传入。显式换提供商时，不携带另一个提供商 profile 的模型别名。
+
+```sh
+uv run --locked sprig --models
+uv run --locked sprig --provider USTC --list-models
+uv run --locked sprig --profile review
+uv run --locked sprig --provider USTC --model fast --show-config
+uv run --locked sprig --config-schema
+```
+
+`--models` 只读本地目录，未设置密钥也能使用。`--list-models` 是用户明确发起的 GET `/models`；返回至多 256 个去重 ID、总数与截断标记；服务不支持时会报错。它不发送任务或 completion，不计为 completion 请求，不推断模型能力、价格或自动选择模型。TUI `/models` 只显示启动时加载的本地目录。
+
+编辑器可用 TOML 插件配置本地 `config.schema.json`，示例首行提供 schema 关联。也能用 `--config-schema` 导出；该操作即使配置损坏也可运行。Schema 辅助补全，运行时仍检查组合、权限、路径与端点。配置上限 64 KiB；无效 TOML 尽可能给出行列位置，内容一律不回显。
+
+## 生成与传输
+
+`[generation]`、`[providers.NAME.generation]`、`[providers.NAME.models.ALIAS.generation]` 和 `[profiles.NAME.generation]` 支持同一组设置：
+
+| 字段 | 范围与实际请求 |
+| --- | --- |
+| `max_tokens` | 1–65536，单次输出上限，不是总费用预算 |
+| `token_limit_field` | `max_tokens`（默认）或 `max_completion_tokens`；只发所选字段 |
+| `temperature` / `top_p` | 有限数值 0–2 / 0–1；未配置时不发送 |
+| `seed` | 0–2147483647 的整数；服务不一定保证可复现 |
+| `reasoning_effort` | none/minimal/low/medium/high/xhigh/max；服务支持范围可能更窄 |
+| `thinking` | true 时发送 `chat_template_kwargs.enable_thinking=true`；不是通用推理协议 |
+| `extra_body` | 额外 JSON/TOML 表，至多 16 KiB、深度 12、32 个顶层键；模型、消息、工具、流式、鉴权、token 等保留键禁止覆盖 |
+
+生成设置计入实际序列化请求预算，也绑定保存的会话；变更后不能直接发送旧会话。`thinking=true` 与额外 `chat_template_kwargs` 同时定义会报错。CLI 支持 `--temperature`、`--top-p`、`--seed`、`--reasoning-effort`、`--token-limit-field` 等覆盖。
+
+提供商可配置 `request_timeout`（0–120 秒，不含 0），未配置时沿用 `agent.timeout`；后者仍控制命令。`proxy` 为 `system`、`direct` 或不含账号、查询、片段的 HTTP(S) 代理地址。CLI 可用 `--request-timeout`、`--proxy` 覆盖。默认系统代理仍由 Python 标准库处理；explicit proxy 同样遵循标准库的 NO_PROXY 行为。TLS 校验和禁止重定向始终保留。
+
+`api_key_header="Authorization"` 与 `api_key_scheme="bearer"` 为默认；兼容服务可改成 `api_key_header="X-Api-Key"`、`api_key_scheme="raw"`。`headers` 提供不插值的字面值，`headers_env` 提供环境变量名；合计最多 16 个。Host、Content-Length、Content-Type、Authorization 等保留头与鉴权头不能通过额外 headers 覆盖；头名不区分大小写，拒绝换行注入。所有值都按敏感信息隐藏、脱敏、从子进程过滤；配置的头也不能随基础地址覆盖转发。
+
+## 工具、文件与执行环境
+
+`[tools]` 对六种工具设置 true/false：`list_files`、`read_file`、`search`、`project_map`、`edit_file`、`run`。false 同时移除模型工具 schema，并在分发、直接方法和撤销/重做处执行限制；CLI `--disable-tool NAME` 可重复。关闭 `read_file` 也阻止 `/add` 附件。`run=false` 或 `read_only=true` 不能配置非空 `checks`。
+
+禁用单个工具只控制该工具接口，例如 `search` 仍会读取匹配内容。要禁止某些路径通过所有文件工具访问，使用 `[files].exclude`；要禁用全部命令，使用 `run=false` 或只读模式。任意获批命令仍无 OS 沙箱，不能把文件排除当作命令隔离。
+
+`[files].exclude=["private/", "*.local.json"]` 与 `.sprigignore` 合并，总计最多 256 条。使用相对 POSIX glob，Windows 也用 `/`；不支持否定、`..`、绝对路径或反斜杠。内置敏感路径与所有活动配置路径的保护始终叠加。
+
+`[execution]` 可设置 `inherit_env`、`timeout`、`max_output`（同层优先于 agent 中旧字段），以及 `env_allowlist=["CC", "CFLAGS"]` 和 `env={BUILD_MODE="debug"}`。数组只额外继承具名变量，表提供字面覆盖；不执行替换、取密钥命令或 shell。即使允许列表或继承全部环境，也移除所有配置提供商的凭据变量、头变量及包含已知模型凭据的值。禁止用 env 注入模型凭据变量或凭据值。配置的字面值不显示在日志中；值若用于执行代码、模块搜索路径等，应按正常命令审批审阅其影响。
+
+## 存储与终端
+
+`[storage]` 可设置 `session_dir`、`change_history_dir` 和 `auto_save_session`。目录支持 `~`，相对目录以声明它的配置文件目录为基准；启动参数路径以当前目录为基准。会话和精确编辑备份仍要求私有目录、位于仓库外，内容不加密。`auto_save_session` 默认 false；开启后每次新启动自动分配唯一会话名，显式 `--save-session` / `--resume` 优先。TUI `/new` 仍解除当前自动保存，避免覆盖旧会话。列会话无须模型密钥；显式 `--session-dir` 可绕过损坏的模型配置进行本地管理。
+
+`[tui]` 支持：
+
+- `theme`：textual-dark/textual-light/nord/gruvbox/dracula/monokai/tokyo-night/solarized-dark/solarized-light。
+- `sidebar`：显示侧栏，默认 true；隐藏后仍可用 slash 命令。
+- `editor_height`：3–12，默认 5；Enter 发送、Shift+Enter/Ctrl+J 换行。
+- `steering_mode`：all（默认）或 one-at-a-time，决定在 agent 安全边界一次注入全部或一条已排队的新要求；不会放行待审批操作。
+- `metrics`：退出时输出本地用量统计；CLI `--metrics` / `--no-metrics` 可覆盖。
+
+## 显式项目设置
+
+```sh
+uv run --locked sprig --project-config /trusted/private/project.toml
+```
+
+项目文件也需私有权限，并显式指定；不会沿工作区父目录搜索。允许 `model`、`interface`、`generation`、`agent`、`tools`、`files`、`tui`、`schema_version=1`。禁止 providers、profile、execution、storage；不能添加 checks 命令或开启 inherit_env，不能关闭用户/profile 只读、启用已关闭的工具或移除其文件排除。CLI 的显式用户选择仍最高优先级。
+
+MCP、插件、hooks、沙箱、自动批准等没有对应执行后端的字段都会报错。后续功能需要同时实现后端与安全测试，不能只添加一个可解析开关。

@@ -13,7 +13,7 @@ def diagnose(config, details):
     checks = []
     try:
         with Directory(config.workdir) as root:
-            FilePolicy(root, config.config_path).reload()
+            FilePolicy(root, (config.config_path, *config.config_paths), config.excluded_paths).reload()
         checks.append({"check": "workspace and .sprigignore", "ok": True})
     except (OSError, ValueError, UnicodeError):
         checks.append({"check": "workspace and .sprigignore", "ok": False,

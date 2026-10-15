@@ -82,7 +82,7 @@ class Tools:
         self.cancel_event = cancel_event
         self.root = Directory(config.workdir)
         self.history = history or ChangeHistory(config)
-        self.policy = FilePolicy(self.root, config.config_path)
+        self.policy = FilePolicy(self.root, (config.config_path, *config.config_paths), config.excluded_paths)
         self.index = SymbolIndex()
         self.emit_output = emit_output
         self.instructions = ProjectInstructions(self._read_instruction, self._check_cancelled,
@@ -97,7 +97,7 @@ class Tools:
                 raw = self._read(directory, name, limit)
             if len(raw) > limit:
                 raise InstructionError("project instruction file exceeds 16 KiB: " + path)
-            return redact(self._decode(raw).removeprefix("\ufeff"), self.config.api_key)
+            return redact(self._decode(raw).removeprefix("\ufeff"), self.config.secrets)
         except FileNotFoundError:
             return None
         except (OSError, ValueError, ToolError):
@@ -108,6 +108,11 @@ class Tools:
     def _check_cancelled(self):
         if self.cancel_event is not None and self.cancel_event.is_set():
             raise KeyboardInterrupt
+
+    def _require_tool(self, name):
+        self.root.ensure_open()
+        if name in self.config.disabled_tools:
+            raise ToolError("tool is disabled by configuration")
 
     def close(self):
         self.root.close()
@@ -177,6 +182,7 @@ class Tools:
         self._check_cancelled()
         try:
             self.root.ensure_open()
+            self._require_tool(name)
             if not isinstance(arguments, dict):
                 raise ToolError("tool arguments must be an object")
             method = {"list_files": self.list_files, "read_file": self.read_file,
@@ -185,11 +191,12 @@ class Tools:
             if method is None:
                 raise ToolError("unknown tool")
             result = method(**arguments)
-            return redact(result, self.config.api_key)
+            return redact(result, self.config.secrets)
         except (OSError, ToolError, ChangeError, TypeError, ValueError) as exc:
-            return {"error": redact(str(exc), self.config.api_key)}
+            return {"error": redact(str(exc), self.config.secrets)}
 
     def list_files(self, path="."):
+        self._require_tool("list_files")
         entries, size, truncated = [], 0, False
         parts = self._parts(path)
         with self._directory(parts) as fd, fd.scandir() as iterator:
@@ -205,6 +212,7 @@ class Tools:
         return {"entries": sorted(entries, key=lambda item: item["name"]), "truncated": truncated}
 
     def read_file(self, path, offset=1, limit=None):
+        self._require_tool("read_file")
         if type(offset) is not int or not 1 <= offset <= 1000000:
             raise ToolError("offset must be an integer from 1 to 1000000 (1-based line number)")
         if limit is not None and (type(limit) is not int or not 1 <= limit <= 10000):
@@ -274,6 +282,7 @@ class Tools:
                 "next_offset": end + 1 if truncated and not partial else None}
 
     def search(self, query, path=".", *, glob=_MISSING, ignore_case=False, regex=False, context=0, limit=100):
+        self._require_tool("search")
         if not isinstance(query, str) or not query or len(query) > 1000:
             raise ToolError("query must be a nonempty string (at most 1000 characters)")
         if not isinstance(ignore_case, bool):
@@ -294,7 +303,7 @@ class Tools:
         # Reserve the whole JSON envelope and counter growth, including redaction.
         def measure(value):
             size = encoded_size(value)
-            return max(size, encoded_size(redact(value, self.config.api_key))) if self.config.api_key else size
+            return max(size, encoded_size(redact(value, self.config.secrets))) if self.config.secrets else size
         envelope = {**result, "skipped_files": 5000, "files_read": 5000,
                     "bytes_read": 8 * 1024 * 1024 + 1, "entries_scanned": 5001}
         remaining = self.config.max_output - measure(envelope)
@@ -370,6 +379,7 @@ class Tools:
         return result
 
     def project_map(self, path=".", query=""):
+        self._require_tool("project_map")
         if not isinstance(query, str) or len(query.encode("utf-8")) > 256 or any(ord(char) < 32 or ord(char) == 127 for char in query):
             raise ToolError("query must be a literal string of at most 256 UTF-8 bytes without control characters")
         if query and not query.strip():
@@ -377,8 +387,8 @@ class Tools:
         query = query.strip().casefold()
         def measure(record):
             size = encoded_size(record)
-            if self.config.api_key:
-                size = max(size, encoded_size(redact(record, self.config.api_key)))
+            if self.config.secrets:
+                size = max(size, encoded_size(redact(record, self.config.secrets)))
             return size
 
         selection = MapSelection(self.config.max_output, measure) if query else None
@@ -503,11 +513,12 @@ class Tools:
                     result = {"approved": True, "discarded": True}
             else:
                 result = self._restore_change(action)
-            return redact(result, self.config.api_key)
+            return redact(result, self.config.secrets)
         except (OSError, ToolError, ChangeError, ValueError) as exc:
-            return {"error": redact(str(exc), self.config.api_key)}
+            return {"error": redact(str(exc), self.config.secrets)}
 
     def _restore_change(self, action):
+        self._require_tool("edit_file")
         if self.config.read_only:
             return {"approved": False, "changed": False, "error": "read-only mode blocks undo/redo"}
         record, revision = self.history.plan(action)
@@ -520,7 +531,7 @@ class Tools:
                 raise ToolError("file changed outside the recorded edit; undo/redo blocked to preserve external changes")
             before = None if current is None else self._decode(current)
             after = None if target is None else self._decode(target)
-            if self.config.api_key and any(self.config.api_key in (text or "") for text in (before, after)):
+            if any(secret in (text or "") for secret in self.config.credential_secrets for text in (before, after)):
                 raise ToolError("configured API key must not appear in change backups")
             description = action.upper() + " " + json.dumps(path) + "\n" + (self._diff(path, before, after) or "(empty file create/delete)")
             if not self.approve(description):
@@ -539,6 +550,7 @@ class Tools:
                 "note": "Workspace changed; previous model conclusions and acceptance results need rechecking."}
 
     def edit_file(self, path, old=_MISSING, new=_MISSING, *, edits=_MISSING):
+        self._require_tool("edit_file")
         if self.config.read_only:
             return {"approved": False, "changed": False, "error": "read-only mode blocks file writes"}
         multiple = edits is not _MISSING
@@ -602,7 +614,7 @@ class Tools:
             if len(data) > MAX_FILE:
                 raise ToolError("result exceeds 512 KiB")
             self._decode(data)
-            if self.config.api_key and (self.config.api_key in before or self.config.api_key in after):
+            if any(secret in before or secret in after for secret in self.config.credential_secrets):
                 raise ToolError("configured API key must not appear in change backups")
             if before_stat is not None and before == after:
                 return {"changed": False}
@@ -621,6 +633,7 @@ class Tools:
         return {"approved": True, "changed": True, "path": path}
 
     def run(self, argv, cwd=".", timeout=None):
+        self._require_tool("run")
         if self.config.read_only:
             return {"approved": False, "error": "read-only mode blocks command execution"}
         if (not isinstance(argv, list) or not argv or len(argv) > 256
@@ -628,7 +641,7 @@ class Tools:
             raise ToolError("argv must be a nonempty array of strings (at most 256)")
         if sum(len(arg) for arg in argv) > 65536:
             raise ToolError("argv is too large")
-        if self.config.api_key and any(self.config.api_key in arg for arg in argv):
+        if any(secret in arg for secret in self.config.credential_secrets for arg in argv):
             raise ToolError("configured API key must not appear in command arguments")
         seconds = self.config.timeout if timeout is None else timeout
         if (isinstance(seconds, bool) or not isinstance(seconds, (int, float))
@@ -642,6 +655,10 @@ class Tools:
         description = (f"RUN (NOT SANDBOXED; may access outside files/network)\n"
                        f"cwd: {json.dumps(str(directory))}\nargv: {json.dumps(argv)}\n"
                        f"timeout: {seconds}s; output cap: {self.config.max_output} bytes")
+        if self.config.env_allowlist or self.config.command_env or self.config.inherit_env:
+            description += ("\nenvironment: " + ("expanded inheritance" if self.config.inherit_env else "minimal inheritance")
+                            + "; additional inherited names: " + json.dumps(self.config.env_allowlist)
+                            + "; override names: " + json.dumps([name for name, _ in self.config.command_env]))
         if not self.approve(description):
             return {"approved": False}
         self._check_cancelled()
@@ -651,7 +668,7 @@ class Tools:
             pass
         env = command_environment(self.config)
         self.instructions.recheck_action(parts, rules)
-        stream = CommandOutput(self.emit_output, self.config.api_key)
+        stream = CommandOutput(self.emit_output, self.config.secrets)
         if os.name == "nt":
             from .windows import run_command
             result = run_command(argv, directory, env, seconds, self.config.max_output, self.cancel_event, stream.write)

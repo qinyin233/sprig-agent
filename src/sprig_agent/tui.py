@@ -247,6 +247,15 @@ class SprigApp(App[int]):
 
     def on_mount(self):
         self._ui_ready = True
+        if self.config.tui_theme:
+            self.theme = self.config.tui_theme
+        self.query_one("#sidebar").display = self.config.tui_sidebar
+        self.query_one("#task").styles.height = self.config.tui_editor_height
+        for name in ("diff", "git"):
+            self.query_one("#" + name, Button).disabled = self.config.read_only or "run" in self.config.disabled_tools
+        for name in ("undo", "redo"):
+            self.query_one("#" + name, Button).disabled = self.config.read_only or "edit_file" in self.config.disabled_tools
+        self.query_one("#map", Button).disabled = "project_map" in self.config.disabled_tools
         self._ui_thread_id = threading.get_ident()
         self.set_interval(self.OUTPUT_REFRESH_SECONDS, self.flush_output)
         self.action_focus_task()
@@ -260,7 +269,7 @@ class SprigApp(App[int]):
             self.start(self.initial_task)
 
     def safe(self, text):
-        return terminal_text(redact(str(text), self.config.api_key))
+        return terminal_text(redact(str(text), self.config.secrets))
 
     def append(self, text):
         # Drain older worker output before user messages and completion notices.
@@ -341,7 +350,8 @@ class SprigApp(App[int]):
             self.store.save(self.session_name, history)
 
     def take_pending(self):
-        tasks, self.pending_tasks = self.pending_tasks, []
+        count = 1 if self.config.steering_mode == "one-at-a-time" else len(self.pending_tasks)
+        tasks, self.pending_tasks = self.pending_tasks[:count], self.pending_tasks[count:]
         if tasks:
             self.set_state("已接收新要求，继续当前会话")
         return tasks
@@ -696,7 +706,7 @@ class SprigApp(App[int]):
         argument = argument.strip()
         if command == "/help":
             self.append("\n本地命令（不发送给模型）：\n"
-                        "/help /status /config /context /usage /cancel /exit\n"
+                        "/help /status /config /models /context /usage /cancel /exit\n"
                         "/continue /new /add 文件路径 /map [名称或路径查询] /git /diff /compact\n"
                         "/changes /undo /redo /discard-history /sessions\n"
                         "/save [名称] /restore [名称] /delete [名称]\n"
@@ -708,8 +718,12 @@ class SprigApp(App[int]):
             return
         if command == "/config":
             details = {"provider": self.config.provider_name,
+                       "profile": self.config.profile_name,
                        "config_file": str(self.config.config_path) if self.config.config_path else None}
             self.append("\n[生效配置；密钥值不显示]\n" + json.dumps(public_config(self.config, details), ensure_ascii=False, indent=2) + "\n")
+            return
+        if command == "/models":
+            self.append("\n[配置中的模型；未联网]\n" + json.dumps(self.config.model_catalog, ensure_ascii=False, indent=2) + "\n")
             return
         if command in {"/cancel", "/exit"}:
             (self.action_cancel if command == "/cancel" else self.action_quit)()
@@ -807,7 +821,8 @@ class SprigApp(App[int]):
         self.cancel_event.set()
         with self._output_condition:
             self._output_condition.notify_all()
-        if not self._lifecycle_lock.acquire(timeout=min(60, self.config.timeout + 5)):
+        cleanup_timeout = max(self.config.timeout, self.config.request_timeout or 0)
+        if not self._lifecycle_lock.acquire(timeout=min(60, cleanup_timeout + 5)):
             raise TimeoutError("worker cleanup is still pending; filesystem handles remain open")
         try:
             self._closed = True

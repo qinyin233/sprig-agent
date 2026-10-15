@@ -6,7 +6,8 @@
 - Linux / macOS / Windows 10+ / Windows WSL
 - Chat Completions + function tools，可选 SSE 流式输出
 - 可选每次模型输出 token 上限与兼容服务的思考模式
-- 用户级 `config.toml`、命名提供商、环境变量密钥引用、配置初始化与离线诊断
+- 分层 `config.toml`、命名提供商/模型别名/profile、生成/代理/鉴权参数、配置 Schema 与离线诊断
+- 工具禁用、文件排除、命令环境白名单、会话存储和 TUI 偏好设置
 - CLI `--file` / TUI `/add` 主动附加有界文件快照
 - 全屏终端 TUI、连续对话、项目代码地图、分目录 `AGENTS.md` 规则与本地 Git 查看
 - 用户固定验收命令：失败反馈修复，通过后才确认验收完成
@@ -53,7 +54,7 @@ uv run --locked sprig --doctor
 uv run --locked sprig
 ```
 
-逐次确认后在 `~/.sprig/config.toml` 创建私有配置，预设 `agnes-3.0-flash`，引用现有 `AGNES_API_KEY`，不写入真实密钥。已存在的配置不会覆盖。最后一条命令打开 TUI；Enter 发送，执行中可继续输入引导，`/help` 查看本地操作。配置文件、密钥优先级及其他提供商见[配置与首次启动](docs/configuration.md)。
+逐次确认后在 `~/.sprig/config.toml` 创建私有配置，预设 `agnes-3.0-flash`，引用现有 `AGNES_API_KEY`，不写入真实密钥。已存在的配置不会覆盖。最后一条命令打开 TUI；Enter 发送，执行中可继续输入引导，`/help` 查看本地操作。配置文件、密钥优先级及其他提供商见[配置与首次启动](docs/configuration.md)，完整示例见 [config.example.toml](config.example.toml)，主流开源 agent 的设置对照见[配置调研](docs/configuration-comparison.md)。
 
 ### Agnes 3.0 Flash 预设
 

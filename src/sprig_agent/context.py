@@ -4,7 +4,7 @@ from .config import redact
 
 
 def request_payload(config, messages, tools):
-    payload = {"model": config.model, "messages": redact(messages, config.api_key), "tools": tools, "tool_choice": "auto"}
+    payload = {"model": config.model, "messages": redact(messages, config.secrets), "tools": tools, "tool_choice": "auto"}
     payload.update(config.generation_options())
     if config.stream:
         payload["stream"] = True
@@ -52,11 +52,11 @@ def _edit_path(arguments):
 
 def prepare_context(config, messages, tools, compact=False):
     """Keep the saved transcript intact; never discard user instructions or refusals."""
-    selected = redact(messages, config.api_key)
+    selected = redact(messages, config.secrets)
     before = size = len(request_body(config, selected, tools))
     changes = []
     def wire_size(value):
-        return len(json.dumps(redact(value, config.api_key)).encode("utf-8"))
+        return len(json.dumps(redact(value, config.secrets)).encode("utf-8"))
     def replace_string(container, field, value, index, identity, fields):
         old_bytes, new_bytes = wire_size(container[field]), wire_size(value)
         if old_bytes - new_bytes < 128:

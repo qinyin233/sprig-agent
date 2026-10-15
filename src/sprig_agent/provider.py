@@ -117,8 +117,52 @@ def validate_message(message):
 class Provider:
     def __init__(self, config):
         self.config = config
-        self.opener = urllib.request.build_opener(NoRedirect())
+        handlers = [NoRedirect()]
+        if config.proxy == "direct":
+            handlers.append(urllib.request.ProxyHandler({}))
+        elif config.proxy != "system":
+            handlers.append(urllib.request.ProxyHandler({"http": config.proxy, "https": config.proxy}))
+        self.opener = urllib.request.build_opener(*handlers)
         self.measurements = Measurements()
+
+    def _headers(self, *, stream=False):
+        config = self.config
+        headers = {"Content-Type": "application/json", "User-Agent": "sprig-agent/0.1.0", **dict(config.headers)}
+        if stream:
+            headers["Accept"] = "text/event-stream"
+        if config.api_key:
+            headers[config.api_key_header] = ("Bearer " if config.api_key_scheme == "bearer" else "") + config.api_key
+        return headers
+
+    def list_models(self):
+        """Explicit metadata request, separate from measured model completions."""
+        request = urllib.request.Request(self.config.base_url + "/models", headers=self._headers())
+        try:
+            with self.opener.open(request, timeout=self.config.request_timeout or self.config.timeout) as response:
+                raw = response.read(MAX_RESPONSE + 1)
+            if len(raw) > MAX_RESPONSE:
+                raise ValueError
+            data = json.loads(raw)
+            if not isinstance(data, dict) or not isinstance(data.get("data"), list):
+                raise ValueError
+            names = set()
+            for item in data["data"]:
+                name = item.get("id") if isinstance(item, dict) else None
+                if not isinstance(name, str) or not name or len(name) > 200 or any(ord(c) < 32 for c in name):
+                    raise ValueError
+                names.add(name)
+            return redact({"models": sorted(names)[:256], "total": len(names), "truncated": len(names) > 256,
+                           "network_contacted": True, "completion_requests": 0}, self.config.secrets)
+        except urllib.error.HTTPError as error:
+            try:
+                failure = http_failure(error.code, error.headers, self.config.secrets)
+            finally:
+                error.close()
+            raise failure from None
+        except (urllib.error.URLError, TimeoutError, OSError, HTTPException):
+            raise ProviderError("model metadata connection failed; no automatic retry") from None
+        except (ValueError, TypeError, RecursionError):
+            raise ProviderError("invalid or oversized model metadata response") from None
 
     def complete(self, messages, tools, on_text=None):
         measurement = RequestMeasurement(self.config.stream)
@@ -138,22 +182,18 @@ class Provider:
         body = request_body(config, messages, tools)
         if len(body) > config.max_context_bytes:
             raise ProviderError("context byte budget exceeded; request was not sent")
-        headers = {"Content-Type": "application/json", "User-Agent": "sprig-agent/0.1.0"}
-        if config.stream:
-            headers["Accept"] = "text/event-stream"
-        if config.api_key:
-            headers["Authorization"] = f"Bearer {config.api_key}"
+        headers = self._headers(stream=config.stream)
         request = urllib.request.Request(config.base_url + "/chat/completions", body, headers)
         measurement.begin(len(body))
         try:
-            with self.opener.open(request, timeout=config.timeout) as response:
+            with self.opener.open(request, timeout=config.request_timeout or config.timeout) as response:
                 status = getattr(response, "status", None)
                 if type(status) is int and 100 <= status <= 599:
                     measurement.status = status
                 reader = MeasuredResponse(response, measurement)
                 if config.stream:
                     from .streaming import complete_stream
-                    return complete_stream(reader, on_text, config.api_key,
+                    return complete_stream(reader, on_text, config.secrets,
                                            on_usage=measurement.observe_usage, on_delta=measurement.text_received)
                 raw = reader.read(MAX_RESPONSE + 1)
             if len(raw) > MAX_RESPONSE:
@@ -167,13 +207,13 @@ class Provider:
             choice = data["choices"][0]
             if choice.get("finish_reason") not in {"stop", "tool_calls"}:
                 raise ProviderError("provider stopped before a complete response")
-            return redact(validate_message(choice["message"]), config.api_key)
+            return redact(validate_message(choice["message"]), config.secrets)
         except urllib.error.HTTPError as exc:
             if type(exc.code) is int and 100 <= exc.code <= 599:
                 measurement.status = exc.code
             # Never echo response bodies: gateways can include request credentials.
             try:
-                failure = http_failure(exc.code, exc.headers, config.api_key)
+                failure = http_failure(exc.code, exc.headers, config.secrets)
             finally:
                 exc.close()
             raise failure from None
@@ -185,6 +225,6 @@ class Provider:
                 hint = "socket timed out; check connectivity or --timeout"
             else:
                 hint = "connection or HTTP response failed; check endpoint, network, or proxy"
-            raise ProviderError(redact(f"provider {hint}; no automatic retry", config.api_key)) from None
+            raise ProviderError(redact(f"provider {hint}; no automatic retry", config.secrets)) from None
         except (KeyError, IndexError, TypeError, ValueError, RecursionError):
             raise ProviderError("invalid Chat Completions response") from None

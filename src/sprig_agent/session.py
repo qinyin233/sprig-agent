@@ -176,7 +176,7 @@ class SessionStore:
     def save(self, name, messages):
         filename = self._filename(name)
         body = json.dumps(redact({"version": 1, "binding": self.config.binding(), "messages": messages},
-                                 self.config.api_key), ensure_ascii=False, indent=2).encode("utf-8")
+                                 self.config.secrets), ensure_ascii=False, indent=2).encode("utf-8")
         if len(body) > MAX_SESSION:
             raise SessionError("session exceeds 8 MiB; no data was overwritten")
         with self._reservation(name):
@@ -216,7 +216,7 @@ class SessionStore:
             raise SessionError("unsupported session format")
         if saved.get("binding") != self.config.binding():
             raise SessionError("session endpoint/model/workdir changed; history will not be sent. Resume with the original settings or start a new session")
-        return redact(validate_history(saved.get("messages")), self.config.api_key)
+        return redact(validate_history(saved.get("messages")), self.config.secrets)
 
     def list(self):
         """List local metadata without loading transcripts into a conversation."""
@@ -273,7 +273,7 @@ class SessionStore:
                 finally:
                     if not owned:
                         self.release(record["name"])
-                records.append(redact(record, self.config.api_key))
+                records.append(redact(record, self.config.secrets))
                 if reason or budget <= 0:
                     reason = "bytes"
                     break

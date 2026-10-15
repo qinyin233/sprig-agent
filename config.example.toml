@@ -1,0 +1,115 @@
+#:schema ./config.schema.json
+# Copy sections into your private ~/.sprig/config.toml; never commit real keys.
+schema_version = 1
+provider = "agnes"
+interface = "tui"
+# profile = "review"
+
+[providers.agnes]
+model = "fast"
+base_url = "https://apihub.agnes-ai.com/v1"
+api_key_env = "AGNES_API_KEY"
+request_timeout = 60
+proxy = "system" # system / direct / http://localhost:7890 (no proxy credentials)
+api_key_header = "Authorization"
+api_key_scheme = "bearer" # raw for services using an alternate auth header
+
+[providers.agnes.models.fast]
+id = "agnes-3.0-flash"
+max_context_bytes = 131072 # serialized request bytes, not a model token limit
+
+[providers.agnes.models.fast.generation]
+max_tokens = 2048
+thinking = false
+# temperature = 0.2
+# top_p = 0.9
+# seed = 42
+# reasoning_effort = "low" # only if your model supports it
+# token_limit_field = "max_completion_tokens" # only if required by your service
+
+[providers.USTC]
+model = "fast"
+base_url = "https://api.llm.ustc.edu.cn/v1"
+api_key_env = "USTC_API_KEY" # name your process environment variable here
+
+[providers.USTC.models.fast]
+id = "deepseek-flash"
+
+[providers.USTC.models.fast.generation]
+max_tokens = 2048
+
+[providers.USTC.models.qwen]
+id = "qwen3.8-chat" # availability depends on your account; use --list-models
+
+# Optional custom headers, values never shown in logs/config reports:
+# [providers.USTC.headers]
+# X-API-Version = "2026-01"
+# [providers.USTC.headers_env]
+# X-Organization = "PROVIDER_ORG_TOKEN"
+
+[generation]
+token_limit_field = "max_tokens"
+# [generation.extra_body]
+# verbosity = "low" # provider-specific JSON, no reserved request fields
+
+[agent]
+max_steps = 20
+timeout = 60 # command timeout; HTTP uses provider.request_timeout if set
+max_output = 16000
+stream = true
+request_usage = false # enable only if the service supports SSE usage chunks
+read_only = false
+inherit_env = false
+max_context_bytes = 131072
+compact_context = false
+project_instructions = true
+checks = [] # arrays of argv; each command still asks for fresh approval
+
+[tools]
+list_files = true
+read_file = true
+search = true
+project_map = true
+edit_file = true
+run = true
+
+[files]
+exclude = ["private/", "*.local.json"] # additive with .sprigignore
+
+[execution]
+env_allowlist = [] # additional named variables; model credentials always removed
+# env = { BUILD_MODE = "debug" } # trusted literal values, no substitutions/commands
+
+[storage]
+auto_save_session = false # opt in to private, unencrypted transcripts
+# session_dir = "~/.local/state/sprig-agent/sessions"
+# change_history_dir = "~/.local/state/sprig-agent/changes" # exact file backups
+
+[tui]
+theme = "nord"
+sidebar = true
+editor_height = 5
+steering_mode = "all" # or one-at-a-time, at safe agent-loop boundaries
+metrics = false
+
+[profiles.review]
+provider = "agnes"
+model = "fast"
+interface = "tui"
+
+[profiles.review.agent]
+read_only = true
+checks = []
+
+[profiles.review.tools]
+edit_file = false
+run = false
+
+[profiles.coding]
+provider = "USTC"
+model = "fast"
+interface = "tui"
+
+[profiles.coding.agent]
+max_steps = 30
+compact_context = true

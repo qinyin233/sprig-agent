@@ -1,11 +1,31 @@
 """Validated runtime configuration and shared safety helpers."""
 
 from dataclasses import dataclass, field
+import json
 import math
 import os
 from pathlib import Path
+import re
 import unicodedata
 from urllib.parse import urlsplit, urlunsplit
+
+TOOL_NAMES = ("list_files", "read_file", "search", "project_map", "edit_file", "run")
+GENERATION_FIELDS = ("max_tokens", "thinking", "temperature", "top_p", "reasoning_effort", "seed", "token_limit_field", "extra_body")
+RESERVED_BODY_FIELDS = {"model", "messages", "tools", "tool_choice", "stream", "stream_options", "n",
+                        "max_tokens", "max_completion_tokens", "temperature", "top_p", "reasoning_effort", "seed",
+                        "prompt", "system", "input", "instructions", "api_key", "headers", "base_url"}
+ENV_NAME = re.compile(r"[A-Za-z_][A-Za-z0-9_]{0,127}")
+HEADER_NAME = re.compile(r"[!#$%&'*+.^_`|~0-9A-Za-z-]{1,64}")
+FORBIDDEN_HEADERS = {"host", "content-length", "content-type", "transfer-encoding", "connection", "upgrade",
+                     "cookie", "set-cookie", "proxy-authorization", "authorization", "accept", "user-agent"}
+
+
+def validate_exclusions(patterns):
+    if (not isinstance(patterns, (list, tuple)) or len(patterns) > 256
+            or any(not isinstance(p, str) or not p or len(p) > 256 or p.startswith(("!", "/"))
+                   or "\\" in p or ".." in p.split("/") or any(ord(c) < 32 for c in p) for p in patterns)):
+        raise ValueError("exclusions accept at most 256 relative patterns; negation is not supported")
+    return tuple(patterns)
 
 
 def environment_api_key(base_url, environ=None):
@@ -26,6 +46,11 @@ def environment_api_key(base_url, environ=None):
 
 def redact(value, secret):
     """Mask the configured key and long trailing prefixes, including truncation."""
+    if isinstance(secret, (list, tuple)):
+        value = redact(value, "")  # Keep request compaction detached even with no secrets.
+        for item in secret:
+            value = redact(value, item)
+        return value
     if isinstance(value, str):
         if not secret:
             return value
@@ -55,7 +80,7 @@ def endpoint(base_url):
     if not isinstance(base_url, str) or any(ord(ch) <= 32 for ch in base_url):
         raise ValueError("base URL contains whitespace or control characters")
     parsed = urlsplit(base_url)
-    if not parsed.hostname or parsed.username or parsed.password or parsed.query or parsed.fragment:
+    if not parsed.hostname or parsed.username is not None or parsed.password is not None or parsed.query or parsed.fragment:
         raise ValueError("base URL must not contain credentials, query, or fragment")
     if parsed.scheme != "https" and not (
         parsed.scheme == "http" and parsed.hostname in {"localhost", "127.0.0.1", "::1"}
@@ -87,6 +112,33 @@ class Config:
     config_path: Path | None = field(default=None, repr=False, compare=False)
     credential_env_vars: tuple = field(default=(), repr=False, compare=False)
     provider_name: str | None = field(default=None, compare=False)
+    profile_name: str | None = field(default=None, compare=False)
+    temperature: float | None = None
+    top_p: float | None = None
+    reasoning_effort: str | None = None
+    seed: int | None = None
+    token_limit_field: str = "max_tokens"
+    extra_body: dict | str = field(default="{}", repr=False)
+    request_timeout: float | None = None
+    proxy: str = "system"
+    api_key_header: str = "Authorization"
+    api_key_scheme: str = "bearer"
+    headers: tuple = field(default=(), repr=False)
+    secret_values: tuple = field(default=(), repr=False, compare=False)
+    disabled_tools: tuple = ()
+    excluded_paths: tuple = ()
+    config_paths: tuple = field(default=(), repr=False, compare=False)
+    env_allowlist: tuple = ()
+    command_env: tuple = field(default=(), repr=False)
+    session_dir: Path | None = None
+    change_history_dir: Path | None = None
+    auto_save_session: bool = False
+    tui_theme: str | None = None
+    tui_sidebar: bool = True
+    tui_editor_height: int = 5
+    steering_mode: str = "all"
+    show_metrics: bool = False
+    model_catalog: tuple = field(default=(), repr=False, compare=False)
 
     def __post_init__(self):
         root = Path(self.workdir).expanduser().resolve(strict=True)
@@ -133,14 +185,126 @@ class Config:
                 raise ValueError("each acceptance check must be a nonempty argv array")
             if self.api_key and any(self.api_key in arg for arg in argv):
                 raise ValueError("configured API key must not appear in acceptance arguments")
+        for name, low, high in (("temperature", 0, 2), ("top_p", 0, 1)):
+            value = getattr(self, name)
+            if value is not None and (type(value) not in (int, float) or not math.isfinite(value) or not low <= value <= high):
+                raise ValueError(name + " is outside the supported finite range")
+        if self.reasoning_effort is not None and (not isinstance(self.reasoning_effort, str) or self.reasoning_effort not in {"none", "minimal", "low", "medium", "high", "xhigh", "max"}):
+            raise ValueError("invalid reasoning-effort")
+        if self.seed is not None and (type(self.seed) is not int or not 0 <= self.seed <= 2147483647):
+            raise ValueError("seed must be an integer between 0 and 2147483647")
+        if not isinstance(self.token_limit_field, str) or self.token_limit_field not in {"max_tokens", "max_completion_tokens"}:
+            raise ValueError("token-limit-field must be max_tokens or max_completion_tokens")
+        try:
+            extra = json.loads(self.extra_body) if isinstance(self.extra_body, str) else self.extra_body
+            if not isinstance(extra, dict) or set(extra) & RESERVED_BODY_FIELDS or len(extra) > 32:
+                raise ValueError
+            if self.thinking and "chat_template_kwargs" in extra:
+                raise ValueError
+            pending = [(extra, 0)]
+            while pending:
+                value, depth = pending.pop()
+                if depth > 12:
+                    raise ValueError
+                if isinstance(value, (dict, list)):
+                    if isinstance(value, dict) and any(not isinstance(key, str) for key in value):
+                        raise ValueError
+                    pending.extend((item, depth + 1) for item in (value.values() if isinstance(value, dict) else value))
+            encoded = json.dumps(extra, sort_keys=True, allow_nan=False, separators=(",", ":"))
+            if len(encoded.encode("utf-8")) > 16384:
+                raise ValueError
+        except (ValueError, TypeError, RecursionError):
+            raise ValueError("extra-body must be a bounded JSON object without reserved request fields") from None
+        object.__setattr__(self, "extra_body", encoded)
+        if self.request_timeout is not None and (type(self.request_timeout) not in (int, float)
+                or not math.isfinite(self.request_timeout) or not 0 < self.request_timeout <= 120):
+            raise ValueError("request-timeout must be greater than 0 and at most 120 seconds")
+        if not isinstance(self.proxy, str):
+            raise ValueError("proxy must be a string")
+        if self.proxy not in {"system", "direct"}:
+            try:
+                parsed = urlsplit(self.proxy)
+                if (parsed.scheme not in {"http", "https"} or not parsed.hostname or parsed.username is not None or parsed.password is not None
+                        or parsed.path not in {"", "/"} or parsed.query or parsed.fragment or any(ord(c) <= 32 for c in self.proxy)):
+                    raise ValueError
+                parsed.port
+            except (ValueError, TypeError):
+                raise ValueError("proxy must be system, direct, or an HTTP(S) proxy URL without credentials") from None
+        if not isinstance(self.api_key_header, str) or not HEADER_NAME.fullmatch(self.api_key_header) or self.api_key_header.lower() in FORBIDDEN_HEADERS - {"authorization"}:
+            raise ValueError("invalid API key header")
+        if not isinstance(self.api_key_scheme, str) or self.api_key_scheme not in {"bearer", "raw"}:
+            raise ValueError("API key scheme must be bearer or raw")
+        seen = {self.api_key_header.lower()}
+        if not isinstance(self.headers, tuple) or len(self.headers) > 16:
+            raise ValueError("at most 16 custom headers are supported")
+        for pair in self.headers:
+            if not isinstance(pair, tuple) or len(pair) != 2:
+                raise ValueError("headers must contain name/value pairs")
+            name, value = pair
+            if (not isinstance(name, str) or not HEADER_NAME.fullmatch(name) or name.lower() in FORBIDDEN_HEADERS | seen
+                    or not isinstance(value, str) or not value or len(value) > 4096
+                    or any(ord(c) < 32 or ord(c) > 255 for c in value)):
+                raise ValueError("invalid, reserved or duplicated HTTP header")
+            seen.add(name.lower())
+        if (not isinstance(self.disabled_tools, tuple) or any(name not in TOOL_NAMES for name in self.disabled_tools)
+                or len(set(self.disabled_tools)) != len(self.disabled_tools)):
+            raise ValueError("disabled-tools contains unknown or duplicate tool names")
+        if "run" in self.disabled_tools and self.checks:
+            raise ValueError("disabled run tool cannot execute acceptance checks")
+        object.__setattr__(self, "excluded_paths", validate_exclusions(self.excluded_paths))
+        for values in (self.env_allowlist, self.credential_env_vars):
+            if not isinstance(values, tuple) or len(values) > 128 or any(not isinstance(name, str) or not ENV_NAME.fullmatch(name) for name in values):
+                raise ValueError("environment variable names must be bounded identifiers")
+        if not isinstance(self.secret_values, tuple) or len(self.secret_values) > 128 or any(not isinstance(value, str) or len(value) > 4096 for value in self.secret_values):
+            raise ValueError("invalid credential redaction values")
+        if not isinstance(self.command_env, tuple) or len(self.command_env) > 32:
+            raise ValueError("at most 32 command environment overrides are supported")
+        protected = {"SPRIG_API_KEY", "OPENAI_API_KEY", "AGNES_API_KEY", *(name.upper() for name in self.credential_env_vars)}
+        for pair in self.command_env:
+            if not isinstance(pair, tuple) or len(pair) != 2:
+                raise ValueError("command environment must contain name/value pairs")
+            name, value = pair
+            if (not isinstance(name, str) or not ENV_NAME.fullmatch(name) or name.upper() in protected
+                    or not isinstance(value, str) or "\0" in value or len(value) > 8192
+                    or any(secret and secret in value for secret in self.credential_secrets)):
+                raise ValueError("invalid command environment or attempted model credential inheritance")
+        if any(secret in arg for argv in self.checks for arg in argv for secret in self.credential_secrets):
+            raise ValueError("configured credentials must not appear in acceptance arguments")
+        if self.tui_theme is not None and (not isinstance(self.tui_theme, str) or self.tui_theme not in {"textual-dark", "textual-light", "nord", "gruvbox", "dracula", "monokai", "tokyo-night", "solarized-dark", "solarized-light"}):
+            raise ValueError("unsupported TUI theme")
+        if type(self.tui_editor_height) is not int or not 3 <= self.tui_editor_height <= 12:
+            raise ValueError("TUI editor height must be between 3 and 12")
+        if not isinstance(self.steering_mode, str) or self.steering_mode not in {"all", "one-at-a-time"}:
+            raise ValueError("steering-mode must be all or one-at-a-time")
+        if any(type(value) is not bool for value in (self.tui_sidebar, self.auto_save_session, self.show_metrics)):
+            raise ValueError("sidebar, auto-save-session and metrics must be booleans")
+        for name in ("session_dir", "change_history_dir"):
+            value = getattr(self, name)
+            if value is not None:
+                if not isinstance(value, (str, os.PathLike)) or len(str(value)) > 4096 or "\0" in str(value):
+                    raise ValueError("storage directories must be paths")
+                object.__setattr__(self, name, Path(value).expanduser().absolute())
+
+    @property
+    def credential_secrets(self):
+        return tuple(dict.fromkeys(value for value in (self.api_key, *self.secret_values, *(value for _, value in self.headers)) if value))
+
+    @property
+    def secrets(self):
+        return (*self.credential_secrets, *(value for _, value in self.command_env if len(value) >= 8))
 
     def generation_options(self):
         """Only explicitly selected options; defaults leave the wire unchanged."""
-        options = {}
+        options = {} if self.extra_body == "{}" else json.loads(self.extra_body)
         if self.max_tokens is not None:
-            options["max_tokens"] = self.max_tokens
+            options[self.token_limit_field] = self.max_tokens
         if self.thinking:
+            if "chat_template_kwargs" in options:
+                raise ValueError("thinking and extra-body.chat_template_kwargs cannot both be configured")
             options["chat_template_kwargs"] = {"enable_thinking": True}
+        for name in ("temperature", "top_p", "reasoning_effort", "seed"):
+            if getattr(self, name) is not None:
+                options[name] = getattr(self, name)
         return options
 
     def binding(self):
@@ -157,4 +321,20 @@ class Config:
             binding["max_tokens"] = self.max_tokens
         if self.thinking:
             binding["thinking"] = True
+        for name in ("temperature", "top_p", "reasoning_effort", "seed"):
+            if getattr(self, name) is not None:
+                binding[name] = getattr(self, name)
+        if self.extra_body != "{}":
+            binding["extra_body"] = json.loads(self.extra_body)
+        if self.token_limit_field != "max_tokens":
+            binding["token_limit_field"] = self.token_limit_field
+        for name in ("disabled_tools", "excluded_paths", "env_allowlist"):
+            if getattr(self, name):
+                binding[name] = list(getattr(self, name))
+        if self.command_env:
+            binding["command_env_names"] = sorted(name for name, _ in self.command_env)
+        if self.headers:
+            binding["header_names"] = sorted(name.lower() for name, _ in self.headers)
+        if self.api_key_header != "Authorization" or self.api_key_scheme != "bearer":
+            binding["authentication"] = {"header": self.api_key_header, "scheme": self.api_key_scheme}
         return binding

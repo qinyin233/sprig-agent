@@ -1,0 +1,892 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Sprig user configuration",
+  "description": "Private TOML, schema version 1. Cross-field, endpoint, path and permission restrictions are additionally checked at runtime.",
+  "type": "object",
+  "properties": {
+    "agent": {
+      "type": "object",
+      "properties": {
+        "max_steps": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 100
+        },
+        "timeout": {
+          "type": "number",
+          "exclusiveMinimum": 0,
+          "maximum": 120
+        },
+        "max_output": {
+          "type": "integer",
+          "minimum": 256,
+          "maximum": 1000000
+        },
+        "max_context_bytes": {
+          "type": "integer",
+          "minimum": 4096,
+          "maximum": 2097152
+        },
+        "max_tokens": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 65536
+        },
+        "checks": {
+          "type": "array",
+          "maxItems": 16,
+          "items": {
+            "type": "array",
+            "minItems": 1,
+            "maxItems": 256,
+            "items": {
+              "type": "string"
+            }
+          }
+        },
+        "stream": {
+          "type": "boolean"
+        },
+        "thinking": {
+          "type": "boolean"
+        },
+        "read_only": {
+          "type": "boolean"
+        },
+        "inherit_env": {
+          "type": "boolean"
+        },
+        "compact_context": {
+          "type": "boolean"
+        },
+        "request_usage": {
+          "type": "boolean"
+        },
+        "project_instructions": {
+          "type": "boolean"
+        }
+      },
+      "additionalProperties": false
+    },
+    "generation": {
+      "type": "object",
+      "properties": {
+        "max_tokens": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 65536
+        },
+        "thinking": {
+          "type": "boolean"
+        },
+        "temperature": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 2
+        },
+        "top_p": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        },
+        "seed": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 2147483647
+        },
+        "reasoning_effort": {
+          "enum": [
+            "none",
+            "minimal",
+            "low",
+            "medium",
+            "high",
+            "xhigh",
+            "max"
+          ]
+        },
+        "token_limit_field": {
+          "enum": [
+            "max_tokens",
+            "max_completion_tokens"
+          ]
+        },
+        "extra_body": {
+          "type": "object",
+          "maxProperties": 32,
+          "propertyNames": {
+            "not": {
+              "enum": [
+                "api_key",
+                "base_url",
+                "headers",
+                "input",
+                "instructions",
+                "max_completion_tokens",
+                "max_tokens",
+                "messages",
+                "model",
+                "n",
+                "prompt",
+                "reasoning_effort",
+                "seed",
+                "stream",
+                "stream_options",
+                "system",
+                "temperature",
+                "tool_choice",
+                "tools",
+                "top_p"
+              ]
+            }
+          },
+          "description": "Provider-specific JSON fields; <=16 KiB, depth <=12. Reserved request/security fields are rejected."
+        }
+      },
+      "additionalProperties": false
+    },
+    "tools": {
+      "type": "object",
+      "properties": {
+        "list_files": {
+          "type": "boolean"
+        },
+        "read_file": {
+          "type": "boolean"
+        },
+        "search": {
+          "type": "boolean"
+        },
+        "project_map": {
+          "type": "boolean"
+        },
+        "edit_file": {
+          "type": "boolean"
+        },
+        "run": {
+          "type": "boolean"
+        }
+      },
+      "additionalProperties": false
+    },
+    "files": {
+      "type": "object",
+      "properties": {
+        "exclude": {
+          "type": "array",
+          "maxItems": 256,
+          "items": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 256,
+            "pattern": "^[^\\x00-\\x1f]+$"
+          },
+          "description": "Relative POSIX glob patterns; no !, .. components, backslashes or absolute paths. Adds to .sprigignore."
+        }
+      },
+      "additionalProperties": false
+    },
+    "execution": {
+      "type": "object",
+      "properties": {
+        "inherit_env": {
+          "type": "boolean"
+        },
+        "timeout": {
+          "type": "number",
+          "exclusiveMinimum": 0,
+          "maximum": 120
+        },
+        "max_output": {
+          "type": "integer",
+          "minimum": 256,
+          "maximum": 1000000
+        },
+        "env_allowlist": {
+          "type": "array",
+          "maxItems": 128,
+          "items": {
+            "type": "string",
+            "pattern": "^[A-Za-z_][A-Za-z0-9_]{0,127}$"
+          }
+        },
+        "env": {
+          "type": "object",
+          "maxProperties": 32,
+          "propertyNames": {
+            "type": "string",
+            "pattern": "^[A-Za-z_][A-Za-z0-9_]{0,127}$"
+          },
+          "additionalProperties": {
+            "type": "string",
+            "maxLength": 8192
+          }
+        }
+      },
+      "additionalProperties": false
+    },
+    "storage": {
+      "type": "object",
+      "properties": {
+        "session_dir": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 4096,
+          "pattern": "^[^\\x00-\\x1f]+$"
+        },
+        "change_history_dir": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 4096,
+          "pattern": "^[^\\x00-\\x1f]+$"
+        },
+        "auto_save_session": {
+          "type": "boolean"
+        }
+      },
+      "additionalProperties": false
+    },
+    "tui": {
+      "type": "object",
+      "properties": {
+        "theme": {
+          "enum": [
+            "textual-dark",
+            "textual-light",
+            "nord",
+            "gruvbox",
+            "dracula",
+            "monokai",
+            "tokyo-night",
+            "solarized-dark",
+            "solarized-light"
+          ]
+        },
+        "sidebar": {
+          "type": "boolean"
+        },
+        "editor_height": {
+          "type": "integer",
+          "minimum": 3,
+          "maximum": 12
+        },
+        "steering_mode": {
+          "enum": [
+            "all",
+            "one-at-a-time"
+          ]
+        },
+        "metrics": {
+          "type": "boolean"
+        }
+      },
+      "additionalProperties": false
+    },
+    "schema_version": {
+      "const": 1
+    },
+    "provider": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 4096,
+      "pattern": "^[^\\x00-\\x1f]+$"
+    },
+    "profile": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 4096,
+      "pattern": "^[^\\x00-\\x1f]+$"
+    },
+    "interface": {
+      "enum": [
+        "cli",
+        "chat",
+        "tui"
+      ]
+    },
+    "providers": {
+      "type": "object",
+      "maxProperties": 32,
+      "propertyNames": {
+        "pattern": "^[A-Za-z0-9_-]{1,64}$"
+      },
+      "additionalProperties": {
+        "type": "object",
+        "properties": {
+          "model": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200,
+            "pattern": "^[^\\x00-\\x1f]+$"
+          },
+          "base_url": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 4096,
+            "pattern": "^[^\\x00-\\x1f]+$"
+          },
+          "api_key": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 4096,
+            "pattern": "^[^\\x00-\\x1f]+$",
+            "writeOnly": true
+          },
+          "api_key_env": {
+            "type": "string",
+            "pattern": "^[A-Za-z_][A-Za-z0-9_]{0,127}$"
+          },
+          "request_timeout": {
+            "type": "number",
+            "exclusiveMinimum": 0,
+            "maximum": 120
+          },
+          "proxy": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 4096,
+            "pattern": "^[^\\x00-\\x1f]+$",
+            "description": "system, direct, or an HTTP(S) proxy URL without credentials."
+          },
+          "api_key_header": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 4096,
+            "pattern": "^[^\\x00-\\x1f]+$"
+          },
+          "api_key_scheme": {
+            "enum": [
+              "bearer",
+              "raw"
+            ]
+          },
+          "headers": {
+            "type": "object",
+            "maxProperties": 16,
+            "propertyNames": {
+              "type": "string",
+              "pattern": "^[!#$%&'*+.^_`|~0-9A-Za-z-]{1,64}$"
+            },
+            "additionalProperties": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 4096,
+              "pattern": "^[^\\x00-\\x1f]+$"
+            }
+          },
+          "headers_env": {
+            "type": "object",
+            "maxProperties": 16,
+            "propertyNames": {
+              "type": "string",
+              "pattern": "^[!#$%&'*+.^_`|~0-9A-Za-z-]{1,64}$"
+            },
+            "additionalProperties": {
+              "type": "string",
+              "pattern": "^[A-Za-z_][A-Za-z0-9_]{0,127}$"
+            }
+          },
+          "generation": {
+            "type": "object",
+            "properties": {
+              "max_tokens": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 65536
+              },
+              "thinking": {
+                "type": "boolean"
+              },
+              "temperature": {
+                "type": "number",
+                "minimum": 0,
+                "maximum": 2
+              },
+              "top_p": {
+                "type": "number",
+                "minimum": 0,
+                "maximum": 1
+              },
+              "seed": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 2147483647
+              },
+              "reasoning_effort": {
+                "enum": [
+                  "none",
+                  "minimal",
+                  "low",
+                  "medium",
+                  "high",
+                  "xhigh",
+                  "max"
+                ]
+              },
+              "token_limit_field": {
+                "enum": [
+                  "max_tokens",
+                  "max_completion_tokens"
+                ]
+              },
+              "extra_body": {
+                "type": "object",
+                "maxProperties": 32,
+                "propertyNames": {
+                  "not": {
+                    "enum": [
+                      "api_key",
+                      "base_url",
+                      "headers",
+                      "input",
+                      "instructions",
+                      "max_completion_tokens",
+                      "max_tokens",
+                      "messages",
+                      "model",
+                      "n",
+                      "prompt",
+                      "reasoning_effort",
+                      "seed",
+                      "stream",
+                      "stream_options",
+                      "system",
+                      "temperature",
+                      "tool_choice",
+                      "tools",
+                      "top_p"
+                    ]
+                  }
+                },
+                "description": "Provider-specific JSON fields; <=16 KiB, depth <=12. Reserved request/security fields are rejected."
+              }
+            },
+            "additionalProperties": false
+          },
+          "models": {
+            "type": "object",
+            "maxProperties": 64,
+            "propertyNames": {
+              "pattern": "^[A-Za-z0-9_-]{1,64}$"
+            },
+            "additionalProperties": {
+              "type": "object",
+              "properties": {
+                "id": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 200,
+                  "pattern": "^[^\\x00-\\x1f]+$"
+                },
+                "generation": {
+                  "type": "object",
+                  "properties": {
+                    "max_tokens": {
+                      "type": "integer",
+                      "minimum": 1,
+                      "maximum": 65536
+                    },
+                    "thinking": {
+                      "type": "boolean"
+                    },
+                    "temperature": {
+                      "type": "number",
+                      "minimum": 0,
+                      "maximum": 2
+                    },
+                    "top_p": {
+                      "type": "number",
+                      "minimum": 0,
+                      "maximum": 1
+                    },
+                    "seed": {
+                      "type": "integer",
+                      "minimum": 0,
+                      "maximum": 2147483647
+                    },
+                    "reasoning_effort": {
+                      "enum": [
+                        "none",
+                        "minimal",
+                        "low",
+                        "medium",
+                        "high",
+                        "xhigh",
+                        "max"
+                      ]
+                    },
+                    "token_limit_field": {
+                      "enum": [
+                        "max_tokens",
+                        "max_completion_tokens"
+                      ]
+                    },
+                    "extra_body": {
+                      "type": "object",
+                      "maxProperties": 32,
+                      "propertyNames": {
+                        "not": {
+                          "enum": [
+                            "api_key",
+                            "base_url",
+                            "headers",
+                            "input",
+                            "instructions",
+                            "max_completion_tokens",
+                            "max_tokens",
+                            "messages",
+                            "model",
+                            "n",
+                            "prompt",
+                            "reasoning_effort",
+                            "seed",
+                            "stream",
+                            "stream_options",
+                            "system",
+                            "temperature",
+                            "tool_choice",
+                            "tools",
+                            "top_p"
+                          ]
+                        }
+                      },
+                      "description": "Provider-specific JSON fields; <=16 KiB, depth <=12. Reserved request/security fields are rejected."
+                    }
+                  },
+                  "additionalProperties": false
+                },
+                "max_context_bytes": {
+                  "type": "integer",
+                  "minimum": 4096,
+                  "maximum": 2097152
+                }
+              },
+              "additionalProperties": false,
+              "required": [
+                "id"
+              ]
+            }
+          }
+        },
+        "additionalProperties": false,
+        "not": {
+          "required": [
+            "api_key",
+            "api_key_env"
+          ]
+        }
+      }
+    },
+    "profiles": {
+      "type": "object",
+      "maxProperties": 32,
+      "propertyNames": {
+        "pattern": "^[A-Za-z0-9_-]{1,64}$"
+      },
+      "additionalProperties": {
+        "type": "object",
+        "properties": {
+          "agent": {
+            "type": "object",
+            "properties": {
+              "max_steps": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 100
+              },
+              "timeout": {
+                "type": "number",
+                "exclusiveMinimum": 0,
+                "maximum": 120
+              },
+              "max_output": {
+                "type": "integer",
+                "minimum": 256,
+                "maximum": 1000000
+              },
+              "max_context_bytes": {
+                "type": "integer",
+                "minimum": 4096,
+                "maximum": 2097152
+              },
+              "max_tokens": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 65536
+              },
+              "checks": {
+                "type": "array",
+                "maxItems": 16,
+                "items": {
+                  "type": "array",
+                  "minItems": 1,
+                  "maxItems": 256,
+                  "items": {
+                    "type": "string"
+                  }
+                }
+              },
+              "stream": {
+                "type": "boolean"
+              },
+              "thinking": {
+                "type": "boolean"
+              },
+              "read_only": {
+                "type": "boolean"
+              },
+              "inherit_env": {
+                "type": "boolean"
+              },
+              "compact_context": {
+                "type": "boolean"
+              },
+              "request_usage": {
+                "type": "boolean"
+              },
+              "project_instructions": {
+                "type": "boolean"
+              }
+            },
+            "additionalProperties": false
+          },
+          "generation": {
+            "type": "object",
+            "properties": {
+              "max_tokens": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 65536
+              },
+              "thinking": {
+                "type": "boolean"
+              },
+              "temperature": {
+                "type": "number",
+                "minimum": 0,
+                "maximum": 2
+              },
+              "top_p": {
+                "type": "number",
+                "minimum": 0,
+                "maximum": 1
+              },
+              "seed": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 2147483647
+              },
+              "reasoning_effort": {
+                "enum": [
+                  "none",
+                  "minimal",
+                  "low",
+                  "medium",
+                  "high",
+                  "xhigh",
+                  "max"
+                ]
+              },
+              "token_limit_field": {
+                "enum": [
+                  "max_tokens",
+                  "max_completion_tokens"
+                ]
+              },
+              "extra_body": {
+                "type": "object",
+                "maxProperties": 32,
+                "propertyNames": {
+                  "not": {
+                    "enum": [
+                      "api_key",
+                      "base_url",
+                      "headers",
+                      "input",
+                      "instructions",
+                      "max_completion_tokens",
+                      "max_tokens",
+                      "messages",
+                      "model",
+                      "n",
+                      "prompt",
+                      "reasoning_effort",
+                      "seed",
+                      "stream",
+                      "stream_options",
+                      "system",
+                      "temperature",
+                      "tool_choice",
+                      "tools",
+                      "top_p"
+                    ]
+                  }
+                },
+                "description": "Provider-specific JSON fields; <=16 KiB, depth <=12. Reserved request/security fields are rejected."
+              }
+            },
+            "additionalProperties": false
+          },
+          "tools": {
+            "type": "object",
+            "properties": {
+              "list_files": {
+                "type": "boolean"
+              },
+              "read_file": {
+                "type": "boolean"
+              },
+              "search": {
+                "type": "boolean"
+              },
+              "project_map": {
+                "type": "boolean"
+              },
+              "edit_file": {
+                "type": "boolean"
+              },
+              "run": {
+                "type": "boolean"
+              }
+            },
+            "additionalProperties": false
+          },
+          "files": {
+            "type": "object",
+            "properties": {
+              "exclude": {
+                "type": "array",
+                "maxItems": 256,
+                "items": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 256,
+                  "pattern": "^[^\\x00-\\x1f]+$"
+                },
+                "description": "Relative POSIX glob patterns; no !, .. components, backslashes or absolute paths. Adds to .sprigignore."
+              }
+            },
+            "additionalProperties": false
+          },
+          "execution": {
+            "type": "object",
+            "properties": {
+              "inherit_env": {
+                "type": "boolean"
+              },
+              "timeout": {
+                "type": "number",
+                "exclusiveMinimum": 0,
+                "maximum": 120
+              },
+              "max_output": {
+                "type": "integer",
+                "minimum": 256,
+                "maximum": 1000000
+              },
+              "env_allowlist": {
+                "type": "array",
+                "maxItems": 128,
+                "items": {
+                  "type": "string",
+                  "pattern": "^[A-Za-z_][A-Za-z0-9_]{0,127}$"
+                }
+              },
+              "env": {
+                "type": "object",
+                "maxProperties": 32,
+                "propertyNames": {
+                  "type": "string",
+                  "pattern": "^[A-Za-z_][A-Za-z0-9_]{0,127}$"
+                },
+                "additionalProperties": {
+                  "type": "string",
+                  "maxLength": 8192
+                }
+              }
+            },
+            "additionalProperties": false
+          },
+          "storage": {
+            "type": "object",
+            "properties": {
+              "session_dir": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 4096,
+                "pattern": "^[^\\x00-\\x1f]+$"
+              },
+              "change_history_dir": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 4096,
+                "pattern": "^[^\\x00-\\x1f]+$"
+              },
+              "auto_save_session": {
+                "type": "boolean"
+              }
+            },
+            "additionalProperties": false
+          },
+          "tui": {
+            "type": "object",
+            "properties": {
+              "theme": {
+                "enum": [
+                  "textual-dark",
+                  "textual-light",
+                  "nord",
+                  "gruvbox",
+                  "dracula",
+                  "monokai",
+                  "tokyo-night",
+                  "solarized-dark",
+                  "solarized-light"
+                ]
+              },
+              "sidebar": {
+                "type": "boolean"
+              },
+              "editor_height": {
+                "type": "integer",
+                "minimum": 3,
+                "maximum": 12
+              },
+              "steering_mode": {
+                "enum": [
+                  "all",
+                  "one-at-a-time"
+                ]
+              },
+              "metrics": {
+                "type": "boolean"
+              }
+            },
+            "additionalProperties": false
+          },
+          "provider": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 4096,
+            "pattern": "^[^\\x00-\\x1f]+$"
+          },
+          "model": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200,
+            "pattern": "^[^\\x00-\\x1f]+$"
+          },
+          "interface": {
+            "enum": [
+              "cli",
+              "chat",
+              "tui"
+            ]
+          }
+        },
+        "additionalProperties": false
+      }
+    }
+  },
+  "additionalProperties": false
+}

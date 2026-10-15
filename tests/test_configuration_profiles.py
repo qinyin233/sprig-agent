@@ -1,0 +1,373 @@
+"""Configuration controls exercised through HTTP, file tools and real subprocesses."""
+
+from contextlib import contextmanager
+from dataclasses import replace
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+import io
+import json
+import os
+from pathlib import Path
+import sys
+import threading
+import unittest
+from unittest.mock import Mock, patch
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
+from sprig_agent.agent import Agent
+from sprig_agent.config import Config, redact
+from sprig_agent.configuration_schema import configuration_schema
+from sprig_agent.context import request_body
+from sprig_agent.policy import command_environment
+from sprig_agent.provider import Provider, ProviderError
+from sprig_agent.session import SessionError, SessionStore
+from sprig_agent.settings import Settings, load_settings, public_config
+from sprig_agent.streaming import TextOutput
+from sprig_agent.tools import ToolError, Tools
+from tests import test_settings as settings_fixtures
+
+
+@contextmanager
+def backend(reply, captured, status=200):
+    class Handler(BaseHTTPRequestHandler):
+        def handle_request(self):
+            body = self.rfile.read(int(self.headers.get("Content-Length", 0)))
+            captured.append((self.command, self.path, dict(self.headers), json.loads(body) if body else None))
+            raw = json.dumps(reply).encode()
+            self.send_response(status)
+            self.send_header("Content-Length", str(len(raw)))
+            self.end_headers()
+            self.wfile.write(raw)
+
+        do_GET = do_POST = handle_request
+
+        def log_message(self, *args):
+            pass
+
+    server = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    try:
+        yield f"http://127.0.0.1:{server.server_port}/v1"
+    finally:
+        server.shutdown()
+        server.server_close()
+        thread.join(5)
+
+
+class ConfigurationProfilesTests(unittest.TestCase):
+    setUp = settings_fixtures.SettingsTests.setUp
+    write = settings_fixtures.SettingsTests.write
+    resolve = settings_fixtures.SettingsTests.resolve
+    invoke = settings_fixtures.SettingsTests.invoke
+
+    def test_profile_alias_generation_precedence_and_raw_id_selection(self):
+        self.write('''provider="x"
+profile="review"
+[generation]
+temperature=0.9
+top_p=0.8
+[providers.x]
+model="fast"
+[providers.x.generation]
+temperature=0.7
+[providers.x.models.fast]
+id="raw-fast-model"
+max_context_bytes=16384
+[providers.x.models.fast.generation]
+temperature=0.5
+seed=7
+max_tokens=1000
+[profiles.review]
+provider="x"
+model="fast"
+interface="chat"
+[profiles.review.agent]
+read_only=true
+[profiles.review.generation]
+temperature=0.3
+[profiles.review.tools]
+search=false
+''')
+        settings = load_settings(self.path)
+        config, details = self.resolve(settings, temperature=0.1)
+        self.assertEqual(config.model, "raw-fast-model")
+        self.assertEqual(config.generation_options(), {"temperature": 0.1, "top_p": 0.8, "seed": 7, "max_tokens": 1000})
+        self.assertEqual(config.max_context_bytes, 16384)
+        self.assertTrue(config.read_only)
+        self.assertIn("search", config.disabled_tools)
+        self.assertEqual(details["interface"], "chat")
+        with patch.dict(os.environ, {"SPRIG_MODEL": "raw-fast-model"}):
+            self.assertEqual(self.resolve(settings)[0].seed, 7)
+        self.assertEqual(self.resolve(settings, model="unlisted-model")[0].model, "unlisted-model")
+        with self.assertRaisesRegex(ValueError, "profile.*not defined"):
+            self.resolve(settings, profile="missing")
+
+    def test_project_tightens_policy_keeps_both_files_private_and_never_routes_credentials(self):
+        self.write('''provider="x"
+[providers.x]
+model="fixture"
+api_key="fixture-key-never-a-real-credential"
+[agent]
+read_only=true
+[tools]
+run=false
+[files]
+exclude=["user-private/"]
+''')
+        project = self.write('''[generation]
+temperature=0.2
+[tools]
+edit_file=false
+[files]
+exclude=["project-private/"]
+''', self.root / "project.toml")
+        config, _ = self.resolve(load_settings(self.path).with_project(project))
+        self.assertEqual(config.excluded_paths, ("user-private/", "project-private/"))
+        tools = Tools(config, lambda _: self.fail("excluded paths must fail before approval"))
+        self.addCleanup(tools.close)
+        self.assertIn("error", tools.execute("read_file", {"path": "project.toml"}))
+        for index, text in enumerate(('[providers.bad]\napi_key="x"', '[execution]\nenv={X="x"}',
+                                      '[storage]\nauto_save_session=true', '[agent]\ninherit_env=true',
+                                      '[agent]\nread_only=false', '[tools]\nrun=true')):
+            path = self.write(text, self.root / f"invalid-project-{index}.toml")
+            with self.subTest(text=text), self.assertRaises(ValueError):
+                self.resolve(load_settings(self.path).with_project(path))
+
+    def test_actual_http_uses_custom_auth_and_headers_and_does_not_leak_other_provider_key(self):
+        calls = []
+        reply = {"choices": [{"finish_reason": "stop", "message": {"role": "assistant", "content": "fixture-header-secret fixture-key-never-a-real-credential"}}]}
+        with backend(reply, calls) as url:
+            self.write('''provider="x"
+[providers.x]
+model="fixture"
+base_url="''' + url + '''"
+api_key_env="MODEL_KEY"
+api_key_header="X-Api-Key"
+api_key_scheme="raw"
+proxy="direct"
+request_timeout=2
+[providers.x.headers_env]
+X-Tenant="TENANT_KEY"
+[providers.x.headers]
+X-Version="2026-01"
+[providers.other]
+api_key="fixture-key-never-a-real-credential"
+[generation]
+max_tokens=123
+token_limit_field="max_completion_tokens"
+temperature=0.25
+top_p=0.8
+reasoning_effort="low"
+seed=42
+[generation.extra_body]
+verbosity="low"
+''')
+            with patch.dict(os.environ, {"MODEL_KEY": "fixture-auth-secret", "TENANT_KEY": "fixture-header-secret"}):
+                config, details = self.resolve(load_settings(self.path))
+            provider = Provider(config)
+            result = provider.complete([{ "role": "user", "content": self.secret}], [])
+        self.assertEqual(calls[0][:2], ("POST", "/v1/chat/completions"))
+        headers, payload = calls[0][2:]
+        headers = {name.lower(): value for name, value in headers.items()}
+        self.assertEqual(headers["x-api-key"], "fixture-auth-secret")
+        self.assertEqual(headers["x-tenant"], "fixture-header-secret")
+        self.assertNotIn("authorization", headers)
+        self.assertNotIn("max_tokens", payload)
+        self.assertEqual(payload["max_completion_tokens"], 123)
+        self.assertEqual(payload["temperature"], 0.25)
+        self.assertEqual(payload["top_p"], 0.8)
+        self.assertEqual(payload["seed"], 42)
+        self.assertEqual(payload["reasoning_effort"], "low")
+        self.assertEqual(payload["verbosity"], "low")
+        for secret in config.credential_secrets:
+            self.assertNotIn(secret, json.dumps(payload) + json.dumps(result) + json.dumps(public_config(config, details)) + repr(config))
+
+    def test_live_model_listing_is_get_only_bounded_and_not_a_completion(self):
+        calls = []
+        with backend({"data": [{"id": "b"}, {"id": "a"}, {"id": "a"}]}, calls) as url:
+            provider = Provider(Config(self.root, "fixture", base_url=url, proxy="direct"))
+            self.assertEqual(provider.list_models()["models"], ["a", "b"])
+            self.assertEqual(provider.measurements.report()["attempts"], 0)
+        self.assertEqual(calls[0][:2], ("GET", "/v1/models"))
+        self.assertIsNone(calls[0][3])
+        for value in ({"data": [{"id": "bad\nname"}]}, {"data": ["bad"]}, {"models": []}):
+            with backend(value, []) as url:
+                with self.assertRaises(ProviderError):
+                    Provider(Config(self.root, "fixture", base_url=url, proxy="direct")).list_models()
+
+    def test_local_catalog_and_schema_need_no_credential_or_network(self):
+        self.write('provider="x"\n[providers.x]\napi_key_env="UNSET_KEY"\n[providers.x.models.fast]\nid="raw-model"\n')
+        with patch("sprig_agent.cli.Provider") as provider:
+            code, output, _ = self.invoke(["--config", str(self.path), "--models"])
+            self.assertEqual(code, 0)
+            self.assertEqual(json.loads(output)["models"][0]["id"], "raw-model")
+            self.assertFalse(json.loads(output)["network_contacted"])
+            code, output, _ = self.invoke(["--config", "does-not-exist", "--config-schema"])
+            self.assertEqual(code, 0)
+            self.assertEqual(json.loads(output), configuration_schema())
+            provider.assert_not_called()
+
+    def test_environment_allowlist_and_overrides_reach_real_approved_subprocess(self):
+        self.write('''[execution]
+env_allowlist=["BUILD_MODE", "CUSTOM_KEY"]
+env={EXPLICIT_BUILD="release"}
+[providers.x]
+api_key_env="CUSTOM_KEY"
+''')
+        with patch.dict(os.environ, {"BUILD_MODE": "debug", "CUSTOM_KEY": self.secret, "UNRELATED_PRIVATE": "hidden"}):
+            config, _ = self.resolve(load_settings(self.path), model="fixture")
+            tools = Tools(config, lambda _: True)
+            self.addCleanup(tools.close)
+            script = "import os,json;print(json.dumps({k:os.getenv(k) for k in ['BUILD_MODE','EXPLICIT_BUILD','CUSTOM_KEY','UNRELATED_PRIVATE']}))"
+            result = tools.run([sys.executable, "-I", "-B", "-c", script])
+        self.assertEqual(result["returncode"], 0)
+        self.assertEqual(json.loads(result["output"]), {"BUILD_MODE": "debug", "EXPLICIT_BUILD": "release", "CUSTOM_KEY": None, "UNRELATED_PRIVATE": None})
+        with self.assertRaises(ValueError):
+            replace(config, command_env=(("ALIAS", self.secret),))
+        with self.assertRaises(ValueError):
+            replace(config, checks=(("echo", self.secret),))
+
+    def test_disabled_tools_enforced_in_schemas_dispatch_direct_methods_and_attachments(self):
+        config = Config(self.root, "fixture", disabled_tools=("run", "edit_file", "read_file"))
+        approval = Mock(return_value=True)
+        tools = Tools(config, approval)
+        self.addCleanup(tools.close)
+        agent = Agent(config, Mock(), tools, lambda _: None)
+        self.assertFalse({"run", "edit_file", "read_file"} & {schema["function"]["name"] for schema in agent.schemas})
+        (self.root / "sample.py").write_text("old", encoding="utf-8")
+        for name, args in (("run", {"argv": [sys.executable, "-V"]}), ("edit_file", {"path": "sample.py", "old": "old", "new": "new"}), ("read_file", {"path": "sample.py"})):
+            self.assertIn("disabled", tools.execute(name, args)["error"])
+            with self.assertRaises(ToolError):
+                getattr(tools, name)(**args)
+        with self.assertRaises(ValueError):
+            agent.attach_files(["sample.py"])
+        self.assertEqual((self.root / "sample.py").read_text(), "old")
+        approval.assert_not_called()
+
+    def test_configured_exclusions_apply_to_every_file_tool_and_merge_ignore(self):
+        (self.root / "private").mkdir()
+        (self.root / "private" / "data.py").write_text("needle=1", encoding="utf-8")
+        (self.root / "ignored.py").write_text("needle=2", encoding="utf-8")
+        (self.root / ".sprigignore").write_text("ignored.py\n", encoding="utf-8")
+        tools = Tools(Config(self.root, "fixture", excluded_paths=("private/",)), lambda _: self.fail("excluded"))
+        self.addCleanup(tools.close)
+        for name in ("read_file", "search", "edit_file"):
+            args = {"path": "private/data.py", **({"query": "needle"} if name == "search" else {"old": "1", "new": "2"} if name == "edit_file" else {})}
+            self.assertIn("error", tools.execute(name, args))
+        for name in ("list_files", "project_map"):
+            result = json.dumps(tools.execute(name, {}))
+            self.assertNotIn("data.py", result)
+            self.assertNotIn("ignored.py", result)
+
+    def test_split_stream_redacts_multiple_keys_and_empty_secret_compaction_copies(self):
+        secrets = (self.secret, "fixture-extra-header-secret")
+        displayed = []
+        output = TextOutput(displayed.append, secrets)
+        text = "start " + secrets[0] + " " + secrets[1] + " end"
+        for character in text:
+            output.write(character)
+        output.finish()
+        self.assertEqual("".join(displayed), "start [REDACTED] [REDACTED] end")
+        original = [{"content": "unchanged"}]
+        copied = redact(original, ())
+        copied[0]["content"] = "different"
+        self.assertEqual(original[0]["content"], "unchanged")
+
+    def test_invalid_settings_rejected_even_in_unused_provider_profile_and_model(self):
+        cases = ['[generation]\ntemperature=nan', '[generation]\nseed=true', '[generation.extra_body]\nstream=false',
+                 '[generation]\nthinking=true\n[generation.extra_body.chat_template_kwargs]\nenable_thinking=false',
+                 '[providers.x]\nproxy="http://user:password@localhost:8080"', '[providers.x.headers]\nAuthorization="secret"',
+                 '[providers.x]\nproxy="http://@localhost:8080"', '[providers.x]\nbase_url="https://@api.example/v1"',
+                 '[providers.x.headers]\nX="line\\nsecret"', '[providers.x]\nheaders_env={X="bad-name"}',
+                 '[providers.x.models.fast]\nid="x"\n[providers.x.models.slow]\nid="x"',
+                 '[profiles.bad.tui]\neditor_height=99', '[tools]\nrun="false"', '[files]\nexclude=["../private"]',
+                 '[execution]\nenv_allowlist="BUILD"', '[storage]\nsession_dir=0', '[tui]\ntheme="missing"',
+                 '[agent]\nauto_approve=true', '[mcp]\ncommand="anything"']
+        cases += ['[agent]\nmax_tokens=0\n[generation]\nmax_tokens=123',
+                  '[agent]\ntimeout=false\n[execution]\ntimeout=60']
+        for index, text in enumerate(cases):
+            with self.subTest(index=index):
+                path = self.write(text, self.parent / f"invalid-extra-{index}.toml")
+                with self.assertRaises(ValueError):
+                    load_settings(path)
+
+    def test_session_binding_rejects_changed_generation_and_policy_but_allows_key_rotation(self):
+        config = Config(self.root, "fixture", temperature=0.2, disabled_tools=("run",), excluded_paths=("private/",), api_key=self.secret)
+        store = SessionStore(self.parent / "sessions", config)
+        messages = [{"role": "system", "content": "s"}, {"role": "user", "content": "task"}]
+        store.save("bound", messages)
+        store.close()
+        for replacement in ({"temperature": 0.3}, {"disabled_tools": ()}, {"excluded_paths": ()}):
+            other = SessionStore(self.parent / "sessions", replace(config, **replacement))
+            try:
+                with self.assertRaises(SessionError):
+                    other.load("bound")
+            finally:
+                other.close()
+        other = SessionStore(self.parent / "sessions", replace(config, api_key="rotated-fixture-key"))
+        try:
+            self.assertEqual(other.load("bound"), messages)
+        finally:
+            other.close()
+
+    def test_documented_example_and_shipped_schema_match_runtime(self):
+        root = Path(__file__).resolve().parents[1]
+        self.write((root / "config.example.toml").read_text(encoding="utf-8"))
+        settings = load_settings(self.path)
+        config, _ = settings.resolve({"workdir": self.root, "profile": "review"}, {"AGNES_API_KEY": self.secret})
+        self.assertTrue(config.read_only)
+        self.assertEqual(config.model, "agnes-3.0-flash")
+        self.assertEqual(json.loads((root / "config.schema.json").read_text(encoding="utf-8")), configuration_schema())
+        self.assertEqual(set(configuration_schema()["properties"]["tools"]["properties"]), {"list_files", "read_file", "search", "project_map", "edit_file", "run"})
+
+    def test_configured_storage_autosave_is_opt_in_and_listing_does_not_need_key(self):
+        self.write('''provider="x"
+[providers.x]
+model="fixture"
+base_url="http://localhost/v1"
+api_key_env="MISSING_FOR_LOCAL_MANAGEMENT"
+[storage]
+session_dir="saved-sessions"
+auto_save_session=true
+''')
+        with patch("sprig_agent.cli.Provider") as provider:
+            provider.return_value.complete.return_value = {"role": "assistant", "content": "done"}
+            with patch.dict(os.environ, {"MISSING_FOR_LOCAL_MANAGEMENT": self.secret}):
+                self.assertEqual(self.invoke(["--config", str(self.path), "--cli", "task"])[0], 0)
+            provider.reset_mock()
+            code, listing, _ = self.invoke(["--config", str(self.path), "--list-sessions"])
+            self.assertEqual(code, 0)
+            saved = json.loads(listing)
+            self.assertEqual(len(saved), 1)
+            self.assertTrue(saved[0]["name"].startswith("auto-"))
+            self.assertTrue((self.parent / "saved-sessions").is_dir())
+            provider.assert_not_called()
+
+    def test_changing_provider_does_not_carry_another_profile_model_or_headers(self):
+        self.write('''profile="coding"
+[providers.x]
+model="x-model"
+[providers.x.headers]
+X-Secret="fixture-header-secret"
+[providers.y]
+model="y-model"
+[profiles.coding]
+provider="x"
+model="x-alias"
+''')
+        settings = load_settings(self.path)
+        config, _ = self.resolve(settings, provider="y")
+        self.assertEqual(config.model, "y-model")
+        self.assertEqual(config.headers, ())
+        with self.assertRaisesRegex(ValueError, "headers cannot follow"):
+            self.resolve(settings, provider="x", base_url="https://other.example/v1")
+
+    def test_reserved_credential_cannot_be_rebound_through_custom_header_env(self):
+        self.write('provider="x"\n[providers.x]\nmodel="fixture"\nbase_url="https://other.example/v1"\n[providers.x.headers_env]\nX-Key="agnes_api_key"\n')
+        with patch.dict(os.environ, {"agnes_api_key": self.secret}):
+            with self.assertRaisesRegex(ValueError, "Agnes HTTPS origin"):
+                self.resolve(load_settings(self.path))
+
+
+if __name__ == "__main__":
+    unittest.main()
