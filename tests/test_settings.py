@@ -118,6 +118,28 @@ class SettingsTests(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, "Agnes HTTPS origin"):
                 self.resolve(load_settings(self.path))
 
+    def test_case_variant_of_reserved_credential_cannot_bypass_origin_guard(self):
+        self.write('provider="x"\n[providers.x]\nmodel="test"\nbase_url="https://other.example/v1"\napi_key_env="agnes_api_key"\n')
+        with patch.dict(os.environ, {"agnes_api_key": self.secret}):
+            with self.assertRaisesRegex(ValueError, "Agnes HTTPS origin"):
+                self.resolve(load_settings(self.path))
+
+    def test_walked_canonical_path_protects_the_active_config(self):
+        target = self.write('provider="x"\n[providers.x]\nmodel="test"\napi_key="' + self.secret + '"\n',
+                            self.root / "private.toml")
+        alias = self.parent / "system-alias"
+        alias.mkdir()
+        # Simulate the walk's existing macOS system-alias normalization, while
+        # reading a real private file and exercising the actual tool boundary.
+        with Directory(self.root) as directory, patch("sprig_agent.settings.config_parent") as parent:
+            parent.return_value.__enter__.return_value = directory, target.name
+            settings = load_settings(alias / target.name, required=True)
+        config, _ = self.resolve(settings)
+        tools = Tools(config, lambda _: self.fail("config must be excluded before approval"))
+        self.addCleanup(tools.close)
+        self.assertEqual(config.config_path, target)
+        self.assertIn("error", tools.execute("read_file", {"path": target.name}))
+
     def test_invalid_files_are_bounded_and_diagnostics_never_echo_values(self):
         cases = [
             'api_key="' + self.secret + '"',  # unknown top-level setting

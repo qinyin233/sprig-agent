@@ -42,7 +42,7 @@ thinking = false
 - 提供商：`--provider NAME` > `SPRIG_PROVIDER` > 顶层 `provider`。可定义至多 32 个命名提供商，没有自动切换或失败后备用模型。
 - 模型与地址：`--model` / `--base-url` > `SPRIG_MODEL` / `SPRIG_BASE_URL` > 选定提供商。没有模型时明确报错；未选提供商时保留原 OpenAI 地址默认值。
 - 密钥：显式 `SPRIG_API_KEY` > 选定提供商的 `api_key_env` 或 `api_key` > 旧环境别名。声明了 `api_key_env` 却未设置时停止，不挪用另一个提供商的全局密钥。旧别名仍为 Agnes HTTPS 原点的 `AGNES_API_KEY`，然后 `OPENAI_API_KEY`。
-- 配置密钥绑定该提供商的完整基础地址。覆盖地址时，必须另设显式 `SPRIG_API_KEY`，避免把原密钥转发到别处。`AGNES_API_KEY` 的特殊引用始终限于其 HTTPS 原点。
+- 配置密钥绑定该提供商的完整基础地址。覆盖地址时，必须另设显式 `SPRIG_API_KEY`，避免把原密钥转发到别处。`AGNES_API_KEY`（含大小写变体）的特殊引用始终限于其 HTTPS 原点。
 - 运行参数：显式 CLI > `[agent]` > 原有默认值。布尔参数支持 `--no-stream`、`--no-thinking`、`--no-compact-context` 等覆盖。TUI 始终流式；选择 `--cli --no-stream` 使用非流式单次执行。
 
 Sprig 不自动读取项目或父目录的配置，也不加载 `.env`、远程配置、配置脚本或动态环境替换。这样下载的仓库不能改变接收密钥和代码的服务地址。`--config` 是对该文件的显式信任，应先检查其内容。

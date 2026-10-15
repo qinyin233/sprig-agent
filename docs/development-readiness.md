@@ -52,6 +52,8 @@
 
 本机另外实际运行了原生 Windows TUI，读取用户目录配置、Enter 发送 `/help`，再 `/exit` 关闭；退出统计为 `attempts=0`，验证启动和本地命令没有向模型发请求。远程验证只运行精简 Windows/Ubuntu workflow，结果须以对应功能提交的完整 SHA 与 Actions 日志核对；本页不预写未完成的绿色状态。macOS 与完整 Python/client 矩阵未在本轮执行。
 
+最终安全复核补充了保留密钥变量名的大小写检查，以及以实际目录遍历路径标记活动配置的隐私排除。Windows Python 3.13 共 486 项，471 通过、15 平台跳过；WSL Python 3.12 共 486 项，469 通过、17 平台跳过。系统别名回归通过真实私有文件与模拟别名遍历验证工具边界，不充当原生 macOS 验证。旧 `0081c72` 的远程 run `38699077700` 已取消（Ubuntu 完成，Windows 取消），不算该提交的完整 CI 通过；最终安全修正提交另行运行原生双平台 workflow。
+
 ## 参考依据
 
 本日重新查看官方材料：[OpenCode 配置](https://opencode.ai/docs/config/)包含用户/项目设置与提供商配置；[OpenCode TUI](https://opencode.ai/docs/tui/)包含本地命令、文件引用和会话操作；[Aider 配置](https://aider.chat/docs/config.html)与[聊天命令](https://aider.chat/docs/usage/commands.html)覆盖日常配置/上下文操作；[OpenHands SDK](https://docs.openhands.dev/sdk)区分 agent、工具、工作区和运行接口。这些是能力参考，不是运行对照或排名证据。

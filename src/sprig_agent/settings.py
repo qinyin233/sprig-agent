@@ -131,7 +131,7 @@ class Settings:
             if url != configured_url:
                 raise ValueError("provider credentials cannot be used with an overridden base URL; set SPRIG_API_KEY explicitly")
             if key_env:
-                if key_env == "AGNES_API_KEY" and not environment_api_key(url, {"AGNES_API_KEY": "present"}):
+                if key_env.upper() == "AGNES_API_KEY" and not environment_api_key(url, {"AGNES_API_KEY": "present"}):
                     raise ValueError("AGNES_API_KEY is restricted to the Agnes HTTPS origin")
                 if not env.get(key_env):
                     raise ValueError("configured api_key_env is unset or empty; set it in the process environment")
@@ -159,6 +159,10 @@ def load_settings(path=None, *, required=False):
     try:
         with config_parent(path) as (directory, name):
             raw = directory.read(name, MAX_CONFIG, private=True)
+            # Keep the canonical system-alias path used by the no-follow walk;
+            # the workspace root is canonical too. Privacy exclusion must name
+            # this same file on macOS /var -> /private/var and /tmp aliases.
+            path = directory.path / name
     except FileNotFoundError:
         if required:
             raise ValueError("configuration file does not exist; use --init-config to create it") from None
