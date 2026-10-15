@@ -1,0 +1,368 @@
+{
+  "schema": 2,
+  "scope": "one diagnostic mini SDK task; no overall performance or top-agent parity claim",
+  "model_mode": "upstream_backend_transport",
+  "client": "mini",
+  "client_version": "2.4.6",
+  "sdk_sources_sha256": "0e69b25a0d648c733fbeea0084a442721d010e1457dd378d9acce66044cf16f6",
+  "client_lock_sha256": "1ceaddc62ff07567631b9d281a6124ff1afd720cbe173c81f6a711a8b41df805",
+  "driver_sha256": "6e8e176c5f0f292b61ddc485eaca28d12b73c960a45329924a5e14d36b02517a",
+  "environment_sha256": "ae31650206ace29185eec82d0e125acb9a43001700e96da06da9725cab9f4b96",
+  "shell_relay_sha256": "a6eadd5f8566c78e8f4dd4a04e81d0ed69d79fa3cadd9f3ce05ed90e7f076016",
+  "transport_sha256": "d8bfebe75ab1d64bf107f4279627d5a2616c0b6f411179a4212ff44a84c6d4e2",
+  "config_sha256": "b539a8965f5bf41dd0f32daafa5d2db22581923d13812fa378fd09569b9d6b0c",
+  "recorded_at_utc": "2026-10-15T05:40:44.216754+00:00",
+  "python": "3.12.12",
+  "platform": "Windows-11-10.0.26300-SP0",
+  "case": "py-pagination",
+  "fixture_sha256": "d72116cba3dc33ed60646bcc82717074dc9c07bbe02587069f6950e8cbda3d8c",
+  "verifier_sha256": "7edce51a8ba0d4cacf4c85914cef57be37b125181f7e31198ee135dbb83ef479",
+  "task_sha256": "d6ee4b0927e4a4d34ac514f8cd0a5ca73b54341abd947910e859531b76506e2d",
+  "verifier_intact": true,
+  "model": "agnes-3.0-flash",
+  "sdk_model_route": "openai/agnes-3.0-flash",
+  "base_url": "https://apihub.agnes-ai.com/v1",
+  "max_steps": 8,
+  "stream": false,
+  "request_timeout_seconds": 60.0,
+  "generation_options": {
+    "max_tokens": 2048,
+    "chat_template_kwargs": {
+      "enable_thinking": true
+    }
+  },
+  "max_context_bytes": 32768,
+  "context_budget": "actual serialized HTTP JSON body",
+  "automatic_retries": false,
+  "cost": null,
+  "request_pacing": {
+    "interval_seconds": 20.0,
+    "backend_starts": 8,
+    "wait_ms": 0.0,
+    "source_sha256": "ce4ba23779b65e448585d1ca8413ea67a1e31974a25cd50b5810160fe8527ea6",
+    "scope": "backend invocation starts; HTTP may be blocked by validation",
+    "automatic_retries": false
+  },
+  "sdk_wall_time_limit_seconds": 740.0,
+  "model_queries": 8,
+  "requests": [
+    {
+      "backend_invocation": 1,
+      "outcome": "success",
+      "elapsed_ms": 4394.687,
+      "http_attempts": 1
+    },
+    {
+      "backend_invocation": 2,
+      "outcome": "success",
+      "elapsed_ms": 11083.281,
+      "http_attempts": 1
+    },
+    {
+      "backend_invocation": 3,
+      "outcome": "success",
+      "elapsed_ms": 9153.935,
+      "http_attempts": 1
+    },
+    {
+      "backend_invocation": 4,
+      "outcome": "success",
+      "elapsed_ms": 10647.445,
+      "http_attempts": 1
+    },
+    {
+      "backend_invocation": 5,
+      "outcome": "success",
+      "elapsed_ms": 18230.509,
+      "http_attempts": 1
+    },
+    {
+      "backend_invocation": 6,
+      "outcome": "success",
+      "elapsed_ms": 25597.449,
+      "http_attempts": 1
+    },
+    {
+      "backend_invocation": 7,
+      "outcome": "success",
+      "elapsed_ms": 11537.561,
+      "http_attempts": 1
+    },
+    {
+      "backend_invocation": 8,
+      "outcome": "success",
+      "elapsed_ms": 13543.254,
+      "http_attempts": 1
+    }
+  ],
+  "http_attempts": 8,
+  "request_measurements": {
+    "available": true,
+    "scope": "mini HTTP transport; complete bounded body is transport success, SDK validation is separate",
+    "attempts": 8,
+    "not_attempted": 0,
+    "outcomes": {
+      "success": 8,
+      "error": 0,
+      "cancelled": 0
+    },
+    "request_bytes": 69722,
+    "response_bytes": 13116,
+    "elapsed_ms": 103094.776,
+    "usage": {
+      "prompt_tokens": {
+        "reported_sum": 19014,
+        "known_requests": 8,
+        "unknown_requests": 0,
+        "complete_sum": 19014
+      },
+      "completion_tokens": {
+        "reported_sum": 2385,
+        "known_requests": 8,
+        "unknown_requests": 0,
+        "complete_sum": 2385
+      },
+      "total_tokens": {
+        "reported_sum": 21399,
+        "known_requests": 8,
+        "unknown_requests": 0,
+        "complete_sum": 21399
+      }
+    },
+    "recent_limit": 128,
+    "recent_dropped": 0,
+    "recent": [
+      {
+        "attempted": true,
+        "streamed": false,
+        "outcome": "success",
+        "http_status": 200,
+        "request_bytes": 3730,
+        "response_bytes": 1079,
+        "elapsed_ms": 3344.768,
+        "first_text_ms": null,
+        "usage": {
+          "prompt_tokens": 1049,
+          "completion_tokens": 133,
+          "total_tokens": 1182
+        },
+        "policy_failure": null
+      },
+      {
+        "attempted": true,
+        "streamed": false,
+        "outcome": "success",
+        "http_status": 200,
+        "request_bytes": 4707,
+        "response_bytes": 875,
+        "elapsed_ms": 11075.975,
+        "first_text_ms": null,
+        "usage": {
+          "prompt_tokens": 1254,
+          "completion_tokens": 75,
+          "total_tokens": 1329
+        },
+        "policy_failure": null
+      },
+      {
+        "attempted": true,
+        "streamed": false,
+        "outcome": "success",
+        "http_status": 200,
+        "request_bytes": 5593,
+        "response_bytes": 820,
+        "elapsed_ms": 9148.42,
+        "first_text_ms": null,
+        "usage": {
+          "prompt_tokens": 1574,
+          "completion_tokens": 60,
+          "total_tokens": 1634
+        },
+        "policy_failure": null
+      },
+      {
+        "attempted": true,
+        "streamed": false,
+        "outcome": "success",
+        "http_status": 200,
+        "request_bytes": 6686,
+        "response_bytes": 2713,
+        "elapsed_ms": 10640.511,
+        "first_text_ms": null,
+        "usage": {
+          "prompt_tokens": 1804,
+          "completion_tokens": 551,
+          "total_tokens": 2355
+        },
+        "policy_failure": null
+      },
+      {
+        "attempted": true,
+        "streamed": false,
+        "outcome": "success",
+        "http_status": 200,
+        "request_bytes": 9479,
+        "response_bytes": 2324,
+        "elapsed_ms": 18224.424,
+        "first_text_ms": null,
+        "usage": {
+          "prompt_tokens": 2507,
+          "completion_tokens": 556,
+          "total_tokens": 3063
+        },
+        "policy_failure": null
+      },
+      {
+        "attempted": true,
+        "streamed": false,
+        "outcome": "success",
+        "http_status": 200,
+        "request_bytes": 11537,
+        "response_bytes": 2033,
+        "elapsed_ms": 25588.913,
+        "first_text_ms": null,
+        "usage": {
+          "prompt_tokens": 3104,
+          "completion_tokens": 472,
+          "total_tokens": 3576
+        },
+        "policy_failure": null
+      },
+      {
+        "attempted": true,
+        "streamed": false,
+        "outcome": "success",
+        "http_status": 200,
+        "request_bytes": 13237,
+        "response_bytes": 1161,
+        "elapsed_ms": 11533.21,
+        "first_text_ms": null,
+        "usage": {
+          "prompt_tokens": 3615,
+          "completion_tokens": 147,
+          "total_tokens": 3762
+        },
+        "policy_failure": null
+      },
+      {
+        "attempted": true,
+        "streamed": false,
+        "outcome": "success",
+        "http_status": 200,
+        "request_bytes": 14753,
+        "response_bytes": 2111,
+        "elapsed_ms": 13538.555,
+        "first_text_ms": null,
+        "usage": {
+          "prompt_tokens": 4107,
+          "completion_tokens": 391,
+          "total_tokens": 4498
+        },
+        "policy_failure": null
+      }
+    ],
+    "body_encoding": "identity; HTTP headers excluded"
+  },
+  "outcome": "acceptance_passed",
+  "acceptance_passed": true,
+  "elapsed_ms": 390265.226,
+  "active_ms": 109058.48,
+  "approvals": {
+    "requests": 10,
+    "accepted": 7,
+    "rejected": 3,
+    "wait_ms": 281206.745
+  },
+  "tools": [
+    {
+      "tool": "bash",
+      "active_ms": 188.091,
+      "result_bytes": 19,
+      "approved": false,
+      "returncode": null,
+      "timed_out": null,
+      "output_limited": null
+    },
+    {
+      "tool": "bash",
+      "active_ms": 164.736,
+      "result_bytes": 19,
+      "approved": false,
+      "returncode": null,
+      "timed_out": null,
+      "output_limited": null
+    },
+    {
+      "tool": "bash",
+      "active_ms": 468.307,
+      "result_bytes": 403,
+      "approved": true,
+      "returncode": 0,
+      "timed_out": false,
+      "output_limited": false
+    },
+    {
+      "tool": "bash",
+      "active_ms": 350.463,
+      "result_bytes": 653,
+      "approved": true,
+      "returncode": 0,
+      "timed_out": false,
+      "output_limited": false
+    },
+    {
+      "tool": "bash",
+      "active_ms": 468.37,
+      "result_bytes": 441,
+      "approved": true,
+      "returncode": 0,
+      "timed_out": false,
+      "output_limited": false
+    },
+    {
+      "tool": "bash",
+      "active_ms": 140.011,
+      "result_bytes": 19,
+      "approved": false,
+      "returncode": null,
+      "timed_out": null,
+      "output_limited": null
+    },
+    {
+      "tool": "bash",
+      "active_ms": 328.705,
+      "result_bytes": 114,
+      "approved": true,
+      "returncode": 0,
+      "timed_out": false,
+      "output_limited": false
+    },
+    {
+      "tool": "bash",
+      "active_ms": 331.093,
+      "result_bytes": 708,
+      "approved": true,
+      "returncode": 0,
+      "timed_out": false,
+      "output_limited": false
+    },
+    {
+      "tool": "bash",
+      "active_ms": 207.864,
+      "result_bytes": 133,
+      "approved": true,
+      "returncode": 0,
+      "timed_out": false,
+      "output_limited": false
+    },
+    {
+      "tool": "acceptance",
+      "active_ms": 357.192,
+      "result_bytes": 187,
+      "approved": true,
+      "returncode": 0,
+      "timed_out": false,
+      "output_limited": false
+    }
+  ]
+}

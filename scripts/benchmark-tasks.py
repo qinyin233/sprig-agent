@@ -4,6 +4,7 @@ import argparse
 from contextlib import contextmanager
 import hashlib
 import json
+import math
 import os
 from pathlib import Path
 import platform
@@ -230,6 +231,8 @@ def main():
     parser.add_argument("--max-steps", type=int, default=20)
     parser.add_argument("--max-tokens", type=int)
     parser.add_argument("--thinking", action="store_true")
+    parser.add_argument("--request-interval", type=float, default=0)
+    parser.add_argument("--request-timeout", type=float, default=30)
     parser.add_argument("--max-context-bytes", type=int, default=131072)
     parser.add_argument("--compact-context", action="store_true")
     parser.add_argument("--stream", action="store_true")
@@ -237,6 +240,9 @@ def main():
     parser.add_argument("--report", type=Path, help="explicitly write numeric JSON to a new file; existing files are never overwritten")
     args = parser.parse_args()
     try:
+        RequestPacer(args.request_interval)
+        if not math.isfinite(args.request_timeout) or not 0 < args.request_timeout <= 120:
+            parser.error("--request-timeout must be finite and greater than 0, at most 120 seconds")
         if args.report and (args.report.exists() or args.report.is_symlink()):
             parser.error("--report must name a new file; no existing report is overwritten")
         if args.report and not args.report.parent.is_dir():
@@ -260,7 +266,9 @@ def main():
                 report = run_case(case, {"model": args.model, "base_url": args.base_url, "api_key": key,
                                          "max_steps": args.max_steps, "stream": args.stream, "request_usage": args.request_usage,
                                          "max_tokens": args.max_tokens, "thinking": args.thinking,
+                                         "timeout": args.request_timeout,
                                          "max_context_bytes": args.max_context_bytes, "compact_context": args.compact_context},
+                                  request_interval=args.request_interval,
                                   emit=lambda text: print(terminal_text(redact(text, key)), file=sys.stderr, flush=True),
                                   emit_delta=(lambda text: print(terminal_text(redact(text, key)), end="", file=sys.stderr, flush=True))
                                   if args.stream else None)

@@ -7,6 +7,7 @@ import hashlib
 import importlib.util
 from importlib.metadata import version
 import json
+import math
 import logging
 import os
 from pathlib import Path
@@ -271,9 +272,17 @@ def main():
     parser.add_argument("--max-steps", type=int, default=20)
     parser.add_argument("--max-tokens", type=int)
     parser.add_argument("--thinking", action="store_true")
+    parser.add_argument("--request-interval", type=float, default=0)
+    parser.add_argument("--request-timeout", type=float, default=30)
     parser.add_argument("--max-context-bytes", type=int, default=131072)
     parser.add_argument("--report", type=Path)
     args = parser.parse_args()
+    try:
+        RequestPacer(args.request_interval)
+    except ValueError:
+        parser.error("--request-interval must be finite and between 0 and 60 seconds")
+    if not math.isfinite(args.request_timeout) or not 0 < args.request_timeout <= 120:
+        parser.error("--request-timeout must be finite and greater than 0, at most 120 seconds")
     if args.report and (args.report.exists() or args.report.is_symlink() or not args.report.parent.is_dir()):
         parser.error("report must be a new file in an existing directory")
     if args.list:
@@ -292,7 +301,9 @@ def main():
     try:
         report = run_case(bench.suite.cases()[args.case], {"model": args.model, "base_url": args.base_url, "api_key": key,
                                                        "max_steps": args.max_steps, "max_context_bytes": args.max_context_bytes,
-                                                       "max_tokens": args.max_tokens, "thinking": args.thinking},
+                                                       "max_tokens": args.max_tokens, "thinking": args.thinking,
+                                                       "timeout": args.request_timeout},
+                          request_interval=args.request_interval,
                           emit=lambda text: print(text, file=sys.stderr, flush=True))
         rendered = json.dumps(report, ensure_ascii=True, indent=2) + "\n"
         print(rendered, end="")

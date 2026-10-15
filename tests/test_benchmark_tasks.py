@@ -147,6 +147,23 @@ class BenchmarkTests(unittest.TestCase):
                 benchmark.main()
             run.assert_not_called()
 
+    def test_invalid_request_controls_stop_before_key_or_fixture_access(self):
+        for option, value, parser_error in (("--request-interval", "nan", False),
+                                            ("--request-interval", "61", False),
+                                            ("--request-timeout", "0", True),
+                                            ("--request-timeout", "inf", True)):
+            with self.subTest(option=option, value=value), patch.object(sys, "argv", [
+                "benchmark-tasks", "--run", "--case", "py-pagination", option, value]), \
+                    patch.object(benchmark, "environment_api_key") as key, \
+                    patch.object(benchmark, "run_case") as run, patch("sys.stderr", io.StringIO()):
+                if parser_error:
+                    with self.assertRaises(SystemExit):
+                        benchmark.main()
+                else:
+                    self.assertEqual(benchmark.main(), 1)
+                key.assert_not_called()
+                run.assert_not_called()
+
     def test_actual_search_diagnostics_count_misses_repeats_and_regex_without_query_text(self):
         class Searches:
             def __init__(self, config):

@@ -21,6 +21,18 @@ spec.loader.exec_module(driver)
 
 
 class MiniTaskTests(unittest.TestCase):
+    def test_invalid_request_controls_stop_before_credentials_or_sdk_access(self):
+        for option, value in (("--request-interval", "nan"), ("--request-interval", "61"),
+                              ("--request-timeout", "0"), ("--request-timeout", "inf")):
+            with self.subTest(option=option, value=value), patch.object(sys, "argv", [
+                "mini-task", "--run", "--case", "py-pagination", option, value]), \
+                    patch.object(driver, "environment_api_key") as key, \
+                    patch.object(driver, "run_case") as run, patch("sys.stderr", io.StringIO()):
+                with self.assertRaises(SystemExit):
+                    driver.main()
+                key.assert_not_called()
+                run.assert_not_called()
+
     def test_real_sdk_http_transport_records_only_numeric_usage_and_routes_model(self):
         for generation in ({}, {"max_tokens": 2048, "thinking": True}):
             with self.subTest(generation=generation):
