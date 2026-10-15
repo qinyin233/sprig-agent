@@ -106,7 +106,7 @@ def chat(agent, task, messages, emit, *, autostart=True):
                 else:
                     emit("No task to continue. Enter a task first.")
             elif task == "/status":
-                emit(f"Messages: {len(messages or [])} | model: {agent.config.model} | acceptance checks: {len(agent.config.checks)} | last status: {status}")
+                emit(f"Messages: {len(messages or [])} | model: {agent.config.model} | acceptance checks: {len(agent.config.checks)} | baseline: {agent.baseline_status} | last status: {status}")
             elif task == "/context":
                 emit(json.dumps(agent.context_preview(messages), ensure_ascii=False, indent=2))
             elif task == "/usage":
@@ -190,6 +190,8 @@ def main(argv=None):
     interface.add_argument("--cli", dest="interface", action="store_const", const="cli", help="one-shot interface; override the configured interface")
     parser.add_argument("--check", dest="checks", action="append", type=check_argv, metavar="JSON_ARGV",
                         help="fixed acceptance command, repeatable; execution still requires approval")
+    parser.add_argument("--check-before-task", action=argparse.BooleanOptionalAction, default=None,
+                        help="propose fixed --check commands before every task/continue/resume; fresh approval required; final checks still run")
     group = parser.add_mutually_exclusive_group()
     group.add_argument("--save-session", metavar="NAME")
     group.add_argument("--resume", metavar="NAME")

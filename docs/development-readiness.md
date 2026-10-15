@@ -56,6 +56,8 @@
 
 ## 参考依据
 
+任务前基线批次：加入可选 `check_before_task`，复用固定检查、逐次批准、停止/引导和独立最终验收。Windows Python 3.13 共 526 项，511 通过、15 平台跳过；WSL Python 3.12 共 526 项，509 通过、17 平台跳过；两端各 25 项 mini SDK 回归通过。一次早期 WSL SDK 运行期间源码发生变化，被完整性保护判为无效，冻结源码后的重跑才计入。此小批次使用 `[skip ci]`，没有当前提交的远程 CI 结论；未用真实模型证明基线功能收益。
+
 本日重新查看官方材料：[OpenCode 配置](https://opencode.ai/docs/config/)包含用户/项目设置与提供商配置；[OpenCode TUI](https://opencode.ai/docs/tui/)包含本地命令、文件引用和会话操作；[Aider 配置](https://aider.chat/docs/config.html)与[聊天命令](https://aider.chat/docs/usage/commands.html)覆盖日常配置/上下文操作；[OpenHands SDK](https://docs.openhands.dev/sdk)区分 agent、工具、工作区和运行接口。这些是能力参考，不是运行对照或排名证据。
 
 

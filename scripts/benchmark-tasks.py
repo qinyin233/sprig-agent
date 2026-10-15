@@ -205,6 +205,7 @@ def run_case(case, config_options, *, provider_factory=Provider, confirm=approve
                   "generation_options": config.generation_options(),
                   "model": config.model, "base_url": config.base_url, "stream": config.stream,
                   "request_usage": config.request_usage, "max_steps": config.max_steps,
+                  "check_before_task": config.check_before_task, "baseline_status": agent.baseline_status,
                   "max_context_bytes": config.max_context_bytes, "compact_context": config.compact_context,
                   "synthetic_history": bool(case.get("history_reads")),
                   "outcome": outcome if valid else "verifier_modified", "acceptance_passed": completed and valid,
@@ -231,6 +232,7 @@ def main():
     parser.add_argument("--max-steps", type=int, default=20)
     parser.add_argument("--max-tokens", type=int)
     parser.add_argument("--thinking", action="store_true")
+    parser.add_argument("--check-before-task", action="store_true", help="freshly approve fixed baseline checks before model actions; final acceptance remains mandatory")
     parser.add_argument("--request-interval", type=float, default=0)
     parser.add_argument("--request-timeout", type=float, default=30)
     parser.add_argument("--max-context-bytes", type=int, default=131072)
@@ -266,7 +268,7 @@ def main():
                 report = run_case(case, {"model": args.model, "base_url": args.base_url, "api_key": key,
                                          "max_steps": args.max_steps, "stream": args.stream, "request_usage": args.request_usage,
                                          "max_tokens": args.max_tokens, "thinking": args.thinking,
-                                         "timeout": args.request_timeout,
+                                         "timeout": args.request_timeout, "check_before_task": args.check_before_task,
                                          "max_context_bytes": args.max_context_bytes, "compact_context": args.compact_context},
                                   request_interval=args.request_interval,
                                   emit=lambda text: print(terminal_text(redact(text, key)), file=sys.stderr, flush=True),

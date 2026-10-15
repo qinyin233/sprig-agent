@@ -714,7 +714,7 @@ class SprigApp(App[int]):
                         "提供商和模型通过 config.toml 或启动参数选择；恢复时仍校验绑定。\n")
             return
         if command == "/status":
-            self.append(f"\n[本地状态] {self.task_message} | 执行中: {self.busy} | 消息: {len(self.messages or [])} | 待处理引导: {len(self.pending_tasks)}\n")
+            self.append(f"\n[本地状态] {self.task_message} | 执行中: {self.busy} | 消息: {len(self.messages or [])} | 本次基线: {self.agent.baseline_status} | 待处理引导: {len(self.pending_tasks)}\n")
             return
         if command == "/config":
             details = {"provider": self.config.provider_name,

@@ -139,6 +139,7 @@ class Config:
     steering_mode: str = "all"
     show_metrics: bool = False
     model_catalog: tuple = field(default=(), repr=False, compare=False)
+    check_before_task: bool = False
 
     def __post_init__(self):
         root = Path(self.workdir).expanduser().resolve(strict=True)
@@ -178,6 +179,8 @@ class Config:
             raise ValueError("thinking must be a boolean")
         if not isinstance(self.checks, tuple) or len(self.checks) > 16:
             raise ValueError("at most 16 acceptance checks are supported")
+        if type(self.check_before_task) is not bool or (self.check_before_task and not self.checks):
+            raise ValueError("check-before-task must be a boolean and requires fixed acceptance checks")
         for argv in self.checks:
             if (not isinstance(argv, tuple) or not argv or len(argv) > 256
                     or any(not isinstance(arg, str) or "\0" in arg for arg in argv) or not argv[0]
@@ -311,6 +314,8 @@ class Config:
         binding = {"base_url": self.base_url, "model": self.model, "workdir": str(self.workdir)}
         if self.checks:
             binding["checks"] = [list(argv) for argv in self.checks]
+        if self.check_before_task:
+            binding["check_before_task"] = True
         if self.read_only:
             binding["read_only"] = True
         if self.inherit_env:

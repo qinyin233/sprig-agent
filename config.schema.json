@@ -64,6 +64,9 @@
         },
         "project_instructions": {
           "type": "boolean"
+        },
+        "check_before_task": {
+          "type": "boolean"
         }
       },
       "additionalProperties": false
@@ -645,6 +648,9 @@
                 "type": "boolean"
               },
               "project_instructions": {
+                "type": "boolean"
+              },
+              "check_before_task": {
                 "type": "boolean"
               }
             },

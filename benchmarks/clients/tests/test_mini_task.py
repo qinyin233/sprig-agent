@@ -267,6 +267,42 @@ class MiniTaskTests(unittest.TestCase):
             driver.run_case(driver.bench.suite.cases()["py-long-history"], {"model": "fixture"}, model_factory=lambda _: called.append(True))
         self.assertFalse(called)
 
+    def test_baseline_failure_is_in_initial_sdk_context_and_final_acceptance_still_runs(self):
+        case = driver.bench.suite.cases()["py-interval"]
+        observed = []
+        report = driver.run_case(case, {"model": "fixture", "check_before_task": True},
+                                 model_factory=self.model([self.repair(case), "echo COMPLETE_TASK_AND_SUBMIT_FINAL_OUTPUT"],
+                                                          lambda messages: observed.append(json.dumps(messages))),
+                                 confirm=lambda _: True)
+        self.assertTrue(report["acceptance_passed"], report)
+        self.assertEqual(report["baseline_status"], "failed")
+        self.assertTrue(report["check_before_task"])
+        self.assertIn("Application baseline checks ran", observed[0])
+        self.assertIn("passed", observed[0])
+        self.assertNotEqual(report["model_task_sha256"], report["task_sha256"])
+        self.assertEqual(report["model_queries"], 2)
+        self.assertEqual([row["tool"] for row in report["tools"]], ["baseline", "bash", "bash", "acceptance"])
+        self.assertEqual(report["approvals"]["requests"], 4)
+
+    def test_rejected_or_cancelled_baseline_never_queries_sdk(self):
+        case = driver.bench.suite.cases()["py-interval"]
+        queried = []
+        report = driver.run_case(case, {"model": "fixture", "check_before_task": True},
+                                 model_factory=self.model(["echo forbidden"], lambda _: queried.append(True)),
+                                 confirm=lambda _: False)
+        self.assertFalse(report["acceptance_passed"])
+        self.assertEqual(report["baseline_status"], "blocked")
+        self.assertEqual(report["outcome"], "baseline_blocked")
+        self.assertEqual(report["model_queries"], 0)
+        self.assertFalse(queried)
+        def cancel(_):
+            raise KeyboardInterrupt
+        report = driver.run_case(case, {"model": "fixture", "check_before_task": True},
+                                 model_factory=self.model(["echo forbidden"], lambda _: queried.append(True)), confirm=cancel)
+        self.assertEqual(report["baseline_status"], "cancelled")
+        self.assertEqual(report["model_queries"], 0)
+        self.assertFalse(queried)
+
     def test_cli_existing_report_stops_before_sdk_or_key_access(self):
         with driver.bench.disposable() as root:
             report = root / "existing.json"

@@ -86,6 +86,7 @@ def main():
     parser.add_argument("--max-steps", type=int, default=20)
     parser.add_argument("--max-tokens", type=int)
     parser.add_argument("--thinking", action="store_true")
+    parser.add_argument("--check-before-task", action="store_true", help="run fixed baseline checks with fresh approval before the normal model loop")
     parser.add_argument("--max-context-bytes", type=int, default=131072)
     parser.add_argument("--request-interval", type=float, default=0, help="0-60 seconds between backend starts; no automatic retry")
     parser.add_argument("--request-timeout", type=float, default=30, help="backend timeout in seconds (0 < value <= 120)")
@@ -119,7 +120,7 @@ def main():
             options = {"model": args.model, "base_url": args.base_url, "api_key": key,
                        "max_steps": args.max_steps, "max_context_bytes": args.max_context_bytes,
                        "max_tokens": args.max_tokens, "thinking": args.thinking,
-                       "timeout": args.request_timeout}
+                       "timeout": args.request_timeout, "check_before_task": args.check_before_task}
             entry = load_mini().run_case if args.client == "mini" else bench.run_case
             report = entry(adapter.case, options, case_adapter=adapter,
                            request_interval=args.request_interval,

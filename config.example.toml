@@ -64,6 +64,7 @@ max_context_bytes = 131072
 compact_context = false
 project_instructions = true
 checks = [] # arrays of argv; each command still asks for fresh approval
+check_before_task = false # opt in only with nonempty checks; final checks still run
 
 [tools]
 list_files = true

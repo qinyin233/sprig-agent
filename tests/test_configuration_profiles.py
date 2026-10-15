@@ -320,6 +320,29 @@ api_key_env="CUSTOM_KEY"
         self.assertEqual(json.loads((root / "config.schema.json").read_text(encoding="utf-8")), configuration_schema())
         self.assertEqual(set(configuration_schema()["properties"]["tools"]["properties"]), {"list_files", "read_file", "search", "project_map", "edit_file", "run"})
 
+    def test_baseline_setting_resolves_inherited_checks_and_cannot_be_weakened_by_project(self):
+        self.write('''provider="x"
+[providers.x]
+model="fixture"
+[agent]
+checks=[["python", "-V"]]
+[profiles.development.agent]
+check_before_task=true
+''')
+        settings = load_settings(self.path)
+        config, _ = self.resolve(settings, profile="development")
+        self.assertTrue(config.check_before_task)
+        self.assertEqual(config.checks, (("python", "-V"),))
+        project = self.write('[agent]\ncheck_before_task=false\n', self.root / "project.toml")
+        with self.assertRaisesRegex(ValueError, "cannot disable.*baseline"):
+            self.resolve(settings.with_project(project), profile="development")
+        self.assertFalse(self.resolve(settings, profile="development", check_before_task=False)[0].check_before_task)
+        extra = self.write('[agent]\ncheck_before_task=true\n', self.parent / "cli-checks.toml")
+        settings = load_settings(extra)
+        with self.assertRaisesRegex(ValueError, "requires fixed"):
+            self.resolve(settings, model="fixture")
+        self.assertTrue(self.resolve(settings, model="fixture", checks=(("python", "-V"),))[0].check_before_task)
+
     def test_configured_storage_autosave_is_opt_in_and_listing_does_not_need_key(self):
         self.write('''provider="x"
 [providers.x]

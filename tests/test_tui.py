@@ -290,6 +290,34 @@ class TuiTests(unittest.IsolatedAsyncioTestCase):
             self.assertFalse(json.loads(app.messages[5]["content"])["approved"])
             self.assertEqual((self.root / "src/a.py").read_text(), "value = 1\n")
 
+    async def test_baseline_rejection_blocks_model_and_continue_requires_fresh_approval(self):
+        from dataclasses import replace
+        self.config = replace(self.config, check_before_task=True,
+                              checks=((sys.executable, "-I", "-B", "-c", "print('BASELINE_TUI')"),))
+        provider = ScriptedProvider([response("Done")])
+        app = self.app(provider)
+        async with app.run_test(size=(110, 36)) as pilot:
+            await self.send_text(pilot, "Inspect and verify")
+            await self.until(pilot, lambda: isinstance(app.screen, ApprovalScreen))
+            self.assertEqual(provider.calls, [])
+            first = app.messages[-1]["tool_calls"][0]["id"]
+            await pilot.press("enter")
+            await self.until(pilot, lambda: not app.busy)
+            self.assertEqual(app.agent.baseline_status, "blocked")
+            self.assertEqual(provider.calls, [])
+            await self.send_text(pilot, "/continue")
+            await self.until(pilot, lambda: isinstance(app.screen, ApprovalScreen))
+            self.assertNotEqual(app.messages[-1]["tool_calls"][0]["id"], first)
+            self.assertEqual(provider.calls, [])
+            await self.click(pilot, "#approve")
+            await self.until(pilot, lambda: isinstance(app.screen, ApprovalScreen) and len(provider.calls) == 1)
+            self.assertIn("BASELINE_TUI", json.dumps(provider.calls[0]))
+            await self.click(pilot, "#approve")
+            await self.until(pilot, lambda: not app.busy)
+            self.assertEqual(app.task_status, 0)
+            self.assertEqual(app.agent.baseline_status, "passed")
+            self.assertEqual(len(provider.calls), 1)
+
     async def test_local_undo_redo_confirm_diff_and_mark_saved_acceptance_stale(self):
         provider = ScriptedProvider([call("write", "edit_file", {"path": "new.txt", "old": "", "new": "created content"}), response("Done")])
         app = self.app(provider, save_session="undo")

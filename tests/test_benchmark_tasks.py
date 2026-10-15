@@ -97,6 +97,7 @@ class BenchmarkTests(unittest.TestCase):
     def test_scripted_task_retains_fresh_approvals_and_fixed_external_acceptance(self):
         case = suite.cases()["py-interval"]
         asks = []
+        baseline_seen = []
 
         class ScriptedProvider:
             def __init__(self, config):
@@ -105,6 +106,9 @@ class BenchmarkTests(unittest.TestCase):
             def complete(self, messages, tools, on_text=None):
                 self.calls += 1
                 if self.calls == 1:
+                    if self.config.check_before_task:
+                        baseline_seen.append([json.loads(message["content"])["returncode"] for message in messages
+                                              if message.get("tool_call_id", "").startswith("sprig-baseline-")])
                     return {"role": "assistant", "content": None, "tool_calls": [{"id": "edit", "type": "function", "function": {
                         "name": "edit_file", "arguments": json.dumps({"path": "interval.py", "old": case["files"]["interval.py"],
                                                                      "new": case["reference"]["interval.py"]})}}]}
@@ -130,6 +134,15 @@ class BenchmarkTests(unittest.TestCase):
         self.assertEqual(rejected["outcome"], "not_completed")
         self.assertEqual(rejected["approvals"]["accepted"], 0)
         self.assertFalse(rejected["tools"][0]["diagnostics"]["approved"])
+        with_baseline = benchmark.run_case(case, {**options, "check_before_task": True},
+                                          provider_factory=ScriptedProvider, confirm=lambda _: True)
+        self.assertTrue(with_baseline["acceptance_passed"])
+        self.assertTrue(with_baseline["check_before_task"])
+        self.assertEqual(with_baseline["baseline_status"], "failed")
+        self.assertEqual(with_baseline["approvals"]["requests"], 3)
+        self.assertEqual([row["tool"] for row in with_baseline["tools"]], ["run", "edit_file", "run"])
+        self.assertEqual(len(baseline_seen), 1)
+        self.assertNotEqual(baseline_seen[0][0], 0)
 
     def test_live_cli_requires_credentials_and_interactive_approvals_before_running(self):
         with patch.dict(os.environ, {"SPRIG_API_KEY": "", "OPENAI_API_KEY": "", "AGNES_API_KEY": ""}), \

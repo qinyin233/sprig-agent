@@ -51,6 +51,8 @@ Sprig 不自动读取项目或父目录的配置；`--project-config PATH` 显�
 
 ## 离线检查
 
+`[agent].check_before_task=true` 可在模型请求前执行已有固定检查；默认关闭，要求非空 `checks`，每次执行仍需批准，完成后的验收仍独立运行。CLI 可用 `--check-before-task` / `--no-check-before-task` 覆盖，详见[任务前基线检查](baseline-workflow.md)。
+
 ```sh
 uv run --locked sprig --show-config
 uv run --locked sprig --doctor
