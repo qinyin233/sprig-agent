@@ -1,0 +1,341 @@
+{
+  "schema": 1,
+  "scope": "one repository Sprig task; no overall performance or competitor ranking claim",
+  "case": "click-command-suggestions",
+  "category": "repository-feature",
+  "language": "python",
+  "fixture_sha256": "7d610833c8a6564f980f747e4601e7f4821872702c4a59f32ff9c5d653300d08",
+  "verifier_sha256": "185dcfcaa1a9bc771c4511e623ac4211c38b4fac44f15003f687453a3b34c060",
+  "verifier_intact": true,
+  "task_sha256": "2908db436a3b9ac92c17b2d60eed48baae6c6549b9a1c83bb775bc816bcf6273",
+  "initial_history_sha256": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+  "uv_lock_sha256": "834405cf539c2a1803289a8f2e55955a53af7869bf931a33ce4d1f80e9010e17",
+  "driver_sha256": "47ff705db9c0363754dd9711c03e1a747d1e3ab145b0d110bba73916ea70c706",
+  "python": "3.12.12",
+  "platform": "Windows-11-10.0.26300-SP0",
+  "node": null,
+  "request_timeout_seconds": 60.0,
+  "generation_options": {
+    "max_tokens": 2048
+  },
+  "model": "deepseek-flash",
+  "base_url": "https://api.llm.ustc.edu.cn/v1",
+  "stream": false,
+  "request_usage": false,
+  "max_steps": 12,
+  "max_context_bytes": 65536,
+  "compact_context": false,
+  "synthetic_history": false,
+  "outcome": "provider_error",
+  "acceptance_passed": false,
+  "elapsed_ms": 239411.369,
+  "active_ms": 239411.369,
+  "approvals": {
+    "requests": 0,
+    "accepted": 0,
+    "rejected": 0,
+    "wait_ms": 0.0
+  },
+  "tools": [
+    {
+      "tool": "project_map",
+      "active_ms": 47.796,
+      "result_bytes": 16018,
+      "diagnostics": {
+        "error": false,
+        "truncated": true,
+        "mapped_files": 12,
+        "same_output_repeats": 0
+      }
+    },
+    {
+      "tool": "search",
+      "active_ms": 115.815,
+      "result_bytes": 138,
+      "diagnostics": {
+        "error": false,
+        "timed_out": false,
+        "truncated": false,
+        "files_read": 52,
+        "bytes_read": 749310,
+        "entries_scanned": 56,
+        "skipped_files": 0,
+        "matched_lines": 0,
+        "regex": true,
+        "same_output_repeats": 0
+      }
+    },
+    {
+      "tool": "read_file",
+      "active_ms": 0.816,
+      "result_bytes": 10631,
+      "diagnostics": {
+        "error": false,
+        "truncated": false,
+        "content_bytes": 10123,
+        "same_output_repeats": 0
+      }
+    },
+    {
+      "tool": "read_file",
+      "active_ms": 1.213,
+      "result_bytes": 2992,
+      "diagnostics": {
+        "error": false,
+        "truncated": true,
+        "line_truncated": false,
+        "content_bytes": 2740,
+        "same_output_repeats": 0
+      }
+    },
+    {
+      "tool": "search",
+      "active_ms": 34.743,
+      "result_bytes": 5970,
+      "diagnostics": {
+        "error": false,
+        "timed_out": false,
+        "truncated": false,
+        "files_read": 18,
+        "bytes_read": 396957,
+        "entries_scanned": 18,
+        "skipped_files": 0,
+        "matched_lines": 13,
+        "regex": true,
+        "same_output_repeats": 0
+      }
+    },
+    {
+      "tool": "read_file",
+      "active_ms": 4.239,
+      "result_bytes": 5156,
+      "diagnostics": {
+        "error": false,
+        "truncated": true,
+        "line_truncated": false,
+        "content_bytes": 4868,
+        "same_output_repeats": 0
+      }
+    },
+    {
+      "tool": "search",
+      "active_ms": 38.732,
+      "result_bytes": 366,
+      "diagnostics": {
+        "error": false,
+        "timed_out": false,
+        "truncated": false,
+        "files_read": 31,
+        "bytes_read": 343728,
+        "entries_scanned": 32,
+        "skipped_files": 0,
+        "matched_lines": 2,
+        "regex": true,
+        "same_output_repeats": 0
+      }
+    },
+    {
+      "tool": "search",
+      "active_ms": 1.385,
+      "result_bytes": 243,
+      "diagnostics": {
+        "error": false,
+        "timed_out": false,
+        "truncated": false,
+        "files_read": 1,
+        "bytes_read": 4579,
+        "entries_scanned": 0,
+        "skipped_files": 0,
+        "matched_lines": 1,
+        "regex": true,
+        "same_output_repeats": 0
+      }
+    },
+    {
+      "tool": "read_file",
+      "active_ms": 3.603,
+      "result_bytes": 2104,
+      "diagnostics": {
+        "error": false,
+        "truncated": true,
+        "line_truncated": false,
+        "content_bytes": 1805,
+        "same_output_repeats": 0
+      }
+    }
+  ],
+  "requests": {
+    "available": true,
+    "scope": "current provider instance; not persisted or sent to the model",
+    "attempts": 7,
+    "not_attempted": 0,
+    "outcomes": {
+      "success": 6,
+      "error": 1,
+      "cancelled": 0
+    },
+    "request_bytes": 299041,
+    "response_bytes": 13887,
+    "elapsed_ms": 238171.912,
+    "usage": {
+      "prompt_tokens": {
+        "reported_sum": 77885,
+        "known_requests": 7,
+        "unknown_requests": 0,
+        "complete_sum": 77885
+      },
+      "completion_tokens": {
+        "reported_sum": 2799,
+        "known_requests": 7,
+        "unknown_requests": 0,
+        "complete_sum": 2799
+      },
+      "total_tokens": {
+        "reported_sum": 80684,
+        "known_requests": 7,
+        "unknown_requests": 0,
+        "complete_sum": 80684
+      }
+    },
+    "recent_limit": 128,
+    "recent_dropped": 0,
+    "recent": [
+      {
+        "attempted": true,
+        "streamed": false,
+        "outcome": "success",
+        "http_status": 200,
+        "request_bytes": 8337,
+        "response_bytes": 767,
+        "elapsed_ms": 28767.955,
+        "first_text_ms": null,
+        "usage": {
+          "prompt_tokens": 2012,
+          "completion_tokens": 108,
+          "total_tokens": 2120
+        }
+      },
+      {
+        "attempted": true,
+        "streamed": false,
+        "outcome": "success",
+        "http_status": 200,
+        "request_bytes": 27544,
+        "response_bytes": 836,
+        "elapsed_ms": 44132.125,
+        "first_text_ms": null,
+        "usage": {
+          "prompt_tokens": 7416,
+          "completion_tokens": 128,
+          "total_tokens": 7544
+        }
+      },
+      {
+        "attempted": true,
+        "streamed": false,
+        "outcome": "success",
+        "http_status": 200,
+        "request_bytes": 42506,
+        "response_bytes": 798,
+        "elapsed_ms": 34589.855,
+        "first_text_ms": null,
+        "usage": {
+          "prompt_tokens": 11150,
+          "completion_tokens": 146,
+          "total_tokens": 11296
+        }
+      },
+      {
+        "attempted": true,
+        "streamed": false,
+        "outcome": "success",
+        "http_status": 200,
+        "request_bytes": 49497,
+        "response_bytes": 672,
+        "elapsed_ms": 20726.123,
+        "first_text_ms": null,
+        "usage": {
+          "prompt_tokens": 12920,
+          "completion_tokens": 92,
+          "total_tokens": 13012
+        }
+      },
+      {
+        "attempted": true,
+        "streamed": false,
+        "outcome": "success",
+        "http_status": 200,
+        "request_bytes": 55188,
+        "response_bytes": 993,
+        "elapsed_ms": 20908.373,
+        "first_text_ms": null,
+        "usage": {
+          "prompt_tokens": 14265,
+          "completion_tokens": 204,
+          "total_tokens": 14469
+        }
+      },
+      {
+        "attempted": true,
+        "streamed": false,
+        "outcome": "success",
+        "http_status": 200,
+        "request_bytes": 56660,
+        "response_bytes": 607,
+        "elapsed_ms": 29612.547,
+        "first_text_ms": null,
+        "usage": {
+          "prompt_tokens": 14692,
+          "completion_tokens": 73,
+          "total_tokens": 14765
+        }
+      },
+      {
+        "attempted": true,
+        "streamed": false,
+        "outcome": "error",
+        "http_status": 200,
+        "request_bytes": 59309,
+        "response_bytes": 9214,
+        "elapsed_ms": 59434.934,
+        "first_text_ms": null,
+        "usage": {
+          "prompt_tokens": 15430,
+          "completion_tokens": 2048,
+          "total_tokens": 17478
+        }
+      }
+    ]
+  },
+  "request_pacing": {
+    "interval_seconds": 3.0,
+    "backend_starts": 7,
+    "wait_ms": 0.0,
+    "source_sha256": "ce4ba23779b65e448585d1ca8413ea67a1e31974a25cd50b5810160fe8527ea6",
+    "scope": "backend invocation starts; HTTP may be blocked by validation",
+    "automatic_retries": false
+  },
+  "tool_diagnostics": {
+    "source_sha256": "cc45dc00d3a1bad227fc61346f17361fd95e55097aaa603b0c58bdafed3a5c29",
+    "recent_inspection_limit": 128,
+    "scope": "numeric tool results; repeats require identical arguments and output within the retained window; no inspection skipped"
+  },
+  "repository_task": {
+    "protocol": 1,
+    "repository": "pallets/click",
+    "snapshot_files": 52,
+    "base_commit": "19fd4d6e18bc9fce451f92f422696b11169faa57",
+    "base_sha256": "7d610833c8a6564f980f747e4601e7f4821872702c4a59f32ff9c5d653300d08",
+    "acceptance_commit": "831c8f0948af519e45b90801d7430ff25451f972",
+    "acceptance_snapshot_sha256": "62d0162a63fa5322307e29d1710ec7624bd3ca20572329fddbdae1fe628f628d",
+    "expected_upstream_checks": 642,
+    "public_exception_contract": true,
+    "acceptance_python": "3.12",
+    "acceptance_pytest": "8.4.2",
+    "entry_sha256": "4495f2690deb7871dcf66921ecd7749a4e75a638a5284f0f5dcdc70245a56ebf",
+    "adapter_sha256": "309d80e760b4203ca0ad8548a7d841eb6b3f54ec39792d6c7724dca4826b08b8",
+    "comparison_lock_sha256": "eb1207065a83573e2e9fd9a879694ffcb458c93f15a00a504a4c607a1d2e32e2",
+    "task_sha256": "2908db436a3b9ac92c17b2d60eed48baae6c6549b9a1c83bb775bc816bcf6273"
+  },
+  "recorded_at_utc": "2026-10-15T09:12:35.963416+00:00"
+}
