@@ -1,0 +1,307 @@
+{
+  "schema": 1,
+  "scope": "one diagnostic Sprig task; no competitor or overall performance claim",
+  "case": "py-pagination",
+  "category": "cross-file-repair",
+  "language": "python",
+  "fixture_sha256": "d72116cba3dc33ed60646bcc82717074dc9c07bbe02587069f6950e8cbda3d8c",
+  "verifier_sha256": "acbd447a1d2fab8c65a2224aad7bb9b64a8a8d0daff987cb116523b3303e57da",
+  "verifier_intact": true,
+  "task_sha256": "d6ee4b0927e4a4d34ac514f8cd0a5ca73b54341abd947910e859531b76506e2d",
+  "initial_history_sha256": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+  "uv_lock_sha256": "834405cf539c2a1803289a8f2e55955a53af7869bf931a33ce4d1f80e9010e17",
+  "driver_sha256": "47ff705db9c0363754dd9711c03e1a747d1e3ab145b0d110bba73916ea70c706",
+  "python": "3.12.12",
+  "platform": "Windows-11-10.0.26300-SP0",
+  "node": null,
+  "request_timeout_seconds": 60.0,
+  "generation_options": {
+    "max_tokens": 2048
+  },
+  "model": "deepseek-flash",
+  "base_url": "https://api.llm.ustc.edu.cn/v1",
+  "stream": false,
+  "request_usage": false,
+  "max_steps": 8,
+  "max_context_bytes": 32768,
+  "compact_context": false,
+  "synthetic_history": false,
+  "outcome": "acceptance_passed",
+  "acceptance_passed": true,
+  "elapsed_ms": 125043.693,
+  "active_ms": 50872.512,
+  "approvals": {
+    "requests": 4,
+    "accepted": 4,
+    "rejected": 0,
+    "wait_ms": 74171.181
+  },
+  "tools": [
+    {
+      "tool": "project_map",
+      "active_ms": 4.428,
+      "result_bytes": 163,
+      "diagnostics": {
+        "error": false,
+        "truncated": false,
+        "mapped_files": 1,
+        "same_output_repeats": 0
+      }
+    },
+    {
+      "tool": "search",
+      "active_ms": 1.415,
+      "result_bytes": 694,
+      "diagnostics": {
+        "error": false,
+        "truncated": false,
+        "files_read": 3,
+        "bytes_read": 552,
+        "entries_scanned": 3,
+        "skipped_files": 0,
+        "matched_lines": 3,
+        "regex": false,
+        "same_output_repeats": 0
+      }
+    },
+    {
+      "tool": "read_file",
+      "active_ms": 0.493,
+      "result_bytes": 179,
+      "diagnostics": {
+        "error": false,
+        "truncated": false,
+        "content_bytes": 118,
+        "same_output_repeats": 0
+      }
+    },
+    {
+      "tool": "list_files",
+      "active_ms": 0.017,
+      "result_bytes": 56,
+      "diagnostics": {
+        "error": true
+      }
+    },
+    {
+      "tool": "list_files",
+      "active_ms": 0.353,
+      "result_bytes": 153,
+      "diagnostics": {
+        "error": false,
+        "truncated": false,
+        "listed_entries": 3,
+        "same_output_repeats": 0
+      }
+    },
+    {
+      "tool": "read_file",
+      "active_ms": 1.251,
+      "result_bytes": 135,
+      "diagnostics": {
+        "error": false,
+        "truncated": false,
+        "content_bytes": 73,
+        "same_output_repeats": 0
+      }
+    },
+    {
+      "tool": "edit_file",
+      "active_ms": 50.929,
+      "result_bytes": 60,
+      "diagnostics": {
+        "error": false,
+        "approved": true
+      }
+    },
+    {
+      "tool": "edit_file",
+      "active_ms": 37.551,
+      "result_bytes": 57,
+      "diagnostics": {
+        "error": false,
+        "approved": true
+      }
+    },
+    {
+      "tool": "run",
+      "active_ms": 211.077,
+      "result_bytes": 187,
+      "diagnostics": {
+        "error": false,
+        "approved": true,
+        "timed_out": false,
+        "output_limited": false,
+        "returncode": 0
+      }
+    },
+    {
+      "tool": "run",
+      "active_ms": 391.813,
+      "result_bytes": 187,
+      "diagnostics": {
+        "error": false,
+        "approved": true,
+        "timed_out": false,
+        "output_limited": false,
+        "returncode": 0
+      }
+    }
+  ],
+  "requests": {
+    "available": true,
+    "scope": "current provider instance; not persisted or sent to the model",
+    "attempts": 7,
+    "not_attempted": 0,
+    "outcomes": {
+      "success": 7,
+      "error": 0,
+      "cancelled": 0
+    },
+    "request_bytes": 73549,
+    "response_bytes": 6292,
+    "elapsed_ms": 49713.608,
+    "usage": {
+      "prompt_tokens": {
+        "reported_sum": 17912,
+        "known_requests": 7,
+        "unknown_requests": 0,
+        "complete_sum": 17912
+      },
+      "completion_tokens": {
+        "reported_sum": 987,
+        "known_requests": 7,
+        "unknown_requests": 0,
+        "complete_sum": 987
+      },
+      "total_tokens": {
+        "reported_sum": 18899,
+        "known_requests": 7,
+        "unknown_requests": 0,
+        "complete_sum": 18899
+      }
+    },
+    "recent_limit": 128,
+    "recent_dropped": 0,
+    "recent": [
+      {
+        "attempted": true,
+        "streamed": false,
+        "outcome": "success",
+        "http_status": 200,
+        "request_bytes": 7731,
+        "response_bytes": 770,
+        "elapsed_ms": 5385.358,
+        "first_text_ms": null,
+        "usage": {
+          "prompt_tokens": 1907,
+          "completion_tokens": 81,
+          "total_tokens": 1988
+        }
+      },
+      {
+        "attempted": true,
+        "streamed": false,
+        "outcome": "success",
+        "http_status": 200,
+        "request_bytes": 9229,
+        "response_bytes": 686,
+        "elapsed_ms": 7717.911,
+        "first_text_ms": null,
+        "usage": {
+          "prompt_tokens": 2258,
+          "completion_tokens": 65,
+          "total_tokens": 2323
+        }
+      },
+      {
+        "attempted": true,
+        "streamed": false,
+        "outcome": "success",
+        "http_status": 200,
+        "request_bytes": 9971,
+        "response_bytes": 558,
+        "elapsed_ms": 5032.103,
+        "first_text_ms": null,
+        "usage": {
+          "prompt_tokens": 2406,
+          "completion_tokens": 37,
+          "total_tokens": 2443
+        }
+      },
+      {
+        "attempted": true,
+        "streamed": false,
+        "outcome": "success",
+        "http_status": 200,
+        "request_bytes": 10422,
+        "response_bytes": 569,
+        "elapsed_ms": 3954.859,
+        "first_text_ms": null,
+        "usage": {
+          "prompt_tokens": 2506,
+          "completion_tokens": 40,
+          "total_tokens": 2546
+        }
+      },
+      {
+        "attempted": true,
+        "streamed": false,
+        "outcome": "success",
+        "http_status": 200,
+        "request_bytes": 10850,
+        "response_bytes": 1487,
+        "elapsed_ms": 13948.276,
+        "first_text_ms": null,
+        "usage": {
+          "prompt_tokens": 2599,
+          "completion_tokens": 326,
+          "total_tokens": 2925
+        }
+      },
+      {
+        "attempted": true,
+        "streamed": false,
+        "outcome": "success",
+        "http_status": 200,
+        "request_bytes": 12272,
+        "response_bytes": 884,
+        "elapsed_ms": 7535.075,
+        "first_text_ms": null,
+        "usage": {
+          "prompt_tokens": 2979,
+          "completion_tokens": 170,
+          "total_tokens": 3149
+        }
+      },
+      {
+        "attempted": true,
+        "streamed": false,
+        "outcome": "success",
+        "http_status": 200,
+        "request_bytes": 13074,
+        "response_bytes": 1338,
+        "elapsed_ms": 6140.026,
+        "first_text_ms": null,
+        "usage": {
+          "prompt_tokens": 3257,
+          "completion_tokens": 268,
+          "total_tokens": 3525
+        }
+      }
+    ]
+  },
+  "request_pacing": {
+    "interval_seconds": 3.0,
+    "backend_starts": 7,
+    "wait_ms": 0.0,
+    "source_sha256": "ce4ba23779b65e448585d1ca8413ea67a1e31974a25cd50b5810160fe8527ea6",
+    "scope": "backend invocation starts; HTTP may be blocked by validation",
+    "automatic_retries": false
+  },
+  "tool_diagnostics": {
+    "source_sha256": "cc45dc00d3a1bad227fc61346f17361fd95e55097aaa603b0c58bdafed3a5c29",
+    "recent_inspection_limit": 128,
+    "scope": "numeric tool results; repeats require identical arguments and output within the retained window; no inspection skipped"
+  }
+}

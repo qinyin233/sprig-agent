@@ -1,0 +1,71 @@
+{
+  "test": "streaming-text-connectivity",
+  "provider": "USTC",
+  "model": "deepseek-flash",
+  "success": true,
+  "credential_source": "process environment",
+  "max_tokens": 128,
+  "request_timeout": 30,
+  "max_context_bytes": 8192,
+  "text_delta_callbacks": 3,
+  "displayed_characters": 15,
+  "measurements": {
+    "available": true,
+    "scope": "current provider instance; not persisted or sent to the model",
+    "attempts": 1,
+    "not_attempted": 0,
+    "outcomes": {
+      "success": 1,
+      "error": 0,
+      "cancelled": 0
+    },
+    "request_bytes": 199,
+    "response_bytes": 811,
+    "elapsed_ms": 15917.064,
+    "usage": {
+      "prompt_tokens": {
+        "reported_sum": 0,
+        "known_requests": 0,
+        "unknown_requests": 1,
+        "complete_sum": null
+      },
+      "completion_tokens": {
+        "reported_sum": 0,
+        "known_requests": 0,
+        "unknown_requests": 1,
+        "complete_sum": null
+      },
+      "total_tokens": {
+        "reported_sum": 0,
+        "known_requests": 0,
+        "unknown_requests": 1,
+        "complete_sum": null
+      }
+    },
+    "recent_limit": 128,
+    "recent_dropped": 0,
+    "recent": [
+      {
+        "attempted": true,
+        "streamed": true,
+        "outcome": "success",
+        "http_status": 200,
+        "request_bytes": 199,
+        "response_bytes": 811,
+        "elapsed_ms": 15917.064,
+        "first_text_ms": 15815.54,
+        "usage": null
+      }
+    ]
+  },
+  "task_sha256": "abd93a1b365bd787d86053d22df6130313dcce5a7d292c6d2cf37b2fc122fc86",
+  "tool_execution": false,
+  "scope": "One text-only SSE request; not an agent task or coding benchmark.",
+  "source_commit": "bafd2fc58292965501d06e8ab2ab376b77f5ed6c",
+  "source_sha256": {
+    "src/sprig_agent/config.py": "8f54f413e428a5a17f0acdf78682960e92322a8c280678c6ed610c1872ace696",
+    "src/sprig_agent/settings.py": "ae57e2c08e3f8f1b62f9a3b8a48d4fb555c2b87dacf8a8f04ca32e0eb2ff505a",
+    "src/sprig_agent/provider.py": "fef3f34f2acd801b7c69b0655d885096c639f0c91ddf95774e7b142728d567a7",
+    "src/sprig_agent/streaming.py": "4ab732ec978e1813b9692f8997fe7df1a8576cd54fd21471b581856bc8ba0fe2"
+  }
+}
