@@ -7,6 +7,7 @@
 - Chat Completions + function tools，可选 SSE 流式输出
 - 可选每次模型输出 token 上限与兼容服务的思考模式
 - 用户级 `config.toml`、命名提供商、环境变量密钥引用、配置初始化与离线诊断
+- CLI `--file` / TUI `/add` 主动附加有界文件快照
 - 全屏终端 TUI、连续对话、项目代码地图、分目录 `AGENTS.md` 规则与本地 Git 查看
 - 用户固定验收命令：失败反馈修复，通过后才确认验收完成
 - 可选本地会话保存与恢复
@@ -110,7 +111,7 @@ uv run sprig '为现有函数补一个最小测试，并运行测试' --workdir 
 ## 命令行参数
 
 ```text
-sprig [TASK] [--workdir PATH] [--model MODEL] [--base-url URL]
+sprig [TASK] [--workdir PATH] [--file RELATIVE_PATH ...] [--model MODEL] [--base-url URL]
       [--config PATH | --no-config] [--provider NAME]
       [--init-config | --show-config | --doctor]
       [--max-steps INT] [--timeout SECONDS] [--max-output INT]
@@ -126,6 +127,7 @@ sprig [TASK] [--workdir PATH] [--model MODEL] [--base-url URL]
 | --- | --- |
 | `TASK` | 新会话必填；使用 `--chat`、`--tui` 或恢复会话时可省略 |
 | `--workdir` | `.`，文件工具的工作根目录 |
+| `--file RELATIVE_PATH` | 可重复；发送任务前附加完整文件快照，仍检查隐私、大小、路径及上下文预算；TUI 也可 `/add 路径` |
 | `--config PATH` / `--no-config` | 显式可信 TOML 路径 / 禁用文件；默认用户 `~/.sprig/config.toml`，不搜索仓库 |
 | `--provider` | 选择命名提供商；否则 `SPRIG_PROVIDER` 或配置默认提供商 |
 | `--init-config` / `--show-config` / `--doctor` | 确认创建私有模板 / 密钥值不显示的生效配置 / 离线诊断 |

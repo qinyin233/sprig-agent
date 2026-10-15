@@ -131,7 +131,7 @@ class SprigApp(App[int]):
     #events { height: 1fr; }
     """
 
-    def __init__(self, config, task=None, session_dir=None, save_session=None, resume=None, provider=None, change_dir=None):
+    def __init__(self, config, task=None, session_dir=None, save_session=None, resume=None, provider=None, change_dir=None, files=()):
         super().__init__()
         self.config = config
         self.initial_task = task
@@ -152,6 +152,7 @@ class SprigApp(App[int]):
         self._lifecycle_lock = threading.Lock()
         self._closed = False
         self._unmounted = False
+        self._ui_ready = False
         self._ui_thread_id = threading.get_ident()
         self.quit_when_idle = False
         self.transcript = ""
@@ -178,7 +179,8 @@ class SprigApp(App[int]):
                     result = {**result, "skipped": True,
                               "error": "Not executed: superseded by new user guidance. Follow the updated request and request fresh approval for any new action."}
                 summary = {key: result[key] for key in ("approved", "changed", "returncode", "timed_out", "output_limited", "error") if key in result}
-                app.ui_call(app.event, name + ": " + json.dumps(summary, ensure_ascii=False))
+                if app._ui_ready and not app._unmounted:
+                    app.ui_call(app.event, name + ": " + json.dumps(summary, ensure_ascii=False))
                 return result
 
         history = None
@@ -191,9 +193,17 @@ class SprigApp(App[int]):
             if self.store:
                 self.store.close()
             raise
-        self.agent = Agent(config, provider or Provider(config), self.tools, self.emit,
-                           checkpoint=self.checkpoint, emit_delta=self.emit_delta, cancel_event=self.cancel_event,
-                           receive_input=self.receive_input)
+        try:
+            self.agent = Agent(config, provider or Provider(config), self.tools, self.emit,
+                               checkpoint=self.checkpoint, emit_delta=self.emit_delta, cancel_event=self.cancel_event,
+                               receive_input=self.receive_input)
+            if files:
+                self.messages, _ = self.agent.attach_files(files, self.messages)
+        except BaseException:
+            self.tools.close()
+            if self.store:
+                self.store.close()
+            raise
 
     def compose(self) -> ComposeResult:
         yield Header()
@@ -236,6 +246,7 @@ class SprigApp(App[int]):
         yield Footer()
 
     def on_mount(self):
+        self._ui_ready = True
         self._ui_thread_id = threading.get_ident()
         self.set_interval(self.OUTPUT_REFRESH_SECONDS, self.flush_output)
         self.action_focus_task()
@@ -479,6 +490,8 @@ class SprigApp(App[int]):
                         self.ui_call(self.invalidate_task)
                         status, message = 2, "本地文件已变更；先前验收失效，请检查并重新验收"
                     self.agent.record_workspace_change(self.messages, result)
+                elif name == "attach":
+                    self.messages, result = self.agent.attach_files(arguments["paths"], self.messages)
                 else:
                     result = self.tools.execute(name, arguments)
                 self.emit("[本地查看，不自动上传]\n" + json.dumps(result, ensure_ascii=False, indent=2))
@@ -610,7 +623,7 @@ class SprigApp(App[int]):
         self.append("".join("\n" + message["role"] + "> " + message["content"] + "\n"
                             for message in self.messages or []
                             if message["role"] in {"user", "assistant"} and message.get("content")))
-        self.event("已恢复历史；未发起模型请求，未重放工具")
+        self.event("已加载对话内容；未发起模型请求，未重放工具")
 
     def save(self):
         try:
@@ -684,7 +697,7 @@ class SprigApp(App[int]):
         if command == "/help":
             self.append("\n本地命令（不发送给模型）：\n"
                         "/help /status /config /context /usage /cancel /exit\n"
-                        "/continue /new /map [名称或路径查询] /git /diff /compact\n"
+                        "/continue /new /add 文件路径 /map [名称或路径查询] /git /diff /compact\n"
                         "/changes /undo /redo /discard-history /sessions\n"
                         "/save [名称] /restore [名称] /delete [名称]\n"
                         "执行中可输入普通消息调整引导。// 开头发送以 / 开头的普通消息。\n"
@@ -704,19 +717,24 @@ class SprigApp(App[int]):
         actions = {"/continue": "continue", "/new": "new", "/map": "map", "/git": "git", "/diff": "diff",
                    "/context": "context-budget", "/usage": "usage", "/compact": "compact",
                    "/changes": "changes", "/undo": "undo", "/redo": "redo", "/discard-history": "discard-history",
-                   "/sessions": "sessions", "/save": "save", "/restore": "restore", "/delete": "delete"}
+                   "/sessions": "sessions", "/save": "save", "/restore": "restore", "/delete": "delete", "/add": "attach"}
         if command not in actions:
             self.append("\n未知本地命令；输入 /help。消息未发送给模型。\n")
             return
         if self.busy:
             self.append("\n该本地操作需要等待当前任务结束；可用 /cancel，或发送普通消息调整任务。\n")
             return
-        if argument and command not in {"/map", "/save", "/restore", "/delete"}:
+        if argument and command not in {"/map", "/save", "/restore", "/delete", "/add"}:
             self.append("\n该命令不接受参数；输入 /help。\n")
             return
         if command in {"/save", "/restore", "/delete"} and argument:
             self.query_one("#session-name", Input).value = argument
-        if command == "/map" and argument:
+        if command == "/add":
+            if not argument:
+                self.append("\n用法：/add 工作区相对文件路径；文件只作为快照加入，下一条消息才请求模型。\n")
+                return
+            self.start(local=("attach", {"paths": [argument]}))
+        elif command == "/map" and argument:
             self.start(local=("project_map", {"query": argument}))
         else:
             try:
@@ -800,8 +818,8 @@ class SprigApp(App[int]):
             self._lifecycle_lock.release()
 
 
-def run_tui(config, task=None, session_dir=None, save_session=None, resume=None, change_dir=None, show_metrics=False):
-    app = SprigApp(config, task, session_dir, save_session, resume, change_dir=change_dir)
+def run_tui(config, task=None, session_dir=None, save_session=None, resume=None, change_dir=None, show_metrics=False, files=()):
+    app = SprigApp(config, task, session_dir, save_session, resume, change_dir=change_dir, files=files)
     try:
         return app.run() or 0
     finally:

@@ -38,7 +38,7 @@ def check_argv(text):
         raise argparse.ArgumentTypeError("--check expects a JSON argv array, e.g. '[\"python\",\"-m\",\"unittest\"]'") from None
 
 
-def chat(agent, task, messages, emit):
+def chat(agent, task, messages, emit, *, autostart=True):
     """Keep context across turns; only a new task or /continue calls the model."""
     status = 0
     history_ready = True
@@ -81,7 +81,7 @@ def chat(agent, task, messages, emit):
         except (OSError, ValueError, ChangeError, ProviderError, SessionError) as error:
             recover(False, error)
 
-    if task or messages is not None:
+    if task or (messages is not None and autostart):
         run(task)
     emit("Chat ready. Enter a task; /continue, /help, /status, /context, /usage, /compact, /changes, /undo, /redo, /diff, /git or /exit.")
     while True:
@@ -153,6 +153,7 @@ def main(argv=None):
     parser.add_argument("task", nargs="?", help="task; optional when resuming")
     parser.add_argument("--version", action="version", version=__version__)
     parser.add_argument("--workdir", default=".")
+    parser.add_argument("--file", action="append", default=[], metavar="RELATIVE_PATH", help="attach a complete workspace text snapshot before the task; repeatable, privacy and context limits apply")
     configuration = parser.add_mutually_exclusive_group()
     configuration.add_argument("--config", type=Path, help="explicit trusted TOML path (or SPRIG_CONFIG); default: ~/.sprig/config.toml")
     configuration.add_argument("--no-config", action="store_true", help="ignore configuration files, including SPRIG_CONFIG")
@@ -196,7 +197,7 @@ def main(argv=None):
         local_configuration = args.init_config or args.show_config or args.doctor
         if os.name not in {"posix", "nt"}:
             raise ValueError("Sprig requires Linux/macOS or Windows 10+")
-        if (manage_sessions or local_configuration) and (args.task or args.interface in {"chat", "tui"} or args.checks or args.resume):
+        if (manage_sessions or local_configuration) and (args.task or args.file or args.interface in {"chat", "tui"} or args.checks or args.resume):
             raise ValueError("local management cannot be combined with tasks or interactive interfaces")
         config_path = args.config or os.environ.get("SPRIG_CONFIG")
         if args.init_config:
@@ -250,7 +251,7 @@ def main(argv=None):
         if args.tui:
             from .tui import run_tui
             return run_tui(config, args.task, args.session_dir, args.save_session, args.resume,
-                           change_dir=args.change_history_dir, show_metrics=args.metrics)
+                           change_dir=args.change_history_dir, show_metrics=args.metrics, files=args.file)
         emit = lambda text: print(terminal_text(redact(text, key)), flush=True)
         confirm = lambda text: approve(redact(text, key))
         emit_delta = lambda text: print(terminal_text(text), end="", flush=True)
@@ -273,8 +274,11 @@ def main(argv=None):
         tools = Tools(config, confirm, emit_output=emit_delta, history=history)
         provider = Provider(config)
         agent = Agent(config, provider, tools, emit, checkpoint, emit_delta=emit_delta)
+        if args.file:
+            messages, attached = agent.attach_files(args.file, messages)
+            emit("[attached snapshots] " + json.dumps(attached, ensure_ascii=False))
         if args.chat:
-            return chat(agent, args.task, messages, emit)
+            return chat(agent, args.task, messages, emit, autostart=bool(args.task or args.resume))
         _, complete = agent.run(args.task, messages)
         return 0 if complete else 2
     except KeyboardInterrupt:

@@ -69,6 +69,42 @@ class TuiTests(unittest.IsolatedAsyncioTestCase):
         editor.focus()
         await pilot.press("enter")
 
+    async def test_startup_and_slash_attachments_wait_for_message_and_keep_readonly_privacy(self):
+        from dataclasses import replace
+        self.config = replace(self.config, read_only=True)
+        (self.root / "notes file.py").write_text("value = 123\n", encoding="utf-8")
+        (self.root / ".env").write_text("hidden", encoding="utf-8")
+        provider = ScriptedProvider([response("explained")])
+        app = self.app(provider, files=["notes file.py"])
+        async with app.run_test(size=(110, 36)) as pilot:
+            self.assertFalse(app.busy)
+            self.assertEqual(provider.calls, [])
+            self.assertIn("value = 123", app.messages[-1]["content"])
+            before = copy.deepcopy(app.messages)
+            await self.send_text(pilot, "/add .env")
+            await self.until(pilot, lambda: not app.busy)
+            self.assertEqual(app.messages, before)
+            self.assertEqual(provider.calls, [])
+            (self.root / "notes file.py").write_text("value = 456\n", encoding="utf-8")
+            await self.send_text(pilot, "/add notes file.py")
+            await self.until(pilot, lambda: not app.busy)
+            self.assertIn("value = 456", app.messages[-1]["content"])
+            self.assertEqual(provider.calls, [])
+            await self.send_text(pilot, "explain these snapshots")
+            await self.until(pilot, lambda: not app.busy)
+            self.assertEqual(len(provider.calls), 1)
+            self.assertIn("value = 456", json.dumps(provider.calls[0]))
+
+    async def test_failed_startup_attachment_releases_session_reservation(self):
+        with self.assertRaises(ValueError):
+            SprigApp(self.config, session_dir=self.parent / "sessions", save_session="reserved",
+                     provider=ScriptedProvider([]), files=["missing"])
+        store = SessionStore(self.parent / "sessions", self.config)
+        try:
+            store.ensure_new("reserved")
+        finally:
+            store.close()
+
     async def test_slash_controls_are_local_and_config_keys_are_withheld(self):
         from dataclasses import replace
         self.config = replace(self.config, api_key="fixture-private-config-key")
