@@ -61,6 +61,24 @@ class MetricTests(unittest.TestCase):
         self.assertNotIn("sensitive task", json.dumps(report))
         self.assertNotIn("Done", json.dumps(report))
 
+    def test_manual_continue_after_output_limit_sees_fixed_feedback_without_replaying_intent(self):
+        provider = self.provider(self.json_body(reason="length"))
+        tools, saved = Mock(), []
+        agent = Agent(provider.config, provider, tools, lambda _: None,
+                      lambda history: saved.append(json.loads(json.dumps(history))))
+        with self.assertRaises(ProviderError):
+            agent.run("implement")
+        self.assertEqual(provider.opener.open.call_count, 1)
+        history = saved[-1]
+        self.assertIn("No tool calls from that response executed", history[-1]["content"])
+        self.assertFalse(any(message.get("tool_calls") for message in history))
+        provider.opener.open.return_value = io.BytesIO(self.json_body())
+        _, complete = agent.run(None, history)
+        self.assertTrue(complete)
+        sent = json.loads(provider.opener.open.call_args.args[0].data)
+        self.assertIn("No automatic retry was made", sent["messages"][-1]["content"])
+        tools.execute.assert_not_called()
+
     def test_streaming_first_validated_text_final_usage_and_request_opt_in(self):
         body = sse(chunk({"role": "assistant"}), chunk({"content": "early"}), chunk(reason="stop"),
                    {"choices": [], "usage": {**USAGE, "extra": "fake-secret"}})
@@ -134,6 +152,8 @@ class MetricTests(unittest.TestCase):
         with self.assertRaises(ProviderError):
             provider.complete([], [])
         self.assertEqual(provider.measurements.report()["outcomes"]["error"], 1)
+        self.assertEqual(provider.measurements.report()["recent"][0]["finish_reason"], "length")
+        self.assertEqual(provider.measurements.report()["failures"], {"output_limit": 1})
         self.assertEqual(provider.measurements.report()["usage"]["total_tokens"]["complete_sum"], 120)
         provider.opener.open.side_effect = urllib.error.HTTPError("http://localhost/v1", 429, "fake-secret", {},
                                                                io.BytesIO(b"fake-secret"))
@@ -142,6 +162,7 @@ class MetricTests(unittest.TestCase):
         record = provider.measurements.report()["recent"][-1]
         self.assertEqual(record["http_status"], 429)
         self.assertEqual(record["outcome"], "error")
+        self.assertEqual(record["error_code"], "http_error")
         self.assertIsNone(record["usage"])
         self.assertEqual(provider.opener.open.call_count, 2)
         self.assertNotIn("fake-secret", json.dumps(provider.measurements.report()))
@@ -153,6 +174,7 @@ class MetricTests(unittest.TestCase):
             provider.complete([], [])
         self.assertEqual(provider.measurements.report()["recent"][0]["response_bytes"], len(body))
         self.assertIsNone(provider.measurements.report()["recent"][0]["usage"])
+        self.assertEqual(provider.measurements.report()["recent"][0]["error_code"], "incomplete_stream")
         provider.opener.open.return_value = Fragmented(body)
 
         def cancel(_):
@@ -172,8 +194,30 @@ class MetricTests(unittest.TestCase):
         provider.opener.open.assert_not_called()
         report = provider.measurements.report()
         self.assertEqual((report["attempts"], report["not_attempted"], report["request_bytes"]), (0, 1, 0))
+        self.assertEqual(report["recent"][0]["error_code"], "request_budget")
         self.assertIsNone(report["recent"][0]["elapsed_ms"])
         self.assertEqual(report["usage"]["total_tokens"]["unknown_requests"], 0)
+
+    def test_finish_causes_are_allowlisted_and_stream_limit_preserves_usage_without_tool_execution(self):
+        for reason, expected in (("length", "output_limit"), ("content_filter", "content_filter"),
+                                 ("fake-secret", "unsupported_finish_reason")):
+            provider = self.provider(self.json_body(reason=reason))
+            with self.assertRaises(ProviderError) as caught:
+                provider.complete([], [])
+            self.assertEqual(caught.exception.code, expected)
+            self.assertNotIn("fake-secret", str(caught.exception) + json.dumps(provider.measurements.report()))
+        event = chunk({"tool_calls": [{"index": 0, "id": "edit", "type": "function", "function": {
+            "name": "edit_file", "arguments": '{"path":"unfinished'}}]}, reason="length")
+        event["usage"] = USAGE
+        provider = self.provider(sse(event), stream=True)
+        tools = Mock()
+        with self.assertRaises(ProviderError) as caught:
+            Agent(provider.config, provider, tools, lambda _: None).run("fix")
+        self.assertEqual(caught.exception.code, "output_limit")
+        tools.execute.assert_not_called()
+        record = provider.measurements.report()["recent"][0]
+        self.assertEqual(record["finish_reason"], "length")
+        self.assertEqual(record["usage"], USAGE)
 
     def test_recent_records_are_bounded_and_mutable_snapshots_do_not_corrupt_totals(self):
         provider = self.provider(self.json_body())

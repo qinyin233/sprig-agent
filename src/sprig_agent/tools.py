@@ -2,6 +2,7 @@
 
 from contextlib import contextmanager
 import difflib
+import hashlib
 import io
 import json
 import math
@@ -23,6 +24,7 @@ from .map_selection import MapSelection, encoded_size
 from .policy import FilePolicy, command_environment
 from .output import CommandOutput
 from .edit_match import failure_details
+from .line_edits import replace_lines, validate_edits
 from .search import FileGlob, RegexBudgetExceeded, RegexMatcher, matching_lines
 from .syntax import IndexUnavailable
 
@@ -47,21 +49,27 @@ STRING = {"type": "string"}
 TOOL_SCHEMAS = [
     schema("list_files", "List one workspace directory; no symlinks or protected files.",
            {"path": STRING}),
-    schema("read_file", "Read UTF-8 text. Use 1-based offset and limit to inspect specific lines or continue a large file. Ranged reads scan at most 8 MiB, enforce file privacy, and report next_offset; a single oversized line is explicitly marked incomplete.",
+    schema("read_file", "Read UTF-8 text. offset/limit use physical 1-based lines. Ranged reads validate the whole file (<=8 MiB) and return sha256/next_offset. Read complete relevant lines before editing. Truncated unranged prefixes have no hash.",
            {"path": STRING, "offset": {"type": "integer", "minimum": 1, "maximum": 1000000},
             "limit": {"type": "integer", "minimum": 1, "maximum": 10000}}, ["path"]),
-    schema("search", "Find text in a workspace file or recursively in a directory. Default query is literal; regex=true enables RE2 syntax (alternation, classes, anchors, quantifiers, Unicode properties; no lookaround or backreferences), matched per physical CR/LF line. query: at most 1000 characters. Regex has a 1 MiB engine budget and a cooperative 1-second compile/match budget; timed_out means incomplete. ignore_case uses full Unicode folding for literal text, simple folding for RE2; RE2 \\w/\\d/\\b use ASCII semantics. Optional case-sensitive glob filters basenames (*.py) or workspace-relative paths (src/**/*.py; * does not cross /, ** is a whole component). context adds up to 10 lines before/after each hit; default limit 100 matching lines. Full-file privacy, read/output budgets and cancellation apply. Truncated results or skipped files cannot establish absence.",
+    schema("search", "Search literal text recursively, or RE2 with regex=true (no lookaround/backreferences; ASCII \\w/\\d/\\b). ignore_case: full Unicode folding for literals, simple folding for RE2. Case-sensitive glob matches basenames or workspace-relative paths: * stays within /, ** spans components. context: 0-10 surrounding lines; limit: 1-1000 matching physical CR/LF lines, default 100. Query <=1000 chars; RE2 budgets: 1 MiB and cooperative 1s. Whole-file privacy, read/output bounds and cancellation apply. Truncated, timed_out or skipped results cannot establish absence.",
            {"query": STRING, "path": STRING, "glob": {"type": "string", "minLength": 1, "maxLength": 256},
             "ignore_case": {"type": "boolean"}, "regex": {"type": "boolean"},
             "context": {"type": "integer", "minimum": 0, "maximum": 10},
             "limit": {"type": "integer", "minimum": 1, "maximum": 1000}}, ["query"]),
-    schema("project_map", "Bounded workspace file map with declarations and 1-based lines for Python, JavaScript, TypeScript/TSX, Rust, Go, C/C++ and Java. Optional query is a case-insensitive literal path/declaration-name match; exact names then prefixes outrank substrings, and only matching declarations or files are returned. Use it when a full map omits relevant symbols. Syntax only; inspect relevant files afterwards. Unsupported files have paths only; unavailable or oversized parses are marked.",
+    schema("project_map", "Map paths and 1-based declarations for Python, JS/TS/TSX, Rust, Go, C/C++ and Java. query matches literal names/paths case-insensitively; exact then prefix matches rank first. Use a focused query if the full map is truncated. Syntax only; unsupported files have paths, unavailable parses are flagged. Read implementation before editing.",
            {"path": STRING, "query": {"type": "string", "minLength": 1, "maxLength": 256}}),
-    schema("edit_file", "Edit one file after complete diff approval. Provide old/new for one replacement (empty old creates a new file only), OR edits for up to 32 replacements in an existing file. Every edits[].old must match exactly once in the ORIGINAL file; matches must not overlap. All replacements are validated before a single write, with one undo record. Parent directory must exist. Match failures return a 1-based edit index, reason and bounded read_file offset/limit suggestions. These are navigation hints: reread actual text including whitespace and CR/LF, then submit a unique exact block.",
+    schema("edit_file", "Edit one file with complete diff approval, atomic write and undo. Choose old/new (old='' creates only), edits (<=32 unique exact replacements in ORIGINAL text), OR sha256+line_edits (<=32 whole-line replacements; existing file, fresh read_file hash). Ranges: 1-based inclusive; insert with end_line=start_line-1; no overlap. new replaces line terminators too: include LF/CRLF explicitly, no conversion. Stale hashes stop before approval; parent must exist. Match-failure hints require a reread.",
            {"path": STRING, "old": STRING, "new": STRING,
             "edits": {"type": "array", "minItems": 1, "maxItems": MAX_EDITS,
                       "items": {"type": "object", "properties": {"old": STRING, "new": STRING},
-                                "required": ["old", "new"], "additionalProperties": False}}}, ["path"]),
+                                "required": ["old", "new"], "additionalProperties": False}},
+            "sha256": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+            "line_edits": {"type": "array", "minItems": 1, "maxItems": MAX_EDITS,
+                           "items": {"type": "object", "properties": {
+                               "start_line": {"type": "integer", "minimum": 1, "maximum": 1000000},
+                               "end_line": {"type": "integer", "minimum": 0, "maximum": 1000000}, "new": STRING},
+                               "required": ["start_line", "end_line", "new"], "additionalProperties": False}}}, ["path"]),
     schema("run", "Run argv after explicit approval. NOT sandboxed; can access network and files outside workspace.",
            {"argv": {"type": "array", "items": STRING, "minItems": 1}, "cwd": STRING,
             "timeout": {"type": "number", "exclusiveMinimum": 0, "maximum": 120}}, ["argv"]),
@@ -234,7 +242,10 @@ class Tools:
             self.policy.check_text(text)
         else:
             text = self._decode(raw)
-        return {"path": path, "content": text, "truncated": truncated}
+        result = {"path": path, "content": text, "truncated": truncated}
+        if not truncated and not any(secret in text for secret in self.config.credential_secrets):
+            result["sha256"] = hashlib.sha256(raw).hexdigest()
+        return result
 
     def _read_page(self, path, offset, limit):
         # Validate the whole bounded file before exposing a page: selecting a
@@ -253,9 +264,10 @@ class Tools:
                     raise ToolError("ranged read exceeds the 8 MiB scan limit")
         self._check_cancelled()
         selected, size, partial, capped, total = [], 0, False, False, 0
+        text = self._decode(raw)
         # Iterate rather than allocating one list entry per line for a file
         # containing millions of blank lines. Keep CR/LF endings unchanged.
-        for line in io.StringIO(self._decode(raw), newline=""):
+        for line in io.StringIO(text, newline=""):
             total += 1
             if total % 256 == 0:
                 self._check_cancelled()
@@ -277,9 +289,14 @@ class Tools:
             raise ToolError(f"offset {offset} is beyond the end of the file ({total} lines)")
         end = offset - 1 + len(selected)
         truncated = partial or end < total
-        return {"path": path, "content": "".join(selected), "offset": offset, "end_line": end,
+        result = {"path": path, "content": "".join(selected), "offset": offset, "end_line": end,
                 "total_lines": total, "truncated": truncated, "line_truncated": partial,
                 "next_offset": end + 1 if truncated and not partial else None}
+        # Never expose a fingerprint of configured credentials that were masked
+        # from content, including a secret outside the requested line range.
+        if not any(secret in text for secret in self.config.credential_secrets):
+            result["sha256"] = hashlib.sha256(raw).hexdigest()
+        return result
 
     def search(self, query, path=".", *, glob=_MISSING, ignore_case=False, regex=False, context=0, limit=100):
         self._require_tool("search")
@@ -549,12 +566,22 @@ class Tools:
         return {"approved": True, "changed": True, "path": path, "action": action,
                 "note": "Workspace changed; previous model conclusions and acceptance results need rechecking."}
 
-    def edit_file(self, path, old=_MISSING, new=_MISSING, *, edits=_MISSING):
+    def edit_file(self, path, old=_MISSING, new=_MISSING, *, edits=_MISSING, sha256=_MISSING, line_edits=_MISSING):
         self._require_tool("edit_file")
         if self.config.read_only:
             return {"approved": False, "changed": False, "error": "read-only mode blocks file writes"}
         multiple = edits is not _MISSING
-        if multiple:
+        by_line = line_edits is not _MISSING
+        if by_line:
+            if multiple or old is not _MISSING or new is not _MISSING:
+                raise ToolError("choose old/new, edits, or sha256 plus line_edits")
+            if not isinstance(sha256, str) or len(sha256) != 64 or any(c not in "0123456789abcdef" for c in sha256):
+                raise ToolError("line_edits require the whole-file sha256 from read_file")
+            validate_edits(line_edits, MAX_FILE, self._check_cancelled)
+            replacements = []
+        elif sha256 is not _MISSING:
+            raise ToolError("sha256 requires line_edits")
+        elif multiple:
             if old is not _MISSING or new is not _MISSING:
                 raise ToolError("provide old/new or edits, not both")
             if not isinstance(edits, list) or not 1 <= len(edits) <= MAX_EDITS:
@@ -582,7 +609,14 @@ class Tools:
         with self._parent(path) as (fd, name):
             before_raw, before_stat = self._snapshot(fd, name)
             before = self._decode(before_raw or b"")
-            if before_stat is None:
+            if by_line:
+                if before_stat is None:
+                    raise ToolError("line_edits require an existing file")
+                if hashlib.sha256(before_raw).hexdigest() != sha256:
+                    return {"error": "file revision changed; read the file again before proposing line_edits", "changed": False,
+                            "edit_failure": {"reason": "stale_revision"}}
+                after = replace_lines(before, line_edits, self._check_cancelled)
+            elif before_stat is None:
                 if multiple:
                     raise ToolError("edits require an existing file")
                 if old:
@@ -630,7 +664,10 @@ class Tools:
             self.history.begin_edit(path, before_raw, data, mode, self._revision(before_stat))
             self._replace(fd, name, data, mode, before_stat)
             self.history.complete(self._revision(fd.stat(name)))
-        return {"approved": True, "changed": True, "path": path}
+        result = {"approved": True, "changed": True, "path": path}
+        if by_line:
+            result["sha256"] = hashlib.sha256(data).hexdigest()
+        return result
 
     def run(self, argv, cwd=".", timeout=None):
         self._require_tool("run")

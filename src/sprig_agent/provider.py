@@ -11,7 +11,7 @@ import urllib.error
 import urllib.request
 
 from .config import redact
-from .metrics import MeasuredResponse, Measurements, RequestMeasurement
+from .metrics import FAILURE_CODES, MeasuredResponse, Measurements, RequestMeasurement
 
 MAX_RESPONSE = 2 * 1024 * 1024
 MAX_TOOL_CALLS = 16
@@ -19,10 +19,20 @@ MAX_RETRY_AFTER = 24 * 60 * 60
 
 
 class ProviderError(Exception):
-    def __init__(self, message, *, status=None, retry_after=None):
+    def __init__(self, message, *, status=None, retry_after=None, code="invalid_response"):
         super().__init__(message)
         self.status = status
         self.retry_after = retry_after
+        self.code = code if isinstance(code, str) and code in FAILURE_CODES else "invalid_response"
+
+
+def completion_failure(reason):
+    if reason == "length":
+        return ProviderError("provider stopped before a complete response: output token limit reached; no tools were executed. "
+                             "Use smaller edit proposals or explicitly raise --max-tokens; no automatic retry", code="output_limit")
+    if reason == "content_filter":
+        return ProviderError("provider stopped before a complete response: content filtered; no tools were executed", code="content_filter")
+    return ProviderError("provider stopped before a complete response; no tools were executed", code="unsupported_finish_reason")
 
 
 def retry_after_seconds(value, *, now=None):
@@ -69,12 +79,12 @@ def http_failure(status, headers, secret=""):
     message = f"provider HTTP {status}; {hint}; no automatic retry"
     if delay is not None:
         message += f"; server suggests waiting {delay} seconds before a manual retry"
-    return ProviderError(redact(message, secret), status=status, retry_after=delay)
+    return ProviderError(redact(message, secret), status=status, retry_after=delay, code="http_error")
 
 
 class NoRedirect(urllib.request.HTTPRedirectHandler):
     def redirect_request(self, req, fp, code, msg, headers, newurl):
-        raise ProviderError("HTTP redirects are disabled; use the final trusted base URL")
+        raise ProviderError("HTTP redirects are disabled; use the final trusted base URL", code="redirect")
 
 
 def validate_message(message):
@@ -173,6 +183,9 @@ class Provider:
         except KeyboardInterrupt:
             measurement.outcome = "cancelled"
             raise
+        except ProviderError as error:
+            measurement.error_code = error.code
+            raise
         finally:
             self.measurements.add(measurement.finish())
 
@@ -181,7 +194,7 @@ class Provider:
         from .context import request_body
         body = request_body(config, messages, tools)
         if len(body) > config.max_context_bytes:
-            raise ProviderError("context byte budget exceeded; request was not sent")
+            raise ProviderError("context byte budget exceeded; request was not sent", code="request_budget")
         headers = self._headers(stream=config.stream)
         request = urllib.request.Request(config.base_url + "/chat/completions", body, headers)
         measurement.begin(len(body))
@@ -194,10 +207,11 @@ class Provider:
                 if config.stream:
                     from .streaming import complete_stream
                     return complete_stream(reader, on_text, config.secrets,
-                                           on_usage=measurement.observe_usage, on_delta=measurement.text_received)
+                                           on_usage=measurement.observe_usage, on_delta=measurement.text_received,
+                                           on_finish=measurement.observe_finish)
                 raw = reader.read(MAX_RESPONSE + 1)
             if len(raw) > MAX_RESPONSE:
-                raise ProviderError("provider response exceeds 2 MiB")
+                raise ProviderError("provider response exceeds 2 MiB", code="response_limit")
             data = json.loads(raw)
             if isinstance(data, dict):
                 measurement.observe_usage(data.get("usage"))
@@ -205,8 +219,9 @@ class Provider:
                     or not data["choices"] or not isinstance(data["choices"][0], dict)):
                 raise ProviderError("invalid Chat Completions choices")
             choice = data["choices"][0]
+            measurement.observe_finish(choice.get("finish_reason"))
             if choice.get("finish_reason") not in {"stop", "tool_calls"}:
-                raise ProviderError("provider stopped before a complete response")
+                raise completion_failure(choice.get("finish_reason"))
             return redact(validate_message(choice["message"]), config.secrets)
         except urllib.error.HTTPError as exc:
             if type(exc.code) is int and 100 <= exc.code <= 599:
@@ -221,10 +236,13 @@ class Provider:
             reason = exc.reason if isinstance(exc, urllib.error.URLError) else exc
             if isinstance(reason, ssl.SSLCertVerificationError):
                 hint = "TLS certificate verification failed; check the trusted endpoint and local certificates"
+                code = "tls_error"
             elif isinstance(reason, TimeoutError):
                 hint = "socket timed out; check connectivity or --timeout"
+                code = "timeout"
             else:
                 hint = "connection or HTTP response failed; check endpoint, network, or proxy"
-            raise ProviderError(redact(f"provider {hint}; no automatic retry", config.secrets)) from None
+                code = "connection_error"
+            raise ProviderError(redact(f"provider {hint}; no automatic retry", config.secrets), code=code) from None
         except (KeyError, IndexError, TypeError, ValueError, RecursionError):
             raise ProviderError("invalid Chat Completions response") from None

@@ -70,6 +70,26 @@ class RepoEditBenchmarkTests(unittest.TestCase):
             opener.assert_not_called()
             self.assertEqual(marker.read_text('utf-8'), 'preserve')
 
+    def test_line_patch_adapter_inserts_deletes_and_replaces_against_original_coordinates(self):
+        from sprig_agent.config import Config
+        from sprig_agent.tools import Tools
+        before = b'first\r\nrepeat\r\nrepeat\rlast'
+        after = b'head\r\nfirst\r\nrepeat\rtail\n'
+        changes = bench.line_replacements({'src/example.py': before}, {'src/example.py': after})
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            (root / 'src').mkdir()
+            path = root / 'src/example.py'
+            path.write_bytes(before)
+            tools = Tools(Config(root, 'offline'), lambda _: True)
+            try:
+                observed = tools.read_file('src/example.py', limit=100)
+                result = tools.edit_file('src/example.py', sha256=observed['sha256'], line_edits=changes['src/example.py'])
+            finally:
+                tools.close()
+            self.assertTrue(result['changed'])
+            self.assertEqual(path.read_bytes(), after)
+
     def test_existing_report_preflight_stops_all_workers_and_downloads(self):
         with tempfile.TemporaryDirectory() as temp:
             report = Path(temp) / 'existing.json'

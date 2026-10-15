@@ -7,6 +7,10 @@ import time
 MAX_RECORDS = 128
 MAX_TOKENS = 10**9
 TOKEN_FIELDS = ("prompt_tokens", "completion_tokens", "total_tokens")
+FAILURE_CODES = {"http_error", "connection_error", "tls_error", "timeout", "redirect", "request_budget",
+                 "response_limit", "output_limit", "content_filter", "incomplete_stream",
+                 "invalid_response", "unsupported_finish_reason"}
+FINISH_REASONS = {"stop", "tool_calls", "length", "content_filter", "function_call"}
 
 
 def token_usage(value):
@@ -34,6 +38,7 @@ class RequestMeasurement:
         self.usage_invalid = False
         self.status = None
         self.outcome = "error"
+        self.error_code = self.finish_reason = None
 
     def begin(self, request_bytes):
         self.request_bytes = request_bytes
@@ -52,6 +57,10 @@ class RequestMeasurement:
         elif not self.usage_invalid:
             self.usage = normalized
 
+    def observe_finish(self, value):
+        if value is not None:
+            self.finish_reason = value if isinstance(value, str) and value in FINISH_REASONS else "other"
+
     def finish(self):
         elapsed = None if self.started is None else max(0, time.perf_counter() - self.started) * 1000
         first = None if self.first_text is None or self.started is None else max(0, self.first_text - self.started) * 1000
@@ -59,7 +68,8 @@ class RequestMeasurement:
                 "http_status": self.status, "request_bytes": self.request_bytes, "response_bytes": self.response_bytes,
                 "elapsed_ms": round(elapsed, 3) if elapsed is not None else None,
                 "first_text_ms": round(first, 3) if first is not None else None,
-                "usage": None if self.usage_invalid else self.usage}
+                "usage": None if self.usage_invalid else self.usage,
+                "finish_reason": self.finish_reason, "error_code": self.error_code}
 
 
 class MeasuredResponse:
@@ -82,6 +92,7 @@ class Measurements:
         self.recent = deque(maxlen=MAX_RECORDS)
         self.attempts = self.not_attempted = 0
         self.outcomes = {key: 0 for key in ("success", "error", "cancelled")}
+        self.failures = {}
         self.request_bytes = self.response_bytes = 0
         self.elapsed_ms = 0
         self.tokens = {key: 0 for key in TOKEN_FIELDS}
@@ -89,6 +100,9 @@ class Measurements:
 
     def add(self, record):
         self.recent.append(copy.deepcopy(record))
+        code = record.get("error_code")
+        if record["outcome"] == "error" and isinstance(code, str) and code in FAILURE_CODES:
+            self.failures[code] = self.failures.get(code, 0) + 1
         if not record["attempted"]:
             self.not_attempted += 1
             return
@@ -106,6 +120,7 @@ class Measurements:
     def report(self):
         return {"available": True, "scope": "current provider instance; not persisted or sent to the model",
                 "attempts": self.attempts, "not_attempted": self.not_attempted, "outcomes": dict(self.outcomes),
+                "failures": dict(self.failures),
                 "request_bytes": self.request_bytes, "response_bytes": self.response_bytes,
                 "elapsed_ms": round(self.elapsed_ms, 3),
                 "usage": {key: {"reported_sum": self.tokens[key], "known_requests": self.known[key],

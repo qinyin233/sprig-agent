@@ -4,7 +4,7 @@ import json
 import re
 
 from .config import redact
-from .provider import MAX_RESPONSE, MAX_TOOL_CALLS, ProviderError, validate_message
+from .provider import MAX_RESPONSE, MAX_TOOL_CALLS, ProviderError, completion_failure, validate_message
 
 
 def events(response):
@@ -13,10 +13,10 @@ def events(response):
     while True:
         chunk = response.read1(min(8192, MAX_RESPONSE - total + 1))
         if not chunk:
-            raise ProviderError("provider stream ended before [DONE]; no tools were executed")
+            raise ProviderError("provider stream ended before [DONE]; no tools were executed", code="incomplete_stream")
         total += len(chunk)
         if total > MAX_RESPONSE:
-            raise ProviderError("provider response exceeds 2 MiB")
+            raise ProviderError("provider response exceeds 2 MiB", code="response_limit")
         buffer += chunk
         while True:
             boundary = re.search(b"[\r\n]", buffer)
@@ -94,13 +94,13 @@ class TextOutput:
             stage.finish()
 
 
-def complete_stream(response, on_text, secret, *, on_usage=None, on_delta=None):
+def complete_stream(response, on_text, secret, *, on_usage=None, on_delta=None, on_finish=None):
     output = TextOutput(on_text, secret)
     content, refusal, calls, finished = [], [], {}, None
     for event in events(response):
         if event == "[DONE]":
             if finished is None:
-                raise ProviderError("provider stopped before a complete response")
+                raise ProviderError("provider stopped before a complete response", code="incomplete_stream")
             if sorted(calls) != list(range(len(calls))):
                 raise ProviderError("non-contiguous streamed tool call indices")
             message = {"role": "assistant", "content": "".join(content) or None}
@@ -178,11 +178,13 @@ def complete_stream(response, on_text, secret, *, on_usage=None, on_delta=None):
                         raise ProviderError("invalid streamed function fragment")
                     call["function"][field] += value
         reason = choice.get("finish_reason")
+        if on_usage:
+            on_usage(chunk.get("usage"))
         if reason is not None:
+            if on_finish:
+                on_finish(reason)
             if reason not in {"stop", "tool_calls"}:
-                raise ProviderError("provider stopped before a complete response")
+                raise completion_failure(reason)
             if (reason == "tool_calls") != bool(calls):
                 raise ProviderError("stream finish reason does not match tool calls")
             finished = reason
-        if on_usage:
-            on_usage(chunk.get("usage"))

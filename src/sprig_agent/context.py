@@ -45,6 +45,15 @@ def _edit_path(arguments):
                 or any(not isinstance(edit, dict) or set(edit) != {"old", "new"}
                        or not all(isinstance(edit[key], str) for key in ("old", "new")) for edit in edits)):
             return None
+    elif set(value) == {"path", "sha256", "line_edits"}:
+        from .line_edits import validate_edits
+        digest = value["sha256"]
+        if not isinstance(digest, str) or len(digest) != 64 or any(c not in "0123456789abcdef" for c in digest):
+            return None
+        try:
+            validate_edits(value["line_edits"], 512 * 1024, lambda: None)
+        except (ValueError, TypeError):
+            return None
     else:
         return None
     return value["path"]

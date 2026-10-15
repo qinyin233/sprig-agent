@@ -139,6 +139,20 @@ def replacements(base, reference):
     return result
 
 
+def line_replacements(base, reference):
+    result = {}
+    for name, body in sorted(base.items()):
+        if not name.startswith('src/') or body == reference.get(name):
+            continue
+        left = list(io.StringIO(body.decode('utf-8'), newline=''))
+        right = list(io.StringIO(reference[name].decode('utf-8'), newline=''))
+        changes = [{'start_line': start + 1, 'end_line': end, 'new': ''.join(right[first:last])}
+                   for kind, start, end, first, last in difflib.SequenceMatcher(None, left, right, autojunk=False).get_opcodes()
+                   if kind != 'equal']
+        result[name] = changes
+    return result
+
+
 def verify(candidate, fixture):
     # Match upstream's normal module import mode. Importlib mode changes class
     # reprs and incorrectly fails six unrelated option tests in this revision.
@@ -174,7 +188,7 @@ def source_digest(source):
                                for path in source.rglob('*.py')})
 
 
-def measure(source, fixture, repeat):
+def measure(source, fixture, repeat, *, line_edits=False):
     # benchmark-tasks imports current classes during module setup; isolate
     # actual revision modules before measuring each trusted source snapshot.
     for name in list(sys.modules):
@@ -184,7 +198,7 @@ def measure(source, fixture, repeat):
     from sprig_agent.config import Config
     from sprig_agent.tools import Tools
     base, reference = load(fixture, 'base'), load(fixture, 'reference')
-    edits = replacements(base, reference)
+    edits = line_replacements(base, reference) if line_edits else replacements(base, reference)
     expected = {**base, **{name: reference[name] for name in edits}}
     rows = []
     applied_acceptance = None
@@ -196,10 +210,21 @@ def measure(source, fixture, repeat):
             tools = Tools(Config(workspace, 'offline', max_output=1000000), lambda prompt: approved.append(True) or True)
             multiple = 'edits' in inspect.signature(tools.edit_file).parameters
             calls, elapsed, payload = 0, 0.0, 0
+            read_calls, read_ms, read_bytes = 0, 0.0, 0
             try:
                 for name, chunks in edits.items():
-                    arguments = ([{'path': name, 'edits': chunks}] if multiple else
-                                 [{'path': name, **chunk} for chunk in reversed(chunks)])
+                    if line_edits:
+                        start = time.perf_counter()
+                        observed = tools.execute('read_file', {'path': name, 'offset': 1, 'limit': 10000})
+                        read_ms += (time.perf_counter() - start) * 1000
+                        read_calls += 1
+                        read_bytes += len(json.dumps(observed, ensure_ascii=False).encode())
+                        if observed.get('error') or observed.get('truncated') or not observed.get('sha256'):
+                            raise ValueError('revision read was incomplete')
+                        arguments = [{'path': name, 'sha256': observed['sha256'], 'line_edits': chunks}]
+                    else:
+                        arguments = ([{'path': name, 'edits': chunks}] if multiple else
+                                     [{'path': name, **chunk} for chunk in reversed(chunks)])
                     for argument in arguments:
                         start = time.perf_counter()
                         result = tools.execute('edit_file', argument)
@@ -214,25 +239,29 @@ def measure(source, fixture, repeat):
             finally:
                 tools.close()
             rows.append({'edit_calls': calls, 'approvals': len(approved), 'argument_bytes': payload,
+                         'revision_read_calls': read_calls, 'revision_read_ms': round(read_ms, 3),
+                         'revision_read_result_bytes': read_bytes,
                          'tool_ms': round(elapsed, 3), 'result_sha256': bench.suite.digest(actual)})
             if run_index == repeat - 1:
                 applied_acceptance = verify(workspace, fixture)
                 if applied_acceptance != {'collected': 642, 'passed': 642, 'skipped': 0, 'failed': [], 'returncode': 0}:
                     raise ValueError('actual file-tool result failed upstream acceptance')
     return {'scope': 'known patch on disposable inputs; no model, no user waiting time, no coding success score',
-            'multi_edit': multiple, 'source_sha256': source_digest(source), 'runs': rows,
+            'multi_edit': multiple, 'line_edits': line_edits, 'source_sha256': source_digest(source), 'runs': rows,
             'median_tool_ms': round(statistics.median(row['tool_ms'] for row in rows), 3),
             'max_tool_ms': max(row['tool_ms'] for row in rows), 'files_changed': len(edits),
             'hunks': sum(map(len, edits.values())), 'reference_bytes_exact': True,
             'applied_acceptance': applied_acceptance}
 
 
-def worker(fixture, *, source=None, repeat=1, candidate=None):
+def worker(fixture, *, source=None, repeat=1, candidate=None, line_edits=False):
     from sprig_agent.config import Config
     from sprig_agent.tools import Tools
     with bench.disposable() as parent:
         (parent / 'profile').mkdir(mode=0o700)
         argv = [sys.executable, '-I', '-B', str(Path(__file__).resolve()), '--worker', '--fixture', str(fixture)]
+        if line_edits:
+            argv.append('--line-edits')
         if candidate:
             argv += ['--verify', str(candidate)]
         else:
@@ -257,6 +286,7 @@ def main():
     mode.add_argument('--fixture', type=Path, help='existing pinned fixture snapshots; no network requests during measurement')
     parser.add_argument('--repeat', type=int, default=11)
     parser.add_argument('--compare-ref', help='trusted local Git revision')
+    parser.add_argument('--line-edits', action='store_true', help='also measure revision-pinned line edits of the same known patch; no model')
     parser.add_argument('--report', type=Path)
     parser.add_argument('--worker', action='store_true', help=argparse.SUPPRESS)
     parser.add_argument('--source', type=Path, default=REPO / 'src', help=argparse.SUPPRESS)
@@ -269,7 +299,7 @@ def main():
     try:
         if args.worker:
             os.environ['PYTEST_DISABLE_PLUGIN_AUTOLOAD'] = '1'
-            result = verify(args.verify, args.fixture) if args.verify else measure(args.source, args.fixture, args.repeat)
+            result = verify(args.verify, args.fixture) if args.verify else measure(args.source, args.fixture, args.repeat, line_edits=args.line_edits)
         elif args.fetch:
             result = fetch(args.fetch)
         else:
@@ -298,6 +328,8 @@ def main():
                           'base_commit': PINS['base'][0], 'reference_commit': PINS['reference'][0],
                           'acceptance': {'base': initial, 'reference': known},
                           'current': worker(args.fixture, source=REPO / 'src', repeat=args.repeat)}
+                if args.line_edits:
+                    result['revision_line_edits'] = worker(args.fixture, source=REPO / 'src', repeat=args.repeat, line_edits=True)
                 if args.compare_ref:
                     # Extract regular source files from this trusted revision.
                     sha = subprocess.check_output(['git', '-C', str(REPO), 'rev-parse', '--verify', '--end-of-options',

@@ -165,6 +165,12 @@ class Agent:
             "and leave time to verify it. For reviews or read-only tasks, finish findings when evidence permits. "
             "Budget pressure never authorizes writes or commands, overrides rejection, or justifies guessing. "
             "If unfinished, state what remains; do not claim completion without evidence.")
+        if self.config.max_tokens is not None:
+            messages[0]["content"] += (
+                f"\nPer-response output-token limit: {self.config.max_tokens}. "
+                "Keep proposals small enough to finish. Prefer sha256-pinned line_edits when old text is large; "
+                "read the relevant complete lines first. Split independent changes across responses rather than "
+                "repeating entire old/new files. An incomplete response never executes tool calls.")
         return messages
 
     def _complete(self, messages, *, step):
@@ -245,7 +251,19 @@ class Agent:
         for step in range(1, self.config.max_steps + 1):
             self._check_cancelled()
             self._steer(messages)
-            response = self._complete(messages, step=step)
+            try:
+                response = self._complete(messages, step=step)
+            except ProviderError as error:
+                if error.code == "output_limit":
+                    notice = {"role": "user", "content": (
+                        "Application notice: the previous model response exceeded its output-token limit and was discarded. "
+                        "No tool calls from that response executed. On explicit continuation, use smaller focused proposals; "
+                        "prefer revision-pinned line edits after reading relevant lines. Do not replay assumed partial edits "
+                        "or treat this notice as approval. No automatic retry was made.")}
+                    if messages[-1] != notice:
+                        messages.append(notice)
+                        self.checkpoint(messages)
+                raise
             self._check_cancelled()
             if self._steer(messages):
                 # This response was generated without the new instructions. Do
