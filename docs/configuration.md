@@ -72,7 +72,7 @@ uv run --locked sprig --no-config --model local-model --base-url http://localhos
 
 `/save 名称` 保存或另存当前对话；另存新名称可分支后续对话，旧会话保留。`/restore 名称`、`/sessions`、`/delete 名称` 管理本地会话。`/new` 确认后开始新对话，解除原会话的自动保存和锁，不覆盖它，也不回滚工作区。提供商/模型通过配置或下次启动参数选择，当前会话不偷偷换服务。
 
-任务进行中可输入普通文字调整要求；`/status`、`/config`、`/help` 可以本地查看，`/cancel` 取消，`/exit` 取消后退出。需要空闲的本地命令会提示等待，不会排队成为模型请求。未知 `/命令` 不发送给模型；要发送以 `/` 开头的普通文本，用 `//` 开头。
+任务进行中可输入普通文字调整要求；`/status`、`/config`、`/help`、`/plan` 可以本地查看，`/cancel` 取消，`/exit` 取消后退出。`/plan` 显示模型报告的任务进度，TUI 侧栏也有计划页。需要空闲的本地命令会提示等待，不会排队成为模型请求。未知 `/命令` 不发送给模型；要发送以 `/` 开头的普通文本，用 `//` 开头。
 
 这些 slash 命令用于 TUI；旧 `--chat` 保留自己的 `/help` 所列命令。
 
@@ -175,7 +175,7 @@ uv run --locked sprig --config-schema
 
 ## 工具、文件与执行环境
 
-`[tools]` 对六种工具设置 true/false：`list_files`、`read_file`、`search`、`project_map`、`edit_file`、`run`。false 同时移除模型工具 schema，并在分发、直接方法和撤销/重做处执行限制；CLI `--disable-tool NAME` 可重复。关闭 `read_file` 也阻止 `/add` 附件。`run=false` 或 `read_only=true` 不能配置非空 `checks`。
+`[tools]` 对七种工具设置 true/false：`list_files`、`read_file`、`search`、`project_map`、`edit_file`、`run`、`update_plan`。false 同时移除模型工具 schema，并在分发、直接方法和撤销/重做处执行限制；CLI `--disable-tool NAME` 可重复。关闭 `read_file` 也阻止 `/add` 附件。`run=false` 或 `read_only=true` 不能配置非空 `checks`。`update_plan` 只维护模型报告的进度，不授权执行或替代验收，详见[任务计划](task-plans.md)。
 
 禁用单个工具只控制该工具接口，例如 `search` 仍会读取匹配内容。要禁止某些路径通过所有文件工具访问，使用 `[files].exclude`；要禁用全部命令，使用 `run=false` 或只读模式。任意获批命令仍无 OS 沙箱，不能把文件排除当作命令隔离。
 

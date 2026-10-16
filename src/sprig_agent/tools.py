@@ -20,6 +20,7 @@ from .changes import ChangeError, ChangeHistory, unpack
 from .filesystem import Directory, is_link
 from .index import SymbolIndex, language_for
 from .instructions import InstructionError, ProjectInstructions
+from .planning import TaskPlan, validate_plan
 from .map_selection import MapSelection, encoded_size
 from .policy import FilePolicy, command_environment
 from .output import CommandOutput
@@ -70,6 +71,12 @@ TOOL_SCHEMAS = [
                                "start_line": {"type": "integer", "minimum": 1, "maximum": 1000000},
                                "end_line": {"type": "integer", "minimum": 0, "maximum": 1000000}, "new": STRING},
                                "required": ["start_line", "end_line", "new"], "additionalProperties": False}}}, ["path"]),
+    schema("update_plan", "Replace your task checklist (<=16 steps; <=1 in_progress; <=4 KiB total). Model-reported progress only: not approval or test evidence. No files or commands. Revise after new guidance; [] clears it.",
+           {"plan": {"type": "array", "maxItems": 16, "items": {"type": "object", "properties": {
+               "step": {"type": "string", "minLength": 1, "maxLength": 256},
+               "status": {"enum": ["pending", "in_progress", "completed"]}},
+               "required": ["step", "status"], "additionalProperties": False}},
+            "explanation": {"type": "string", "maxLength": 512}}, ["plan"]),
     schema("run", "Run argv after explicit approval. NOT sandboxed; can access network and files outside workspace.",
            {"argv": {"type": "array", "items": STRING, "minItems": 1}, "cwd": STRING,
             "timeout": {"type": "number", "exclusiveMinimum": 0, "maximum": 120}}, ["argv"]),
@@ -92,6 +99,7 @@ class Tools:
         self.history = history or ChangeHistory(config)
         self.policy = FilePolicy(self.root, (config.config_path, *config.config_paths), config.excluded_paths)
         self.index = SymbolIndex()
+        self.plan = TaskPlan()
         self.emit_output = emit_output
         self.instructions = ProjectInstructions(self._read_instruction, self._check_cancelled,
                                                 config.project_instructions, config.instruction_files)
@@ -195,13 +203,23 @@ class Tools:
                 raise ToolError("tool arguments must be an object")
             method = {"list_files": self.list_files, "read_file": self.read_file,
                       "search": self.search, "project_map": self.project_map,
-                      "edit_file": self.edit_file, "run": self.run}.get(name)
+                      "edit_file": self.edit_file, "run": self.run, "update_plan": self.update_plan}.get(name)
             if method is None:
                 raise ToolError("unknown tool")
             result = method(**arguments)
             return redact(result, self.config.secrets)
         except (OSError, ToolError, ChangeError, TypeError, ValueError) as exc:
             return {"error": redact(str(exc), self.config.secrets)}
+
+    def update_plan(self, plan, explanation=""):
+        self._require_tool("update_plan")
+        selected = redact({"plan": plan, "explanation": explanation}, self.config.secrets)
+        result = validate_plan(selected["plan"], selected["explanation"])
+        if len(json.dumps(result, ensure_ascii=False).encode("utf-8")) > self.config.max_output:
+            raise ToolError("plan exceeds max-output; shorten the descriptions")
+        self._check_cancelled()
+        self.plan.update(result)
+        return result
 
     def list_files(self, path="."):
         self._require_tool("list_files")

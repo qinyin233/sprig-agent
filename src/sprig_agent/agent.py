@@ -7,6 +7,7 @@ from .config import redact
 from .context import prepare_context
 from .instructions import ProjectInstructions
 from .metrics import Measurements
+from .planning import TaskPlan
 from .provider import ProviderError, validate_message
 from .session import validate_history
 from .tools import TOOL_SCHEMAS
@@ -16,6 +17,8 @@ Inspect before editing. Make the smallest correct change and verify it with appr
 For an unfamiliar repository, prefer project_map with a relevant symbol/path query for orientation
 over walking directories one request at a time. Follow it with targeted searches and ranged reads.
 Maps show declarations, not full behavior; check truncation and inspect implementation before edits.
+Use update_plan when available for tasks with multiple stages; skip it for trivial requests.
+Keep the plan current after new guidance. Plan completion is your report, not approval or test evidence.
 For implementation requests, locate the relevant code, reproduce or establish a baseline when useful,
 implement the change, then verify it. Use observed source and test results rather than assumptions
 about other versions. If the task asks for new behavior, an absent symbol may need implementing;
@@ -46,6 +49,15 @@ class Agent:
                         and (not config.read_only or schema["function"]["name"] not in {"edit_file", "run"})]
         self.compact_context = config.compact_context
         self.baseline_status = "not_run"
+
+    def restore_plan(self, messages):
+        plan = getattr(self.tools, "plan", None)
+        if isinstance(plan, TaskPlan):
+            plan.restore(messages)
+
+    def plan_snapshot(self):
+        plan = getattr(self.tools, "plan", None)
+        return plan.snapshot() if isinstance(plan, TaskPlan) else {"plan_updated": False, "plan": [], "explanation": ""}
 
     def attach_files(self, paths, messages=None):
         """Add explicit user-selected snapshots, atomically and without HTTP."""
@@ -259,6 +271,7 @@ class Agent:
 
     def run(self, task=None, messages=None):
         self.baseline_status = "not_run"
+        self.restore_plan(messages)
         prompt = self._prompt()
         messages = messages if messages else [{"role": "system", "content": prompt}]
         messages[0] = {"role": "system", "content": prompt}
@@ -350,6 +363,8 @@ class Agent:
                     self.emit(f"[tool error] {result['error']}")
                 elif result.get("approved") is False:
                     self.emit("[rejected] No action taken")
+                elif function["name"] == "update_plan":
+                    self.emit("[plan; model-reported, not acceptance] " + content)
                 elif function["name"] == "run":
                     self.emit(json.dumps({key: value for key, value in result.items() if key != "output"}, ensure_ascii=False)
                               if result.get("streamed") else content)

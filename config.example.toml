@@ -77,6 +77,7 @@ search = true
 project_map = true
 edit_file = true
 run = true
+update_plan = true # bounded task checklist, not approval or acceptance
 
 [files]
 exclude = ["private/", "*.local.json"] # additive with .sprigignore

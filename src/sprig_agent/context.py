@@ -1,6 +1,7 @@
 """Request byte budgets and explicit, non-destructive history elision."""
 import json
 from .config import redact
+from .planning import plan_result, validate_plan
 
 
 def request_payload(config, messages, tools):
@@ -14,7 +15,7 @@ def request_payload(config, messages, tools):
 
 
 def request_body(config, messages, tools):
-    return json.dumps(request_payload(config, messages, tools)).encode("utf-8")
+    return json.dumps(request_payload(config, messages, tools), separators=(",", ":")).encode("utf-8")
 
 
 def _result(content):
@@ -90,13 +91,28 @@ def prepare_context(config, messages, tools, compact=False):
                 if identity in results:
                     ambiguous.add(identity)
                 results[identity] = (index, message.get("content"))
+        plan_results = {index for identity, (index, content) in results.items()
+                        if identity not in ambiguous and calls.get(identity, (0, {}))[1].get("function", {}).get("name") == "update_plan"
+                        and plan_result(_result(content)) is not None}
+        latest_plan = max(plan_results, default=-1)
         for identity, (index, call) in calls.items():
             result_index, content = results.get(identity, (len(selected), None))
             function = call.get("function", {})
-            if (identity in ambiguous or not index < result_index < cutoff
-                    or function.get("name") != "edit_file"):
+            if identity in ambiguous or not index < result_index < cutoff:
                 continue
             result = _result(content)
+            if function.get("name") == "update_plan" and result_index in plan_results and result_index != latest_plan:
+                arguments = _result(function.get("arguments"))
+                try:
+                    if arguments is None or validate_plan(**arguments) != result:
+                        continue
+                except (TypeError, ValueError):
+                    continue
+                marker = json.dumps({"context_elided": True, "note": "Older completed plan update omitted from this request. This is not runnable tool input. The latest successful plan result is retained; saved history is unchanged."})
+                replace_string(function, "arguments", marker, index, identity, ["arguments"])
+                continue
+            if function.get("name") != "edit_file":
+                continue
             if (not _successful(result) or result.get("approved") is not True
                     or result.get("changed") is not True):
                 continue
@@ -113,6 +129,8 @@ def prepare_context(config, messages, tools, compact=False):
             if not _successful(result):
                 continue
             fields = [name for name in ("content", "output", "files", "entries", "matches") if name in result]
+            if index in plan_results and index != latest_plan:
+                fields.extend(("plan", "explanation"))
             if not fields:
                 continue
             reduced = {key: value for key, value in result.items() if key not in fields}

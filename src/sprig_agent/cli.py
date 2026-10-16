@@ -43,6 +43,7 @@ def chat(agent, task, messages, emit, *, autostart=True):
     """Keep context across turns; only a new task or /continue calls the model."""
     status = 0
     history_ready = True
+    agent.restore_plan(messages)
 
     def recover(cancelled, error=None):
         nonlocal messages, status, history_ready
@@ -84,7 +85,7 @@ def chat(agent, task, messages, emit, *, autostart=True):
 
     if task or (messages is not None and autostart):
         run(task)
-    emit("Chat ready. Enter a task; /continue, /help, /status, /context, /usage, /compact, /changes, /undo, /redo, /diff, /git or /exit.")
+    emit("Chat ready. Enter a task; /continue, /help, /status, /plan, /context, /usage, /compact, /changes, /undo, /redo, /diff, /git or /exit.")
     while True:
         try:
             task = input("sprig> ").strip()
@@ -99,7 +100,7 @@ def chat(agent, task, messages, emit, *, autostart=True):
             return status
         try:
             if task == "/help":
-                emit("Enter a task to continue the same conversation. /continue explicitly continues retained history without adding a duplicate request; /status shows local context; /context previews the request budget; /usage shows local numeric request measurements and unknown token counts; /compact confirms request-only elision; /changes lists exact edit backups; /undo and /redo require diff approval; /discard-history confirms removal of backups; /diff and /git show Git changes with approval; /exit closes chat.")
+                emit("Enter a task to continue the same conversation. /continue explicitly continues retained history without adding a duplicate request; /status shows local context; /plan shows model-reported progress, never approval or acceptance; /context previews the request budget; /usage shows local numeric request measurements and unknown token counts; /compact confirms request-only elision; /changes lists exact edit backups; /undo and /redo require diff approval; /discard-history confirms removal of backups; /diff and /git show Git changes with approval; /exit closes chat.")
             elif task == "/continue":
                 if messages and len(messages) >= 2:
                     run(None)
@@ -109,6 +110,8 @@ def chat(agent, task, messages, emit, *, autostart=True):
                 emit(f"Messages: {len(messages or [])} | model: {agent.config.model} | acceptance checks: {len(agent.config.checks)} | baseline: {agent.baseline_status} | last status: {status}")
             elif task == "/context":
                 emit(json.dumps(agent.context_preview(messages), ensure_ascii=False, indent=2))
+            elif task == "/plan":
+                emit("Task plan (model-reported; not approval or acceptance): " + json.dumps(agent.plan_snapshot(), ensure_ascii=False))
             elif task == "/usage":
                 emit(json.dumps(agent.usage_report(), ensure_ascii=False, indent=2))
             elif task == "/compact":

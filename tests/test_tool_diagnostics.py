@@ -50,6 +50,16 @@ class ToolDiagnosticsTests(unittest.TestCase):
                    "truncated": {"private": "content"}, "error": "private"}
         self.assertEqual(tracker.record("run", {}, invalid), {"error": True})
 
+    def test_plan_reports_counts_without_descriptions_or_acceptance(self):
+        tracker = module.ToolDiagnostics()
+        result = {"plan_updated": True, "plan": [{"step": "private-description", "status": "in_progress"},
+                  {"step": "private-done", "status": "completed"}], "explanation": "private-reason"}
+        report = tracker.record("update_plan", {"plan": result["plan"]}, result)
+        self.assertEqual(report, {"error": False, "planned_steps": 2, "plan_pending": 0,
+                                  "plan_in_progress": 1, "plan_completed": 1})
+        self.assertNotIn("private", json.dumps(report))
+        self.assertNotIn("acceptance_passed", report)
+
 
 if __name__ == "__main__":
     unittest.main()

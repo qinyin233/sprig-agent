@@ -42,7 +42,7 @@ class SafetyOutputTests(unittest.TestCase):
         self.assertFalse((self.root / "bad").exists())
         self.approve.assert_not_called()
         agent = Agent(config, Mock(), tools, lambda _: None)
-        self.assertEqual({item["function"]["name"] for item in agent.schemas}, {"list_files", "read_file", "search", "project_map"})
+        self.assertEqual({item["function"]["name"] for item in agent.schemas}, {"list_files", "read_file", "search", "project_map", "update_plan"})
         with self.assertRaises(ValueError):
             replace(config, checks=(("echo", "test"),))
 

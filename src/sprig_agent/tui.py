@@ -186,6 +186,8 @@ class SprigApp(App[int]):
                 summary = {key: result[key] for key in ("approved", "changed", "returncode", "timed_out", "output_limited", "error") if key in result}
                 if app._ui_ready and not app._unmounted:
                     app.ui_call(app.event, name + ": " + json.dumps(summary, ensure_ascii=False))
+                    if name == "update_plan":
+                        app.ui_call(app.refresh_plan)
                 return result
 
         history = None
@@ -202,6 +204,7 @@ class SprigApp(App[int]):
             self.agent = Agent(config, provider or Provider(config), self.tools, self.emit,
                                checkpoint=self.checkpoint, emit_delta=self.emit_delta, cancel_event=self.cancel_event,
                                receive_input=self.receive_input)
+            self.agent.restore_plan(self.messages)
             if files:
                 self.messages, _ = self.agent.attach_files(files, self.messages)
         except BaseException:
@@ -246,6 +249,9 @@ class SprigApp(App[int]):
                                 yield Button("恢复", id="restore")
                             yield Button("列出本地会话", id="sessions")
                             yield Button("删除指定会话", id="delete")
+                    with TabPane("计划", id="plan-tab"):
+                        yield Static("模型报告的进度；不代表审批或验收", markup=False)
+                        yield TextArea(read_only=True, show_cursor=False, id="task-plan")
                     with TabPane("事件", id="events-tab"):
                         yield RichLog(id="events", wrap=True, markup=False, highlight=False, max_lines=1000)
         yield Footer()
@@ -264,6 +270,7 @@ class SprigApp(App[int]):
         self._ui_thread_id = threading.get_ident()
         self.set_interval(self.OUTPUT_REFRESH_SECONDS, self.flush_output)
         self.action_focus_task()
+        self.refresh_plan()
         self.append("Sprig 就绪。任务、读取内容和工具结果会发送到所示服务。\n写入和命令逐次确认；命令没有沙箱。\n")
         self.append("输入 /help 查看本地命令；Enter 发送，Shift+Enter / Ctrl+J 换行。\n")
         if self.tools.history.store is not None:
@@ -272,6 +279,17 @@ class SprigApp(App[int]):
             self.show_history()
         if self.initial_task:
             self.start(self.initial_task)
+
+    def refresh_plan(self):
+        if not self._ui_ready or self._unmounted:
+            return
+        snapshot = self.agent.plan_snapshot()
+        labels = {"pending": "待处理", "in_progress": "进行中", "completed": "已完成（模型报告）"}
+        lines = [str(index) + ". [" + labels[step["status"]] + "] " + step["step"]
+                 for index, step in enumerate(snapshot["plan"], 1)]
+        if snapshot["explanation"]:
+            lines.append("说明：" + snapshot["explanation"])
+        self.query_one("#task-plan", TextArea).load_text(self.safe("\n".join(lines) or "尚无任务计划"))
 
     def safe(self, text):
         return terminal_text(redact(str(text), self.config.secrets))
@@ -669,6 +687,8 @@ class SprigApp(App[int]):
                 if self.session_name and name != self.session_name:
                     self.store.release(self.session_name)
                 self.messages, self.session_name = history, name
+                self.agent.restore_plan(history)
+                self.refresh_plan()
                 self.pending_tasks = []
                 self.transcript = ""
                 self.query_one("#transcript", TextArea).load_text("")
@@ -694,6 +714,8 @@ class SprigApp(App[int]):
                 self.store.release(self.session_name)
             self.session_name = None
             self.messages = None
+            self.agent.restore_plan(None)
+            self.refresh_plan()
             self.pending_tasks = []
             self.query_one("#session-name", Input).value = ""
             self.transcript = ""
@@ -731,7 +753,7 @@ class SprigApp(App[int]):
         argument = argument.strip()
         if command == "/help":
             self.append("\n本地命令（不发送给模型）：\n"
-                        "/help /keys /status /config /models /context /usage /cancel /exit\n"
+                        "/help /keys /plan /status /config /models /context /usage /cancel /exit\n"
                         "/continue /new /add 文件路径 /map [名称或路径查询] /git /diff /compact\n"
                         "/changes /undo /redo /discard-history /sessions\n"
                         "/save [名称] /restore [名称] /delete [名称]\n"
@@ -741,6 +763,10 @@ class SprigApp(App[int]):
         if command == "/keys":
             self.append("\n[快捷键] Enter 发送；Shift+Enter / Ctrl+J 换行；Ctrl+C 取消；Ctrl+Q 退出；Ctrl+L 输入。审批默认拒绝。\n"
                         + json.dumps(dict(self.config.tui_keybindings), ensure_ascii=False, indent=2) + "\n")
+            return
+        if command == "/plan":
+            self.append("\n[任务计划；模型报告，不代表审批或验收]\n"
+                        + json.dumps(self.agent.plan_snapshot(), ensure_ascii=False, indent=2) + "\n")
             return
         if command == "/status":
             self.append(f"\n[本地状态] {self.task_message} | 执行中: {self.busy} | 消息: {len(self.messages or [])} | 本次基线: {self.agent.baseline_status} | 待处理引导: {len(self.pending_tasks)}\n")

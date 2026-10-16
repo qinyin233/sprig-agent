@@ -165,6 +165,57 @@ class TuiTests(unittest.IsolatedAsyncioTestCase):
             self.assertEqual((self.root / "a.txt").read_text(), "old")
             self.assertEqual(len(provider.calls), 1)
 
+    async def test_plan_panel_updates_after_mid_approval_guidance_without_authorizing_edit(self):
+        first = [{"step": "Inspect then edit", "status": "in_progress"}]
+        revised = [{"step": "Review only after new guidance", "status": "in_progress"}]
+        (self.root / "a.txt").write_text("old", encoding="utf-8")
+        provider = ScriptedProvider([call("plan-1", "update_plan", {"plan": first}),
+            call("edit", "edit_file", {"path": "a.txt", "old": "old", "new": "new"}),
+            call("plan-2", "update_plan", {"plan": revised}), response("Review findings")])
+        app = self.app(provider)
+        async with app.run_test(size=(110, 36)) as pilot:
+            await self.send_text(pilot, "Inspect and change")
+            await self.until(pilot, lambda: isinstance(app.screen, ApprovalScreen))
+            self.assertIn("Inspect then edit", app.query_one("#task-plan", TextArea).text)
+            editor = app.screen.query_one("#approval-task", TextArea)
+            editor.load_text("Only review; do not edit")
+            editor.focus()
+            await pilot.press("enter")
+            await self.until(pilot, lambda: not app.busy)
+            self.assertIn("Review only after new guidance", app.query_one("#task-plan", TextArea).text)
+            self.assertEqual((self.root / "a.txt").read_text(), "old")
+            self.assertIn("Only review; do not edit", json.dumps(provider.calls[2]))
+            calls = len(provider.calls)
+            await self.send_text(pilot, "/plan")
+            self.assertIn("模型报告，不代表审批或验收", app.transcript)
+            self.assertEqual(len(provider.calls), calls)
+
+    async def test_resume_shows_plan_before_model_and_new_conversation_clears_only_memory(self):
+        from sprig_agent.planning import validate_plan
+        steps = [{"step": "Retained plan", "status": "pending"}]
+        history = [{"role": "system", "content": "system"}, {"role": "user", "content": "task"},
+                   call("plan", "update_plan", {"plan": steps}),
+                   {"role": "tool", "tool_call_id": "plan", "content": json.dumps(validate_plan(steps))}]
+        store = SessionStore(self.parent / "sessions", self.config)
+        try:
+            store.ensure_new("planned")
+            store.save("planned", history)
+        finally:
+            store.close()
+        provider = ScriptedProvider([])
+        app = self.app(provider, resume="planned")
+        async with app.run_test(size=(110, 36)) as pilot:
+            self.assertIn("Retained plan", app.query_one("#task-plan", TextArea).text)
+            self.assertEqual(provider.calls, [])
+            await self.send_text(pilot, "/new")
+            self.assertIsInstance(app.screen, ApprovalScreen)
+            await self.click(pilot, "#approve")
+            self.assertIn("尚无任务计划", app.query_one("#task-plan", TextArea).text)
+            self.assertFalse(app.agent.plan_snapshot()["plan_updated"])
+            self.assertIsNone(app.messages)
+            self.assertEqual(provider.calls, [])
+            self.assertEqual(app.get_store().load("planned"), validate_history(history))
+
     async def test_failed_startup_attachment_releases_session_reservation(self):
         with self.assertRaises(ValueError):
             SprigApp(self.config, session_dir=self.parent / "sessions", save_session="reserved",

@@ -29,6 +29,10 @@ class ToolDiagnostics:
             summary["listed_entries"] = len(result["entries"])
         if name == "project_map" and isinstance(result.get("files"), list):
             summary["mapped_files"] = len(result["files"])
+        if name == "update_plan" and result.get("plan_updated") is True and isinstance(result.get("plan"), list):
+            summary["planned_steps"] = len(result["plan"])
+            for status in ("pending", "in_progress", "completed"):
+                summary["plan_" + status] = sum(isinstance(step, dict) and step.get("status") == status for step in result["plan"])
         if name in {"read_file", "search", "list_files", "project_map"} and not summary["error"]:
             # Equality of bounded tool output does not imply a complete or
             # unchanged workspace. Never cache or skip the actual inspection.

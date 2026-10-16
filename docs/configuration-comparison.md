@@ -29,6 +29,7 @@
 | 附加规则与语言 | `[instructions].files/response_language`、`--instruction-file`、`--response-language` | 规则使用工作区内的明确文件，完整校验、刷新并检查审批期间变动；偏好语言进入实际请求并绑定会话 |
 | 快捷键 | `[tui.keybindings]`、`/keys` | 按动作配置附加组合键，支持帮助、侧栏、输入焦点、取消、退出和新对话；不替换 Enter 发送或审批行为 |
 | 设置来源 | `--show-config` / TUI `/config` 的 `setting_sources` | 主要运行字段标出 default/user/provider/model/profile/project/CLI/environment/TUI 来源；不显示凭据值 |
+| 任务计划 | `update_plan`、TUI 计划页、`/plan`、`[tools].update_plan` | 短计划随私有历史恢复，支持新要求后的修订；模型进度不提供操作授权或验收证明 |
 
 ## 按用途核对设置和配置方法
 
@@ -42,7 +43,7 @@
 | 项目知识、语言 | OpenCode instructions 路径/glob；Codex 项目文档；Aider read/chat-language | 分层 AGENTS.md、明确附加规则文件、回复语言、CLI/TUI 文件快照；附加规则暂不支持 glob、远程或工作区外路径 |
 | 历史和上下文 | Pi compaction/会话；Aider history/map-tokens；Codex context 配置 | 实际请求字节上限、显式确定性压缩、私有会话/恢复/目录；没有精确 token/费用上限或经实测的长期摘要 |
 | 测试工作流 | Aider lint/test command；样本的用户/项目指令 | 固定 checks、可选任务前基线、完成后独立验收、失败反馈；所有命令逐次批准，没有自动 lint/format 后端 |
-| 工具和命令环境 | OpenCode tools/permissions；Pi defaultTools；Codex environment/sandbox | 六种工具硬禁用、只读、路径排除、环境白名单/字面值、超时/输出上限/取消；命令仍无 OS 沙箱 |
+| 工具和命令环境 | OpenCode tools/permissions；Pi defaultTools；Codex environment/sandbox | 七种工具硬禁用、只读、路径排除、环境白名单/字面值、超时/输出上限/取消；计划工具只更新内存，命令仍无 OS 沙箱 |
 | 界面与快捷键 | OpenCode tui.json；[Pi 按动作 keybindings.json](https://github.com/badlogic/pi-mono/blob/main/packages/coding-agent/docs/keybindings.md)；Codex tui.keymap | 主题、侧栏、高度、引导队列、用量、按动作附加快捷键；固定输入/审批键不改，没有完整 Vim 模式 |
 | 扩展、网络和 IDE | Codex/OpenCode MCP/skills；Pi 扩展资源；OpenCode LSP/formatters | 仍缺 MCP、可执行 skills/hooks、LSP、网页/图像工具；未知配置直接拒绝，没有空壳开关 |
 | Git 和外部交互 | Aider Git/编辑器；Codex/OpenCode 工作区/进程设置 | 只读 Git 状态/diff、获批编辑撤销与私有备份；仍缺独立 worktree、外部编辑器、PTY/后台任务、通知后端 |
