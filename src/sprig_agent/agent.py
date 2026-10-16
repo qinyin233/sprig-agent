@@ -18,7 +18,7 @@ Inspect before editing. Make the smallest correct change and verify it with appr
 For an unfamiliar repository, prefer project_map with a relevant symbol/path query for orientation
 over walking directories one request at a time. Follow it with targeted searches and ranged reads.
 Maps show declarations, not full behavior; check truncation and inspect implementation before edits.
-For line changes, prefer edit_lines with a fresh read_id from read_file.
+For line changes, read_file(line_numbers=true), then edit_lines with its read_id. Never copy display prefixes.
 Use update_plan when available for tasks with multiple stages; skip it for trivial requests.
 Keep the plan current after new guidance. Plan completion is your report, not approval or test evidence.
 For implementation requests, locate the relevant code, reproduce or establish a baseline when useful,
@@ -70,7 +70,7 @@ class Agent:
             self._check_cancelled()
             # Ranged reading validates the entire bounded file, including text
             # outside the output cap. Never upload a silently partial attachment.
-            result = self.tools.execute("read_file", {"path": path, "offset": 1, "limit": 10000})
+            result = self.tools.execute("read_file", {"path": path, "offset": 1, "limit": 10000, "line_numbers": False})
             if "error" in result:
                 raise ValueError("cannot attach file: " + result["error"])
             length = len(result["content"].encode("utf-8"))

@@ -51,12 +51,77 @@ class LineEditTests(unittest.TestCase):
         self.assertTrue(self.tools.change_action("redo")["changed"])
         self.assertEqual(self.path.read_bytes(), expected)
 
+    def test_whole_line_edit_cannot_splice_following_source_before_approval(self):
+        original = b"class Old:\n    pass\n\nclass Keep:\n    pass\n"
+        self.path.write_bytes(original)
+        observed = self.tools.read_file("source.txt")
+        result = self.tools.execute("edit_lines", {"path": "source.txt", "read_id": observed["read_id"],
+            "edits": [{"start_line": 1, "end_line": 3, "new": "class New:\n    pass"}]})
+        self.assertIn("error", result)
+        self.assertIn("line ending", result["error"])
+        self.assertEqual(self.path.read_bytes(), original)
+        self.assertEqual(self.prompts, [])
+        self.assertEqual(self.tools.history.summary()["records"], [])
+
+    def test_explicit_line_terminators_eof_and_empty_deletion_preserve_literal_bytes(self):
+        for ending in ("\n", "\r\n", "\r"):
+            self.original = ("one" + ending + "keep" + ending).encode()
+            self.path.write_bytes(self.original)
+            result = self.edit([{"start_line": 1, "end_line": 1, "new": "changed" + ending}])
+            self.assertTrue(result["changed"], result)
+            self.assertEqual(self.path.read_bytes(), ("changed" + ending + "keep" + ending).encode())
+        self.original = b"one\nlast"
+        self.path.write_bytes(self.original)
+        self.assertTrue(self.edit([{"start_line": 2, "end_line": 2, "new": "tail"}])["changed"])
+        self.assertEqual(self.path.read_bytes(), b"one\ntail")
+        self.original = b"one\nkeep\n"
+        self.path.write_bytes(self.original)
+        self.assertTrue(self.edit([{"start_line": 1, "end_line": 1, "new": ""}])["changed"])
+        self.assertEqual(self.path.read_bytes(), b"keep\n")
+
+    def test_unterminated_insertion_or_batch_fails_atomically_without_normalization(self):
+        self.original = b"old\nkeep\nlast"
+        for edits in ([{"start_line": 1, "end_line": 0, "new": "insert"}],
+                      [{"start_line": 1, "end_line": 1, "new": "new\n"},
+                       {"start_line": 2, "end_line": 2, "new": "bad\u2028"}],
+                      [{"start_line": 4, "end_line": 3, "new": "tail"}]):
+            self.path.write_bytes(self.original)
+            result = self.edit(edits)
+            self.assertIn("line ending", result["error"])
+            self.assertEqual(self.path.read_bytes(), self.original)
+            self.assertEqual(self.prompts, [])
+        for ending in ("\n", "\r\n", "\r"):
+            self.path.write_bytes(self.original)
+            result = self.edit([{"start_line": 4, "end_line": 3, "new": ending + "tail"}])
+            self.assertTrue(result["changed"], result)
+            self.assertEqual(self.path.read_bytes(), self.original + (ending + "tail").encode())
+        self.original = b"\xef\xbb\xbf"
+        self.path.write_bytes(self.original)
+        self.assertTrue(self.edit([{"start_line": 1, "end_line": 0, "new": "first"}])["changed"])
+        self.assertEqual(self.path.read_bytes(), self.original + b"first")
+
+    def test_append_boundary_uses_effective_batch_prefix_instead_of_original_last_byte(self):
+        self.original = b"last"
+        self.path.write_bytes(self.original)
+        result = self.edit([{"start_line": 1, "end_line": 1, "new": "new\n"},
+                            {"start_line": 2, "end_line": 1, "new": "tail"}])
+        self.assertTrue(result.get("changed"), result)
+        self.assertEqual(self.path.read_bytes(), b"new\ntail")
+        self.original = b"last\n"
+        self.path.write_bytes(self.original)
+        self.prompts.clear()
+        result = self.edit([{"start_line": 1, "end_line": 1, "new": "new"},
+                            {"start_line": 2, "end_line": 1, "new": "tail"}])
+        self.assertIn("line ending", result["error"])
+        self.assertEqual(self.path.read_bytes(), self.original)
+        self.assertFalse(self.prompts)
+
     def test_reads_report_full_revision_for_complete_files_and_validated_ranges_only(self):
         full = self.tools.execute("read_file", {"path": "source.txt"})
         page = self.tools.execute("read_file", {"path": "source.txt", "offset": 2, "limit": 1})
         self.assertEqual(full["sha256"], page["sha256"])
         self.assertEqual(full["sha256"], hashlib.sha256(self.original).hexdigest())
-        self.assertEqual(page["content"], "重复🙂\r\n")
+        self.assertEqual(page["content"], "2: 重复🙂\r\n")
         self.path.write_bytes(b"padding\n" * 3000)
         prefix = self.tools.execute("read_file", {"path": "source.txt"})
         self.assertTrue(prefix["truncated"])
@@ -168,7 +233,7 @@ class LineEditTests(unittest.TestCase):
         self.assertIn("credentials", self.edit([{"start_line": 4, "end_line": 4, "new": "sk-" + "a" * 32}])["error"])
         self.assertIn("API key", self.edit([{"start_line": 4, "end_line": 4, "new": self.config.api_key}])["error"])
         self.path.write_bytes(b"x" * MAX_FILE)
-        result = self.edit([{"start_line": 2, "end_line": 1, "new": "y"}], sha256=hashlib.sha256(self.path.read_bytes()).hexdigest())
+        result = self.edit([{"start_line": 2, "end_line": 1, "new": "\ny"}], sha256=hashlib.sha256(self.path.read_bytes()).hexdigest())
         self.assertIn("result exceeds", result["error"])
         self.assertFalse(self.prompts)
         self.tools.close()

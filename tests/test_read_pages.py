@@ -25,7 +25,7 @@ class ReadPageTests(unittest.TestCase):
         self.addCleanup(self.tools.close)
 
     def read(self, **arguments):
-        return self.tools.execute("read_file", {"path": "code.py", **arguments})
+        return self.tools.execute("read_file", {"path": "code.py", "line_numbers": False, **arguments})
 
     def test_pages_preserve_unicode_crlf_and_unterminated_last_line(self):
         (self.root / "code.py").write_bytes("第一行\r\nsecond\r\n🙂 third\r\nlast".encode())
@@ -39,6 +39,53 @@ class ReadPageTests(unittest.TestCase):
         self.assertFalse(second["truncated"])
         self.assertFalse(second["line_truncated"])
         self.assertIsNone(second["next_offset"])
+
+    def test_numbered_ranges_default_to_real_physical_lines_and_raw_text_is_explicit(self):
+        import hashlib
+        source = "\ufefffirst\u2028same physical line\r\n第二\rthird\nlast"
+        (self.root / "code.py").write_bytes(source.encode())
+        result = self.tools.execute("read_file", {"path": "code.py", "limit": 4})
+        self.assertTrue(result["line_numbers"])
+        self.assertEqual(result["content"], "1: \ufefffirst\u2028same physical line\r\n2: 第二\r3: third\n4: last")
+        self.assertEqual(result["total_lines"], 4)
+        self.assertEqual(result["sha256"], hashlib.sha256(source.encode()).hexdigest())
+        raw = self.read(limit=4)
+        self.assertEqual(raw["content"], source)
+        self.assertEqual(raw["read_id"], result["read_id"])
+        self.assertEqual(self.tools.read_file("code.py")["content"], source)
+        self.assertEqual(self.tools.read_file("code.py", line_numbers=True)["content"], result["content"])
+        for value in (None, 1, "true", []):
+            with self.subTest(value=value):
+                self.assertIn("error", self.tools.execute("read_file", {"path": "code.py", "line_numbers": value}))
+
+    def test_number_prefixes_count_toward_byte_cap_and_partial_lines_have_no_read_id(self):
+        line = "x" * 126 + "\n"
+        (self.root / "code.py").write_bytes((line * 3).encode())
+        offset, seen = 1, []
+        while offset is not None:
+            result = self.tools.execute("read_file", {"path": "code.py", "offset": offset, "limit": 3})
+            self.assertEqual(result["content"], str(offset) + ": " + line)
+            self.assertLessEqual(len(result["content"].encode()), 256)
+            self.assertFalse(result["line_truncated"])
+            self.assertIn("read_id", result)
+            seen.append(offset)
+            offset = result["next_offset"]
+        self.assertEqual(seen, [1, 2, 3])
+        (self.root / "code.py").write_bytes(("🙂" * 200 + "\nnext\n").encode())
+        partial = self.tools.execute("read_file", {"path": "code.py", "limit": 1})
+        self.assertEqual(partial["content"], "1: " + "🙂" * 63)
+        self.assertTrue(partial["line_truncated"])
+        self.assertNotIn("read_id", partial)
+        self.assertIsNone(partial["next_offset"])
+
+    def test_numbered_output_cannot_bypass_whole_file_privacy(self):
+        for suffix in (b"\x00", b"\xff", ("sk-" + "a" * 32).encode()):
+            (self.root / "code.py").write_bytes(b"safe\n" + suffix)
+            for args in ({"limit": 1}, {"line_numbers": True}):
+                result = self.tools.execute("read_file", {"path": "code.py", **args})
+                self.assertIn("error", result)
+                self.assertNotIn("content", result)
+                self.assertNotIn("read_id", result)
 
     def test_byte_cap_returns_whole_lines_with_a_progressing_next_offset(self):
         line = "x" * 159 + "\n"

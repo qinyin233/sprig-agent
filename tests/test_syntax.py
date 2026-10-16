@@ -85,7 +85,7 @@ class SyntaxTests(unittest.TestCase):
         (self.root / "one.js").write_text(source, encoding="utf-8", newline="")
         symbols = self.tools.project_map()["files"][0]["symbols"]
         self.assertEqual(symbols, [{"name": "中文", "line": 3, "kind": "function"}])
-        self.assertTrue(self.tools.read_file("one.js", offset=symbols[0]["line"], limit=1)["content"].startswith("function 中文"))
+        self.assertTrue(self.tools.read_file("one.js", offset=symbols[0]["line"], limit=1, line_numbers=False)["content"].startswith("function 中文"))
         self.assertEqual(self.tools.index.python("\ufeffdef name(): pass\r\n")[0]["line"], 1)
 
     def test_extensions_and_ambiguous_headers_have_explicit_mapping(self):

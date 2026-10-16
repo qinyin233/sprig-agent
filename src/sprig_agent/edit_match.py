@@ -33,7 +33,7 @@ def failure_details(before, previous, index, starts, check_cancelled):
             result["suggestions_truncated"] = True
             return False
         offsets.add(offset)
-        result["read_suggestions"].append({"offset": offset, "limit": size})
+        result["read_suggestions"].append({"offset": offset, "limit": size, "line_numbers": False})
         return True
     if starts:
         for start in starts:

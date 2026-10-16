@@ -51,7 +51,7 @@ class WindowsTests(unittest.TestCase):
         result = self.tools.execute("edit_file", {"path": path, "old": "", "new": "你好\r\n世界\r\n"})
         self.assertTrue(result["changed"])
         self.assertEqual(self.tools.execute("read_file", {"path": path})["content"], "你好\r\n世界\r\n")
-        self.assertEqual(self.tools.execute("read_file", {"path": path, "offset": 2, "limit": 1})["content"], "世界\r\n")
+        self.assertEqual(self.tools.execute("read_file", {"path": path, "offset": 2, "limit": 1, "line_numbers": False})["content"], "世界\r\n")
         self.assertEqual(self.tools.execute("search", {"query": "世界"})["matches"][0]["line"], 2)
 
     def test_junction_cannot_read_write_search_or_run_outside(self):

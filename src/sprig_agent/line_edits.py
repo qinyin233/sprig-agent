@@ -38,9 +38,19 @@ def replace_lines(text, edits, check_cancelled):
     spans = sorted((boundaries[edit["start_line"] - 1], boundaries[edit["end_line"]], edit["new"]) for edit in edits)
     if any(left[1] > right[0] or left[0] == right[0] for left, right in zip(spans, spans[1:])):
         raise ValueError("line edits overlap or share an insertion boundary")
-    chunks, end = [], 0
+    chunks, end, written, last = [], 0, 0, ""
+    marker = 1 if text.startswith("\ufeff") else 0
     for start, stop, new in spans:
-        chunks.extend((text[end:start], new))
+        prefix = text[end:start]
+        prefix_last = prefix[-1] if prefix else last
+        prefix_size = written + len(prefix)
+        if new and stop < len(text) and not new.endswith(("\r", "\n")):
+            raise ValueError("whole-line replacement before following text requires a line ending (LF, CRLF or CR) in new; no change made")
+        if (new and start == stop == len(text) and prefix_size > marker and prefix_last not in "\r\n"
+                and not new.startswith(("\r", "\n"))):
+            raise ValueError("whole-line append after an unterminated line requires a leading line ending in new; or replace the final line explicitly")
+        chunks.extend((prefix, new))
+        written, last = prefix_size + len(new), new[-1] if new else prefix_last
         end = stop
     chunks.append(text[end:])
     return "".join(chunks)

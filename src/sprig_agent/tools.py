@@ -51,9 +51,9 @@ STRING = {"type": "string"}
 TOOL_SCHEMAS = [
     schema("list_files", "List one workspace directory; no symlinks or protected files.",
            {"path": STRING}),
-    schema("read_file", "Read UTF-8, physical 1-based lines. Validated full/ranged reads return sha256 and short read_id for edit_lines. Ranges scan <=8 MiB. Byte-truncated prefixes/partial lines have no read_id. Inspect complete relevant lines before editing.",
+    schema("read_file", "UTF-8, 1-based physical lines. Ranges numbered by default; N: prefixes are display only. line_numbers=false for raw. Validated reads return sha256/read_id; ranged scans <=8 MiB. Partial lines have no read_id.",
            {"path": STRING, "offset": {"type": "integer", "minimum": 1, "maximum": 1000000},
-            "limit": {"type": "integer", "minimum": 1, "maximum": 10000}}, ["path"]),
+            "limit": {"type": "integer", "minimum": 1, "maximum": 10000}, "line_numbers": {"type": "boolean"}}, ["path"]),
     schema("search", "Search literal text recursively, or RE2 with regex=true (no lookaround/backreferences; ASCII \\w/\\d/\\b). ignore_case: full Unicode folding for literals, simple folding for RE2. Case-sensitive glob matches basenames or workspace-relative paths: * stays within /, ** spans components. context: 0-10 surrounding lines; limit: 1-1000 matching physical CR/LF lines, default 100. Query <=1000 chars; RE2 budgets: 1 MiB and cooperative 1s. Whole-file privacy, read/output bounds and cancellation apply. Truncated, timed_out or skipped results cannot establish absence.",
            {"query": STRING, "path": STRING, "glob": {"type": "string", "minLength": 1, "maxLength": 256},
             "ignore_case": {"type": "boolean"}, "regex": {"type": "boolean"},
@@ -242,17 +242,21 @@ class Tools:
                 entries.append({"name": entry.name, "type": kind})
         return {"entries": sorted(entries, key=lambda item: item["name"]), "truncated": truncated}
 
-    def read_file(self, path, offset=1, limit=None):
+    def read_file(self, path, offset=1, limit=None, *, line_numbers=_MISSING):
         self._require_tool("read_file")
         if type(offset) is not int or not 1 <= offset <= 1000000:
             raise ToolError("offset must be an integer from 1 to 1000000 (1-based line number)")
         if limit is not None and (type(limit) is not int or not 1 <= limit <= 10000):
             raise ToolError("limit must be an integer from 1 to 10000")
+        if line_numbers is not _MISSING and type(line_numbers) is not bool:
+            raise ToolError("line_numbers must be a boolean")
+        ranged = offset != 1 or limit is not None
+        numbered = ranged if line_numbers is _MISSING else line_numbers
         parts = self._parts(path)
         if self.config.project_instructions:
             self.instructions.register(parts[:-1])
-        if offset != 1 or limit is not None:
-            return self._read_result(parts, self._read_page(path, offset, limit or 2000))
+        if ranged or numbered:
+            return self._read_result(parts, self._read_page(path, offset, limit or 2000, line_numbers=numbered))
         with self._parent(path) as (fd, name):
             raw = self._read(fd, name, self.config.max_output)
         truncated = len(raw) > self.config.max_output
@@ -276,7 +280,7 @@ class Tools:
             result["read_id"] = self.read_versions.remember(parts, result["sha256"])
         return result
 
-    def _read_page(self, path, offset, limit):
+    def _read_page(self, path, offset, limit, *, line_numbers=False):
         # Validate the whole bounded file before exposing a page: selecting a
         # clean line must not bypass the credential/binary policy elsewhere.
         raw = bytearray()
@@ -302,7 +306,8 @@ class Tools:
                 self._check_cancelled()
             if total < offset or total >= offset + limit or capped:
                 continue
-            encoded = line.encode("utf-8")
+            displayed = f"{total}: " + line if line_numbers else line
+            encoded = displayed.encode("utf-8")
             if size + len(encoded) > self.config.max_output:
                 if not selected:
                     import codecs
@@ -311,7 +316,7 @@ class Tools:
                     partial = True
                 capped = True
                 continue
-            selected.append(line)
+            selected.append(displayed)
             size += len(encoded)
         self._check_cancelled()
         if offset > total and not (offset == 1 and not total):
@@ -321,6 +326,8 @@ class Tools:
         result = {"path": path, "content": "".join(selected), "offset": offset, "end_line": end,
                 "total_lines": total, "truncated": truncated, "line_truncated": partial,
                 "next_offset": end + 1 if truncated and not partial else None}
+        if line_numbers:
+            result["line_numbers"] = True
         # Never expose a fingerprint of configured credentials that were masked
         # from content, including a secret outside the requested line range.
         if not any(secret in text for secret in self.config.credential_secrets):

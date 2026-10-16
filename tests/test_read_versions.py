@@ -211,6 +211,8 @@ class ReadVersionTests(unittest.TestCase):
         def propose(payload):
             observed = json.loads(payload["messages"][-1]["content"])
             self.assertIn("read_id", observed)
+            self.assertEqual(observed["content"], "1: old\n")
+            self.assertTrue(observed["line_numbers"])
             return model_call("edit", "edit_lines", {"path": "source.txt", "read_id": observed["read_id"], "edits": edit})
         with replies([model_call("read", "read_file", {"path": "source.txt", "limit": 1}), propose,
                       {"role": "assistant", "content": "Done"}], captured) as url:
@@ -225,6 +227,34 @@ class ReadVersionTests(unittest.TestCase):
         schema = next(s["function"] for s in captured[0][0]["tools"] if s["function"]["name"] == "edit_lines")
         self.assertEqual(set(schema["parameters"]["required"]), {"path", "read_id", "edits"})
         self.assertTrue(json.loads(history[-1]["content"])["returncode"] == 0)
+
+    def test_http_boundary_failure_can_be_repaired_without_any_partial_write(self):
+        path = self.root / "source.txt"
+        path.write_bytes(b"old\nkeep\n")
+        captured, state = [], {}
+        def bad_proposal(payload):
+            observed = json.loads(payload["messages"][-1]["content"])
+            state["read_id"] = observed["read_id"]
+            self.assertEqual(observed["content"], "1: old\n2: keep\n")
+            return model_call("bad", "edit_lines", {"path": "source.txt", "read_id": state["read_id"],
+                "edits": [{"start_line": 1, "end_line": 1, "new": "new"}]})
+        def repaired(payload):
+            rejected = json.loads(payload["messages"][-1]["content"])
+            self.assertIn("line ending", rejected["error"])
+            self.assertEqual(path.read_bytes(), b"old\nkeep\n")
+            self.approve.assert_not_called()
+            return model_call("good", "edit_lines", {"path": "source.txt", "read_id": state["read_id"],
+                "edits": [{"start_line": 1, "end_line": 1, "new": "new\n"}]})
+        with replies([model_call("read", "read_file", {"path": "source.txt", "limit": 2}), bad_proposal, repaired,
+                      {"role": "assistant", "content": "Done"}], captured) as url:
+            config = replace(self.config, base_url=url, proxy="direct", max_steps=4,
+                checks=((sys.executable, "-I", "-B", "-c", "from pathlib import Path;assert Path('source.txt').read_bytes()==b'new\\nkeep\\n'"),))
+            with closing(Tools(config, self.approve)) as tools:
+                _, complete = Agent(config, Provider(config), tools, lambda _: None).run("Change and verify")
+        self.assertTrue(complete)
+        self.assertEqual(len(captured), 4)
+        self.assertEqual(self.approve.call_count, 2)
+        self.assertEqual(path.read_bytes(), b"new\nkeep\n")
 
     def test_completed_line_edits_can_be_compacted_without_replaying_ids(self):
         arguments = {"path": "source.txt", "read_id": "r0123456789ab-1", "edits": [

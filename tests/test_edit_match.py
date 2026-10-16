@@ -44,6 +44,7 @@ class EditMatchTests(unittest.TestCase):
         self.assertEqual(detail["index"], 1)
         page = detail["read_suggestions"][0]
         self.assertEqual(page["offset"], 1799)
+        self.assertIs(page["line_numbers"], False)
         actual = self.tools.read_file("source.py", **page)
         self.assertIn("def target():\r\n    return 1\r\n", actual["content"])
         self.assertEqual(self.path.read_bytes(), original.encode())
