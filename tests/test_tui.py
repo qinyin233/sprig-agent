@@ -1226,6 +1226,35 @@ class TuiTests(unittest.IsolatedAsyncioTestCase):
             self.assertFalse((self.parent / "sessions/demo.json").exists())
             forbidden.complete.assert_not_called()
 
+    async def test_retention_preview_and_cleanup_stay_local_and_default_to_reject(self):
+        from contextlib import closing
+        from dataclasses import replace
+        self.config = replace(self.config, session_max_age_days=1)
+        directory = self.parent / "sessions"
+        with closing(SessionStore(directory, self.config)) as store:
+            store.save("expired", [{"role": "system", "content": "s"}, {"role": "user", "content": "private transcript"}])
+        os.utime(directory / "expired.json", (1000000000, 1000000000))
+        provider = ScriptedProvider([])
+        app = self.app(provider)
+        async with app.run_test(size=(110, 36)) as pilot:
+            await self.send_text(pilot, "/prune --dry-run")
+            await self.until(pilot, lambda: not app.busy)
+            self.assertIsNone(app.approval)
+            self.assertIn('"dry_run": true', app.transcript)
+            await self.send_text(pilot, "/prune")
+            await self.until(pilot, lambda: app.approval is not None)
+            await pilot.press("enter")
+            await self.until(pilot, lambda: not app.busy)
+            self.assertTrue((directory / "expired.json").exists())
+            await self.send_text(pilot, "/prune")
+            await self.until(pilot, lambda: app.approval is not None)
+            await self.click(pilot, "#approve")
+            await self.until(pilot, lambda: not app.busy)
+            self.assertFalse((directory / "expired.json").exists())
+            self.assertEqual(provider.calls, [])
+            self.assertIsNone(app.messages)
+            self.assertNotIn("private transcript", app.transcript)
+
     async def test_session_listing_limit_is_visible_and_does_not_create_task_result(self):
         forbidden = Mock()
         app = self.app(forbidden)

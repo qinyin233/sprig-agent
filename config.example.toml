@@ -76,6 +76,7 @@ read_file = true
 search = true
 project_map = true
 edit_file = true
+edit_lines = true # also disabled when edit_file=false
 run = true
 update_plan = true # bounded task checklist, not approval or acceptance
 
@@ -86,8 +87,18 @@ exclude = ["private/", "*.local.json"] # additive with .sprigignore
 env_allowlist = [] # additional named variables; model credentials always removed
 # env = { BUILD_MODE = "debug" } # trusted literal values, no substitutions/commands
 
+[context]
+# Same-layer keys here override legacy [agent] context settings.
+max_bytes = 131072 # actual serialized request bytes, never a token estimate
+compact = false # explicitly opt in; full saved history is preserved
+trigger_ratio = 0.8 # begin elision at 80% of max_bytes; 0 keeps old always-on behavior
+keep_recent_messages = 6 # 6..1000; failures, refusals and user requirements also survive
+
 [storage]
 auto_save_session = false # opt in to private, unencrypted transcripts
+# Retention only runs on /prune or --prune-sessions; never auto-delete on startup.
+# session_max_age_days = 30
+# session_max_count = 64
 # session_dir = "~/.local/state/sprig-agent/sessions"
 # change_history_dir = "~/.local/state/sprig-agent/changes" # exact file backups
 

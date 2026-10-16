@@ -248,6 +248,72 @@ exclude=["project-private/"]
             with self.subTest(text=text), self.assertRaises(ValueError):
                 self.resolve(load_settings(self.path).with_project(path))
 
+    def test_line_editor_inherits_base_write_policy_in_config_and_project(self):
+        self.write('''provider="x"
+[providers.x]
+model="fixture"
+[tools]
+edit_file=false
+edit_lines=true
+''')
+        settings = load_settings(self.path)
+        config, metadata = self.resolve(settings)
+        visible = public_config(config, metadata)
+        self.assertFalse(visible["tools"]["edit_lines"])
+        self.assertEqual(visible["setting_sources"]["tools.edit_lines"], "tools.edit_file")
+        project = self.write('[tools]\nedit_lines=true\n', self.root / "line-project.toml")
+        with self.assertRaisesRegex(ValueError, "cannot enable a disabled tool"):
+            self.resolve(settings.with_project(project))
+
+    def test_context_and_retention_groups_resolve_sources_profiles_project_and_cli(self):
+        self.write('''provider="x"
+[providers.x]
+model="fixture"
+[agent]
+max_context_bytes=32768
+[context]
+max_bytes=65536
+compact=true
+trigger_ratio=0.8
+keep_recent_messages=10
+[storage]
+session_max_age_days=30
+session_max_count=64
+[profiles.work.context]
+trigger_ratio=0.7
+[profiles.work.storage]
+session_max_count=20
+''')
+        project = self.write('[context]\nkeep_recent_messages=12\n', self.root / "context-project.toml")
+        config, metadata = self.resolve(load_settings(self.path).with_project(project), profile="work", context_trigger_ratio=0.9)
+        self.assertTrue(config.compact_context)
+        self.assertEqual(config.max_context_bytes, 65536)
+        self.assertEqual(config.context_trigger_ratio, 0.9)
+        self.assertEqual(config.context_keep_recent_messages, 12)
+        visible = public_config(config, metadata)
+        self.assertEqual(visible["storage"]["session_max_count"], 20)
+        self.assertEqual(visible["storage"]["session_max_age_days"], 30)
+        sources = visible["setting_sources"]
+        self.assertEqual(sources["max_context_bytes"], "user")
+        self.assertEqual(sources["context_trigger_ratio"], "CLI")
+        self.assertEqual(sources["context_keep_recent_messages"], "project")
+        self.assertEqual(sources["session_max_count"], "profile")
+        # These settings do not change the model, tool policy or authorization
+        # of historical actions and need not invalidate a private transcript.
+        self.assertEqual(config.binding(), replace(config, context_trigger_ratio=0.2, session_max_count=1).binding())
+        forbidden = self.write('[storage]\nsession_max_count=1\n', self.root / "storage-project.toml")
+        with self.assertRaisesRegex(ValueError, "storage"):
+            load_settings(self.path).with_project(forbidden)
+
+    def test_invalid_context_or_retention_is_rejected_even_if_hidden_by_profile(self):
+        for index, text in enumerate(('[context]\ntrigger_ratio="0.8"', '[context]\nkeep_recent_messages=5',
+                     '[storage]\nsession_max_age_days=0', '[storage]\nsession_max_count=true',
+                     '[storage]\nsession_max_count=257', '[context]\nmax_bytes=1000')):
+            with self.subTest(text=text):
+                path = self.write(text + '\n[profiles.valid.context]\nmax_bytes=65536\n', self.parent / f"bad-context-{index}.toml")
+                with self.assertRaises(ValueError):
+                    load_settings(path)
+
     def test_actual_http_uses_custom_auth_and_headers_and_does_not_leak_other_provider_key(self):
         calls = []
         reply = {"choices": [{"finish_reason": "stop", "message": {"role": "assistant", "content": "fixture-header-secret fixture-key-never-a-real-credential"}}]}
@@ -433,7 +499,7 @@ api_key_env="CUSTOM_KEY"
         self.assertTrue(config.read_only)
         self.assertEqual(config.model, "agnes-3.0-flash")
         self.assertEqual(json.loads((root / "config.schema.json").read_text(encoding="utf-8")), configuration_schema())
-        self.assertEqual(set(configuration_schema()["properties"]["tools"]["properties"]), {"list_files", "read_file", "search", "project_map", "edit_file", "run", "update_plan"})
+        self.assertEqual(set(configuration_schema()["properties"]["tools"]["properties"]), {"list_files", "read_file", "search", "project_map", "edit_file", "edit_lines", "run", "update_plan"})
 
     def test_baseline_setting_resolves_inherited_checks_and_cannot_be_weakened_by_project(self):
         self.write('''provider="x"

@@ -60,6 +60,26 @@ class ToolDiagnosticsTests(unittest.TestCase):
         self.assertNotIn("private", json.dumps(report))
         self.assertNotIn("acceptance_passed", report)
 
+    def test_revision_diagnostics_are_allowlisted_without_publishing_identifiers(self):
+        tracker = module.ToolDiagnostics()
+        arguments = {"path": "private-file", "read_id": "r0123456789ab-1"}
+        result = {"content": "private-content", "sha256": "a" * 64, "read_id": "r0123456789ab-1"}
+        first = tracker.record("read_file", arguments, result)
+        second = tracker.record("read_file", arguments, {**result, "read_id": "r0123456789ab-2"})
+        self.assertTrue(first["revision_available"])
+        self.assertTrue(first["read_id_available"])
+        self.assertEqual(second["same_output_repeats"], 1)
+        report = tracker.record("edit_lines", arguments, {"error": "private-error", "edit_failure": {
+            "reason": "stale_revision", "source": "read_id"}})
+        self.assertEqual(report, {"error": True, "edit_failure_reason": "stale_revision", "revision_source": "read_id"})
+        for private in ("private", "r0123456789ab", "a" * 64):
+            self.assertNotIn(private, json.dumps([first, second, report]))
+        for malformed in ({"reason": [], "source": {}}, {"reason": "private", "source": "private"}):
+            self.assertEqual(tracker.record("edit_file", {}, {"error": "private", "edit_failure": malformed}), {"error": True})
+        invalid = tracker.record("read_file", {}, {"content": "", "sha256": "x" * 64, "read_id": "private"})
+        self.assertFalse(invalid["revision_available"])
+        self.assertFalse(invalid["read_id_available"])
+
 
 if __name__ == "__main__":
     unittest.main()

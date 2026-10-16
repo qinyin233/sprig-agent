@@ -1,13 +1,14 @@
 # 开源 agent 配置调研与 Sprig 的对应实现
 
-核对日期：2026-10-15。选择 Codex、OpenCode、Aider、Pi 作为开源编程 agent 的样本；这不是排行榜，也不是完整性能对照。本轮重新读取官方配置文档、Codex 配置 Schema 和 Pi 文档源码；以下接口不代表本地已经运行了样本的每个选项。功能配置与模型编码成绩分别验收。
+核对日期：2026-10-15；2026-10-16 补充 Gemini CLI 和更新后的配置文档，见[日期调研记录](configuration-research-20261016.md)。选择有代表性的开源编程 agent 作为样本；这不是排行榜，也不是完整性能对照。以下接口不代表本地已经运行了样本的每个选项。功能配置与模型编码成绩分别验收。
 
 | 样本 | 文件与加载方式 | 文档中的主要设置范围 |
 | --- | --- | --- |
-| [Codex 官方配置参考](https://developers.openai.com/codex/config-reference/) / [源码 Schema](https://github.com/openai/codex/blob/main/codex-rs/core/config.schema.json) | `config.toml`、命名 profile；另有组织要求与受信项目配置 | 提供商/模型、推理、上下文、项目指令、审批/沙箱、命令环境、MCP/skills/多代理、TUI keymap/主题/通知 |
+| [Codex 官方配置参考](https://developers.openai.com/codex/config-reference/) / [配置层级](https://developers.openai.com/codex/config-basic/) | 用户/受信项目 `config.toml`；当前 profile 为 `~/.codex/NAME.config.toml`；组织要求单独约束 | 提供商/模型、推理、上下文、项目指令、审批/沙箱、命令环境、MCP/skills/多代理、TUI keymap/主题/通知 |
 | [OpenCode](https://opencode.ai/docs/config/) | JSON/JSONC；用户、项目、显式路径等层级合并；TUI 使用单独的 `tui.json` | 模型/提供商、工具与权限、压缩、指令、网络、主题、MCP、插件、LSP、格式化和快捷键 |
 | [Aider](https://aider.chat/docs/config/aider_conf.html) | `.aider.conf.yml`；通常按 home、仓库、当前目录加载，CLI 优先；`--config` 显式选择文件 | 模型/别名、连接与生成参数、仓库地图、聊天历史、输出、Git、lint/test；具体字段见[选项表](https://aider.chat/docs/config/options.html) |
 | [Pi settings](https://github.com/badlogic/pi-mono/blob/main/packages/coding-agent/docs/settings.md) / [models](https://github.com/badlogic/pi-mono/blob/main/packages/coding-agent/docs/models.md) | JSON；用户与项目设置，另有模型目录与自定义提供商配置 | 默认模型与思考选项、引导队列、工具、会话、压缩、终端显示、重试/网络、自定义模型参数与扩展资源 |
+| [Gemini CLI 配置](https://geminicli.com/docs/reference/configuration/) | 用户/项目 `settings.json`，系统默认和强制层；受信目录机制可另行启用 | 模型、压缩阈值、工具权限、MCP/hooks、界面、会话保留和通知 |
 
 ## Sprig 已接入的设置
 
@@ -41,9 +42,9 @@
 | 模型行为 | Codex reasoning；Pi thinking/每模型设置；Aider reasoning-effort | token 字段、温度、top-p、seed、reasoning_effort、受限额外请求体；服务未支持的选项不会因为配置可解析就变得可用 |
 | 工作模式与覆盖 | Codex profiles；OpenCode 用户/项目层；Pi 用户/项目设置；Aider home→repo→cwd→CLI | 命名 profile，用户→提供商→模型→profile→显式项目→CLI；提供商/模型环境选择器另有明确优先级 |
 | 项目知识、语言 | OpenCode instructions 路径/glob；Codex 项目文档；Aider read/chat-language | 分层 AGENTS.md、明确附加规则文件、回复语言、CLI/TUI 文件快照；附加规则暂不支持 glob、远程或工作区外路径 |
-| 历史和上下文 | Pi compaction/会话；Aider history/map-tokens；Codex context 配置 | 实际请求字节上限、显式确定性压缩、私有会话/恢复/目录；没有精确 token/费用上限或经实测的长期摘要 |
+| 历史和上下文 | Pi compaction/会话；Aider history/map-tokens；Codex context 配置；Gemini sessionRetention | 实际请求字节上限、压缩触发比例和保护窗口、私有会话/恢复/目录、保留年龄/数量与显式获批清理；没有精确 token/费用上限或经实测的长期摘要 |
 | 测试工作流 | Aider lint/test command；样本的用户/项目指令 | 固定 checks、可选任务前基线、完成后独立验收、失败反馈；所有命令逐次批准，没有自动 lint/format 后端 |
-| 工具和命令环境 | OpenCode tools/permissions；Pi defaultTools；Codex environment/sandbox | 七种工具硬禁用、只读、路径排除、环境白名单/字面值、超时/输出上限/取消；计划工具只更新内存，命令仍无 OS 沙箱 |
+| 工具和命令环境 | OpenCode tools/permissions；Pi defaultTools；Codex environment/sandbox | 八种工具硬禁用、只读、路径排除、环境白名单/字面值、超时/输出上限/取消；整行工具继承基础编辑禁用，计划工具只更新内存，命令仍无 OS 沙箱 |
 | 界面与快捷键 | OpenCode tui.json；[Pi 按动作 keybindings.json](https://github.com/badlogic/pi-mono/blob/main/packages/coding-agent/docs/keybindings.md)；Codex tui.keymap | 主题、侧栏、高度、引导队列、用量、按动作附加快捷键；固定输入/审批键不改，没有完整 Vim 模式 |
 | 扩展、网络和 IDE | Codex/OpenCode MCP/skills；Pi 扩展资源；OpenCode LSP/formatters | 仍缺 MCP、可执行 skills/hooks、LSP、网页/图像工具；未知配置直接拒绝，没有空壳开关 |
 | Git 和外部交互 | Aider Git/编辑器；Codex/OpenCode 工作区/进程设置 | 只读 Git 状态/diff、获批编辑撤销与私有备份；仍缺独立 worktree、外部编辑器、PTY/后台任务、通知后端 |

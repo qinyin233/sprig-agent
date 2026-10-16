@@ -8,6 +8,7 @@ from .context import prepare_context
 from .instructions import ProjectInstructions
 from .metrics import Measurements
 from .planning import TaskPlan
+from .revisions import ReadVersions
 from .provider import ProviderError, validate_message
 from .session import validate_history
 from .tools import TOOL_SCHEMAS
@@ -17,6 +18,7 @@ Inspect before editing. Make the smallest correct change and verify it with appr
 For an unfamiliar repository, prefer project_map with a relevant symbol/path query for orientation
 over walking directories one request at a time. Follow it with targeted searches and ranged reads.
 Maps show declarations, not full behavior; check truncation and inspect implementation before edits.
+For line changes, prefer edit_lines with a fresh read_id from read_file.
 Use update_plan when available for tasks with multiple stages; skip it for trivial requests.
 Keep the plan current after new guidance. Plan completion is your report, not approval or test evidence.
 For implementation requests, locate the relevant code, reproduce or establish a baseline when useful,
@@ -45,8 +47,8 @@ class Agent:
         self.cancel_event = cancel_event
         self.receive_input = receive_input or (lambda: [])
         self.schemas = [schema for schema in TOOL_SCHEMAS
-                        if schema["function"]["name"] not in config.disabled_tools
-                        and (not config.read_only or schema["function"]["name"] not in {"edit_file", "run"})]
+                        if config.tool_enabled(schema["function"]["name"])
+                        and (not config.read_only or schema["function"]["name"] not in {"edit_file", "edit_lines", "run"})]
         self.compact_context = config.compact_context
         self.baseline_status = "not_run"
 
@@ -95,7 +97,7 @@ class Agent:
     def context_preview(self, messages):
         selected = list(messages or [{"role": "system", "content": self._prompt()}])
         self._refresh_instructions(selected)
-        return prepare_context(self.config, self._request_messages(selected, 1), self.schemas, compact=True)[1]
+        return prepare_context(self.config, self._request_messages(selected, 1), self.schemas, compact=True, force=True)[1]
 
     def _prompt(self):
         prompt = SYSTEM_PROMPT
@@ -188,7 +190,7 @@ class Agent:
         if self.config.max_tokens is not None:
             messages[0]["content"] += (
                 f"\nPer-response output-token limit: {self.config.max_tokens}. "
-                "Keep proposals small enough to finish. Prefer sha256-pinned line_edits when old text is large; "
+                "Keep proposals small enough to finish. Prefer edit_lines with read_id when old text is large; "
                 "read the relevant complete lines first. Split independent changes across responses rather than "
                 "repeating entire old/new files. An incomplete response never executes tool calls.")
         return messages
@@ -271,6 +273,9 @@ class Agent:
 
     def run(self, task=None, messages=None):
         self.baseline_status = "not_run"
+        versions = getattr(self.tools, "read_versions", None)
+        if isinstance(versions, ReadVersions):
+            versions.clear()
         self.restore_plan(messages)
         prompt = self._prompt()
         messages = messages if messages else [{"role": "system", "content": prompt}]

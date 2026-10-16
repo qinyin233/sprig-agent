@@ -2,6 +2,7 @@
 import json
 from .config import redact
 from .planning import plan_result, validate_plan
+from .revisions import valid_read_id
 
 
 def request_payload(config, messages, tools):
@@ -33,11 +34,19 @@ def _successful(result):
             and result.get("returncode", 0) == 0)
 
 
-def _edit_path(arguments):
+def _edit_path(arguments, *, by_line=False):
     value = _result(arguments)
     if value is None or not isinstance(value.get("path"), str) or not value["path"]:
         return None
-    if set(value) == {"path", "old", "new"}:
+    if by_line:
+        if set(value) != {"path", "read_id", "edits"} or not valid_read_id(value["read_id"]):
+            return None
+        from .line_edits import validate_edits
+        try:
+            validate_edits(value["edits"], 512 * 1024, lambda: None)
+        except (ValueError, TypeError):
+            return None
+    elif set(value) == {"path", "old", "new"}:
         if not all(isinstance(value[key], str) for key in ("old", "new")):
             return None
     elif set(value) == {"path", "edits"}:
@@ -60,7 +69,7 @@ def _edit_path(arguments):
     return value["path"]
 
 
-def prepare_context(config, messages, tools, compact=False):
+def prepare_context(config, messages, tools, compact=False, *, force=False):
     """Keep the saved transcript intact; never discard user instructions or refusals."""
     selected = redact(messages, config.secrets)
     before = size = len(request_body(config, selected, tools))
@@ -74,8 +83,9 @@ def prepare_context(config, messages, tools, compact=False):
         container[field] = value
         changes.append({"message": index, "tool_call_id": identity, "fields": fields,
                         "before_bytes": old_bytes, "after_bytes": new_bytes})
-    if compact:
-        cutoff = max(0, len(selected) - 6)
+    triggered = compact and (force or before >= config.max_context_bytes * config.context_trigger_ratio)
+    if triggered:
+        cutoff = max(0, len(selected) - config.context_keep_recent_messages)
         calls, results, ambiguous = {}, {}, set()
         # Correlate each historical intent with one completed result. Duplicate
         # IDs and a result in the protected tail must never permit elision.
@@ -111,18 +121,18 @@ def prepare_context(config, messages, tools, compact=False):
                 marker = json.dumps({"context_elided": True, "note": "Older completed plan update omitted from this request. This is not runnable tool input. The latest successful plan result is retained; saved history is unchanged."})
                 replace_string(function, "arguments", marker, index, identity, ["arguments"])
                 continue
-            if function.get("name") != "edit_file":
+            if function.get("name") not in {"edit_file", "edit_lines"}:
                 continue
             if (not _successful(result) or result.get("approved") is not True
                     or result.get("changed") is not True):
                 continue
-            path = _edit_path(function.get("arguments"))
+            path = _edit_path(function.get("arguments"), by_line=function["name"] == "edit_lines")
             if path is None or result.get("path") != path:
                 continue
             marker = json.dumps({"path": path, "context_elided": True,
                 "note": "Completed approved historical edit: replacement text omitted from this request. This is not runnable tool input. Inspect current files before further edits; the saved transcript retains the original arguments."}, ensure_ascii=False)
             replace_string(function, "arguments", marker, index, identity, ["arguments"])
-        for index, message in enumerate(selected[:-6]):
+        for index, message in enumerate(selected[:cutoff]):
             if message.get("role") != "tool":
                 continue
             result = _result(message.get("content"))
@@ -134,11 +144,13 @@ def prepare_context(config, messages, tools, compact=False):
             if not fields:
                 continue
             reduced = {key: value for key, value in result.items() if key not in fields}
-            reduced.update(context_elided=True, note="Older successful tool output omitted from the request. Inspect current files again if needed; the saved transcript retains the full result.")
-            content = json.dumps(reduced, ensure_ascii=False)
+            reduced.update(context_elided=True, note="Older successful output elided; reread files if needed. Full result remains in saved history.")
+            content = json.dumps(reduced, ensure_ascii=False, separators=(",", ":"))
             replace_string(message, "content", content, index, message["tool_call_id"], fields)
         # Count the actual serialized request, including redaction of new markers.
         if changes:
             size = len(request_body(config, selected, tools))
     return selected, {"before_bytes": before, "after_bytes": size, "budget_bytes": config.max_context_bytes,
-                      "within_budget": size <= config.max_context_bytes, "changes": changes}
+                      "within_budget": size <= config.max_context_bytes, "changes": changes,
+                      "compaction_triggered": triggered, "trigger_ratio": config.context_trigger_ratio,
+                      "keep_recent_messages": config.context_keep_recent_messages}

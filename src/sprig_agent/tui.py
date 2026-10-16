@@ -515,6 +515,10 @@ class SprigApp(App[int]):
                     result = self.get_store().scan(cancel_event=self.cancel_event)
                     if result["limited"]:
                         status, message = 2, "会话列表达到上限，结果可能不完整"
+                elif name == "prune-sessions":
+                    result = self.get_store().prune(self.confirm, cancel_event=self.cancel_event, **arguments)
+                    if result.get("declined") or result.get("skipped"):
+                        status, message = 2, "会话清理未全部执行，详见本地结果"
                 elif name in {"changes", "undo", "redo", "discard-history"}:
                     result = self.tools.change_action(name)
                     if result.get("changed") or result.get("outcome") == "uncertain":
@@ -755,7 +759,7 @@ class SprigApp(App[int]):
             self.append("\n本地命令（不发送给模型）：\n"
                         "/help /keys /plan /status /config /models /context /usage /cancel /exit\n"
                         "/continue /new /add 文件路径 /map [名称或路径查询] /git /diff /compact\n"
-                        "/changes /undo /redo /discard-history /sessions\n"
+                        "/changes /undo /redo /discard-history /sessions /prune [--dry-run]\n"
                         "/save [名称] /restore [名称] /delete [名称]\n"
                         "执行中可输入普通消息调整引导。// 开头发送以 / 开头的普通消息。\n"
                         "提供商和模型通过 config.toml 或启动参数选择；恢复时仍校验绑定。\n")
@@ -786,19 +790,24 @@ class SprigApp(App[int]):
         actions = {"/continue": "continue", "/new": "new", "/map": "map", "/git": "git", "/diff": "diff",
                    "/context": "context-budget", "/usage": "usage", "/compact": "compact",
                    "/changes": "changes", "/undo": "undo", "/redo": "redo", "/discard-history": "discard-history",
-                   "/sessions": "sessions", "/save": "save", "/restore": "restore", "/delete": "delete", "/add": "attach"}
+                   "/sessions": "sessions", "/save": "save", "/restore": "restore", "/delete": "delete", "/add": "attach", "/prune": "prune-sessions"}
         if command not in actions:
             self.append("\n未知本地命令；输入 /help。消息未发送给模型。\n")
             return
         if self.busy:
             self.append("\n该本地操作需要等待当前任务结束；可用 /cancel，或发送普通消息调整任务。\n")
             return
-        if argument and command not in {"/map", "/save", "/restore", "/delete", "/add"}:
+        if argument and command not in {"/map", "/save", "/restore", "/delete", "/add", "/prune"}:
             self.append("\n该命令不接受参数；输入 /help。\n")
             return
         if command in {"/save", "/restore", "/delete"} and argument:
             self.query_one("#session-name", Input).value = argument
-        if command == "/add":
+        if command == "/prune":
+            if argument not in {"", "--dry-run"}:
+                self.append("\n用法：/prune [--dry-run]；需先配置会话保留策略。\n")
+                return
+            self.start(local=("prune-sessions", {"dry_run": argument == "--dry-run"}))
+        elif command == "/add":
             if not argument:
                 self.append("\n用法：/add 工作区相对文件路径；文件只作为快照加入，下一条消息才请求模型。\n")
                 return
@@ -853,7 +862,7 @@ class SprigApp(App[int]):
                         self.agent.compact_context = True
                         self.event("已启用请求上下文压缩；保存的完整对话保留")
 
-                self.push_screen(ApprovalScreen("仅省略请求里的旧成功工具输出及已批准完成的旧编辑正文；用户要求、失败、拒绝和最近六条消息保留。完整会话文件保留。\n"
+                self.push_screen(ApprovalScreen(f"按配置阈值省略请求里的旧成功工具输出及已批准完成的旧编辑正文；用户要求、失败、拒绝和最近 {self.config.context_keep_recent_messages} 条消息保留。完整会话文件保留；下方为强制压缩潜力预览。\n"
                                                + json.dumps(preview, ensure_ascii=False, indent=2)), compact)
             elif identity == "delete":
                 name = self.query_one("#session-name", Input).value.strip()

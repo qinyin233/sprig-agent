@@ -171,6 +171,9 @@
         },
         "update_plan": {
           "type": "boolean"
+        },
+        "edit_lines": {
+          "type": "boolean"
         }
       },
       "additionalProperties": false
@@ -248,6 +251,40 @@
         },
         "auto_save_session": {
           "type": "boolean"
+        },
+        "session_max_age_days": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 36500
+        },
+        "session_max_count": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 256
+        }
+      },
+      "additionalProperties": false
+    },
+    "context": {
+      "type": "object",
+      "properties": {
+        "max_bytes": {
+          "type": "integer",
+          "minimum": 4096,
+          "maximum": 2097152
+        },
+        "compact": {
+          "type": "boolean"
+        },
+        "trigger_ratio": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        },
+        "keep_recent_messages": {
+          "type": "integer",
+          "minimum": 6,
+          "maximum": 1000
         }
       },
       "additionalProperties": false
@@ -836,6 +873,9 @@
               },
               "update_plan": {
                 "type": "boolean"
+              },
+              "edit_lines": {
+                "type": "boolean"
               }
             },
             "additionalProperties": false
@@ -913,6 +953,40 @@
               },
               "auto_save_session": {
                 "type": "boolean"
+              },
+              "session_max_age_days": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 36500
+              },
+              "session_max_count": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 256
+              }
+            },
+            "additionalProperties": false
+          },
+          "context": {
+            "type": "object",
+            "properties": {
+              "max_bytes": {
+                "type": "integer",
+                "minimum": 4096,
+                "maximum": 2097152
+              },
+              "compact": {
+                "type": "boolean"
+              },
+              "trigger_ratio": {
+                "type": "number",
+                "minimum": 0,
+                "maximum": 1
+              },
+              "keep_recent_messages": {
+                "type": "integer",
+                "minimum": 6,
+                "maximum": 1000
               }
             },
             "additionalProperties": false

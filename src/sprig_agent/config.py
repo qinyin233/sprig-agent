@@ -9,7 +9,7 @@ import re
 import unicodedata
 from urllib.parse import urlsplit, urlunsplit
 
-TOOL_NAMES = ("list_files", "read_file", "search", "project_map", "edit_file", "run", "update_plan")
+TOOL_NAMES = ("list_files", "read_file", "search", "project_map", "edit_file", "run", "update_plan", "edit_lines")
 SHORTCUT_ACTIONS = ("cancel", "quit", "focus_input", "toggle_sidebar", "help", "new_conversation")
 GENERATION_FIELDS = ("max_tokens", "thinking", "temperature", "top_p", "reasoning_effort", "seed", "token_limit_field", "extra_body")
 RESERVED_BODY_FIELDS = {"model", "messages", "tools", "tool_choice", "stream", "stream_options", "n",
@@ -134,6 +134,10 @@ class Config:
     session_dir: Path | None = None
     change_history_dir: Path | None = None
     auto_save_session: bool = False
+    session_max_age_days: int | None = None
+    session_max_count: int | None = None
+    context_trigger_ratio: float = 0
+    context_keep_recent_messages: int = 6
     tui_theme: str | None = None
     tui_sidebar: bool = True
     tui_editor_height: int = 5
@@ -175,6 +179,15 @@ class Config:
             raise ValueError("max-context-bytes must be between 4096 and 2097152")
         if not isinstance(self.compact_context, bool):
             raise ValueError("compact-context must be a boolean")
+        if (type(self.context_trigger_ratio) not in (int, float) or not math.isfinite(self.context_trigger_ratio)
+                or not 0 <= self.context_trigger_ratio <= 1):
+            raise ValueError("context-trigger-ratio must be between 0 and 1")
+        if type(self.context_keep_recent_messages) is not int or not 6 <= self.context_keep_recent_messages <= 1000:
+            raise ValueError("context-keep-recent-messages must be between 6 and 1000")
+        for name, high in (("session_max_age_days", 36500), ("session_max_count", 256)):
+            value = getattr(self, name)
+            if value is not None and (type(value) is not int or not 1 <= value <= high):
+                raise ValueError(name + " must be a positive bounded integer")
         if not isinstance(self.project_instructions, bool):
             raise ValueError("project-instructions must be a boolean")
         if (not isinstance(self.instruction_files, tuple) or len(self.instruction_files) > 16
@@ -354,6 +367,10 @@ class Config:
             if getattr(self, name) is not None:
                 options[name] = getattr(self, name)
         return options
+
+    def tool_enabled(self, name):
+        return (name in TOOL_NAMES and name not in self.disabled_tools
+                and (name != "edit_lines" or "edit_file" not in self.disabled_tools))
 
     def binding(self):
         binding = {"base_url": self.base_url, "model": self.model, "workdir": str(self.workdir)}

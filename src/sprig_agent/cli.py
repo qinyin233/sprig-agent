@@ -186,6 +186,8 @@ def main(argv=None):
     parser.add_argument("--inherit-env", action=argparse.BooleanOptionalAction, default=None, help="let approved commands inherit additional environment variables")
     parser.add_argument("--max-context-bytes", type=int, help="maximum serialized model request size; not a token/cost estimate")
     parser.add_argument("--compact-context", action=argparse.BooleanOptionalAction, default=None, help="explicitly elide old successful tool output and completed edit text from requests; keep saved history")
+    parser.add_argument("--context-trigger-ratio", type=float, help="compact at this fraction of the request byte cap (0..1), only when compaction is enabled")
+    parser.add_argument("--context-keep-recent-messages", type=int, help="protect 6..1000 recent messages from compaction")
     parser.add_argument("--project-instructions", action=argparse.BooleanOptionalAction, default=None, help="load workspace AGENTS.md guidance; never reads parent/home directories")
     parser.add_argument("--instruction-file", dest="instruction_files", action="append", help="additional workspace-relative guidance file; repeatable, replaces configured files")
     parser.add_argument("--response-language", help="preferred language for explanations; direct task requests take precedence")
@@ -202,6 +204,7 @@ def main(argv=None):
     group.add_argument("--resume", metavar="NAME")
     group.add_argument("--list-sessions", action="store_true", help="list local session metadata without contacting a model")
     group.add_argument("--delete-session", metavar="NAME", help="delete one local session after confirmation")
+    group.add_argument("--prune-sessions", action="store_true", help="apply configured retention to idle sessions, each deletion requires confirmation")
     group.add_argument("--init-config", action="store_true", help="confirm creation of a private TOML template; never overwrite an existing file")
     group.add_argument("--show-config", action="store_true", help="show effective settings with credential values withheld; no model request")
     group.add_argument("--doctor", action="store_true", help="check configuration, workspace privacy rules and dependencies offline")
@@ -209,13 +212,18 @@ def main(argv=None):
     group.add_argument("--list-models", action="store_true", help="explicit GET /models on the selected provider; no chat completion")
     group.add_argument("--config-schema", action="store_true", help="print the configuration JSON schema offline")
     parser.add_argument("--session-dir", type=Path)
+    parser.add_argument("--session-max-age-days", type=int, help="retention age for explicit --prune-sessions; never auto-delete")
+    parser.add_argument("--session-max-count", type=int, help="retain newest 1..256 valid sessions during explicit pruning")
+    parser.add_argument("--dry-run", action="store_true", help="preview --prune-sessions candidates without deletion or approval")
     parser.add_argument("--change-history-dir", type=Path, help="explicitly persist exact edit backups in a private directory outside the repository (not encrypted)")
     args = parser.parse_args(argv)
     key = ""
     store = tools = history = provider = None
     show_metrics = False
     try:
-        manage_sessions = args.list_sessions or args.delete_session
+        manage_sessions = args.list_sessions or args.delete_session or args.prune_sessions
+        if args.dry_run and not args.prune_sessions:
+            raise ValueError("--dry-run requires --prune-sessions")
         local_configuration = args.init_config or args.show_config or args.doctor or args.models or args.list_models or args.config_schema
         if os.name not in {"posix", "nt"}:
             raise ValueError("Sprig requires Linux/macOS or Windows 10+")
@@ -282,6 +290,10 @@ def main(argv=None):
                     print(f"Session listing reached the {listing['limit_reason']} limit; results may be incomplete "
                           f"({listing['scanned_entries']} entries scanned, {listing['read_bytes']} bytes read).", file=sys.stderr)
                     return 2
+            elif args.prune_sessions:
+                result = store.prune(lambda prompt: approve(terminal_text(prompt)), dry_run=args.dry_run)
+                print(terminal_text(json.dumps(result, ensure_ascii=False, indent=2)))
+                return 2 if "error" in result or result.get("declined") or result.get("skipped") else 0
             elif approve("DELETE local session " + terminal_text(args.delete_session) + "\nThis deletes its saved transcript; it does not change workspace files."):
                 store.delete(args.delete_session)
                 print("Local session deleted")

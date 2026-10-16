@@ -109,13 +109,16 @@ def initialize_config(path, approve):
 GROUP_FIELDS = {
     "agent": set(AGENT_DEFAULTS), "generation": set(GENERATION_FIELDS), "tools": set(TOOL_NAMES),
     "files": {"exclude"}, "execution": {"inherit_env", "timeout", "max_output", "env_allowlist", "env"},
-    "storage": {"session_dir", "change_history_dir", "auto_save_session"},
+    "storage": {"session_dir", "change_history_dir", "auto_save_session", "session_max_age_days", "session_max_count"},
+    "context": {"max_bytes", "compact", "trigger_ratio", "keep_recent_messages"},
     "tui": {"theme", "sidebar", "editor_height", "steering_mode", "metrics", "keybindings"},
     "instructions": {"files", "response_language"},
 }
 TUI_FIELDS = {"theme": "tui_theme", "sidebar": "tui_sidebar", "editor_height": "tui_editor_height",
               "steering_mode": "steering_mode", "metrics": "show_metrics", "keybindings": "tui_keybindings"}
 TRANSPORT_FIELDS = {"request_timeout", "proxy", "api_key_header", "api_key_scheme"}
+CONTEXT_FIELDS = {"max_bytes": "max_context_bytes", "compact": "compact_context",
+                  "trigger_ratio": "context_trigger_ratio", "keep_recent_messages": "context_keep_recent_messages"}
 IDENTIFIER = re.compile(r"[A-Za-z0-9_-]{1,64}")
 
 
@@ -137,6 +140,7 @@ def _generation(value):
 def _flatten(layer, directory):
     """Translate only documented keys; never evaluate substitutions or commands."""
     values = {**layer.get("agent", {}), **layer.get("generation", {})}
+    values.update({CONTEXT_FIELDS[name]: value for name, value in layer.get("context", {}).items()})
     execution = layer.get("execution", {})
     values.update({name: execution[name] for name in ("inherit_env", "timeout", "max_output") if name in execution})
     if "env_allowlist" in execution:
@@ -401,7 +405,8 @@ class Settings:
         values = dict(AGENT_DEFAULTS)
         sources = {name: "default" for name in {*AGENT_DEFAULTS, *GENERATION_FIELDS, *TRANSPORT_FIELDS,
                     *TUI_FIELDS.values(), "instruction_files", "response_language", "excluded_paths",
-                    "session_dir", "change_history_dir", "auto_save_session", "env_allowlist", "command_env"}}
+                    "session_dir", "change_history_dir", "auto_save_session", "env_allowlist", "command_env",
+                    "session_max_age_days", "session_max_count", *CONTEXT_FIELDS.values()}}
         def apply(entries, label):
             if "tui_keybindings" in entries:
                 merged = dict(values.get("tui_keybindings", ()))
@@ -425,7 +430,8 @@ class Settings:
                 raise ValueError("project configuration cannot disable trusted read-only policy")
             if values.get("check_before_task") and project_values.get("check_before_task") is False:
                 raise ValueError("project configuration cannot disable trusted baseline checks")
-            if any(enabled and tool_policy.get(name) is False for name, enabled in self.project_data.get("tools", {}).items()):
+            if any(enabled and (tool_policy.get(name) is False or (name == "edit_lines" and tool_policy.get("edit_file") is False))
+                   for name, enabled in self.project_data.get("tools", {}).items()):
                 raise ValueError("project configuration cannot enable a disabled tool")
             if "excluded_paths" in project_values:
                 project_values["excluded_paths"] = tuple(dict.fromkeys((*values.get("excluded_paths", ()), *project_values["excluded_paths"])))
@@ -435,7 +441,9 @@ class Settings:
                 sources["excluded_paths"] = previous_exclusions + " + project"
             tool_policy.update(self.project_data.get("tools", {}))
         apply({name: selected[name] for name in TRANSPORT_FIELDS if name in selected}, "provider")
-        configurable = {*AGENT_DEFAULTS, *GENERATION_FIELDS, *TRANSPORT_FIELDS, "session_dir", "change_history_dir", "show_metrics", "instruction_files", "response_language"}
+        configurable = {*AGENT_DEFAULTS, *GENERATION_FIELDS, *TRANSPORT_FIELDS, *CONTEXT_FIELDS.values(),
+                        "session_dir", "change_history_dir", "show_metrics", "instruction_files", "response_language",
+                        "session_max_age_days", "session_max_count"}
         apply({name: value for name, value in options.items() if name in configurable and value is not None}, "CLI")
         if options.get("_tui_stream"):
             sources["stream"] = "TUI"
@@ -449,6 +457,8 @@ class Settings:
             sources["tools." + name] = ("CLI" if name in (options.get("disable_tool") or ()) else
                 "project" if name in self.project_data.get("tools", {}) else
                 "profile" if name in profile.get("tools", {}) else "user" if name in self.data.get("tools", {}) else "default")
+        if tool_policy.get("edit_file") is False:
+            sources["tools.edit_lines"] = "tools.edit_file"
         def selection_source(entries):
             return next((label for value, label in entries if value), "default")
         sources["model"] = selection_source(((options.get("model"), "CLI"), (env.get("SPRIG_MODEL"), "environment"),
@@ -498,16 +508,18 @@ def public_config(config, metadata):
             "api_key_present": bool(config.api_key), "workdir": str(config.workdir),
             "agent": {name: getattr(config, name) for name in AGENT_DEFAULTS},
             "generation": config.generation_options(),
+            "context": {name: getattr(config, field) for name, field in CONTEXT_FIELDS.items()},
             "transport": {"request_timeout": config.request_timeout, "proxy": config.proxy,
                           "api_key_header": config.api_key_header, "api_key_scheme": config.api_key_scheme,
                           "header_names": [name for name, _ in config.headers]},
-            "tools": {name: name not in config.disabled_tools for name in TOOL_NAMES},
+            "tools": {name: config.tool_enabled(name) for name in TOOL_NAMES},
             "files": {"exclude": config.excluded_paths},
             "instructions": {"files": config.instruction_files, "response_language": config.response_language},
             "execution": {"env_allowlist": config.env_allowlist, "env_names": [name for name, _ in config.command_env]},
             "storage": {"session_dir": str(config.session_dir) if config.session_dir else None,
                         "change_history_dir": str(config.change_history_dir) if config.change_history_dir else None,
-                        "auto_save_session": config.auto_save_session},
+                        "auto_save_session": config.auto_save_session,
+                        "session_max_age_days": config.session_max_age_days, "session_max_count": config.session_max_count},
             "tui": {name: (dict(config.tui_keybindings) if name == "keybindings" else getattr(config, field)) for name, field in TUI_FIELDS.items()},
             "setting_sources": dict(config.setting_sources),
             "approvals": "each write and command requires fresh approval", "command_sandbox": False}, config.secrets)

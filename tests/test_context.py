@@ -1,5 +1,6 @@
 """Budget enforcement before HTTP and non-destructive, protocol-safe elision."""
 import copy
+from dataclasses import replace
 import json
 from pathlib import Path
 import sys
@@ -41,6 +42,36 @@ class ContextTests(unittest.TestCase):
         self.assertEqual(validate_history(selected), selected)
         self.assertEqual(self.history, original)
         self.assertEqual(ordinary, original)
+
+    def test_configured_threshold_and_protected_window_measure_real_request_bytes(self):
+        original = copy.deepcopy(self.history)
+        config = replace(self.config, max_context_bytes=65536, context_trigger_ratio=0.8,
+                         context_keep_recent_messages=10)
+        selected, report = prepare_context(config, self.history, TOOL_SCHEMAS, True)
+        self.assertFalse(report["compaction_triggered"])
+        self.assertEqual(selected, original)
+        self.assertEqual(report["after_bytes"], len(request_body(config, selected, TOOL_SCHEMAS)))
+        forced, preview = prepare_context(config, self.history, TOOL_SCHEMAS, True, force=True)
+        self.assertTrue(preview["compaction_triggered"])
+        self.assertLess(preview["after_bytes"], report["before_bytes"])
+        self.assertEqual(forced[-10:], original[-10:])
+        low = replace(config, context_trigger_ratio=0.1)
+        triggered, measured = prepare_context(low, self.history, TOOL_SCHEMAS, True)
+        self.assertEqual(triggered, forced)
+        self.assertEqual(measured["after_bytes"], len(request_body(low, triggered, TOOL_SCHEMAS)))
+        self.assertEqual(validate_history(triggered), triggered)
+        self.assertEqual(self.history, original)
+        disabled, info = prepare_context(low, self.history, TOOL_SCHEMAS, False)
+        self.assertFalse(info["compaction_triggered"])
+        self.assertEqual(disabled, original)
+
+    def test_compaction_settings_never_allow_invalid_or_smaller_safety_windows(self):
+        for value in (True, -0.1, 1.01, float("nan"), float("inf"), "0.8"):
+            with self.subTest(ratio=value), self.assertRaises(ValueError):
+                replace(self.config, context_trigger_ratio=value)
+        for value in (True, 0, 5, 1001, 6.5):
+            with self.subTest(messages=value), self.assertRaises(ValueError):
+                replace(self.config, context_keep_recent_messages=value)
 
     def test_user_guidance_refusals_and_failures_are_preserved(self):
         refusal = {"approved": False, "output": "do not run this again " + "r" * 3000}

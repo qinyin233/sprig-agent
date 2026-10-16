@@ -175,7 +175,7 @@ uv run --locked sprig --config-schema
 
 ## 工具、文件与执行环境
 
-`[tools]` 对七种工具设置 true/false：`list_files`、`read_file`、`search`、`project_map`、`edit_file`、`run`、`update_plan`。false 同时移除模型工具 schema，并在分发、直接方法和撤销/重做处执行限制；CLI `--disable-tool NAME` 可重复。关闭 `read_file` 也阻止 `/add` 附件。`run=false` 或 `read_only=true` 不能配置非空 `checks`。`update_plan` 只维护模型报告的进度，不授权执行或替代验收，详见[任务计划](task-plans.md)。
+`[tools]` 对八种工具设置 true/false：`list_files`、`read_file`、`search`、`project_map`、`edit_file`、`edit_lines`、`run`、`update_plan`。false 同时移除模型工具 schema，并在分发、直接方法和撤销/重做处执行限制；CLI `--disable-tool NAME` 可重复。关闭 `read_file` 也阻止 `/add` 附件；关闭 `edit_file` 同时禁止 `edit_lines`，项目不能重新启用。整行编辑的短版本标识仍关联完整摘要并要求新批准，见[读取绑定编辑](read-bound-edits.md)。`run=false` 或 `read_only=true` 不能配置非空 `checks`。`update_plan` 只维护模型报告的进度，不授权执行或替代验收，详见[任务计划](task-plans.md)。
 
 禁用单个工具只控制该工具接口，例如 `search` 仍会读取匹配内容。要禁止某些路径通过所有文件工具访问，使用 `[files].exclude`；要禁用全部命令，使用 `run=false` 或只读模式。任意获批命令仍无 OS 沙箱，不能把文件排除当作命令隔离。
 
@@ -184,6 +184,39 @@ uv run --locked sprig --config-schema
 `[execution]` 可设置 `inherit_env`、`timeout`、`max_output`（同层优先于 agent 中旧字段），以及 `env_allowlist=["CC", "CFLAGS"]` 和 `env={BUILD_MODE="debug"}`。数组只额外继承具名变量，表提供字面覆盖；不执行替换、取密钥命令或 shell。即使允许列表或继承全部环境，也移除所有配置提供商的凭据变量、头变量及包含已知模型凭据的值。禁止用 env 注入模型凭据变量或凭据值。配置的字面值不显示在日志中；值若用于执行代码、模块搜索路径等，应按正常命令审批审阅其影响。
 
 ## 存储与终端
+
+### 上下文策略
+
+```toml
+[context]
+max_bytes = 131072
+compact = true
+trigger_ratio = 0.8
+keep_recent_messages = 10
+```
+
+`max_bytes` 是完整序列化请求的字节上限，不是模型 token 窗口。启用 `compact` 后，到达 `max_bytes * trigger_ratio` 才尝试省略旧成功工具输出和已批准完成的编辑文本；比例为 0–1，默认 0，保留原先显式压缩始终尝试的行为。`keep_recent_messages` 为 6–1000，默认 6，只能增加保护窗口。失败、拒绝、用户要求、未完成调用与最新计划仍按原规则保留；完整保存历史不改写。压缩后仍超限时不发请求。当前没有模型摘要请求或自动付费重试。
+
+同层 `[context].max_bytes/compact` 覆盖旧 `[agent].max_context_bytes/compact_context`；旧写法继续支持，未知或无效低层设置也会报错。用户、profile、显式受限项目层均可设置，CLI 的 `--max-context-bytes`、`--compact-context`、`--context-trigger-ratio`、`--context-keep-recent-messages` 优先。`--show-config`/TUI `/config` 展示实际值与来源。`/context` 和 `/compact` 的本地预览显示强制压缩的潜力，真实请求仍遵循配置阈值；关闭压缩时阈值不使它自动开启。
+
+### 会话保留与显式清理
+
+```toml
+[storage]
+session_max_age_days = 30
+session_max_count = 64
+```
+
+这两个可选字段分别接受 1–36500 天和 1–256 个有效会话；未设置时不提供保留清理。使用最后修改时间，按新到旧保留数量；超过年龄或数量任一条件即为候选。当前进程活动会话、其他进程占用和无效/不安全文件均保留，因此数量是候选选择规则，不是磁盘硬配额。仅清理会话 JSON，不删除修改备份、锁文件或其他文件；项目层不能配置存储策略。
+
+```sh
+uv run --locked sprig --prune-sessions --dry-run
+uv run --locked sprig --prune-sessions
+```
+
+TUI 使用 `/prune --dry-run` 和 `/prune`。预览只显示候选名称、大小、修改时间，不显示对话正文。实际删除逐个显示候选和策略、取得新批准，再核对租约、私有权限、文件身份与内容；拒绝即停止剩余清理，取消也停止后续动作，已经删除的会话不会回滚。审批期间文件改变会跳过。只读模式允许预览，禁止清理。扫描有 4096 项目录、256 会话、8 MiB 总读取等界限；结果不完整时整个清理不执行，不能据局部列表判断最旧会话。
+
+启动、自动保存和列会话均不自动清理，也不调用模型。CLI 可用 `--session-max-age-days` / `--session-max-count` 覆盖；配合显式 `--session-dir` 时同样无需有效模型配置或密钥。生效值和来源由 `--show-config` 显示。两个策略均不改变会话绑定或恢复授权。
 
 `[storage]` 可设置 `session_dir`、`change_history_dir` 和 `auto_save_session`。目录支持 `~`，相对目录以声明它的配置文件目录为基准；启动参数路径以当前目录为基准。会话和精确编辑备份仍要求私有目录、位于仓库外，内容不加密。`auto_save_session` 默认 false；开启后每次新启动自动分配唯一会话名，显式 `--save-session` / `--resume` 优先。TUI `/new` 仍解除当前自动保存，避免覆盖旧会话。列会话无须模型密钥；显式 `--session-dir` 可绕过损坏的模型配置进行本地管理。
 
@@ -217,6 +250,6 @@ Enter、Shift+Enter、Ctrl+J、Esc、Tab、Ctrl+C/Q/L 和选择/剪贴板键保�
 uv run --locked sprig --project-config /trusted/private/project.toml
 ```
 
-项目文件也需私有权限，并显式指定；不会沿工作区父目录搜索。允许 `model`、`interface`、`generation`、`agent`、`tools`、`files`、`instructions`、`tui`（不含 keybindings）、`schema_version=1`。禁止 providers、profile、execution、storage；不能添加 checks 命令或开启 inherit_env，不能关闭用户/profile 只读或已启用基线、启用已关闭的工具或移除其文件排除。CLI 的显式用户选择仍最高优先级。
+项目文件也需私有权限，并显式指定；不会沿工作区父目录搜索。允许 `model`、`interface`、`generation`、`context`、`agent`、`tools`、`files`、`instructions`、`tui`（不含 keybindings）、`schema_version=1`。禁止 providers、profile、execution、storage；不能添加 checks 命令或开启 inherit_env，不能关闭用户/profile 只读或已启用基线、启用已关闭的工具或移除其文件排除。CLI 的显式用户选择仍最高优先级。
 
 MCP、插件、hooks、沙箱、自动批准等没有对应执行后端的字段都会报错。后续功能需要同时实现后端与安全测试，不能只添加一个可解析开关。

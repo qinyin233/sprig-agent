@@ -15,12 +15,13 @@ import subprocess
 import time
 import uuid
 
-from .config import redact
+from .config import TOOL_NAMES, redact
 from .changes import ChangeError, ChangeHistory, unpack
 from .filesystem import Directory, is_link
 from .index import SymbolIndex, language_for
 from .instructions import InstructionError, ProjectInstructions
 from .planning import TaskPlan, validate_plan
+from .revisions import READ_ID_PATTERN, ReadVersions, valid_read_id
 from .map_selection import MapSelection, encoded_size
 from .policy import FilePolicy, command_environment
 from .output import CommandOutput
@@ -50,7 +51,7 @@ STRING = {"type": "string"}
 TOOL_SCHEMAS = [
     schema("list_files", "List one workspace directory; no symlinks or protected files.",
            {"path": STRING}),
-    schema("read_file", "Read UTF-8 text. offset/limit use physical 1-based lines. Ranged reads validate the whole file (<=8 MiB) and return sha256/next_offset. Read complete relevant lines before editing. Truncated unranged prefixes have no hash.",
+    schema("read_file", "Read UTF-8, physical 1-based lines. Validated full/ranged reads return sha256 and short read_id for edit_lines. Ranges scan <=8 MiB. Byte-truncated prefixes/partial lines have no read_id. Inspect complete relevant lines before editing.",
            {"path": STRING, "offset": {"type": "integer", "minimum": 1, "maximum": 1000000},
             "limit": {"type": "integer", "minimum": 1, "maximum": 10000}}, ["path"]),
     schema("search", "Search literal text recursively, or RE2 with regex=true (no lookaround/backreferences; ASCII \\w/\\d/\\b). ignore_case: full Unicode folding for literals, simple folding for RE2. Case-sensitive glob matches basenames or workspace-relative paths: * stays within /, ** spans components. context: 0-10 surrounding lines; limit: 1-1000 matching physical CR/LF lines, default 100. Query <=1000 chars; RE2 budgets: 1 MiB and cooperative 1s. Whole-file privacy, read/output bounds and cancellation apply. Truncated, timed_out or skipped results cannot establish absence.",
@@ -60,17 +61,18 @@ TOOL_SCHEMAS = [
             "limit": {"type": "integer", "minimum": 1, "maximum": 1000}}, ["query"]),
     schema("project_map", "Map paths and 1-based declarations for Python, JS/TS/TSX, Rust, Go, C/C++ and Java. query matches literal names/paths case-insensitively; exact then prefix matches rank first. Use a focused query if the full map is truncated. Syntax only; unsupported files have paths, unavailable parses are flagged. Read implementation before editing.",
            {"path": STRING, "query": {"type": "string", "minLength": 1, "maxLength": 256}}),
-    schema("edit_file", "Edit one file with complete diff approval, atomic write and undo. Choose old/new (old='' creates only), edits (<=32 unique exact replacements in ORIGINAL text), OR sha256+line_edits (<=32 whole-line replacements; existing file, fresh read_file hash). Ranges: 1-based inclusive; insert with end_line=start_line-1; no overlap. new replaces line terminators too: include LF/CRLF explicitly, no conversion. Stale hashes stop before approval; parent must exist. Match-failure hints require a reread.",
+    schema("edit_file", "Exact text edits with complete diff approval, atomic write and undo. Choose old/new (old='' creates only) OR edits (<=32 unique replacements in ORIGINAL text). Parent must exist. Reread after a match failure. Prefer edit_lines for focused line changes.",
            {"path": STRING, "old": STRING, "new": STRING,
             "edits": {"type": "array", "minItems": 1, "maxItems": MAX_EDITS,
                       "items": {"type": "object", "properties": {"old": STRING, "new": STRING},
-                                "required": ["old", "new"], "additionalProperties": False}},
-            "sha256": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
-            "line_edits": {"type": "array", "minItems": 1, "maxItems": MAX_EDITS,
+                                "required": ["old", "new"], "additionalProperties": False}}}, ["path"]),
+    schema("edit_lines", "Whole-line edits after read_file: read_id pins this file's hash; stale IDs fail before diff approval. IDs expire after writes/commands/continuation. 1-based inclusive; insert end_line=start_line-1. Preserve LF/CRLF; no overlap.",
+           {"path": STRING, "read_id": {"type": "string", "pattern": READ_ID_PATTERN, "maxLength": 64},
+            "edits": {"type": "array", "minItems": 1, "maxItems": MAX_EDITS,
                            "items": {"type": "object", "properties": {
                                "start_line": {"type": "integer", "minimum": 1, "maximum": 1000000},
                                "end_line": {"type": "integer", "minimum": 0, "maximum": 1000000}, "new": STRING},
-                               "required": ["start_line", "end_line", "new"], "additionalProperties": False}}}, ["path"]),
+                               "required": ["start_line", "end_line", "new"], "additionalProperties": False}}}, ["path", "read_id", "edits"]),
     schema("update_plan", "Replace your task checklist (<=16 steps; <=1 in_progress; <=4 KiB total). Model-reported progress only: not approval or test evidence. No files or commands. Revise after new guidance; [] clears it.",
            {"plan": {"type": "array", "maxItems": 16, "items": {"type": "object", "properties": {
                "step": {"type": "string", "minLength": 1, "maxLength": 256},
@@ -100,6 +102,7 @@ class Tools:
         self.policy = FilePolicy(self.root, (config.config_path, *config.config_paths), config.excluded_paths)
         self.index = SymbolIndex()
         self.plan = TaskPlan()
+        self.read_versions = ReadVersions()
         self.emit_output = emit_output
         self.instructions = ProjectInstructions(self._read_instruction, self._check_cancelled,
                                                 config.project_instructions, config.instruction_files)
@@ -127,13 +130,14 @@ class Tools:
 
     def _require_tool(self, name):
         self.root.ensure_open()
-        if name in self.config.disabled_tools:
+        if name in TOOL_NAMES and not self.config.tool_enabled(name):
             raise ToolError("tool is disabled by configuration")
 
     def close(self):
         self.root.close()
         self.history.close()
         self.index.clear()
+        self.read_versions.clear()
 
     def _parts(self, path):
         if not isinstance(path, str) or not path or len(path) > 4096 or "\0" in path or "\\" in path:
@@ -203,7 +207,8 @@ class Tools:
                 raise ToolError("tool arguments must be an object")
             method = {"list_files": self.list_files, "read_file": self.read_file,
                       "search": self.search, "project_map": self.project_map,
-                      "edit_file": self.edit_file, "run": self.run, "update_plan": self.update_plan}.get(name)
+                      "edit_file": self.edit_file, "edit_lines": self.edit_lines,
+                      "run": self.run, "update_plan": self.update_plan}.get(name)
             if method is None:
                 raise ToolError("unknown tool")
             result = method(**arguments)
@@ -243,10 +248,11 @@ class Tools:
             raise ToolError("offset must be an integer from 1 to 1000000 (1-based line number)")
         if limit is not None and (type(limit) is not int or not 1 <= limit <= 10000):
             raise ToolError("limit must be an integer from 1 to 10000")
+        parts = self._parts(path)
         if self.config.project_instructions:
-            self.instructions.register(self._parts(path)[:-1])
+            self.instructions.register(parts[:-1])
         if offset != 1 or limit is not None:
-            return self._read_page(path, offset, limit or 2000)
+            return self._read_result(parts, self._read_page(path, offset, limit or 2000))
         with self._parent(path) as (fd, name):
             raw = self._read(fd, name, self.config.max_output)
         truncated = len(raw) > self.config.max_output
@@ -263,6 +269,11 @@ class Tools:
         result = {"path": path, "content": text, "truncated": truncated}
         if not truncated and not any(secret in text for secret in self.config.credential_secrets):
             result["sha256"] = hashlib.sha256(raw).hexdigest()
+        return self._read_result(parts, result)
+
+    def _read_result(self, parts, result):
+        if "sha256" in result and not result.get("line_truncated"):
+            result["read_id"] = self.read_versions.remember(parts, result["sha256"])
         return result
 
     def _read_page(self, path, offset, limit):
@@ -575,6 +586,7 @@ class Tools:
             self._unchanged(fd, name, current, info)
             self._check_cancelled()
             try:
+                self.read_versions.discard(self._parts(path))
                 self.history.begin_restore(action, path)
                 self._replace(fd, name, target, record["mode"], info)
                 self.history.complete(self._revision(fd.stat(name)) if target is not None else None)
@@ -583,6 +595,28 @@ class Tools:
                         "error": "Restore outcome is uncertain; inspect current files and the pending backup before continuing: " + str(error)}
         return {"approved": True, "changed": True, "path": path, "action": action,
                 "note": "Workspace changed; previous model conclusions and acceptance results need rechecking."}
+
+    def edit_lines(self, path, read_id=_MISSING, edits=_MISSING):
+        self._require_tool("edit_lines")
+        if self.config.read_only:
+            return {"approved": False, "changed": False, "error": "read-only mode blocks file writes"}
+        if read_id is _MISSING:
+            return {"error": "edit_lines requires read_id from read_file", "changed": False,
+                    "edit_failure": {"reason": "missing_revision", "source": "read_id"}}
+        if not valid_read_id(read_id):
+            return {"error": "read_id must be a complete identifier returned by read_file", "changed": False,
+                    "edit_failure": {"reason": "invalid_revision", "source": "read_id"}}
+        parts = self._parts(path)
+        digest = self.read_versions.resolve(read_id, parts)
+        if digest is None:
+            return {"error": "read_id is not valid for this file/current run; read_file again", "changed": False,
+                    "edit_failure": {"reason": "unknown_read_id", "source": "read_id"}}
+        if edits is _MISSING:
+            raise ToolError("edit_lines requires edits")
+        result = self.edit_file(path, sha256=digest, line_edits=edits)
+        if "edit_failure" in result:
+            result["edit_failure"] = {**result["edit_failure"], "source": "read_id"}
+        return result
 
     def edit_file(self, path, old=_MISSING, new=_MISSING, *, edits=_MISSING, sha256=_MISSING, line_edits=_MISSING):
         self._require_tool("edit_file")
@@ -593,8 +627,12 @@ class Tools:
         if by_line:
             if multiple or old is not _MISSING or new is not _MISSING:
                 raise ToolError("choose old/new, edits, or sha256 plus line_edits")
+            if sha256 is _MISSING:
+                return {"error": "line_edits require full sha256 from read_file; prefer edit_lines with read_id", "changed": False,
+                        "edit_failure": {"reason": "missing_revision", "source": "sha256"}}
             if not isinstance(sha256, str) or len(sha256) != 64 or any(c not in "0123456789abcdef" for c in sha256):
-                raise ToolError("line_edits require the whole-file sha256 from read_file")
+                return {"error": "sha256 must be 64 lowercase hex characters from read_file; prefer edit_lines with read_id", "changed": False,
+                        "edit_failure": {"reason": "invalid_revision", "source": "sha256"}}
             validate_edits(line_edits, MAX_FILE, self._check_cancelled)
             replacements = []
         elif sha256 is not _MISSING:
@@ -678,6 +716,7 @@ class Tools:
             self.instructions.recheck_action(parts[:-1], rules)
             self._unchanged(fd, name, before_raw, before_stat)
             self._check_cancelled()
+            self.read_versions.discard(parts)
             mode = stat.S_IMODE(before_stat.st_mode) & 0o777 if before_stat else 0o600
             self.history.begin_edit(path, before_raw, data, mode, self._revision(before_stat))
             self._replace(fd, name, data, mode, before_stat)
@@ -724,9 +763,13 @@ class Tools:
         env = command_environment(self.config)
         self.instructions.recheck_action(parts, rules)
         stream = CommandOutput(self.emit_output, self.config.secrets)
+        self.read_versions.clear()
         if os.name == "nt":
             from .windows import run_command
-            result = run_command(argv, directory, env, seconds, self.config.max_output, self.cancel_event, stream.write)
+            try:
+                result = run_command(argv, directory, env, seconds, self.config.max_output, self.cancel_event, stream.write)
+            finally:
+                self.read_versions.clear()
             stream.finish()
             if self.emit_output:
                 result["streamed"] = True
@@ -771,6 +814,7 @@ class Tools:
                         except subprocess.TimeoutExpired:
                             pass
         finally:
+            self.read_versions.clear()
             # Also clean up descendants that inherited the process group / pipe.
             try:
                 os.killpg(process.pid, signal.SIGKILL)
@@ -778,6 +822,7 @@ class Tools:
                 pass
             process.wait()
             process.stdout.close()
+            self.read_versions.clear()
         stream.finish()
         return {"approved": True, "returncode": process.returncode, "streamed": bool(self.emit_output),
                 "output": output.decode("utf-8", errors="replace"),

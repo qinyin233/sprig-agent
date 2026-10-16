@@ -36,6 +36,8 @@ def replies(messages, captured, reason=None):
             raw = self.rfile.read(int(self.headers["Content-Length"]))
             captured.append((json.loads(raw), len(raw)))
             message = next(responses)
+            if callable(message):
+                message = message(captured[-1][0])
             body = json.dumps({"choices": [{"message": message, "finish_reason": reason or (
                 "tool_calls" if message.get("tool_calls") else "stop")}]}).encode()
             self.send_response(200)

@@ -1,11 +1,13 @@
 """Explicit, private, atomic local transcripts. Loading never runs an action."""
 
+import hashlib
 import json
 import os
 from pathlib import Path
 import re
 import stat
 import sys
+import time
 import uuid
 from contextlib import contextmanager
 
@@ -223,6 +225,16 @@ class SessionStore:
         return self.scan()["sessions"]
 
     def scan(self, *, cancel_event=None):
+        result = self._scan(cancel_event=cancel_event)
+        result["sessions"] = [{key: value for key, value in record.items() if not key.startswith("_")}
+                              for record in result["sessions"]]
+        return redact(result, self.config.secrets)
+
+    @staticmethod
+    def _stamp(info):
+        return (info.st_dev, info.st_ino, info.st_size, info.st_mtime_ns, info.st_ctime_ns)
+
+    def _scan(self, *, cancel_event=None):
         """Bound discovery and reads, reporting limits without returning transcript text."""
         records, budget, scanned, reason = [], MAX_LIST_BYTES, 0, None
 
@@ -244,7 +256,7 @@ class SessionStore:
                 owned = record["name"] in self._leases
                 try:
                     self.acquire(record["name"])
-                    self._check_file(entry.name)
+                    info = self._check_file(entry.name)
                     limit = min(MAX_SESSION, budget)
                     check_cancelled()
                     raw = self.handle.read(entry.name, limit, private=True)
@@ -260,9 +272,13 @@ class SessionStore:
                         if not isinstance(saved, dict) or saved.get("version") != 1 or not isinstance(saved.get("binding"), dict):
                             raise ValueError
                         history = validate_history(saved.get("messages"))
+                        if self._stamp(self._check_file(entry.name)) != self._stamp(info):
+                            raise ValueError("session changed during scan")
                         binding = {key: saved["binding"][key][:4096] for key in ("model", "base_url", "workdir")
                                    if isinstance(saved["binding"].get(key), str)}
-                        record.update(binding=binding, messages=len(history))
+                        record.update(binding=binding, messages=len(history), modified_ns=info.st_mtime_ns,
+                                      bytes=info.st_size, _revision=self._stamp(info),
+                                      _digest=hashlib.sha256(raw).digest(), _active=owned)
                 except SessionError as error:
                     if "busy" in str(error):
                         record["busy"] = True
@@ -273,7 +289,7 @@ class SessionStore:
                 finally:
                     if not owned:
                         self.release(record["name"])
-                records.append(redact(record, self.config.secrets))
+                records.append(record)
                 if reason or budget <= 0:
                     reason = "bytes"
                     break
@@ -287,6 +303,79 @@ class SessionStore:
         return {"sessions": sorted(records, key=lambda record: record["name"]),
                 "limited": reason is not None, "limit_reason": reason,
                 "scanned_entries": scanned, "read_bytes": MAX_LIST_BYTES - budget}
+
+    def prune(self, approve, *, cancel_event=None, dry_run=False):
+        """Explicit retention cleanup; scan completely, approve and recheck each idle file."""
+        def check_cancelled():
+            if cancel_event is not None and cancel_event.is_set():
+                raise KeyboardInterrupt
+
+        if self.config.read_only and not dry_run:
+            return {"error": "read-only mode blocks session pruning", "deleted": []}
+        age, count = self.config.session_max_age_days, self.config.session_max_count
+        if age is None and count is None:
+            return {"error": "configure storage.session_max_age_days or session_max_count before pruning", "deleted": []}
+        listing = self._scan(cancel_event=cancel_event)
+        if listing["limited"]:
+            return {"error": "session scan incomplete; nothing deleted", "deleted": [],
+                    "limited": True, "limit_reason": listing["limit_reason"]}
+        records = sorted((record for record in listing["sessions"] if "_revision" in record),
+                         key=lambda record: (-record["modified_ns"], record["name"]))
+        cutoff = time.time_ns() - age * 86400 * 10**9 if age is not None else None
+        candidates = [record for index, record in enumerate(records)
+                      if not record["_active"] and ((count is not None and index >= count)
+                        or (cutoff is not None and record["modified_ns"] < cutoff))]
+        report = {"candidates": len(candidates), "deleted": [], "skipped": [], "declined": False,
+                  "dry_run": dry_run,
+                  "protected": sum(record.get("_active", False) or "_revision" not in record
+                                   for record in listing["sessions"])}
+        if dry_run:
+            report["preview"] = [{key: record[key] for key in ("name", "bytes", "modified_ns")} for record in candidates]
+            return redact(report, self.config.secrets)
+        for record in candidates:
+            check_cancelled()
+            name, filename = record["name"], self._filename(record["name"])
+            # Keep a live lease throughout review; another cooperating Sprig
+            # process must not resume or overwrite a candidate under review.
+            try:
+                self.acquire(name)
+            except (OSError, ValueError, SessionError):
+                report["skipped"].append({"name": name, "reason": "busy_or_unsafe"})
+                continue
+            try:
+                if self._stamp(self._check_file(filename)) != record["_revision"]:
+                    report["skipped"].append({"name": name, "reason": "changed"})
+                    continue
+                prompt = ("DELETE retained local session " + name + "\n"
+                          + json.dumps({"bytes": record["bytes"], "modified_ns": record["modified_ns"],
+                                        "policy": {"max_age_days": age, "max_count": count}})
+                          + "\nThis permanently deletes this transcript. Each candidate requires new approval.")
+                if not approve(redact(prompt, self.config.secrets)):
+                    report["declined"] = True
+                    break
+                check_cancelled()
+                info = self._check_file(filename)
+                if self._stamp(info) != record["_revision"]:
+                    report["skipped"].append({"name": name, "reason": "changed"})
+                    continue
+                raw = self.handle.read(filename, MAX_SESSION, private=True)
+                check_cancelled()
+                if (hashlib.sha256(raw).digest() != record["_digest"]
+                        or self._stamp(self._check_file(filename)) != record["_revision"]):
+                    report["skipped"].append({"name": name, "reason": "changed"})
+                    continue
+                self.handle.unlink(filename)
+                report["deleted"].append(name)
+                self.handle.sync()
+            except (OSError, ValueError, SessionError):
+                if name in report["deleted"]:
+                    report["error"] = "session removed but directory sync failed; verify local storage before continuing"
+                    break
+                report["skipped"].append({"name": name, "reason": "changed_or_unsafe"})
+            finally:
+                self.release(name)
+        check_cancelled()
+        return redact(report, self.config.secrets)
 
     def delete(self, name):
         """Caller must obtain explicit approval; active leases exclude other writers."""
