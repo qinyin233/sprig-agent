@@ -1,0 +1,423 @@
+{
+  "schema": 1,
+  "scope": "normal CLI continuation of one retained task; interrupted continuation restored with at most 16 more requests; 20 initial plus 4 checkpointed plus up to 16; not a fresh 20-step pass",
+  "source_commit": "ec54dead44e9a85c5e866c5a3f325af97ba41efd",
+  "segment": 3,
+  "interrupted_segment_model_responses": 4,
+  "known_responses_before_segment": 24,
+  "parent_history_sha256": "cdb9debe91391784fe0abce8bb942140a4238d55317ce99c96ad9ed44e16de4d",
+  "max_steps": 16,
+  "total_model_request_cap": 40,
+  "max_context_bytes": 131072,
+  "max_tokens": 4096,
+  "model": "deepseek-flash",
+  "base_url": "https://api.llm.ustc.edu.cn/v1",
+  "stream": false,
+  "thinking": false,
+  "compact_context": false,
+  "check_before_task": false,
+  "fixture_sha256": "7d610833c8a6564f980f747e4601e7f4821872702c4a59f32ff9c5d653300d08",
+  "task_sha256": "2908db436a3b9ac92c17b2d60eed48baae6c6549b9a1c83bb775bc816bcf6273",
+  "verifier_sha256": "95815d4db25dd6b66f3cf6b528cba37fcc72831e05d40ba94929aa827c75253f",
+  "verifier_intact": true,
+  "executed_sources_intact": true,
+  "no_manual_task_hints_added": true,
+  "operator_post_run_checks_not_inserted_into_history": true,
+  "exit_code": 2,
+  "elapsed_ms": 455772.004,
+  "requests": {
+    "available": true,
+    "scope": "current provider instance; not persisted or sent to the model",
+    "attempts": 16,
+    "not_attempted": 0,
+    "outcomes": {
+      "success": 16,
+      "error": 0,
+      "cancelled": 0
+    },
+    "failures": {},
+    "request_bytes": 1490386,
+    "response_bytes": 17363,
+    "elapsed_ms": 79191.167,
+    "usage": {
+      "prompt_tokens": {
+        "reported_sum": 416841,
+        "known_requests": 16,
+        "unknown_requests": 0,
+        "complete_sum": 416841
+      },
+      "completion_tokens": {
+        "reported_sum": 3329,
+        "known_requests": 16,
+        "unknown_requests": 0,
+        "complete_sum": 3329
+      },
+      "total_tokens": {
+        "reported_sum": 420170,
+        "known_requests": 16,
+        "unknown_requests": 0,
+        "complete_sum": 420170
+      }
+    },
+    "recent_limit": 128,
+    "recent_dropped": 0,
+    "recent": [
+      {
+        "attempted": true,
+        "streamed": false,
+        "outcome": "success",
+        "http_status": 200,
+        "request_bytes": 79845,
+        "response_bytes": 671,
+        "elapsed_ms": 4922.28,
+        "first_text_ms": null,
+        "usage": {
+          "prompt_tokens": 22266,
+          "completion_tokens": 88,
+          "total_tokens": 22354
+        },
+        "finish_reason": "tool_calls",
+        "error_code": null
+      },
+      {
+        "attempted": true,
+        "streamed": false,
+        "outcome": "success",
+        "http_status": 200,
+        "request_bytes": 81244,
+        "response_bytes": 1389,
+        "elapsed_ms": 7629.314,
+        "first_text_ms": null,
+        "usage": {
+          "prompt_tokens": 22691,
+          "completion_tokens": 241,
+          "total_tokens": 22932
+        },
+        "finish_reason": "tool_calls",
+        "error_code": null
+      },
+      {
+        "attempted": true,
+        "streamed": false,
+        "outcome": "success",
+        "http_status": 200,
+        "request_bytes": 82394,
+        "response_bytes": 1595,
+        "elapsed_ms": 8093.939,
+        "first_text_ms": null,
+        "usage": {
+          "prompt_tokens": 22963,
+          "completion_tokens": 366,
+          "total_tokens": 23329
+        },
+        "finish_reason": "tool_calls",
+        "error_code": null
+      },
+      {
+        "attempted": true,
+        "streamed": false,
+        "outcome": "success",
+        "http_status": 200,
+        "request_bytes": 83950,
+        "response_bytes": 1522,
+        "elapsed_ms": 6196.236,
+        "first_text_ms": null,
+        "usage": {
+          "prompt_tokens": 23416,
+          "completion_tokens": 354,
+          "total_tokens": 23770
+        },
+        "finish_reason": "tool_calls",
+        "error_code": null
+      },
+      {
+        "attempted": true,
+        "streamed": false,
+        "outcome": "success",
+        "http_status": 200,
+        "request_bytes": 86283,
+        "response_bytes": 971,
+        "elapsed_ms": 5113.342,
+        "first_text_ms": null,
+        "usage": {
+          "prompt_tokens": 24160,
+          "completion_tokens": 169,
+          "total_tokens": 24329
+        },
+        "finish_reason": "tool_calls",
+        "error_code": null
+      },
+      {
+        "attempted": true,
+        "streamed": false,
+        "outcome": "success",
+        "http_status": 200,
+        "request_bytes": 87040,
+        "response_bytes": 754,
+        "elapsed_ms": 2956.552,
+        "first_text_ms": null,
+        "usage": {
+          "prompt_tokens": 24357,
+          "completion_tokens": 122,
+          "total_tokens": 24479
+        },
+        "finish_reason": "tool_calls",
+        "error_code": null
+      },
+      {
+        "attempted": true,
+        "streamed": false,
+        "outcome": "success",
+        "http_status": 200,
+        "request_bytes": 87579,
+        "response_bytes": 754,
+        "elapsed_ms": 2504.394,
+        "first_text_ms": null,
+        "usage": {
+          "prompt_tokens": 24507,
+          "completion_tokens": 122,
+          "total_tokens": 24629
+        },
+        "finish_reason": "tool_calls",
+        "error_code": null
+      },
+      {
+        "attempted": true,
+        "streamed": false,
+        "outcome": "success",
+        "http_status": 200,
+        "request_bytes": 88119,
+        "response_bytes": 753,
+        "elapsed_ms": 3282.781,
+        "first_text_ms": null,
+        "usage": {
+          "prompt_tokens": 24657,
+          "completion_tokens": 122,
+          "total_tokens": 24779
+        },
+        "finish_reason": "tool_calls",
+        "error_code": null
+      },
+      {
+        "attempted": true,
+        "streamed": false,
+        "outcome": "success",
+        "http_status": 200,
+        "request_bytes": 89022,
+        "response_bytes": 845,
+        "elapsed_ms": 3661.067,
+        "first_text_ms": null,
+        "usage": {
+          "prompt_tokens": 24930,
+          "completion_tokens": 152,
+          "total_tokens": 25082
+        },
+        "finish_reason": "tool_calls",
+        "error_code": null
+      },
+      {
+        "attempted": true,
+        "streamed": false,
+        "outcome": "success",
+        "http_status": 200,
+        "request_bytes": 90018,
+        "response_bytes": 944,
+        "elapsed_ms": 3566.165,
+        "first_text_ms": null,
+        "usage": {
+          "prompt_tokens": 25234,
+          "completion_tokens": 173,
+          "total_tokens": 25407
+        },
+        "finish_reason": "tool_calls",
+        "error_code": null
+      },
+      {
+        "attempted": true,
+        "streamed": false,
+        "outcome": "success",
+        "http_status": 200,
+        "request_bytes": 101856,
+        "response_bytes": 1215,
+        "elapsed_ms": 5694.434,
+        "first_text_ms": null,
+        "usage": {
+          "prompt_tokens": 28424,
+          "completion_tokens": 192,
+          "total_tokens": 28616
+        },
+        "finish_reason": "tool_calls",
+        "error_code": null
+      },
+      {
+        "attempted": true,
+        "streamed": false,
+        "outcome": "success",
+        "http_status": 200,
+        "request_bytes": 104183,
+        "response_bytes": 1422,
+        "elapsed_ms": 4534.328,
+        "first_text_ms": null,
+        "usage": {
+          "prompt_tokens": 29081,
+          "completion_tokens": 323,
+          "total_tokens": 29404
+        },
+        "finish_reason": "tool_calls",
+        "error_code": null
+      },
+      {
+        "attempted": true,
+        "streamed": false,
+        "outcome": "success",
+        "http_status": 200,
+        "request_bytes": 105452,
+        "response_bytes": 742,
+        "elapsed_ms": 5475.493,
+        "first_text_ms": null,
+        "usage": {
+          "prompt_tokens": 29475,
+          "completion_tokens": 114,
+          "total_tokens": 29589
+        },
+        "finish_reason": "tool_calls",
+        "error_code": null
+      },
+      {
+        "attempted": true,
+        "streamed": false,
+        "outcome": "success",
+        "http_status": 200,
+        "request_bytes": 106380,
+        "response_bytes": 630,
+        "elapsed_ms": 3107.536,
+        "first_text_ms": null,
+        "usage": {
+          "prompt_tokens": 29788,
+          "completion_tokens": 91,
+          "total_tokens": 29879
+        },
+        "finish_reason": "tool_calls",
+        "error_code": null
+      },
+      {
+        "attempted": true,
+        "streamed": false,
+        "outcome": "success",
+        "http_status": 200,
+        "request_bytes": 107499,
+        "response_bytes": 2175,
+        "elapsed_ms": 7011.293,
+        "first_text_ms": null,
+        "usage": {
+          "prompt_tokens": 30146,
+          "completion_tokens": 525,
+          "total_tokens": 30671
+        },
+        "finish_reason": "tool_calls",
+        "error_code": null
+      },
+      {
+        "attempted": true,
+        "streamed": false,
+        "outcome": "success",
+        "http_status": 200,
+        "request_bytes": 109522,
+        "response_bytes": 981,
+        "elapsed_ms": 5442.013,
+        "first_text_ms": null,
+        "usage": {
+          "prompt_tokens": 30746,
+          "completion_tokens": 175,
+          "total_tokens": 30921
+        },
+        "finish_reason": "tool_calls",
+        "error_code": null
+      }
+    ]
+  },
+  "recorded_at_utc": "2026-10-17T04:39:15.900416+00:00",
+  "outcome": "not_completed",
+  "acceptance_passed": false,
+  "total_checkpointed_model_responses": 40,
+  "invocation_response_counts": [
+    20,
+    4,
+    16
+  ],
+  "interruption_request_measurements_available": false,
+  "usage_across_invocations": {
+    "reported_sum_for_36_measured_responses": 662353,
+    "responses_without_recorded_usage": 4,
+    "complete_sum": null
+  },
+  "earlier_invocation_seconds_incomplete": true,
+  "tool_counts_across_invocations": {
+    "project_map": 1,
+    "list_files": 2,
+    "read_file": 15,
+    "search": 17,
+    "update_plan": 1,
+    "edit_lines": 6,
+    "edit_file": 3,
+    "run": 9
+  },
+  "approved_file_edits_across_invocations": 6,
+  "approved_commands_across_invocations": 6,
+  "nonzero_commands_across_invocations": 5,
+  "invalid_timeout_requests": [
+    120,
+    120,
+    100
+  ],
+  "configured_command_timeout": 60,
+  "advertised_timeout_schema_maximum": 120,
+  "timeout_failures": [
+    {
+      "model_response": 29,
+      "reason": "command_timeout_exceeds_configured_limit",
+      "execution_prevented": true
+    },
+    {
+      "model_response": 30,
+      "reason": "command_timeout_exceeds_configured_limit",
+      "execution_prevented": true
+    },
+    {
+      "model_response": 31,
+      "reason": "command_timeout_exceeds_configured_limit",
+      "execution_prevented": true
+    }
+  ],
+  "saved_history_prefix_preserved": true,
+  "pending_action_not_replayed_on_restore": true,
+  "application_final_verification_performed": false,
+  "candidate_syntax_valid": true,
+  "candidate_file_count": 52,
+  "candidate_sha256": "cd5c28d37e22ac09236d52349599776c220648241ec2410c02585c13c0d34bc6",
+  "final_history_sha256": "56c8df0e157d7ea50428f39e4ca72cfa476d8e26bf02ea9b2b0178b93f34baea",
+  "interrupted_history_sha256": "cdb9debe91391784fe0abce8bb942140a4238d55317ce99c96ad9ed44e16de4d",
+  "candidate_retention_scope": "immutable private snapshots for initial, interrupted and final phases; no raw artifacts published",
+  "last_model_requested_test": {
+    "passed": 729,
+    "failed": 1,
+    "returncode": 1,
+    "fixed_acceptance": false
+  },
+  "post_run_fixed_acceptance": {
+    "performed_after_model_budget": true,
+    "passed": false,
+    "collected": 642,
+    "checks_passed": 640,
+    "skipped": 0,
+    "public_exception_contract": true,
+    "other_failures": 0,
+    "failed": [
+      "tests/test_options.py::test_unknown_options[--foo]",
+      "tests/test_options.py::test_unknown_options[-f]"
+    ]
+  },
+  "tool_count_scope": "paired saved intents/results, including one synthetic interrupted-not-replayed placeholder; counts are not execution counts",
+  "recovery_launcher_sha256": "4b1300ee8229e4ac43b463311973f8584c0723a8214936f1bfc4c6a6056d1fbe",
+  "interrupted_launcher_sha256": "ea97632f8ff5b66fe6f2471639087e74b1d3effbfa7015d8ef342b13fd8d0eca"
+}

@@ -171,6 +171,8 @@ uv run --locked sprig --config-schema
 
 提供商可配置 `request_timeout`（0–120 秒，不含 0），未配置时沿用 `agent.timeout`；后者仍控制命令。`proxy` 为 `system`、`direct` 或不含账号、查询、片段的 HTTP(S) 代理地址。CLI 可用 `--request-timeout`、`--proxy` 覆盖。默认系统代理仍由 Python 标准库处理；explicit proxy 同样遵循标准库的 NO_PROXY 行为。TLS 校验和禁止重定向始终保留。
 
+模型看到的 `run` 工具超时上限使用生效的命令 `timeout`，不固定显示120秒，也不取提供商的 HTTP `request_timeout`。提案省略 `timeout` 时使用命令上限；超限值在审批前拒绝，错误给出实际数字，不自动延长或改写请求。不同 Agent 的工具定义独立，修改一个实例不影响其他实例。
+
 `api_key_header="Authorization"` 与 `api_key_scheme="bearer"` 为默认；兼容服务可改成 `api_key_header="X-Api-Key"`、`api_key_scheme="raw"`。`headers` 提供不插值的字面值，`headers_env` 提供环境变量名；合计最多 16 个。Host、Content-Length、Content-Type、Authorization 等保留头与鉴权头不能通过额外 headers 覆盖；头名不区分大小写，拒绝换行注入。所有值都按敏感信息隐藏、脱敏、从子进程过滤；配置的头也不能随基础地址覆盖转发。
 
 ## 工具、文件与执行环境

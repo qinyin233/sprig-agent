@@ -79,7 +79,7 @@ TOOL_SCHEMAS = [
                "status": {"enum": ["pending", "in_progress", "completed"]}},
                "required": ["step", "status"], "additionalProperties": False}},
             "explanation": {"type": "string", "maxLength": 512}}, ["plan"]),
-    schema("run", "Run argv after explicit approval. NOT sandboxed; can access network and files outside workspace.",
+    schema("run", "Run argv after approval. NOT sandboxed (outside files/network). Omit timeout for configured limit.",
            {"argv": {"type": "array", "items": STRING, "minItems": 1}, "cwd": STRING,
             "timeout": {"type": "number", "exclusiveMinimum": 0, "maximum": 120}}, ["argv"]),
 ]
@@ -747,7 +747,7 @@ class Tools:
         seconds = self.config.timeout if timeout is None else timeout
         if (isinstance(seconds, bool) or not isinstance(seconds, (int, float))
                 or not math.isfinite(seconds) or not 0 < seconds <= self.config.timeout):
-            raise ToolError("command timeout must be positive and no larger than the configured timeout")
+            raise ToolError(f"command timeout must be positive and at most {self.config.timeout:g} seconds; omit timeout to use that configured limit")
         parts = self._parts(cwd)
         with self._directory(parts):
             pass

@@ -1,0 +1,463 @@
+{
+  "schema": 1,
+  "scope": "normal Sprig CLI diagnostic with private session/candidate retention; no performance ranking",
+  "client": "sprig-cli",
+  "source_commit": "ec54dead44e9a85c5e866c5a3f325af97ba41efd",
+  "exit_code": 2,
+  "max_steps": 20,
+  "max_context_bytes": 131072,
+  "max_tokens": 4096,
+  "stream": false,
+  "thinking": false,
+  "compact_context": false,
+  "check_before_task": false,
+  "request_pacing": "normal CLI without configured pacing; differs from earlier harness runs",
+  "model": "deepseek-flash",
+  "base_url": "https://api.llm.ustc.edu.cn/v1",
+  "case": "click-command-suggestions",
+  "fixture_sha256": "7d610833c8a6564f980f747e4601e7f4821872702c4a59f32ff9c5d653300d08",
+  "task_sha256": "2908db436a3b9ac92c17b2d60eed48baae6c6549b9a1c83bb775bc816bcf6273",
+  "verifier_sha256": "95815d4db25dd6b66f3cf6b528cba37fcc72831e05d40ba94929aa827c75253f",
+  "verifier_intact": true,
+  "repository_task": {
+    "protocol": 1,
+    "repository": "pallets/click",
+    "snapshot_files": 52,
+    "base_commit": "19fd4d6e18bc9fce451f92f422696b11169faa57",
+    "base_sha256": "7d610833c8a6564f980f747e4601e7f4821872702c4a59f32ff9c5d653300d08",
+    "acceptance_commit": "831c8f0948af519e45b90801d7430ff25451f972",
+    "acceptance_snapshot_sha256": "62d0162a63fa5322307e29d1710ec7624bd3ca20572329fddbdae1fe628f628d",
+    "expected_upstream_checks": 642,
+    "public_exception_contract": true,
+    "acceptance_python": "3.12",
+    "acceptance_pytest": "8.4.2",
+    "entry_sha256": "f140413cd276f36c79bfcece77a03073668235db3661eddf2feca0c0d1e012e9",
+    "adapter_sha256": "309d80e760b4203ca0ad8548a7d841eb6b3f54ec39792d6c7724dca4826b08b8",
+    "comparison_lock_sha256": "eb1207065a83573e2e9fd9a879694ffcb458c93f15a00a504a4c607a1d2e32e2",
+    "task_sha256": "2908db436a3b9ac92c17b2d60eed48baae6c6549b9a1c83bb775bc816bcf6273"
+  },
+  "private_history_retained": true,
+  "candidate_retained": true,
+  "elapsed_ms": 111824.972,
+  "requests": {
+    "available": true,
+    "scope": "current provider instance; not persisted or sent to the model",
+    "attempts": 20,
+    "not_attempted": 0,
+    "outcomes": {
+      "success": 20,
+      "error": 0,
+      "cancelled": 0
+    },
+    "failures": {},
+    "request_bytes": 859133,
+    "response_bytes": 18149,
+    "elapsed_ms": 84082.122,
+    "usage": {
+      "prompt_tokens": {
+        "reported_sum": 238927,
+        "known_requests": 20,
+        "unknown_requests": 0,
+        "complete_sum": 238927
+      },
+      "completion_tokens": {
+        "reported_sum": 3256,
+        "known_requests": 20,
+        "unknown_requests": 0,
+        "complete_sum": 3256
+      },
+      "total_tokens": {
+        "reported_sum": 242183,
+        "known_requests": 20,
+        "unknown_requests": 0,
+        "complete_sum": 242183
+      }
+    },
+    "recent_limit": 128,
+    "recent_dropped": 0,
+    "recent": [
+      {
+        "attempted": true,
+        "streamed": false,
+        "outcome": "success",
+        "http_status": 200,
+        "request_bytes": 9510,
+        "response_bytes": 800,
+        "elapsed_ms": 2119.141,
+        "first_text_ms": null,
+        "usage": {
+          "prompt_tokens": 2466,
+          "completion_tokens": 95,
+          "total_tokens": 2561
+        },
+        "finish_reason": "tool_calls",
+        "error_code": null
+      },
+      {
+        "attempted": true,
+        "streamed": false,
+        "outcome": "success",
+        "http_status": 200,
+        "request_bytes": 13587,
+        "response_bytes": 760,
+        "elapsed_ms": 3604.23,
+        "first_text_ms": null,
+        "usage": {
+          "prompt_tokens": 3576,
+          "completion_tokens": 122,
+          "total_tokens": 3698
+        },
+        "finish_reason": "tool_calls",
+        "error_code": null
+      },
+      {
+        "attempted": true,
+        "streamed": false,
+        "outcome": "success",
+        "http_status": 200,
+        "request_bytes": 18028,
+        "response_bytes": 781,
+        "elapsed_ms": 2925.944,
+        "first_text_ms": null,
+        "usage": {
+          "prompt_tokens": 4837,
+          "completion_tokens": 140,
+          "total_tokens": 4977
+        },
+        "finish_reason": "tool_calls",
+        "error_code": null
+      },
+      {
+        "attempted": true,
+        "streamed": false,
+        "outcome": "success",
+        "http_status": 200,
+        "request_bytes": 21263,
+        "response_bytes": 770,
+        "elapsed_ms": 2911.991,
+        "first_text_ms": null,
+        "usage": {
+          "prompt_tokens": 5744,
+          "completion_tokens": 124,
+          "total_tokens": 5868
+        },
+        "finish_reason": "tool_calls",
+        "error_code": null
+      },
+      {
+        "attempted": true,
+        "streamed": false,
+        "outcome": "success",
+        "http_status": 200,
+        "request_bytes": 26009,
+        "response_bytes": 762,
+        "elapsed_ms": 3907.663,
+        "first_text_ms": null,
+        "usage": {
+          "prompt_tokens": 7048,
+          "completion_tokens": 122,
+          "total_tokens": 7170
+        },
+        "finish_reason": "tool_calls",
+        "error_code": null
+      },
+      {
+        "attempted": true,
+        "streamed": false,
+        "outcome": "success",
+        "http_status": 200,
+        "request_bytes": 31004,
+        "response_bytes": 765,
+        "elapsed_ms": 7957.585,
+        "first_text_ms": null,
+        "usage": {
+          "prompt_tokens": 8490,
+          "completion_tokens": 132,
+          "total_tokens": 8622
+        },
+        "finish_reason": "tool_calls",
+        "error_code": null
+      },
+      {
+        "attempted": true,
+        "streamed": false,
+        "outcome": "success",
+        "http_status": 200,
+        "request_bytes": 31931,
+        "response_bytes": 767,
+        "elapsed_ms": 3808.737,
+        "first_text_ms": null,
+        "usage": {
+          "prompt_tokens": 8760,
+          "completion_tokens": 134,
+          "total_tokens": 8894
+        },
+        "finish_reason": "tool_calls",
+        "error_code": null
+      },
+      {
+        "attempted": true,
+        "streamed": false,
+        "outcome": "success",
+        "http_status": 200,
+        "request_bytes": 35490,
+        "response_bytes": 776,
+        "elapsed_ms": 3279.429,
+        "first_text_ms": null,
+        "usage": {
+          "prompt_tokens": 9849,
+          "completion_tokens": 133,
+          "total_tokens": 9982
+        },
+        "finish_reason": "tool_calls",
+        "error_code": null
+      },
+      {
+        "attempted": true,
+        "streamed": false,
+        "outcome": "success",
+        "http_status": 200,
+        "request_bytes": 36293,
+        "response_bytes": 806,
+        "elapsed_ms": 4452.129,
+        "first_text_ms": null,
+        "usage": {
+          "prompt_tokens": 10083,
+          "completion_tokens": 167,
+          "total_tokens": 10250
+        },
+        "finish_reason": "tool_calls",
+        "error_code": null
+      },
+      {
+        "attempted": true,
+        "streamed": false,
+        "outcome": "success",
+        "http_status": 200,
+        "request_bytes": 37624,
+        "response_bytes": 802,
+        "elapsed_ms": 4291.48,
+        "first_text_ms": null,
+        "usage": {
+          "prompt_tokens": 10493,
+          "completion_tokens": 166,
+          "total_tokens": 10659
+        },
+        "finish_reason": "tool_calls",
+        "error_code": null
+      },
+      {
+        "attempted": true,
+        "streamed": false,
+        "outcome": "success",
+        "http_status": 200,
+        "request_bytes": 38450,
+        "response_bytes": 613,
+        "elapsed_ms": 3587.903,
+        "first_text_ms": null,
+        "usage": {
+          "prompt_tokens": 10760,
+          "completion_tokens": 86,
+          "total_tokens": 10846
+        },
+        "finish_reason": "tool_calls",
+        "error_code": null
+      },
+      {
+        "attempted": true,
+        "streamed": false,
+        "outcome": "success",
+        "http_status": 200,
+        "request_bytes": 49686,
+        "response_bytes": 608,
+        "elapsed_ms": 2611.596,
+        "first_text_ms": null,
+        "usage": {
+          "prompt_tokens": 13890,
+          "completion_tokens": 74,
+          "total_tokens": 13964
+        },
+        "finish_reason": "tool_calls",
+        "error_code": null
+      },
+      {
+        "attempted": true,
+        "streamed": false,
+        "outcome": "success",
+        "http_status": 200,
+        "request_bytes": 52355,
+        "response_bytes": 778,
+        "elapsed_ms": 3655.399,
+        "first_text_ms": null,
+        "usage": {
+          "prompt_tokens": 14724,
+          "completion_tokens": 135,
+          "total_tokens": 14859
+        },
+        "finish_reason": "tool_calls",
+        "error_code": null
+      },
+      {
+        "attempted": true,
+        "streamed": false,
+        "outcome": "success",
+        "http_status": 200,
+        "request_bytes": 55007,
+        "response_bytes": 781,
+        "elapsed_ms": 3568.384,
+        "first_text_ms": null,
+        "usage": {
+          "prompt_tokens": 15521,
+          "completion_tokens": 141,
+          "total_tokens": 15662
+        },
+        "finish_reason": "tool_calls",
+        "error_code": null
+      },
+      {
+        "attempted": true,
+        "streamed": false,
+        "outcome": "success",
+        "http_status": 200,
+        "request_bytes": 61894,
+        "response_bytes": 691,
+        "elapsed_ms": 4025.498,
+        "first_text_ms": null,
+        "usage": {
+          "prompt_tokens": 17386,
+          "completion_tokens": 91,
+          "total_tokens": 17477
+        },
+        "finish_reason": "tool_calls",
+        "error_code": null
+      },
+      {
+        "attempted": true,
+        "streamed": false,
+        "outcome": "success",
+        "http_status": 200,
+        "request_bytes": 64216,
+        "response_bytes": 857,
+        "elapsed_ms": 3745.785,
+        "first_text_ms": null,
+        "usage": {
+          "prompt_tokens": 17984,
+          "completion_tokens": 127,
+          "total_tokens": 18111
+        },
+        "finish_reason": "tool_calls",
+        "error_code": null
+      },
+      {
+        "attempted": true,
+        "streamed": false,
+        "outcome": "success",
+        "http_status": 200,
+        "request_bytes": 66749,
+        "response_bytes": 1148,
+        "elapsed_ms": 4136.857,
+        "first_text_ms": null,
+        "usage": {
+          "prompt_tokens": 18692,
+          "completion_tokens": 172,
+          "total_tokens": 18864
+        },
+        "finish_reason": "tool_calls",
+        "error_code": null
+      },
+      {
+        "attempted": true,
+        "streamed": false,
+        "outcome": "success",
+        "http_status": 200,
+        "request_bytes": 68075,
+        "response_bytes": 2117,
+        "elapsed_ms": 8657.522,
+        "first_text_ms": null,
+        "usage": {
+          "prompt_tokens": 18987,
+          "completion_tokens": 505,
+          "total_tokens": 19492
+        },
+        "finish_reason": "tool_calls",
+        "error_code": null
+      },
+      {
+        "attempted": true,
+        "streamed": false,
+        "outcome": "success",
+        "http_status": 200,
+        "request_bytes": 70005,
+        "response_bytes": 2103,
+        "elapsed_ms": 8021.633,
+        "first_text_ms": null,
+        "usage": {
+          "prompt_tokens": 19532,
+          "completion_tokens": 500,
+          "total_tokens": 20032
+        },
+        "finish_reason": "tool_calls",
+        "error_code": null
+      },
+      {
+        "attempted": true,
+        "streamed": false,
+        "outcome": "success",
+        "http_status": 200,
+        "request_bytes": 71957,
+        "response_bytes": 664,
+        "elapsed_ms": 2813.216,
+        "first_text_ms": null,
+        "usage": {
+          "prompt_tokens": 20105,
+          "completion_tokens": 90,
+          "total_tokens": 20195
+        },
+        "finish_reason": "tool_calls",
+        "error_code": null
+      }
+    ]
+  },
+  "recorded_at_utc": "2026-10-16T14:56:25.835777+00:00",
+  "outcome": "not_completed",
+  "acceptance_passed": false,
+  "segment": 1,
+  "total_model_requests_so_far": 20,
+  "tool_counts": {
+    "project_map": 1,
+    "list_files": 2,
+    "read_file": 10,
+    "search": 17,
+    "update_plan": 1,
+    "edit_lines": 2
+  },
+  "numbered_reads": 10,
+  "tool_failures": [
+    {
+      "model_request": 18,
+      "reason": "missing_line_ending",
+      "write_prevented": true
+    }
+  ],
+  "first_successful_edit_model_request": 19,
+  "model_repaired_rejected_line_endings": true,
+  "candidate_syntax_valid": true,
+  "candidate_sha256": "8b7e93010f5b9ddb79c6bf03b1fb8aca4c9bf04cfe872f2c7d61507cf802e0ca",
+  "candidate_retention_scope": "immutable private phase-1 candidate/history snapshots; workspace may later be resumed",
+  "history_sha256": "87da68e7a92ee0326025ff4e1c700d87c430db1cda08eaf1fe20f2a5a46b0dfa",
+  "bootstrap_sha256": "be6fd0fdb9fe72b49ec96439b44ff9b93c8da21c6e43f8f840bc5edbba961536",
+  "post_run_diagnostic": {
+    "performed_after_model_budget": true,
+    "passed": false,
+    "collected": 642,
+    "checks_passed": 638,
+    "skipped": 0,
+    "public_exception_contract": false,
+    "failed": [
+      "tests/test_commands.py::test_suggest_possible_commands[decline-(Did you mean one of: 'declare', 'refine'?)]",
+      "tests/test_commands.py::test_suggest_possible_commands[pause-Did you mean 'push'?]",
+      "tests/test_options.py::test_unknown_options[--foo]",
+      "tests/test_options.py::test_unknown_options[-f]"
+    ]
+  }
+}

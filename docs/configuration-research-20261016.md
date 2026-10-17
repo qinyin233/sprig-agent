@@ -58,3 +58,14 @@ Gemini 的 Trusted Folders 文档说明该功能默认关闭；启用后，未�
 接入 `[storage].session_max_age_days/session_max_count` 与 CLI/TUI 清理入口；`--prune-sessions --dry-run`、`/prune --dry-run` 预览，真实清理逐项批准并复查版本。它们不会在启动/保存时自动删除，不清理活动会话或修改备份；项目文件不能设置存储策略。实现与约束见[配置说明](configuration.md)。
 
 同时完成读取版本标识的独立 `edit_lines` 工具和继承的编辑禁用策略，见[读取绑定编辑](read-bound-edits.md)。上述后端可以接受真实设置；自动滚动、独立思考展示、MCP、hooks、其他原生模型协议和 OS 沙箱仍属后续差距，不宣称已支持。功能验证与模型编码表现分别报告。
+
+## 2026-10-17 官方资料复核
+
+重新读取 [OpenCode 配置](https://opencode.ai/docs/config/)、[Aider YAML 配置](https://aider.chat/docs/config/aider_conf.html)、[Gemini CLI 配置](https://geminicli.com/docs/reference/configuration/)与 [Pi settings](https://github.com/earendil-works/pi/blob/main/packages/coding-agent/docs/settings.md) / [配置文件职责](https://github.com/earendil-works/pi/blob/main/packages/coding-agent/docs/configuration.md)。Pi 原 badlogic/pi-mono 链接当前重定向至 earendil-works/pi，以下是本次网页快照，不改变前面日期记录的含义。
+
+- OpenCode 的当前层级还包括高于普通配置的 managed 文件和 macOS managed preferences；全局运行配置与 `tui.json` 分开。Sprig 当前没有组织强制层，仍由用户文件、profile、显式受限项目层和 CLI 处理个人配置。
+- Aider 默认按 home、仓库、当前目录依次加载 YAML；显式 `--config` 只加载一个文件。Sprig 的文件替换、字段覆盖、数组替换和排除规则合并均已在使用说明中分别规定。
+- Gemini 的会话年龄、数量和最短保留期是自动清理设置。Sprig 已支持年龄/数量候选策略，但仅在用户主动清理时逐项批准，不在启动或保存时删除历史。
+- Pi 当前将 settings、models、auth、keybindings 和 MCP 分别存放；项目配置在获得项目信任后加载，`sessionDir` 有专门例外。Sprig 统一使用 TOML；仍不隐式读取仓库配置，项目层不能配置凭据、执行环境、存储或可信快捷键。
+
+本次落实了一处配置到运行时的不一致：命令 `timeout` 曾只在执行层生效，模型工具定义仍显示固定 120 秒。现在每个 Agent 使用独立工具定义，其上限等于最终生效的命令超时；HTTP `request_timeout` 不影响它。超限提案在批准前拒绝并明确报告实际秒数，省略参数则使用该上限。没有自动放宽限制、补发请求或新增空壳字段；相关回环 HTTP、实例隔离与真实子进程验证见 `tests/test_runtime_tool_limits.py`。

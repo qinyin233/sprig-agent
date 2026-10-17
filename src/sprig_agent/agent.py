@@ -1,5 +1,6 @@
 """One model → tools → model loop. No orchestration framework."""
 
+import copy
 import json
 import uuid
 
@@ -46,9 +47,12 @@ class Agent:
         self.emit_delta = emit_delta
         self.cancel_event = cancel_event
         self.receive_input = receive_input or (lambda: [])
-        self.schemas = [schema for schema in TOOL_SCHEMAS
+        self.schemas = [copy.deepcopy(schema) for schema in TOOL_SCHEMAS
                         if config.tool_enabled(schema["function"]["name"])
                         and (not config.read_only or schema["function"]["name"] not in {"edit_file", "edit_lines", "run"})]
+        for schema in self.schemas:
+            if schema["function"]["name"] == "run":
+                schema["function"]["parameters"]["properties"]["timeout"]["maximum"] = config.timeout
         self.compact_context = config.compact_context
         self.baseline_status = "not_run"
 

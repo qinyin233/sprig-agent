@@ -335,7 +335,7 @@ class AgentTests(ConfigCase):
 
         def complete(messages, schemas):
             self.requests.append(copy.deepcopy(messages))
-            self.assertEqual(schemas, TOOL_SCHEMAS)
+            self.assertIs(schemas, agent.schemas)
             return next(replies)
 
         provider.complete.side_effect = complete

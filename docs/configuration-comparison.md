@@ -1,6 +1,6 @@
 # 开源 agent 配置调研与 Sprig 的对应实现
 
-核对日期：2026-10-15；2026-10-16 补充 Gemini CLI 和更新后的配置文档，见[日期调研记录](configuration-research-20261016.md)。选择有代表性的开源编程 agent 作为样本；这不是排行榜，也不是完整性能对照。以下接口不代表本地已经运行了样本的每个选项。功能配置与模型编码成绩分别验收。
+核对日期：2026-10-15；2026-10-16 补充 Gemini CLI，2026-10-17 重新核对 OpenCode/Aider/Gemini CLI/Pi 的官方资料，见[日期调研记录](configuration-research-20261016.md)。选择有代表性的开源编程 agent 作为样本；这不是排行榜，也不是完整性能对照。以下接口不代表本地已经运行了样本的每个选项。功能配置与模型编码成绩分别验收。
 
 | 样本 | 文件与加载方式 | 文档中的主要设置范围 |
 | --- | --- | --- |
@@ -20,7 +20,7 @@
 | 提供商/模型目录 | `[providers.NAME]`、`.models.ALIAS`、`--models` | 别名解析成真实 API model ID，可配置每模型的生成与请求预算；离线列出目录 |
 | 命名工作模式 | `[profiles.NAME]`、`--profile`、`SPRIG_PROFILE` | 一次选择提供商、模型、只读模式、工具与终端偏好 |
 | 生成参数 | `[generation]`、提供商/模型/profile 下的 `generation` | token 上限字段、温度、top-p、seed、reasoning effort、thinking、受限额外 JSON；计入真实请求预算并绑定会话 |
-| 传输与鉴权 | 提供商的 `request_timeout`、`proxy`、`api_key_header/scheme`、`headers/headers_env` | 可分离 HTTP/命令超时，支持直连/系统/显式代理与兼容服务自定义头；禁止重定向和保留头覆盖 |
+| 传输与鉴权 | 提供商的 `request_timeout`、`proxy`、`api_key_header/scheme`、`headers/headers_env` | 可分离 HTTP/命令超时，模型工具定义反映生效的命令上限；支持直连/系统/显式代理与兼容服务自定义头；禁止重定向和保留头覆盖 |
 | 服务模型元数据 | `--provider NAME --list-models` | 明确联网 GET `/models`，有界解析；不调用 completion，也不混入 completion 用量统计 |
 | 工具与隐私 | `[tools]`、`[files].exclude`、`--disable-tool` | 同时限制模型 schema、分发和直接方法；排除规则与 `.sprigignore` 合并；内置凭据与配置文件保护不能关闭 |
 | 命令环境 | `[execution].env_allowlist/env` | 最小环境上增加指定变量；模型凭据即使被加入允许列表也不继承；命令仍逐次批准 |
