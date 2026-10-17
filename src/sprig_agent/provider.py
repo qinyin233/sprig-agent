@@ -192,7 +192,10 @@ class Provider:
     def _complete(self, messages, tools, on_text, measurement):
         config = self.config
         from .context import request_body
-        body = request_body(config, messages, tools)
+        try:
+            body = request_body(config, messages, tools)
+        except (TypeError, ValueError, RecursionError):
+            raise ProviderError("request contains invalid text or JSON; no request sent", code="invalid_request") from None
         if len(body) > config.max_context_bytes:
             raise ProviderError("context byte budget exceeded; request was not sent", code="request_budget")
         headers = self._headers(stream=config.stream)

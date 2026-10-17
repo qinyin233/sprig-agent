@@ -9,7 +9,7 @@ MAX_TOKENS = 10**9
 TOKEN_FIELDS = ("prompt_tokens", "completion_tokens", "total_tokens")
 FAILURE_CODES = {"http_error", "connection_error", "tls_error", "timeout", "redirect", "request_budget",
                  "response_limit", "output_limit", "content_filter", "incomplete_stream",
-                 "invalid_response", "unsupported_finish_reason"}
+                 "invalid_request", "invalid_response", "unsupported_finish_reason"}
 FINISH_REASONS = {"stop", "tool_calls", "length", "content_filter", "function_call"}
 
 

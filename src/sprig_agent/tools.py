@@ -51,10 +51,11 @@ STRING = {"type": "string"}
 TOOL_SCHEMAS = [
     schema("list_files", "List one workspace directory; no symlinks or protected files.",
            {"path": STRING}),
-    schema("read_file", "UTF-8, 1-based physical lines. Ranges numbered by default; N: prefixes are display only. line_numbers=false for raw. Validated reads return sha256/read_id; ranged scans <=8 MiB. Partial lines have no read_id.",
+    schema("read_file", "UTF-8. offset/limit: 1-based lines; ranges numbered (N: display only); line_numbers=false for raw. Long lines: cursor='start', then next_cursor; raw version-bound pages, no line options. Scans <=8 MiB; partial lines lack read_id.",
            {"path": STRING, "offset": {"type": "integer", "minimum": 1, "maximum": 1000000},
-            "limit": {"type": "integer", "minimum": 1, "maximum": 10000}, "line_numbers": {"type": "boolean"}}, ["path"]),
-    schema("search", "Search literal text recursively, or RE2 with regex=true (no lookaround/backreferences; ASCII \\w/\\d/\\b). ignore_case: full Unicode folding for literals, simple folding for RE2. Case-sensitive glob matches basenames or workspace-relative paths: * stays within /, ** spans components. context: 0-10 surrounding lines; limit: 1-1000 matching physical CR/LF lines, default 100. Query <=1000 chars; RE2 budgets: 1 MiB and cooperative 1s. Whole-file privacy, read/output bounds and cancellation apply. Truncated, timed_out or skipped results cannot establish absence.",
+            "limit": {"type": "integer", "minimum": 1, "maximum": 10000}, "line_numbers": {"type": "boolean"},
+            "cursor": {"type": "string", "maxLength": 80}}, ["path"]),
+    schema("search", "Recursive literal or RE2 (regex=true; no lookaround/backreferences; ASCII \\w/\\d/\\b). ignore_case: full Unicode folding for literals, simple folding for RE2. Case-sensitive glob: basename or workspace path; * stays within /, ** spans components. context=0-10 surrounding lines; limit=1-1000 matching physical CR/LF lines (default 100). Query<=1000 chars; RE2: 1 MiB, cooperative 1s. Whole-file privacy, read/output bounds and cancellation. Truncated/timed_out/skipped results cannot establish absence.",
            {"query": STRING, "path": STRING, "glob": {"type": "string", "minLength": 1, "maxLength": 256},
             "ignore_case": {"type": "boolean"}, "regex": {"type": "boolean"},
             "context": {"type": "integer", "minimum": 0, "maximum": 10},
@@ -242,7 +243,7 @@ class Tools:
                 entries.append({"name": entry.name, "type": kind})
         return {"entries": sorted(entries, key=lambda item: item["name"]), "truncated": truncated}
 
-    def read_file(self, path, offset=1, limit=None, *, line_numbers=_MISSING):
+    def read_file(self, path, offset=1, limit=None, *, line_numbers=_MISSING, cursor=_MISSING):
         self._require_tool("read_file")
         if type(offset) is not int or not 1 <= offset <= 1000000:
             raise ToolError("offset must be an integer from 1 to 1000000 (1-based line number)")
@@ -250,11 +251,15 @@ class Tools:
             raise ToolError("limit must be an integer from 1 to 10000")
         if line_numbers is not _MISSING and type(line_numbers) is not bool:
             raise ToolError("line_numbers must be a boolean")
+        if cursor is not _MISSING and (offset != 1 or limit is not None or line_numbers is not _MISSING):
+            raise ToolError("cursor cannot be combined with line options")
         ranged = offset != 1 or limit is not None
         numbered = ranged if line_numbers is _MISSING else line_numbers
         parts = self._parts(path)
         if self.config.project_instructions:
             self.instructions.register(parts[:-1])
+        if cursor is not _MISSING:
+            return self._read_bytes(path, parts, cursor)
         if ranged or numbered:
             return self._read_result(parts, self._read_page(path, offset, limit or 2000, line_numbers=numbered))
         with self._parent(path) as (fd, name):
@@ -280,7 +285,7 @@ class Tools:
             result["read_id"] = self.read_versions.remember(parts, result["sha256"])
         return result
 
-    def _read_page(self, path, offset, limit, *, line_numbers=False):
+    def _read_validated(self, path):
         # Validate the whole bounded file before exposing a page: selecting a
         # clean line must not bypass the credential/binary policy elsewhere.
         raw = bytearray()
@@ -296,8 +301,47 @@ class Tools:
                 if len(raw) > MAX_READ:
                     raise ToolError("ranged read exceeds the 8 MiB scan limit")
         self._check_cancelled()
-        selected, size, partial, capped, total = [], 0, False, False, 0
         text = self._decode(raw)
+        return raw, text
+
+    def _read_bytes(self, path, parts, cursor):
+        if not isinstance(cursor, str) or len(cursor) > 80:
+            raise ToolError("cursor must be 'start' or a returned next_cursor")
+        offset, expected = 0, None
+        if cursor != "start":
+            version, separator, position = cursor.rpartition(":")
+            if (not separator or len(version) != 65 or not version.startswith("b")
+                    or any(char not in "0123456789abcdef" for char in version[1:])
+                    or not position.isascii() or not position.isdecimal()
+                    or len(position) > 7 or not 1 <= int(position) <= MAX_READ):
+                raise ToolError("cursor must be 'start' or a returned next_cursor")
+            expected = version[1:]
+            offset = int(position)
+        raw, text = self._read_validated(path)
+        # Arbitrary byte boundaries could otherwise split one configured key
+        # across separately redacted pages. Never expose such pages or hashes.
+        if any(secret in text for secret in self.config.secrets):
+            raise ToolError("file contains configured credentials or protected values; byte paging refused")
+        digest = hashlib.sha256(raw).hexdigest()
+        # Cursors are read-only content references, separate from edit read_ids.
+        # Revalidate bytes and privacy even after a new run or restored session.
+        version = hashlib.sha256("\0".join((*parts, digest)).encode("utf-8")).hexdigest()
+        if expected is not None and version != expected:
+            raise ToolError("file changed or cursor belongs to another path; restart with cursor='start'")
+        if offset > len(raw) or (offset < len(raw) and (raw[offset] & 0xc0) == 0x80):
+            raise ToolError("cursor must point to a UTF-8 character boundary within the file")
+        import codecs
+        end = min(len(raw), offset + self.config.max_output)
+        content = codecs.getincrementaldecoder("utf-8")().decode(raw[offset:end], final=end == len(raw))
+        end = offset + len(content.encode("utf-8"))
+        self._check_cancelled()
+        return {"path": path, "content": content, "byte_offset": offset, "end_byte_offset": end,
+                "total_bytes": len(raw), "truncated": end < len(raw), "sha256": digest,
+                "next_cursor": f"b{version}:{end}" if end < len(raw) else None}
+
+    def _read_page(self, path, offset, limit, *, line_numbers=False):
+        raw, text = self._read_validated(path)
+        selected, size, partial, capped, total = [], 0, False, False, 0
         # Iterate rather than allocating one list entry per line for a file
         # containing millions of blank lines. Keep CR/LF endings unchanged.
         for line in io.StringIO(text, newline=""):

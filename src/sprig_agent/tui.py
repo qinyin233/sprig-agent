@@ -43,15 +43,16 @@ class TaskInput(TextArea):
     ]
 
     class Submitted(Message):
-        def __init__(self, editor, text):
+        def __init__(self, editor, text, draft=None):
             super().__init__()
             self.editor, self.text = editor, text
+            self.draft = editor.text if draft is None else draft
 
     def action_send(self):
         text = self.text.strip()
-        if text:
-            self.post_message(self.Submitted(self, text))
-            self.load_text("")
+        if text and not getattr(self, "_sending", False):
+            self._sending = True
+            self.post_message(self.Submitted(self, text, self.text))
 
     def action_newline(self):
         self.replace("\n", *self.selection, maintain_selection_offset=False)
@@ -104,6 +105,9 @@ class ApprovalScreen(ModalScreen[bool]):
 class SprigApp(App[int]):
     OUTPUT_BUFFER_LIMIT = 64000
     OUTPUT_REFRESH_SECONDS = 0.05
+    TRANSCRIPT_LIMIT = 64000
+    TRANSCRIPT_MARKER = "[显示已裁剪：仅保留最近文本；不代表模型上下文。]\n"
+    MAX_PENDING_TASKS = 32
     TITLE = "Sprig Agent"
     BINDINGS = [
         Binding("ctrl+enter", "submit", "发送", show=False, priority=True),
@@ -161,6 +165,7 @@ class SprigApp(App[int]):
         self._ui_thread_id = threading.get_ident()
         self.quit_when_idle = False
         self.transcript = ""
+        self._transcript_trimmed = False
         self.streaming = False
         self.approval = None
         # UI-thread-owned queue. Only the single agent worker takes its contents.
@@ -301,13 +306,16 @@ class SprigApp(App[int]):
 
     def _append(self, text):
         text = self.safe(text)
-        combined = self.transcript + text
-        self.transcript = combined[-64000:]
+        previous = self.transcript[len(self.TRANSCRIPT_MARKER):] if self._transcript_trimmed else self.transcript
+        combined = previous + text
+        self._transcript_trimmed = self._transcript_trimmed or len(combined) > self.TRANSCRIPT_LIMIT
         view = self.query_one("#transcript", TextArea)
-        if len(combined) <= 64000:
-            view.insert(text, location=view.document.end)
-        else:
+        if self._transcript_trimmed:
+            self.transcript = self.TRANSCRIPT_MARKER + combined[-(self.TRANSCRIPT_LIMIT - len(self.TRANSCRIPT_MARKER)):]
             view.load_text(self.transcript)
+        else:
+            self.transcript = combined
+            view.insert(text, location=view.document.end)
         view.scroll_end(animate=False)
 
     def flush_output(self):
@@ -612,15 +620,43 @@ class SprigApp(App[int]):
     @on(TaskInput.Submitted)
     def submitted(self, event):
         event.stop()
+        try:
+            self._submitted(event)
+        finally:
+            event.editor._sending = False
+
+    def reject_input(self, reason):
+        self.notify(reason, title="输入未发送，草稿保留", severity="warning")
+        self.append("\n[输入未发送，草稿保留] " + reason + "\n")
+
+    def _submitted(self, event):
         task = event.text
         if isinstance(self.screen, ModalScreen) and not (
                 isinstance(self.screen, ApprovalScreen) and self.screen.allow_steering):
             return
+        limit = self.config.max_context_bytes
+        try:
+            if len(task) > limit or len(task.encode("utf-8")) > limit:
+                raise ValueError(f"单条输入超过 {limit} UTF-8 字节；请缩短或保存到工作区文件后按范围读取。")
+        except UnicodeEncodeError:
+            self.reject_input("输入包含无效 Unicode。")
+            return
+        except ValueError as error:
+            self.reject_input(str(error))
+            return
         if task.startswith("//"):
             task = task[1:]  # A literal task starting with a slash.
         elif task.startswith("/"):
+            if event.editor.text == event.draft:
+                event.editor.load_text("")
             self.slash_command(task)
             return
+        if ((self.busy or self.pending_tasks) and (len(self.pending_tasks) >= self.MAX_PENDING_TASKS
+                or sum(len(item.encode("utf-8")) for item in self.pending_tasks) + len(task.encode("utf-8")) > limit)):
+            self.reject_input(f"待处理引导最多 {self.MAX_PENDING_TASKS} 条、合计 {limit} UTF-8 字节；请等待处理后重发。")
+            return
+        if event.editor.text == event.draft:
+            event.editor.load_text("")
         if self.busy:
             self.pending_tasks.append(task)
             self.set_task_result(2, "新要求待处理，等待更新后的结果")
@@ -695,6 +731,7 @@ class SprigApp(App[int]):
                 self.refresh_plan()
                 self.pending_tasks = []
                 self.transcript = ""
+                self._transcript_trimmed = False
                 self.query_one("#transcript", TextArea).load_text("")
                 self.append("已恢复本地会话。输入新任务或点击继续。\n")
                 self.show_history()
@@ -723,6 +760,7 @@ class SprigApp(App[int]):
             self.pending_tasks = []
             self.query_one("#session-name", Input).value = ""
             self.transcript = ""
+            self._transcript_trimmed = False
             self.query_one("#transcript", TextArea).load_text("")
             self.set_task_result(2, "新对话，尚未运行任务")
             self.set_state("就绪")

@@ -69,6 +69,57 @@ class TuiTests(unittest.IsolatedAsyncioTestCase):
         editor.focus()
         await pilot.press("enter")
 
+    async def test_oversized_multibyte_input_retains_draft_without_request_or_checkpoint(self):
+        from dataclasses import replace
+        self.config = replace(self.config, max_context_bytes=4096)
+        provider = ScriptedProvider([])
+        app = self.app(provider)
+        draft = "  " + "中" * 1400 + "  "
+        async with app.run_test(size=(110, 36)) as pilot:
+            await self.send_text(pilot, draft)
+            await self.until(pilot, lambda: "输入未发送" in app.transcript)
+            self.assertEqual(app.query_one("#task", TextArea).text, draft)
+            self.assertEqual(provider.calls, [])
+            self.assertIsNone(app.messages)
+            self.assertFalse(app.busy)
+            self.assertEqual(app.pending_tasks, [])
+
+    async def test_pending_guidance_has_count_and_utf8_byte_caps_without_superseding_approval(self):
+        from dataclasses import replace
+        self.config = replace(self.config, max_context_bytes=4096)
+        app = self.app(ScriptedProvider([]))
+        async with app.run_test(size=(110, 36)) as pilot:
+            app.busy = True  # Hold at a boundary without launching a provider.
+            app.approval = Mock()
+            try:
+                for pending, draft in ((["queued"] * 32, "new request"), (["中" * 1300], "文" * 100)):
+                    app.pending_tasks = list(pending)
+                    await self.send_text(pilot, draft)
+                    await pilot.pause()
+                    self.assertEqual(app.pending_tasks, pending)
+                    self.assertEqual(app.query_one("#task", TextArea).text, draft)
+                    app.approval.dismiss.assert_not_called()
+                self.assertIn("待处理引导最多", app.transcript)
+                self.assertIsNone(app.messages)
+            finally:
+                app.approval = None
+                app.busy = False
+
+    async def test_transcript_crop_is_explicit_bounded_and_does_not_change_model_history(self):
+        app = self.app(ScriptedProvider([]))
+        history = [{"role": "user", "content": "Retain full context independently"}]
+        async with app.run_test(size=(110, 36)) as pilot:
+            app.messages = copy.deepcopy(history)
+            app.TRANSCRIPT_LIMIT = 256
+            app.append("中文🙂\n" * 100)
+            app.append("latest visible text")
+            self.assertLessEqual(len(app.transcript), 256)
+            self.assertTrue(app.transcript.startswith(app.TRANSCRIPT_MARKER))
+            self.assertEqual(app.transcript.count(app.TRANSCRIPT_MARKER), 1)
+            self.assertTrue(app.transcript.endswith("latest visible text"))
+            self.assertEqual(app.query_one("#transcript", TextArea).text, app.transcript)
+            self.assertEqual(app.messages, history)
+
     async def test_startup_and_slash_attachments_wait_for_message_and_keep_readonly_privacy(self):
         from dataclasses import replace
         self.config = replace(self.config, read_only=True)

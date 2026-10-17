@@ -16,7 +16,10 @@ def request_payload(config, messages, tools):
 
 
 def request_body(config, messages, tools):
-    return json.dumps(request_payload(config, messages, tools), separators=(",", ":")).encode("utf-8")
+    try:
+        return json.dumps(request_payload(config, messages, tools), ensure_ascii=False, separators=(",", ":")).encode("utf-8")
+    except UnicodeEncodeError:
+        raise ValueError("request contains invalid Unicode; no request sent") from None
 
 
 def _result(content):
@@ -75,7 +78,7 @@ def prepare_context(config, messages, tools, compact=False, *, force=False):
     before = size = len(request_body(config, selected, tools))
     changes = []
     def wire_size(value):
-        return len(json.dumps(redact(value, config.secrets)).encode("utf-8"))
+        return len(json.dumps(redact(value, config.secrets), ensure_ascii=False).encode("utf-8"))
     def replace_string(container, field, value, index, identity, fields):
         old_bytes, new_bytes = wire_size(container[field]), wire_size(value)
         if old_bytes - new_bytes < 128:
