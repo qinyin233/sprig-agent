@@ -1,6 +1,7 @@
 """Request byte budgets and explicit, non-destructive history elision."""
 import json
 from .config import redact
+from .json_budget import JSON_OPTIONS, encoded_size
 from .planning import plan_result, validate_plan
 from .revisions import valid_read_id
 
@@ -15,9 +16,19 @@ def request_payload(config, messages, tools):
     return payload
 
 
-def request_body(config, messages, tools):
+def request_body(config, messages, tools, *, max_bytes=None):
     try:
-        return json.dumps(request_payload(config, messages, tools), ensure_ascii=False, separators=(",", ":")).encode("utf-8")
+        payload = request_payload(config, messages, tools)
+        if max_bytes is not None:
+            encoded_size(payload, max_bytes=max_bytes)
+        return json.dumps(payload, **JSON_OPTIONS).encode("utf-8")
+    except UnicodeEncodeError:
+        raise ValueError("request contains invalid Unicode; no request sent") from None
+
+
+def request_size(config, messages, tools, *, check_cancelled=None):
+    try:
+        return encoded_size(request_payload(config, messages, tools), check_cancelled=check_cancelled)
     except UnicodeEncodeError:
         raise ValueError("request contains invalid Unicode; no request sent") from None
 
@@ -72,13 +83,13 @@ def _edit_path(arguments, *, by_line=False):
     return value["path"]
 
 
-def prepare_context(config, messages, tools, compact=False, *, force=False):
+def prepare_context(config, messages, tools, compact=False, *, force=False, check_cancelled=None):
     """Keep the saved transcript intact; never discard user instructions or refusals."""
     selected = redact(messages, config.secrets)
-    before = size = len(request_body(config, selected, tools))
+    before = size = request_size(config, selected, tools, check_cancelled=check_cancelled)
     changes = []
     def wire_size(value):
-        return len(json.dumps(redact(value, config.secrets), ensure_ascii=False).encode("utf-8"))
+        return encoded_size(redact(value, config.secrets), check_cancelled=check_cancelled)
     def replace_string(container, field, value, index, identity, fields):
         old_bytes, new_bytes = wire_size(container[field]), wire_size(value)
         if old_bytes - new_bytes < 128:
@@ -152,7 +163,7 @@ def prepare_context(config, messages, tools, compact=False, *, force=False):
             replace_string(message, "content", content, index, message["tool_call_id"], fields)
         # Count the actual serialized request, including redaction of new markers.
         if changes:
-            size = len(request_body(config, selected, tools))
+            size = request_size(config, selected, tools, check_cancelled=check_cancelled)
     return selected, {"before_bytes": before, "after_bytes": size, "budget_bytes": config.max_context_bytes,
                       "within_budget": size <= config.max_context_bytes, "changes": changes,
                       "compaction_triggered": triggered, "trigger_ratio": config.context_trigger_ratio,

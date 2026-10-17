@@ -11,6 +11,7 @@ import urllib.error
 import urllib.request
 
 from .config import redact
+from .json_budget import JsonBudgetExceeded
 from .metrics import FAILURE_CODES, MeasuredResponse, Measurements, RequestMeasurement
 
 MAX_RESPONSE = 2 * 1024 * 1024
@@ -193,7 +194,9 @@ class Provider:
         config = self.config
         from .context import request_body
         try:
-            body = request_body(config, messages, tools)
+            body = request_body(config, messages, tools, max_bytes=config.max_context_bytes)
+        except JsonBudgetExceeded:
+            raise ProviderError("context byte budget exceeded; request was not sent", code="request_budget") from None
         except (TypeError, ValueError, RecursionError):
             raise ProviderError("request contains invalid text or JSON; no request sent", code="invalid_request") from None
         if len(body) > config.max_context_bytes:

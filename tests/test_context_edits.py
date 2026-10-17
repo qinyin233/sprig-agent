@@ -143,8 +143,8 @@ class EditContextTests(unittest.TestCase):
     def test_cancellation_during_compaction_stops_before_provider_without_losing_history(self):
         cancellation = threading.Event()
         provider, tools, checkpoints = Mock(), Mock(), []
-        def cancelled_preview(*arguments):
-            result = prepare_context(*arguments)
+        def cancelled_preview(*arguments, **keywords):
+            result = prepare_context(*arguments, **keywords)
             cancellation.set()
             return result
         agent = Agent(replace(self.config, compact_context=True), provider, tools, lambda _: None,

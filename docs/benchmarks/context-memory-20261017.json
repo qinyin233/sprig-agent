@@ -1,0 +1,178 @@
+{
+  "schema": 1,
+  "date": "2026-10-17",
+  "scope": "offline Windows context preparation; no model calls, provider comparison or coding-performance claim",
+  "script": "benchmarks/context_memory.py",
+  "provenance": "Before runtime sources match eb64955; after is the uncommitted implementation atop that base, identified by executed_source_sha256. git_head is the checkout base, not the modified source identity.",
+  "method": "Three timed preparations without tracing, followed by one incremental tracemalloc peak measurement. Fixtures and interpreter were created before tracing. Sequential runs on one host; timings are small samples, not a stable speed claim.",
+  "cases": [
+    {
+      "variant": "ascii",
+      "same_original_request": true,
+      "same_compacted_request": true,
+      "incremental_peak_reduction_percent": 97.511,
+      "before": {
+        "scope": "offline context preparation; no model/network calls or coding-performance claims",
+        "variant": "ascii",
+        "python": "3.13.0",
+        "platform": "win32",
+        "benchmark_script_sha256": "675df2326b936d7c7ff405205828eb2947850df39543f06b4502daf99a54d39e",
+        "git_head": "eb64955a5f672149b5f06b3a7e519dffbd056b68",
+        "executed_source_sha256": "4a5f001318556468aa865c0f159de1f921d2d0bf6be1b29c1a29a84ae25edabe",
+        "messages": 200,
+        "fixture_request_sha256": "c1615c1f343ab0883d64e4c80ae8269930175e50099672694da0217c0702f6bd",
+        "selected_request_sha256": "f93c2ccf7d0411f12bb10d5ec244fd6ac2091c0f2d25cd6bdd0a9fae7b617cdd",
+        "before_bytes": 6321226,
+        "after_bytes": 40426,
+        "within_budget": true,
+        "changes": 96,
+        "history_unchanged": true,
+        "timings_ms_without_tracing": [
+          43.95,
+          43.567,
+          43.899
+        ],
+        "median_ms_without_tracing": 43.899,
+        "incremental_peak_traced_bytes": 12746030,
+        "peak_scope": "new allocations during one preparation; excludes already-created fixture and interpreter"
+      },
+      "after": {
+        "scope": "offline context preparation; no model/network calls or coding-performance claims",
+        "variant": "ascii",
+        "python": "3.13.0",
+        "platform": "win32",
+        "benchmark_script_sha256": "675df2326b936d7c7ff405205828eb2947850df39543f06b4502daf99a54d39e",
+        "git_head": "eb64955a5f672149b5f06b3a7e519dffbd056b68",
+        "executed_source_sha256": "171aedb4c7efbfd04a1feecc89db8cdacdbfd398d7694a9a7f93eb2f9a237d2a",
+        "messages": 200,
+        "fixture_request_sha256": "c1615c1f343ab0883d64e4c80ae8269930175e50099672694da0217c0702f6bd",
+        "selected_request_sha256": "f93c2ccf7d0411f12bb10d5ec244fd6ac2091c0f2d25cd6bdd0a9fae7b617cdd",
+        "before_bytes": 6321226,
+        "after_bytes": 40426,
+        "within_budget": true,
+        "changes": 96,
+        "history_unchanged": true,
+        "timings_ms_without_tracing": [
+          46.178,
+          45.615,
+          48.035
+        ],
+        "median_ms_without_tracing": 46.178,
+        "incremental_peak_traced_bytes": 317226,
+        "peak_scope": "new allocations during one preparation; excludes already-created fixture and interpreter"
+      }
+    },
+    {
+      "variant": "unicode",
+      "same_original_request": true,
+      "same_compacted_request": true,
+      "incremental_peak_reduction_percent": 98.203,
+      "before": {
+        "scope": "offline context preparation; no model/network calls or coding-performance claims",
+        "variant": "unicode",
+        "python": "3.13.0",
+        "platform": "win32",
+        "benchmark_script_sha256": "675df2326b936d7c7ff405205828eb2947850df39543f06b4502daf99a54d39e",
+        "git_head": "eb64955a5f672149b5f06b3a7e519dffbd056b68",
+        "executed_source_sha256": "4a5f001318556468aa865c0f159de1f921d2d0bf6be1b29c1a29a84ae25edabe",
+        "messages": 200,
+        "fixture_request_sha256": "a36b1f2eb94db2180b50657b5dbf461d9f65dd4fe152dbb1b220ac3ac9a69637",
+        "selected_request_sha256": "f93c2ccf7d0411f12bb10d5ec244fd6ac2091c0f2d25cd6bdd0a9fae7b617cdd",
+        "before_bytes": 6321034,
+        "after_bytes": 40426,
+        "within_budget": true,
+        "changes": 96,
+        "history_unchanged": true,
+        "timings_ms_without_tracing": [
+          33.765,
+          32.077,
+          32.22
+        ],
+        "median_ms_without_tracing": 32.22,
+        "incremental_peak_traced_bytes": 21911805,
+        "peak_scope": "new allocations during one preparation; excludes already-created fixture and interpreter"
+      },
+      "after": {
+        "scope": "offline context preparation; no model/network calls or coding-performance claims",
+        "variant": "unicode",
+        "python": "3.13.0",
+        "platform": "win32",
+        "benchmark_script_sha256": "675df2326b936d7c7ff405205828eb2947850df39543f06b4502daf99a54d39e",
+        "git_head": "eb64955a5f672149b5f06b3a7e519dffbd056b68",
+        "executed_source_sha256": "171aedb4c7efbfd04a1feecc89db8cdacdbfd398d7694a9a7f93eb2f9a237d2a",
+        "messages": 200,
+        "fixture_request_sha256": "a36b1f2eb94db2180b50657b5dbf461d9f65dd4fe152dbb1b220ac3ac9a69637",
+        "selected_request_sha256": "f93c2ccf7d0411f12bb10d5ec244fd6ac2091c0f2d25cd6bdd0a9fae7b617cdd",
+        "before_bytes": 6321034,
+        "after_bytes": 40426,
+        "within_budget": true,
+        "changes": 96,
+        "history_unchanged": true,
+        "timings_ms_without_tracing": [
+          30.668,
+          29.938,
+          30.531
+        ],
+        "median_ms_without_tracing": 30.531,
+        "incremental_peak_traced_bytes": 393672,
+        "peak_scope": "new allocations during one preparation; excludes already-created fixture and interpreter"
+      }
+    },
+    {
+      "variant": "escaped",
+      "same_original_request": true,
+      "same_compacted_request": true,
+      "incremental_peak_reduction_percent": 99.242,
+      "before": {
+        "scope": "offline context preparation; no model/network calls or coding-performance claims",
+        "variant": "escaped",
+        "python": "3.13.0",
+        "platform": "win32",
+        "benchmark_script_sha256": "675df2326b936d7c7ff405205828eb2947850df39543f06b4502daf99a54d39e",
+        "git_head": "eb64955a5f672149b5f06b3a7e519dffbd056b68",
+        "executed_source_sha256": "4a5f001318556468aa865c0f159de1f921d2d0bf6be1b29c1a29a84ae25edabe",
+        "messages": 200,
+        "fixture_request_sha256": "19da3a833a7467d9d7b35be05ac0329deec2ed52b9e73fe104d00ff05040e8e6",
+        "selected_request_sha256": "f93c2ccf7d0411f12bb10d5ec244fd6ac2091c0f2d25cd6bdd0a9fae7b617cdd",
+        "before_bytes": 21420778,
+        "after_bytes": 40426,
+        "within_budget": true,
+        "changes": 96,
+        "history_unchanged": true,
+        "timings_ms_without_tracing": [
+          124.58,
+          122.519,
+          123.261
+        ],
+        "median_ms_without_tracing": 123.261,
+        "incremental_peak_traced_bytes": 42945134,
+        "peak_scope": "new allocations during one preparation; excludes already-created fixture and interpreter"
+      },
+      "after": {
+        "scope": "offline context preparation; no model/network calls or coding-performance claims",
+        "variant": "escaped",
+        "python": "3.13.0",
+        "platform": "win32",
+        "benchmark_script_sha256": "675df2326b936d7c7ff405205828eb2947850df39543f06b4502daf99a54d39e",
+        "git_head": "eb64955a5f672149b5f06b3a7e519dffbd056b68",
+        "executed_source_sha256": "171aedb4c7efbfd04a1feecc89db8cdacdbfd398d7694a9a7f93eb2f9a237d2a",
+        "messages": 200,
+        "fixture_request_sha256": "19da3a833a7467d9d7b35be05ac0329deec2ed52b9e73fe104d00ff05040e8e6",
+        "selected_request_sha256": "f93c2ccf7d0411f12bb10d5ec244fd6ac2091c0f2d25cd6bdd0a9fae7b617cdd",
+        "before_bytes": 21420778,
+        "after_bytes": 40426,
+        "within_budget": true,
+        "changes": 96,
+        "history_unchanged": true,
+        "timings_ms_without_tracing": [
+          113.661,
+          113.125,
+          114.124
+        ],
+        "median_ms_without_tracing": 113.661,
+        "incremental_peak_traced_bytes": 325407,
+        "peak_scope": "new allocations during one preparation; excludes already-created fixture and interpreter"
+      }
+    }
+  ]
+}

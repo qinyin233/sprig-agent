@@ -92,7 +92,8 @@ class Agent:
             "These are snapshots taken when attached; inspect current files before editing.\n"
             + json.dumps(snapshots, ensure_ascii=False), self.config.secrets)})
         self._refresh_instructions(candidate)
-        _, budget = prepare_context(self.config, self._request_messages(candidate, 1), self.schemas, self.compact_context)
+        _, budget = prepare_context(self.config, self._request_messages(candidate, 1), self.schemas, self.compact_context,
+                                    check_cancelled=self._check_cancelled)
         if not budget["within_budget"]:
             raise ValueError("attachments exceed the request context budget; no files added and no request sent")
         self._check_cancelled()
@@ -102,7 +103,8 @@ class Agent:
     def context_preview(self, messages):
         selected = list(messages or [{"role": "system", "content": self._prompt()}])
         self._refresh_instructions(selected)
-        return prepare_context(self.config, self._request_messages(selected, 1), self.schemas, compact=True, force=True)[1]
+        return prepare_context(self.config, self._request_messages(selected, 1), self.schemas, compact=True, force=True,
+                               check_cancelled=self._check_cancelled)[1]
 
     def _prompt(self):
         prompt = SYSTEM_PROMPT
@@ -208,7 +210,8 @@ class Agent:
     def _complete(self, messages, *, step):
         records = self._refresh_instructions(messages, save=True)
         messages = self._request_messages(messages, step)
-        messages, report = prepare_context(self.config, messages, self.schemas, self.compact_context)
+        messages, report = prepare_context(self.config, messages, self.schemas, self.compact_context,
+                                           check_cancelled=self._check_cancelled)
         if not report["within_budget"]:
             raise ProviderError("context byte budget exceeded; no request sent. Review /context and explicitly /compact, or increase --max-context-bytes.")
         if report["changes"]:
