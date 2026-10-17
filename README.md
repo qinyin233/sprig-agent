@@ -150,6 +150,8 @@ sprig [TASK] [--workdir PATH] [--file RELATIVE_PATH ...] [--model MODEL] [--base
 | `--chat` | 可选；在同一上下文中连续输入任务，须在交互式终端运行 |
 | `--tui` | 全屏终端界面，自动启用流式输出；标准输入和输出都须连接终端 |
 | `--check JSON_ARGV` | 可重复指定固定验收命令，最多 16 条；每次执行都需要确认 |
+| `--check-before-task` | 可选的任务前基线；要求非空 `checks`，每条命令仍需新批准 |
+| `--check-after-edit` | 可选的[编辑后固定检查](docs/edit-checks.md)；每批文件编辑后反馈结果，不增加模型请求预算，不替代最终验收 |
 | `--save-session NAME` | 显式启用会话保存 |
 | `--resume NAME` | 恢复指定的已保存会话 |
 | `--session-dir PATH` | 默认 `~/.local/state/sprig-agent/sessions`，须位于工作目录之外 |

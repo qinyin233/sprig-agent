@@ -17,7 +17,7 @@ AGENT_DEFAULTS = {
     "max_steps": 20, "timeout": 30, "max_output": 16000, "stream": False,
     "read_only": False, "inherit_env": False, "max_context_bytes": 131072,
     "compact_context": False, "request_usage": False, "project_instructions": True,
-    "max_tokens": None, "thinking": False, "checks": (), "check_before_task": False,
+    "max_tokens": None, "thinking": False, "checks": (), "check_before_task": False, "check_after_edit": False,
 }
 TEMPLATE = '''# Sprig user configuration. No automatic model/provider fallback.
 provider = "agnes"
@@ -41,6 +41,7 @@ thinking = false
 # compact_context = true
 # checks = [["uv", "run", "python", "-m", "unittest", "discover", "-s", "tests", "-q"]]
 # check_before_task = true # requires checks; each command still asks approval
+# check_after_edit = true # fixed checks after file edit batches; final checks still run
 
 [instructions]
 files = [] # e.g. ["CONTRIBUTING.md"], relative to the selected workspace
@@ -173,8 +174,9 @@ def _validate_layer(layer, directory):
         if name == "tools" and any(type(value) is not bool for value in entry.values()):
             raise ValueError("tool settings must be booleans")
     checks = layer.get("agent", {}).get("checks", [])
-    if "check_before_task" in layer.get("agent", {}) and type(layer["agent"]["check_before_task"]) is not bool:
-        raise ValueError("agent check_before_task must be a boolean")
+    for name in ("check_before_task", "check_after_edit"):
+        if name in layer.get("agent", {}) and type(layer["agent"][name]) is not bool:
+            raise ValueError("agent " + name + " must be a boolean")
     if not isinstance(checks, list) or any(not isinstance(argv, list) for argv in checks):
         raise ValueError("agent checks must be an array of argv arrays")
     execution = layer.get("execution", {})
@@ -206,9 +208,11 @@ def _validate_layer(layer, directory):
                 # The fully resolved Config still requires nonempty checks.
                 if not separate["checks"]:
                     separate["check_before_task"] = False
+                    separate["check_after_edit"] = False
                 Config(directory, "configuration-validation", **separate)
         if not values["checks"]:
             values["check_before_task"] = False
+            values["check_after_edit"] = False
         Config(directory, "configuration-validation", **values)
     except (OSError, ValueError, TypeError):
         raise ValueError("invalid agent/generation/runtime setting; check types, bounds and incompatible options (values withheld)") from None
@@ -430,6 +434,8 @@ class Settings:
                 raise ValueError("project configuration cannot disable trusted read-only policy")
             if values.get("check_before_task") and project_values.get("check_before_task") is False:
                 raise ValueError("project configuration cannot disable trusted baseline checks")
+            if values.get("check_after_edit") and project_values.get("check_after_edit") is False:
+                raise ValueError("project configuration cannot disable trusted edit checks")
             if any(enabled and (tool_policy.get(name) is False or (name == "edit_lines" and tool_policy.get("edit_file") is False))
                    for name, enabled in self.project_data.get("tools", {}).items()):
                 raise ValueError("project configuration cannot enable a disabled tool")

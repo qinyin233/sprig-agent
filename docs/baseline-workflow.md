@@ -8,7 +8,7 @@ checks = [["uv", "run", "--locked", "python", "-m", "unittest", "discover", "-s"
 check_before_task = true
 ```
 
-CLI 使用 `--check-before-task` / `--no-check-before-task` 覆盖。profile 可以继承固定检查；只读 profile 应同时设置 `checks=[]` 和 `check_before_task=false`。受限项目层不能关闭可信配置已开启的基线。
+CLI 使用 `--check-before-task` / `--no-check-before-task` 覆盖。profile 可以继承固定检查；只读 profile 应设置 `checks=[]`、`check_before_task=false` 和 `check_after_edit=false`。受限项目层不能关闭可信配置已开启的基线。可配合[编辑后检查](edit-checks.md)在实现过程中获取固定测试反馈，两者都不替代最后验收。
 
 每条命令仍要求新批准，并在执行前保存意图。完整运行后正常返回的非零退出码作为基线失败进入模型上下文，供其定位；这可能是环境或依赖问题，并不自动证明业务代码错误。拒绝、取消、超时、输出超限、启动或保存异常使任务停止，不联系模型。命令以当前用户权限运行，测试可能写缓存；本设置不提供 OS 沙箱。
 

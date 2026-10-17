@@ -145,6 +145,7 @@ class Config:
     show_metrics: bool = False
     model_catalog: tuple = field(default=(), repr=False, compare=False)
     check_before_task: bool = False
+    check_after_edit: bool = False
     instruction_files: tuple = ()
     response_language: str | None = None
     tui_keybindings: tuple = ()
@@ -239,6 +240,8 @@ class Config:
             raise ValueError("at most 16 acceptance checks are supported")
         if type(self.check_before_task) is not bool or (self.check_before_task and not self.checks):
             raise ValueError("check-before-task must be a boolean and requires fixed acceptance checks")
+        if type(self.check_after_edit) is not bool or (self.check_after_edit and not self.checks):
+            raise ValueError("check-after-edit must be a boolean and requires fixed acceptance checks")
         for argv in self.checks:
             if (not isinstance(argv, tuple) or not argv or len(argv) > 256
                     or any(not isinstance(arg, str) or "\0" in arg for arg in argv) or not argv[0]
@@ -378,6 +381,8 @@ class Config:
             binding["checks"] = [list(argv) for argv in self.checks]
         if self.check_before_task:
             binding["check_before_task"] = True
+        if self.check_after_edit:
+            binding["check_after_edit"] = True
         if self.read_only:
             binding["read_only"] = True
         if self.inherit_env:

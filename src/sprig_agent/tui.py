@@ -811,7 +811,7 @@ class SprigApp(App[int]):
                         + json.dumps(self.agent.plan_snapshot(), ensure_ascii=False, indent=2) + "\n")
             return
         if command == "/status":
-            self.append(f"\n[本地状态] {self.task_message} | 执行中: {self.busy} | 消息: {len(self.messages or [])} | 本次基线: {self.agent.baseline_status} | 待处理引导: {len(self.pending_tasks)}\n")
+            self.append(f"\n[本地状态] {self.task_message} | 执行中: {self.busy} | 消息: {len(self.messages or [])} | 本次基线: {self.agent.baseline_status} | 编辑后检查: {self.agent.edit_check_status} | 待处理引导: {len(self.pending_tasks)}\n")
             return
         if command == "/config":
             details = {"provider": self.config.provider_name,

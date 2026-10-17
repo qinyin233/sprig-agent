@@ -67,6 +67,9 @@
         },
         "check_before_task": {
           "type": "boolean"
+        },
+        "check_after_edit": {
+          "type": "boolean"
         }
       },
       "additionalProperties": false
@@ -768,6 +771,9 @@
                 "type": "boolean"
               },
               "check_before_task": {
+                "type": "boolean"
+              },
+              "check_after_edit": {
                 "type": "boolean"
               }
             },

@@ -524,6 +524,29 @@ check_before_task=true
             self.resolve(settings, model="fixture")
         self.assertTrue(self.resolve(settings, model="fixture", checks=(("python", "-V"),))[0].check_before_task)
 
+    def test_edit_checks_resolve_inherited_checks_and_project_cannot_disable_them(self):
+        self.write('provider="x"\n[providers.x]\nmodel="fixture"\n[agent]\nchecks=[["python", "-V"]]\n'
+                   '[profiles.development.agent]\ncheck_after_edit=true\n')
+        settings = load_settings(self.path)
+        config, details = self.resolve(settings, profile="development")
+        self.assertTrue(config.check_after_edit)
+        self.assertEqual(dict(config.setting_sources)["check_after_edit"], "profile")
+        self.assertTrue(public_config(config, details)["agent"]["check_after_edit"])
+        project = self.write('[agent]\ncheck_after_edit=false\n', self.root / "project.toml")
+        with self.assertRaisesRegex(ValueError, "cannot disable.*edit checks"):
+            self.resolve(settings.with_project(project), profile="development")
+        self.assertFalse(self.resolve(settings, profile="development", check_after_edit=False)[0].check_after_edit)
+        extra = self.write('[agent]\ncheck_after_edit=true\n', self.parent / "cli-edit-checks.toml")
+        with self.assertRaisesRegex(ValueError, "requires fixed"):
+            self.resolve(load_settings(extra), model="fixture")
+        self.assertTrue(self.resolve(load_settings(extra), model="fixture", checks=(("python", "-V"),))[0].check_after_edit)
+        code, output, _ = self.invoke(["--config", str(self.path), "--profile", "development", "--no-check-after-edit", "--show-config"])
+        self.assertEqual(code, 0)
+        self.assertFalse(json.loads(output)["agent"]["check_after_edit"])
+        bad = self.write('[agent]\ncheck_after_edit="yes"\n', self.parent / "invalid-checks.toml")
+        with self.assertRaises(ValueError):
+            load_settings(bad)
+
     def test_configured_storage_autosave_is_opt_in_and_listing_does_not_need_key(self):
         self.write('''provider="x"
 [providers.x]

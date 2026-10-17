@@ -29,7 +29,7 @@ def configuration_schema():
     agent = obj({
         "max_steps": integer(1, 100), "timeout": number(0, 120, True), "max_output": integer(256, 1000000),
         "max_context_bytes": integer(4096, 2097152), "max_tokens": integer(1, 65536), "checks": checks,
-        **{name: boolean for name in ("stream", "thinking", "read_only", "inherit_env", "compact_context", "request_usage", "project_instructions", "check_before_task")},
+        **{name: boolean for name in ("stream", "thinking", "read_only", "inherit_env", "compact_context", "request_usage", "project_instructions", "check_before_task", "check_after_edit")},
     })
     groups = {
         "agent": agent, "generation": generation,

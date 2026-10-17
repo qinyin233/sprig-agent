@@ -433,6 +433,28 @@ class TuiTests(unittest.IsolatedAsyncioTestCase):
             self.assertFalse(json.loads(app.messages[5]["content"])["approved"])
             self.assertEqual((self.root / "src/a.py").read_text(), "value = 1\n")
 
+    async def test_edit_check_requires_new_approval_and_rejection_stops_before_next_response(self):
+        from dataclasses import replace
+        self.config = replace(self.config, check_after_edit=True,
+                              checks=((sys.executable, "-I", "-B", "-c", "print('fixed checkpoint')"),))
+        (self.root / "value.txt").write_text("old", encoding="utf-8")
+        provider = ScriptedProvider([call("edit", "edit_file", {"path": "value.txt", "old": "old", "new": "new"}), response("Done")])
+        app = self.app(provider)
+        async with app.run_test(size=(110, 36)) as pilot:
+            await self.send_text(pilot, "Repair the file")
+            await self.until(pilot, lambda: isinstance(app.screen, ApprovalScreen))
+            await self.click(pilot, "#approve")
+            await self.until(pilot, lambda: isinstance(app.screen, ApprovalScreen) and app.agent.edit_check_status == "running")
+            self.assertIn("fixed checkpoint", app.screen.description)
+            await self.click(pilot, "#reject")
+            await self.until(pilot, lambda: not app.busy)
+            self.assertEqual(app.agent.edit_check_status, "blocked")
+            self.assertEqual(len(provider.calls), 1)
+            self.assertEqual((self.root / "value.txt").read_text(), "new")
+            self.assertEqual(app.last_status, 2)
+            await self.send_text(pilot, "/status")
+            await self.until(pilot, lambda: "编辑后检查: blocked" in app.transcript)
+
     async def test_baseline_rejection_blocks_model_and_continue_requires_fresh_approval(self):
         from dataclasses import replace
         self.config = replace(self.config, check_before_task=True,

@@ -107,7 +107,7 @@ def chat(agent, task, messages, emit, *, autostart=True):
                 else:
                     emit("No task to continue. Enter a task first.")
             elif task == "/status":
-                emit(f"Messages: {len(messages or [])} | model: {agent.config.model} | acceptance checks: {len(agent.config.checks)} | baseline: {agent.baseline_status} | last status: {status}")
+                emit(f"Messages: {len(messages or [])} | model: {agent.config.model} | acceptance checks: {len(agent.config.checks)} | baseline: {agent.baseline_status} | edit checks: {agent.edit_check_status} | last status: {status}")
             elif task == "/context":
                 emit(json.dumps(agent.context_preview(messages), ensure_ascii=False, indent=2))
             elif task == "/plan":
@@ -199,6 +199,8 @@ def main(argv=None):
                         help="fixed acceptance command, repeatable; execution still requires approval")
     parser.add_argument("--check-before-task", action=argparse.BooleanOptionalAction, default=None,
                         help="propose fixed --check commands before every task/continue/resume; fresh approval required; final checks still run")
+    parser.add_argument("--check-after-edit", action=argparse.BooleanOptionalAction, default=None,
+                        help="propose fixed checks after successful file-edit batches; fresh approval and final acceptance still required")
     group = parser.add_mutually_exclusive_group()
     group.add_argument("--save-session", metavar="NAME")
     group.add_argument("--resume", metavar="NAME")

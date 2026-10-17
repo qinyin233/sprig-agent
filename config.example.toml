@@ -65,6 +65,7 @@ compact_context = false
 project_instructions = true
 checks = [] # arrays of argv; each command still asks for fresh approval
 check_before_task = false # opt in only with nonempty checks; final checks still run
+check_after_edit = false # fixed checks once after each successful file-edit batch
 
 [instructions]
 files = [] # e.g. ["CONTRIBUTING.md", "docs/coding-style.md"]; required if listed
@@ -126,6 +127,7 @@ interface = "tui"
 read_only = true
 checks = []
 check_before_task = false
+check_after_edit = false
 
 [profiles.review.tools]
 edit_file = false
