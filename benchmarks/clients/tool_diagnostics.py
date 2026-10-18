@@ -14,7 +14,7 @@ class ToolDiagnostics:
 
     def record(self, name, arguments, result):
         summary = {"error": "error" in result}
-        for field in ("approved", "timed_out", "output_limited", "truncated", "line_truncated"):
+        for field in ("approved", "timed_out", "output_limited", "truncated", "line_truncated", "range_complete"):
             if type(result.get(field)) is bool:
                 summary[field] = result[field]
         for field in ("returncode", "files_read", "bytes_read", "entries_scanned", "skipped_files"):

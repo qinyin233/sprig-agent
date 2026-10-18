@@ -54,6 +54,15 @@ class ToolDiagnosticsTests(unittest.TestCase):
             self.assertNotIn("matched_lines", report)
         self.assertNotIn("private", json.dumps([found, counted]))
 
+    def test_range_completeness_is_a_boolean_diagnostic_without_source_or_identifiers(self):
+        tracker = module.ToolDiagnostics()
+        for flag in (True, False):
+            report = tracker.record("read_file", {"path": "private"}, {"range_complete": flag, "content": "private"})
+            self.assertIs(report["range_complete"], flag)
+            self.assertNotIn("private", json.dumps(report))
+        for flag in (1, "private", None):
+            self.assertNotIn("range_complete", tracker.record("read_file", {}, {"range_complete": flag}))
+
     def test_retained_window_is_bounded_and_non_numeric_results_cannot_leak(self):
         tracker = module.ToolDiagnostics()
         for index in range(129):

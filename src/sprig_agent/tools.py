@@ -52,7 +52,7 @@ STRING = {"type": "string"}
 TOOL_SCHEMAS = [
     schema("list_files", "List one workspace directory; no symlinks or protected files.",
            {"path": STRING}),
-    schema("read_file", "UTF-8. Modes: 1-based offset/limit; exact symbol (Class.method, <=512 KiB; check symbol_complete); cursor='start'/next_cursor. Ranges numbered; line_numbers=false raw. Scans <=8 MiB; partial lines lack read_id.",
+    schema("read_file", "UTF-8 numbered offset/limit (line_numbers=false raw): check range_complete; truncated may mean later lines. symbol exact <=512KiB: check symbol_complete. cursor='start'/next_cursor bytes; scan<=8MiB. Partial lines lack read_id.",
            {"path": STRING, "offset": {"type": "integer", "minimum": 1, "maximum": 1000000},
             "limit": {"type": "integer", "minimum": 1, "maximum": 10000}, "line_numbers": {"type": "boolean"},
             "cursor": {"type": "string", "maxLength": 80},
@@ -361,7 +361,10 @@ class Tools:
 
     def _read_page(self, path, offset, limit, *, line_numbers=False):
         raw, text = self._read_validated(path)
-        return self._line_page(path, raw, text, offset, limit, line_numbers=line_numbers)
+        result = self._line_page(path, raw, text, offset, limit, line_numbers=line_numbers)
+        requested_end = min(result["total_lines"], offset + limit - 1)
+        result["range_complete"] = not result["line_truncated"] and result["end_line"] >= requested_end
+        return result
 
     def _read_symbol(self, path, symbol, *, line_numbers):
         language = language_for(path)

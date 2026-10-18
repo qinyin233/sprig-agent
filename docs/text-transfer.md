@@ -6,6 +6,17 @@
 
 密集搜索可先用 `search(output_mode="files")` 只发现匹配文件，或用 `output_mode="count"` 得到已完整扫描文件的匹配行数，再有针对性地读取源码。两者不返回正文，仍先完整校验受限文件，不扩大扫描限额；详见[精简搜索模式](compact-search.md)。
 
+按行读取另外返回 `range_complete`，表示本次请求窗口是否完整。不要把 `truncated=true` 单独解释为窗口缺失：它也可能只是表示文件后面还有行。
+
+| 按行读取结果 | 含义 |
+| --- | --- |
+| `range_complete=true`、`truncated=true` | 请求窗口完整，文件仍有后续行；是否继续读取取决于任务 |
+| `range_complete=true`、`truncated=false` | 请求窗口完整，已到 EOF；空文件的有效首窗口也完整 |
+| `range_complete=false`、`line_truncated=false` | 输出限额使部分请求行没有返回；已返回的完整行仍可拥有原有编辑读取标识 |
+| `range_complete=false`、`line_truncated=true` | 首个物理行只返回前缀，没有编辑读取标识；可改用字节分页 |
+
+窗口截至所请求的 `offset + limit - 1` 或更早的 EOF；只指定 `line_numbers=true` 时仍使用原有的 2000 行默认窗口。原始前缀、字节页不返回此字段，命名读取继续使用 `symbol_complete`。这不增加读取、输出或请求预算，也不是写入授权；隐私、只读、取消、版本绑定和逐次批准保持不变。旧成功正文压缩后保留完整性标记，完整保存历史不变。
+
 | 入口 | 范围与限制 |
 | --- | --- |
 | CLI `--file` / TUI `/add` | 每批 1–16 个完整文件，每个至多 32 KiB 且受 `max_output` 约束，合计至多 128 KiB；全部成功才加入历史 |
