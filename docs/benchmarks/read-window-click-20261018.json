@@ -1,0 +1,87 @@
+{
+  "schema": 1,
+  "scope": "offline reread of exact windows from a retained failed model trace; not another model or task-acceptance test",
+  "source_commit": "a223628d18f208d5d06a27bfd4653b53810450a3",
+  "implementation_sha256": "99fa949272cb7d1bf215b593e7a7a79ec2548d602013e167086b380474c22556",
+  "driver_sha256": "5284bdc535e5cca944b93aef6da38ec1bd081ed78cf3c13001325ea8886eb7d6",
+  "prior_model_source_commit": "c9bac12381c4c9a89bf864e8b66faf2651567bb9",
+  "private_session_sha256": "ecf28666b8c537d0462c49c8fb3d808475ff32836c2caf8ef7700c5856a2eced",
+  "input_candidate_sha256": "cd5c28d37e22ac09236d52349599776c220648241ec2410c02585c13c0d34bc6",
+  "model_requests": 0,
+  "candidate_code_executed": false,
+  "reads": [
+    {
+      "ordinal": 1,
+      "offset": 180,
+      "limit": 100,
+      "end_line": 279,
+      "range_complete": true,
+      "truncated": true,
+      "line_truncated": false,
+      "content_bytes": 3638,
+      "content_sha256": "547d4f6c4c167cdef9fcd1db6732b745581c64d365701c4447b4032cec5d859f",
+      "other_result_fields_match_except_ephemeral_read_id": true
+    },
+    {
+      "ordinal": 2,
+      "offset": 1930,
+      "limit": 60,
+      "end_line": 1989,
+      "range_complete": true,
+      "truncated": true,
+      "line_truncated": false,
+      "content_bytes": 2746,
+      "content_sha256": "d5ce105601642347b00fd5bb23316da53a30c9d69f375e98b11bacc684c2d60a",
+      "other_result_fields_match_except_ephemeral_read_id": true
+    },
+    {
+      "ordinal": 3,
+      "offset": 130,
+      "limit": 30,
+      "end_line": 159,
+      "range_complete": true,
+      "truncated": true,
+      "line_truncated": false,
+      "content_bytes": 1138,
+      "content_sha256": "5c9adf9c79f92e8ab61677156f44a1f73677f49dc2a3e6f606450735d2b6fc92",
+      "other_result_fields_match_except_ephemeral_read_id": true
+    },
+    {
+      "ordinal": 4,
+      "offset": 1,
+      "limit": 130,
+      "end_line": 130,
+      "range_complete": true,
+      "truncated": true,
+      "line_truncated": false,
+      "content_bytes": 4991,
+      "content_sha256": "372b03ffcbc0ec7f9da9974dfa8b658fc53eba504ed9e95dd46c3d3efa0166e6",
+      "other_result_fields_match_except_ephemeral_read_id": true
+    },
+    {
+      "ordinal": 5,
+      "offset": 280,
+      "limit": 73,
+      "end_line": 352,
+      "range_complete": true,
+      "truncated": false,
+      "line_truncated": false,
+      "content_bytes": 2534,
+      "content_sha256": "e31c855a814c2be890897fa4b61f5c6dd1cf1277dbfadb90000c307a50ad756c",
+      "other_result_fields_match_except_ephemeral_read_id": true
+    },
+    {
+      "ordinal": 6,
+      "offset": 232,
+      "limit": 55,
+      "end_line": 286,
+      "range_complete": true,
+      "truncated": true,
+      "line_truncated": false,
+      "content_bytes": 1897,
+      "content_sha256": "9eab3c8a75dd3dcdee24367b7402e9f90f644b1e7cfac72d41d4425c43999fb7",
+      "other_result_fields_match_except_ephemeral_read_id": true
+    }
+  ],
+  "private_candidate_and_session_unchanged": true
+}

@@ -1,0 +1,370 @@
+{
+  "schema": 1,
+  "scope": "six-request recovery diagnostic from a previous failed candidate; not a fresh task score or controlled comparison",
+  "source_commit": "c9bac12381c4c9a89bf864e8b66faf2651567bb9",
+  "max_steps": 6,
+  "max_context_bytes": 32768,
+  "max_output": 6000,
+  "max_tokens": 2048,
+  "stream": false,
+  "thinking": false,
+  "compact_context": true,
+  "check_before_task": true,
+  "check_after_edit": true,
+  "model": "deepseek-flash",
+  "base_url": "https://api.llm.ustc.edu.cn/v1",
+  "exit_code": 2,
+  "initial_candidate_sha256": "cd5c28d37e22ac09236d52349599776c220648241ec2410c02585c13c0d34bc6",
+  "final_candidate_sha256": "cd5c28d37e22ac09236d52349599776c220648241ec2410c02585c13c0d34bc6",
+  "original_task_sha256": "2908db436a3b9ac92c17b2d60eed48baae6c6549b9a1c83bb775bc816bcf6273",
+  "effective_task_sha256": "63edc0c717f3f5811b086276919c68878ca17ff4509ed680ef3f262f8c3113a1",
+  "repository_task": {
+    "protocol": 1,
+    "repository": "pallets/click",
+    "snapshot_files": 52,
+    "base_commit": "19fd4d6e18bc9fce451f92f422696b11169faa57",
+    "base_sha256": "7d610833c8a6564f980f747e4601e7f4821872702c4a59f32ff9c5d653300d08",
+    "acceptance_commit": "831c8f0948af519e45b90801d7430ff25451f972",
+    "acceptance_snapshot_sha256": "62d0162a63fa5322307e29d1710ec7624bd3ca20572329fddbdae1fe628f628d",
+    "expected_upstream_checks": 642,
+    "public_exception_contract": true,
+    "acceptance_python": "3.12",
+    "acceptance_pytest": "8.4.2",
+    "entry_sha256": "f140413cd276f36c79bfcece77a03073668235db3661eddf2feca0c0d1e012e9",
+    "adapter_sha256": "309d80e760b4203ca0ad8548a7d841eb6b3f54ec39792d6c7724dca4826b08b8",
+    "comparison_lock_sha256": "eb1207065a83573e2e9fd9a879694ffcb458c93f15a00a504a4c607a1d2e32e2",
+    "task_sha256": "2908db436a3b9ac92c17b2d60eed48baae6c6549b9a1c83bb775bc816bcf6273"
+  },
+  "verifier_sha256": "b2aad5ce7e8c4595eb6c132f3900843986da292683ca8e20cec2eb6035786bf3",
+  "verifier_intact": true,
+  "self_check_intact": true,
+  "elapsed_ms": 261048.01,
+  "requests": {
+    "available": true,
+    "scope": "current provider instance; not persisted or sent to the model",
+    "attempts": 6,
+    "not_attempted": 0,
+    "outcomes": {
+      "success": 6,
+      "error": 0,
+      "cancelled": 0
+    },
+    "failures": {},
+    "request_bytes": 142914,
+    "response_bytes": 6584,
+    "elapsed_ms": 229496.643,
+    "usage": {
+      "prompt_tokens": {
+        "reported_sum": 37221,
+        "known_requests": 6,
+        "unknown_requests": 0,
+        "complete_sum": 37221
+      },
+      "completion_tokens": {
+        "reported_sum": 1237,
+        "known_requests": 6,
+        "unknown_requests": 0,
+        "complete_sum": 1237
+      },
+      "total_tokens": {
+        "reported_sum": 38458,
+        "known_requests": 6,
+        "unknown_requests": 0,
+        "complete_sum": 38458
+      }
+    },
+    "recent_limit": 128,
+    "recent_dropped": 0,
+    "recent": [
+      {
+        "attempted": true,
+        "streamed": false,
+        "outcome": "success",
+        "http_status": 200,
+        "request_bytes": 14858,
+        "response_bytes": 1180,
+        "elapsed_ms": 26433.043,
+        "first_text_ms": null,
+        "usage": {
+          "prompt_tokens": 3677,
+          "completion_tokens": 201,
+          "total_tokens": 3878
+        },
+        "finish_reason": "tool_calls",
+        "error_code": null
+      },
+      {
+        "attempted": true,
+        "streamed": false,
+        "outcome": "success",
+        "http_status": 200,
+        "request_bytes": 17696,
+        "response_bytes": 1102,
+        "elapsed_ms": 56589.748,
+        "first_text_ms": null,
+        "usage": {
+          "prompt_tokens": 4396,
+          "completion_tokens": 224,
+          "total_tokens": 4620
+        },
+        "finish_reason": "tool_calls",
+        "error_code": null
+      },
+      {
+        "attempted": true,
+        "streamed": false,
+        "outcome": "success",
+        "http_status": 200,
+        "request_bytes": 25797,
+        "response_bytes": 1015,
+        "elapsed_ms": 33959.926,
+        "first_text_ms": null,
+        "usage": {
+          "prompt_tokens": 6716,
+          "completion_tokens": 196,
+          "total_tokens": 6912
+        },
+        "finish_reason": "tool_calls",
+        "error_code": null
+      },
+      {
+        "attempted": true,
+        "streamed": false,
+        "outcome": "success",
+        "http_status": 200,
+        "request_bytes": 27043,
+        "response_bytes": 1050,
+        "elapsed_ms": 36536.233,
+        "first_text_ms": null,
+        "usage": {
+          "prompt_tokens": 7164,
+          "completion_tokens": 173,
+          "total_tokens": 7337
+        },
+        "finish_reason": "tool_calls",
+        "error_code": null
+      },
+      {
+        "attempted": true,
+        "streamed": false,
+        "outcome": "success",
+        "http_status": 200,
+        "request_bytes": 25793,
+        "response_bytes": 965,
+        "elapsed_ms": 47519.362,
+        "first_text_ms": null,
+        "usage": {
+          "prompt_tokens": 6758,
+          "completion_tokens": 193,
+          "total_tokens": 6951
+        },
+        "finish_reason": "tool_calls",
+        "error_code": null
+      },
+      {
+        "attempted": true,
+        "streamed": false,
+        "outcome": "success",
+        "http_status": 200,
+        "request_bytes": 31727,
+        "response_bytes": 1272,
+        "elapsed_ms": 28458.331,
+        "first_text_ms": null,
+        "usage": {
+          "prompt_tokens": 8510,
+          "completion_tokens": 250,
+          "total_tokens": 8760
+        },
+        "finish_reason": "tool_calls",
+        "error_code": null
+      }
+    ]
+  },
+  "post_external": {
+    "pytest_returncode": 1,
+    "collected": 642,
+    "skipped": 0,
+    "checks_passed": 640,
+    "public_exception_contract": true,
+    "schema": 1,
+    "passed": false,
+    "failed": [
+      "tests/test_options.py::test_unknown_options[--foo]",
+      "tests/test_options.py::test_unknown_options[-f]"
+    ],
+    "other_failures": 0
+  },
+  "private_session_retained": true,
+  "candidate_retained": true,
+  "task_passed": false,
+  "completion_reason": "model_request_budget_exhausted",
+  "starting_point": "previous failed candidate; fresh session; original task plus explicit recovery disclosure",
+  "pre_external": {
+    "collected": 642,
+    "skipped": 0,
+    "checks_passed": 640,
+    "schema": 1,
+    "pytest_returncode": 1,
+    "public_exception_contract": true,
+    "passed": false,
+    "failed": [
+      "tests/test_options.py::test_unknown_options[--foo]",
+      "tests/test_options.py::test_unknown_options[-f]"
+    ],
+    "other_failures": 0
+  },
+  "pre_self_tests": {
+    "schema": 1,
+    "returncode": 1,
+    "collected": 642,
+    "checks_passed": 641,
+    "failed_count": 1,
+    "skipped": 0
+  },
+  "post_self_tests": {
+    "schema": 1,
+    "returncode": 1,
+    "collected": 642,
+    "checks_passed": 641,
+    "failed_count": 1,
+    "skipped": 0
+  },
+  "model_tool_calls": {
+    "search": 5,
+    "read_file": 6
+  },
+  "application_checks": {
+    "baseline": 2
+  },
+  "after_edit_check_exercised": false,
+  "candidate_unchanged": true,
+  "tool_errors": [
+    {
+      "tool": "search",
+      "code": "context_out_of_range",
+      "value": 12,
+      "allowed_min": 0,
+      "allowed_max": 10
+    }
+  ],
+  "request_contexts_offline_replayed": [
+    {
+      "step": 1,
+      "before_bytes": 14858,
+      "sent_bytes": 14858,
+      "compacted": false
+    },
+    {
+      "step": 2,
+      "before_bytes": 17696,
+      "sent_bytes": 17696,
+      "compacted": false
+    },
+    {
+      "step": 3,
+      "before_bytes": 25797,
+      "sent_bytes": 25797,
+      "compacted": false
+    },
+    {
+      "step": 4,
+      "before_bytes": 28888,
+      "sent_bytes": 27043,
+      "compacted": true
+    },
+    {
+      "step": 5,
+      "before_bytes": 31521,
+      "sent_bytes": 25793,
+      "compacted": true
+    },
+    {
+      "step": 6,
+      "before_bytes": 40941,
+      "sent_bytes": 31727,
+      "compacted": true
+    }
+  ],
+  "offline_replay_all_sizes_match_measured": true,
+  "private_session_sha256": "ecf28666b8c537d0462c49c8fb3d808475ff32836c2caf8ef7700c5856a2eced",
+  "private_numeric_report_sha256": "0addb5de4f92e238452d830c7cd1015d8b7df1817e9a04d4a0195b983e3f7fc0",
+  "private_launcher_sha256": "67271913f4e19c3a0c42de3cda2133a3a9696557dd5866399e90a39f0912f60b",
+  "self_check_sha256": "9a9eac219c1c56ecede9e2a2937da19bd7d3450b22e1ff851425dcf466d3d6db",
+  "billing_cost": null,
+  "controlled_comparison": false,
+  "fresh_task_score": false,
+  "operator_manual_solution_hints": false,
+  "automatic_retry": false,
+  "named_reads_requested": 0,
+  "previous_diagnostic_report": "live-click-sprig-cli-ustc-deepseek-named-recovery-20261018-01.json",
+  "previous_diagnostic_same_declared_settings_and_input": true,
+  "search_output_modes": {
+    "content": 5
+  },
+  "ranged_read_results": [
+    {
+      "offset": 180,
+      "end_line": 279,
+      "total_lines": 352,
+      "truncated": true,
+      "line_truncated": false,
+      "requested_limit": 100,
+      "content_bytes": 3638,
+      "requested_window_complete_offline": true
+    },
+    {
+      "offset": 1930,
+      "end_line": 1989,
+      "total_lines": 3507,
+      "truncated": true,
+      "line_truncated": false,
+      "requested_limit": 60,
+      "content_bytes": 2746,
+      "requested_window_complete_offline": true
+    },
+    {
+      "offset": 130,
+      "end_line": 159,
+      "total_lines": 352,
+      "truncated": true,
+      "line_truncated": false,
+      "requested_limit": 30,
+      "content_bytes": 1138,
+      "requested_window_complete_offline": true
+    },
+    {
+      "offset": 1,
+      "end_line": 130,
+      "total_lines": 352,
+      "truncated": true,
+      "line_truncated": false,
+      "requested_limit": 130,
+      "content_bytes": 4991,
+      "requested_window_complete_offline": true
+    },
+    {
+      "offset": 280,
+      "end_line": 352,
+      "total_lines": 352,
+      "truncated": false,
+      "line_truncated": false,
+      "requested_limit": 73,
+      "content_bytes": 2534,
+      "requested_window_complete_offline": true
+    },
+    {
+      "offset": 232,
+      "end_line": 286,
+      "total_lines": 352,
+      "truncated": true,
+      "line_truncated": false,
+      "requested_limit": 55,
+      "content_bytes": 1897,
+      "requested_window_complete_offline": true
+    }
+  ],
+  "guidance_observed": {
+    "search_guidance": 0,
+    "read_guidance": 0
+  }
+}
