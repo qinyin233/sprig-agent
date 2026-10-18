@@ -57,11 +57,12 @@ TOOL_SCHEMAS = [
             "limit": {"type": "integer", "minimum": 1, "maximum": 10000}, "line_numbers": {"type": "boolean"},
             "cursor": {"type": "string", "maxLength": 80},
             "symbol": {"type": "string", "minLength": 1, "maxLength": 1024}}, ["path"]),
-    schema("search", "Recursive literal or RE2 (regex=true; no lookaround/backreferences; ASCII \\w/\\d/\\b). ignore_case: full Unicode folding for literals, simple folding for RE2. Case-sensitive glob: basename or workspace path; * stays within /, ** spans components. context=0-10 surrounding lines; limit=1-1000 matching physical CR/LF lines (default 100). Query<=1000 chars; RE2: 1 MiB, cooperative 1s. Whole-file privacy, read/output bounds and cancellation. Truncated/timed_out/skipped results cannot establish absence.",
+    schema("search", "Literal default; regex=true for A|B. RE2: no lookaround/backreferences; ASCII \\w/\\d/\\b; 1MiB/cooperative 1s. ignore_case: full folding literal, simple folding RE2. glob: case-sensitive * within /, ** across. output_mode: content (default, context=0-10), files (paths), count (matching physical CR/LF lines/file); files/count need context=0. limit caps records (default 100). truncated/timed_out/skipped cannot prove absence.",
            {"query": STRING, "path": STRING, "glob": {"type": "string", "minLength": 1, "maxLength": 256},
             "ignore_case": {"type": "boolean"}, "regex": {"type": "boolean"},
             "context": {"type": "integer", "minimum": 0, "maximum": 10},
-            "limit": {"type": "integer", "minimum": 1, "maximum": 1000}}, ["query"]),
+            "limit": {"type": "integer", "minimum": 1, "maximum": 1000},
+            "output_mode": {"enum": ["content", "files", "count"]}}, ["query"]),
     schema("project_map", "Map paths and 1-based declarations (Python, JS/TS/TSX, Rust, Go, C/C++, Java). query matches literal names/paths case-insensitively; exact then prefix rank first. Focus query if truncated. Syntax only; unsupported files have paths, failed parses flagged. Read implementation before editing.",
            {"path": STRING, "query": {"type": "string", "minLength": 1, "maxLength": 256}}),
     schema("edit_file", "Exact text edits with complete diff approval, atomic write and undo. Choose old/new (old='' creates only) OR edits (<=32 unique replacements in ORIGINAL text). Parent must exist. Reread after a match failure. Prefer edit_lines for focused line changes.",
@@ -433,7 +434,7 @@ class Tools:
             result["sha256"] = hashlib.sha256(raw).hexdigest()
         return result
 
-    def search(self, query, path=".", *, glob=_MISSING, ignore_case=False, regex=False, context=0, limit=100):
+    def search(self, query, path=".", *, glob=_MISSING, ignore_case=False, regex=False, context=0, limit=100, output_mode="content"):
         self._require_tool("search")
         if not isinstance(query, str) or not query or len(query) > 1000:
             raise ToolError("query must be a nonempty string (at most 1000 characters)")
@@ -446,11 +447,18 @@ class Tools:
                             "then read_file offset/limit or symbol for more surrounding code")
         if isinstance(limit, bool) or not isinstance(limit, int) or not 1 <= limit <= 1000:
             raise ToolError("limit must be an integer between 1 and 1000")
+        if not isinstance(output_mode, str) or output_mode not in ("content", "files", "count"):
+            raise ToolError("output_mode must be content, files or count")
+        if output_mode != "content" and context:
+            raise ToolError("files/count output requires context=0; use content output for surrounding lines")
         file_glob = FileGlob(glob) if glob is not _MISSING else None
         matcher = RegexMatcher(query, ignore_case, self._check_cancelled) if regex else None
         parts = self._parts(path)
-        result = {"matches": [], "truncated": False, "skipped_files": 0,
+        field = "matches" if output_mode == "content" else "files"
+        result = {field: [], "truncated": False, "skipped_files": 0,
                   "files_read": 0, "bytes_read": 0, "entries_scanned": 0}
+        if output_mode != "content":
+            result["output_mode"] = output_mode
         if regex:
             result["timed_out"] = False
         # Reserve the whole JSON envelope and counter growth, including redaction.
@@ -462,8 +470,18 @@ class Tools:
         remaining = self.config.max_output - measure(envelope)
         budget, stopped = 8 * 1024 * 1024, False
 
+        def add_record(record):
+            nonlocal remaining, stopped
+            size = measure(record) + 2
+            if len(result[field]) >= limit or size > remaining:
+                result["truncated"] = stopped = True
+                return False
+            result[field].append(record)
+            remaining -= size
+            return True
+
         def scan_file(directory, name, prefix):
-            nonlocal budget, remaining, stopped
+            nonlocal budget, stopped
             self._check_cancelled()
             if file_glob is not None and not file_glob.matches((*prefix, name)):
                 return
@@ -481,15 +499,24 @@ class Tools:
                 return
             text = self._decode(raw)  # Check all contents before returning even one hit.
             try:
-                for hit in matching_lines(text, query, ignore_case, context, self._check_cancelled, matcher):
-                    self._check_cancelled()
-                    match = {"path": "/".join((*prefix, name)), **hit}
-                    size = measure(match) + 2
-                    if len(result["matches"]) >= limit or size > remaining:
-                        result["truncated"] = stopped = True
-                        return
-                    result["matches"].append(match)
-                    remaining -= size
+                matched = matching_lines(text, query, ignore_case, context, self._check_cancelled, matcher)
+                path = "/".join((*prefix, name))
+                if output_mode == "content":
+                    for hit in matched:
+                        self._check_cancelled()
+                        if not add_record({"path": path, **hit}):
+                            return
+                else:
+                    count = 0
+                    for _ in matched:
+                        self._check_cancelled()
+                        count += 1
+                        if output_mode == "files":
+                            break
+                    # Counts describe a complete file scan. A timeout below
+                    # must not publish a partial count as if it were exact.
+                    if count:
+                        add_record({"path": path, **({"count": count} if output_mode == "count" else {})})
             except RegexBudgetExceeded:
                 result["timed_out"] = result["truncated"] = stopped = True
 
@@ -529,6 +556,10 @@ class Tools:
                 with self._directory(parts) as fd:
                     walk(fd, parts, 0)
         self._check_cancelled()
+        if not result[field] and not regex and any(char in query for char in "|^$[]().*+?{}\\"):
+            guidance = "Literal query; set regex=true for patterns. Not retried."
+            if measure({**result, "search_guidance": guidance}) <= self.config.max_output:
+                result["search_guidance"] = guidance
         return result
 
     def project_map(self, path=".", query=""):

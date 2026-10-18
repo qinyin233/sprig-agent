@@ -20,8 +20,15 @@ class ToolDiagnostics:
         for field in ("returncode", "files_read", "bytes_read", "entries_scanned", "skipped_files"):
             if type(result.get(field)) is int:
                 summary[field] = result[field]
-        if name == "search" and isinstance(result.get("matches"), list):
-            summary["matched_lines"] = len(result["matches"])
+        if name == "search":
+            if isinstance(result.get("matches"), list):
+                summary["matched_lines"] = len(result["matches"])
+            elif result.get("output_mode") in ("files", "count") and isinstance(result.get("files"), list):
+                summary["output_mode"] = result["output_mode"]
+                summary["matched_files"] = len(result["files"])
+                if result["output_mode"] == "count" and all(isinstance(row, dict) and type(row.get("count")) is int
+                                                          and row["count"] > 0 for row in result["files"]):
+                    summary["matched_lines"] = sum(row["count"] for row in result["files"])
             if isinstance(arguments, dict) and type(arguments.get("regex", False)) is bool:
                 summary["regex"] = arguments.get("regex", False)
         if name == "read_file" and isinstance(result.get("content"), str):

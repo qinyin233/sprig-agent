@@ -40,6 +40,20 @@ class ToolDiagnosticsTests(unittest.TestCase):
         self.assertNotIn("same_output_repeats", tracker.record("run", args, {"approved": False}))
         self.assertNotIn("same_output_repeats", tracker.record("read_file", args, {"error": "private"}))
 
+    def test_compact_search_diagnostics_distinguish_files_from_line_counts(self):
+        tracker = module.ToolDiagnostics()
+        files = {"files": [{"path": "private-path"}], "output_mode": "files"}
+        found = tracker.record("search", {"query": "private-query"}, files)
+        self.assertEqual(found["matched_files"], 1)
+        self.assertNotIn("matched_lines", found)
+        counted = tracker.record("search", {}, {"files": [{"path": "private-path", "count": 12}], "output_mode": "count"})
+        self.assertEqual(counted["matched_lines"], 12)
+        self.assertEqual(counted["matched_files"], 1)
+        for invalid in (True, -1, "private-count"):
+            report = tracker.record("search", {}, {"files": [{"count": invalid}], "output_mode": "count"})
+            self.assertNotIn("matched_lines", report)
+        self.assertNotIn("private", json.dumps([found, counted]))
+
     def test_retained_window_is_bounded_and_non_numeric_results_cannot_leak(self):
         tracker = module.ToolDiagnostics()
         for index in range(129):
