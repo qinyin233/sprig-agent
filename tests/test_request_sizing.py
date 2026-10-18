@@ -28,6 +28,30 @@ class RequestSizingTests(unittest.TestCase):
     def oracle(self, value):
         return json.dumps(value, ensure_ascii=False, separators=(",", ":")).encode("utf-8")
 
+    def test_indented_sizes_match_standard_encoder_including_empty_and_nested_values(self):
+        values = [None, [], {}, (), [[], {}, [True, None, 1.5]],
+                  {None: "none", False: [0, -1], 1.5: "float"},
+                  {"中文🙂": [{"escaped": '\\"\n\x00' * 4097}, {}]},
+                  {"deep": [[[{"empty": [], "value": "\ufeff中🙂" * 4097}]]]}]
+        for indent in (0, 1, 2, 4):
+            for value in values:
+                with self.subTest(indent=indent, kind=type(value).__name__):
+                    expected = len(json.dumps(value, ensure_ascii=False, indent=indent).encode("utf-8"))
+                    self.assertEqual(encoded_size(value, indent=indent, max_bytes=expected), expected)
+                    with self.assertRaises(JsonBudgetExceeded):
+                        encoded_size(value, indent=indent, max_bytes=expected - 1)
+
+    def test_indented_budget_includes_structure_and_checks_cancellation(self):
+        value = {"items": [{"value": "small"} for _ in range(100)]}
+        compact = encoded_size(value)
+        self.assertGreater(encoded_size(value, indent=2), compact)
+        with self.assertRaises(JsonBudgetExceeded):
+            encoded_size(value, max_bytes=compact, indent=2)
+        check = Mock(side_effect=[None] * 10 + [KeyboardInterrupt()])
+        with self.assertRaises(KeyboardInterrupt):
+            encoded_size(value, indent=2, check_cancelled=check)
+        self.assertEqual(check.call_count, 11)
+
     def test_sizes_match_standard_encoder_for_json_types_keys_and_chunk_boundaries(self):
         values = [None, True, False, 0, -1, 10**100, -0.0, 1e-20, 1e20, float("inf"), float("nan"),
                   "", "中文🙂\u2028\ufeff", '\\"\b\t\n\f\r\0\x1f\x7f', [], {}, [1, (), {"nested": [True, None]}],

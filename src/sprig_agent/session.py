@@ -13,6 +13,7 @@ from contextlib import contextmanager
 
 from .config import redact
 from .filesystem import Directory
+from .json_budget import JsonBudgetExceeded, encoded_size
 from .provider import ProviderError, validate_message
 
 MAX_SESSION = 8 * 1024 * 1024
@@ -177,8 +178,13 @@ class SessionStore:
 
     def save(self, name, messages):
         filename = self._filename(name)
-        body = json.dumps(redact({"version": 1, "binding": self.config.binding(), "messages": messages},
-                                 self.config.secrets), ensure_ascii=False, indent=2).encode("utf-8")
+        payload = redact({"version": 1, "binding": self.config.binding(), "messages": messages},
+                         self.config.secrets)
+        try:
+            encoded_size(payload, max_bytes=MAX_SESSION, indent=2)
+        except JsonBudgetExceeded:
+            raise SessionError("session exceeds 8 MiB; no data was overwritten") from None
+        body = json.dumps(payload, ensure_ascii=False, indent=2).encode("utf-8")
         if len(body) > MAX_SESSION:
             raise SessionError("session exceeds 8 MiB; no data was overwritten")
         with self._reservation(name):

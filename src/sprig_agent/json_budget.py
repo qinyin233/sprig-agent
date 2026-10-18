@@ -1,4 +1,4 @@
-"""Count compact UTF-8 JSON exactly, without allocating a complete encoding."""
+"""Count compact or indented UTF-8 JSON without a complete encoded allocation."""
 
 import json
 
@@ -24,7 +24,7 @@ def _key_text(key):
     raise TypeError("JSON object keys must be strings or JSON scalars")
 
 
-def _sizes(value):
+def _sizes(value, indent=None, depth=0):
     if isinstance(value, str):
         yield from _string_sizes(value)
     elif isinstance(value, dict):
@@ -32,27 +32,39 @@ def _sizes(value):
         for index, (key, item) in enumerate(value.items()):
             if index:
                 yield 1
+            if indent is not None:
+                yield 1 + indent * (depth + 1)  # Newline and item indentation.
             yield from _string_sizes(_key_text(key))
-            yield 1  # Colon.
-            yield from _sizes(item)
+            yield 1 if indent is None else 2  # Colon and optional space.
+            yield from _sizes(item, indent, depth + 1)
+        if value and indent is not None:
+            yield 1 + indent * depth  # Closing delimiter's newline/indentation.
     elif isinstance(value, (list, tuple)):
         yield 2
         for index, item in enumerate(value):
             if index:
                 yield 1
-            yield from _sizes(item)
+            if indent is not None:
+                yield 1 + indent * (depth + 1)
+            yield from _sizes(item, indent, depth + 1)
+        if value and indent is not None:
+            yield 1 + indent * depth
     else:
         # Let the reference encoder validate scalar types and format numbers.
         yield len(json.dumps(value, **JSON_OPTIONS).encode("utf-8"))
 
 
-def encoded_size(value, *, max_bytes=None, check_cancelled=None):
+def encoded_size(value, *, max_bytes=None, check_cancelled=None, indent=None):
+    # None uses JSON_OPTIONS; an integer matches json.dumps(ensure_ascii=False,
+    # indent=indent) with the standard indented separators, including indent=0.
+    if indent is not None and (type(indent) is not int or indent < 0):
+        raise ValueError("JSON indentation must be a nonnegative integer or None")
     if max_bytes is not None and (type(max_bytes) is not int or max_bytes < 0):
         raise ValueError("JSON byte budget must be a nonnegative integer")
     if check_cancelled is not None:
         check_cancelled()
     total = 0
-    for amount in _sizes(value):
+    for amount in _sizes(value, indent):
         if check_cancelled is not None:
             check_cancelled()
         total += amount

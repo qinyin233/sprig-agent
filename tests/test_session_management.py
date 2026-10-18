@@ -8,12 +8,13 @@ import sys
 import tempfile
 import threading
 import unittest
+from dataclasses import replace
 from contextlib import redirect_stdout, redirect_stderr
 from unittest.mock import patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 from sprig_agent import cli, session
-from sprig_agent.config import Config
+from sprig_agent.config import Config, redact
 from sprig_agent.session import SessionError, SessionStore
 
 
@@ -103,6 +104,60 @@ class SessionManagementTests(unittest.TestCase):
                     self.assertEqual(other.load(name), expected)
                     other.release(name)
                     self.assertEqual(list(self.directory.glob(".*.tmp")), [])
+
+    def test_oversize_save_stops_before_whole_encoding_and_preserves_file_and_ownership(self):
+        self.store.save("active", self.history)
+        original = (self.directory / "active.json").read_bytes()
+        encode = json.dumps
+
+        def no_whole_transcript(value, *args, **kwargs):
+            if isinstance(value, dict) and "messages" in value:
+                raise AssertionError("oversized transcript must not be fully encoded")
+            return encode(value, *args, **kwargs)
+
+        for text in ("\x00" * 4096, "中🙂" * 4096):
+            history = self.history + [{"role": "assistant", "content": text}]
+            with patch.object(session, "MAX_SESSION", 4096), patch.object(json, "dumps", no_whole_transcript):
+                for name in ("active", "fresh"):
+                    with self.subTest(name=name), self.assertRaisesRegex(SessionError, "exceeds 8 MiB"):
+                        self.store.save(name, history)
+        self.assertEqual((self.directory / "active.json").read_bytes(), original)
+        self.assertFalse((self.directory / "fresh.json").exists())
+        self.assertEqual(list(self.directory.glob(".*.tmp")), [])
+        other = self.other()
+        with self.assertRaisesRegex(SessionError, "busy"):
+            other.load("active")
+        other.ensure_new("fresh")
+        other.release("fresh")
+        self.assertEqual(self.store.load("active"), self.history)
+
+    def test_session_size_boundary_uses_exact_existing_indented_utf8_format(self):
+        history = self.history + [{"role": "assistant", "content": "中🙂\\\n\x00" * 20}]
+        payload = {"version": 1, "binding": self.config.binding(), "messages": history}
+        expected = json.dumps(payload, ensure_ascii=False, indent=2).encode("utf-8")
+        compact = json.dumps(payload, ensure_ascii=False, separators=(",", ":")).encode("utf-8")
+        self.assertLess(len(compact), len(expected) - 1)
+        with patch.object(session, "MAX_SESSION", len(expected)):
+            self.store.save("boundary", history)
+        self.assertEqual((self.directory / "boundary.json").read_bytes(), expected)
+        with patch.object(session, "MAX_SESSION", len(expected) - 1):
+            with self.assertRaisesRegex(SessionError, "exceeds 8 MiB"):
+                self.store.save("boundary", history)
+        self.assertEqual((self.directory / "boundary.json").read_bytes(), expected)
+        self.assertEqual(self.store.load("boundary"), history)
+
+    def test_session_budget_applies_to_redacted_payload_when_redaction_changes_size(self):
+        for index, key in enumerate(("fixture!", "fixture-credential-value-with-long-suffix")):
+            self.store.config = replace(self.config, api_key=key)
+            history = self.history + [{"role": "assistant", "content": key * 200}]
+            payload = {"version": 1, "binding": self.store.config.binding(), "messages": history}
+            expected = json.dumps(redact(payload, self.store.config.secrets), ensure_ascii=False, indent=2).encode("utf-8")
+            with patch.object(session, "MAX_SESSION", len(expected)):
+                self.store.save("redacted" + str(index), history)
+            actual = (self.directory / ("redacted" + str(index) + ".json")).read_bytes()
+            self.assertEqual(actual, expected)
+            self.assertNotIn(key.encode(), actual)
+            self.assertEqual(history[-1]["content"], key * 200, "original history must remain unchanged")
 
     def test_new_save_failure_releases_name_for_retry_and_does_not_overwrite_existing(self):
         other = self.other()
