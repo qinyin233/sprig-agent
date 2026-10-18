@@ -100,12 +100,28 @@ def chat(agent, task, messages, emit, *, autostart=True):
             return status
         try:
             if task == "/help":
+                emit("/worktrees lists local checkouts; /worktree PATH creates a detached checkout after fresh approvals. All remaining text is the path; the current conversation stays in this workspace.")
                 emit("Enter a task to continue the same conversation. /continue explicitly continues retained history without adding a duplicate request; /status shows local context; /plan shows model-reported progress, never approval or acceptance; /context previews the request budget; /usage shows local numeric request measurements and unknown token counts; /compact confirms request-only elision; /changes lists exact edit backups; /undo and /redo require diff approval; /discard-history confirms removal of backups; /diff and /git show Git changes with approval; /exit closes chat.")
             elif task == "/continue":
                 if messages and len(messages) >= 2:
                     run(None)
                 else:
                     emit("No task to continue. Enter a task first.")
+            elif task == "/worktrees" or task == "/worktree" or task.startswith("/worktree "):
+                if task == "/worktree":
+                    emit("Use /worktree PATH to create a detached checkout, or /worktrees to list. The current conversation stays in this workspace.")
+                    continue
+                from .worktrees import worktree_action
+                result = worktree_action(agent.config, agent.tools.approve,
+                                         path=task[len("/worktree "):].strip() if task.startswith("/worktree ") else None,
+                                         cancel_event=agent.cancel_event)
+                if result.get("commands_approved") and messages:
+                    status = 2
+                    if history_ready:
+                        agent.record_workspace_change(messages, {"action": "command", "path": ".", "outcome": "uncertain"})
+                elif "error" in result and status == 0:
+                    status = 2
+                emit(json.dumps(redact(result, agent.config.secrets), ensure_ascii=False, indent=2))
             elif task == "/status":
                 emit(f"Messages: {len(messages or [])} | model: {agent.config.model} | acceptance checks: {len(agent.config.checks)} | baseline: {agent.baseline_status} | edit checks: {agent.edit_check_status} | last status: {status}")
             elif task == "/context":
@@ -143,7 +159,7 @@ def chat(agent, task, messages, emit, *, autostart=True):
             else:
                 run(task)
         except KeyboardInterrupt:
-            if task in {"/diff", "/git"} and messages and history_ready:
+            if (task in {"/diff", "/git", "/worktrees"} or task.startswith("/worktree ")) and messages and history_ready:
                 # An interrupt can occur after an approved command starts.
                 # Retain only the uncertainty notice, never local command output.
                 messages.append({"role": "user", "content": "A local command was interrupted and may have changed the workspace; prior acceptance is stale. Inspect current files before continuing."})
@@ -213,6 +229,9 @@ def main(argv=None):
     group.add_argument("--models", action="store_true", help="list configured model aliases offline; no provider request")
     group.add_argument("--list-models", action="store_true", help="explicit GET /models on the selected provider; no chat completion")
     group.add_argument("--config-schema", action="store_true", help="print the configuration JSON schema offline")
+    group.add_argument("--list-worktrees", action="store_true", help="list local Git worktrees after command approval; no model request")
+    group.add_argument("--create-worktree", type=Path, metavar="PATH", help="approve a detached checkout in a new external directory; keep this conversation unchanged")
+    parser.add_argument("--worktree-ref", metavar="REF", help="local revision for --create-worktree (default HEAD); never fetch")
     parser.add_argument("--session-dir", type=Path)
     parser.add_argument("--session-max-age-days", type=int, help="retention age for explicit --prune-sessions; never auto-delete")
     parser.add_argument("--session-max-count", type=int, help="retain newest 1..256 valid sessions during explicit pruning")
@@ -224,9 +243,12 @@ def main(argv=None):
     show_metrics = False
     try:
         manage_sessions = args.list_sessions or args.delete_session or args.prune_sessions
+        manage_worktrees = args.list_worktrees or args.create_worktree is not None
+        if args.worktree_ref is not None and args.create_worktree is None:
+            raise ValueError("--worktree-ref requires --create-worktree")
         if args.dry_run and not args.prune_sessions:
             raise ValueError("--dry-run requires --prune-sessions")
-        local_configuration = args.init_config or args.show_config or args.doctor or args.models or args.list_models or args.config_schema
+        local_configuration = args.init_config or args.show_config or args.doctor or args.models or args.list_models or args.config_schema or manage_worktrees
         if os.name not in {"posix", "nt"}:
             raise ValueError("Sprig requires Linux/macOS or Windows 10+")
         if (manage_sessions or local_configuration) and (args.task or args.file or args.interface in {"chat", "tui"} or args.checks or args.resume):
@@ -263,7 +285,7 @@ def main(argv=None):
         if args.tui:
             options["stream"] = True
             options["_tui_stream"] = True
-        if manage_sessions or args.models or args.list_models:
+        if manage_sessions or args.models or args.list_models or manage_worktrees:
             options["_manage_sessions"] = not args.list_models
             if args.list_models and not args.model:
                 options["model"] = "model-catalog"
@@ -273,6 +295,12 @@ def main(argv=None):
         show_metrics = config.show_metrics
         session_dir = config.session_dir or Path.home() / ".local/state/sprig-agent/sessions"
         change_dir = config.change_history_dir
+        if manage_worktrees:
+            from .worktrees import worktree_action
+            result = worktree_action(config, approve, path=args.create_worktree,
+                                     ref="HEAD" if args.worktree_ref is None else args.worktree_ref)
+            print(terminal_text(json.dumps(redact(result, key), ensure_ascii=False, indent=2)))
+            return 2 if "error" in result or result.get("approved") is False else 0
         if args.models:
             print(terminal_text(json.dumps(redact({"models": config.model_catalog, "network_contacted": False}, key), ensure_ascii=False, indent=2)))
             return 0

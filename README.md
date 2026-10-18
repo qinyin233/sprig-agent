@@ -57,6 +57,15 @@ uv run --locked sprig
 
 逐次确认后在 `~/.sprig/config.toml` 创建私有配置，预设 `agnes-3.0-flash`，引用现有 `AGNES_API_KEY`，不写入真实密钥。已存在的配置不会覆盖。最后一条命令打开 TUI；Enter 发送，执行中可继续输入引导，`/help` 查看本地操作，`/keys` 查看快捷键。配置文件、附加规则/语言、profile、键位和设置来源见[配置与首次启动](docs/configuration.md)，完整示例见 [config.example.toml](config.example.toml)，Codex/OpenCode/Aider/Pi 的设置对照及未实现后端见[配置调研](docs/configuration-comparison.md)。
 
+### 独立任务工作目录
+
+```sh
+uv run --locked sprig --workdir /path/to/repo --create-worktree ../repo-task
+uv run --locked sprig --workdir /path/to/repo-task --tui
+```
+
+从固定提交创建 detached Git worktree，保留原目录的未提交修改。TUI 和聊天可用 `/worktrees`、`/worktree ../新任务目录`；每次 Git 命令仍逐次批准，当前会话不切换，不向模型发请求。hooks、内容过滤器和 Git 网络传输在管理过程中禁用；目录共享 Git 对象和引用，不提供 OS 沙箱。使用、恢复和隐私边界见 [worktree 工作流](docs/worktrees.md)。
+
 ### Agnes 3.0 Flash 预设
 
 已按 Agnes 的[模型说明](https://wiki.agnes-ai.com/en/docs/agnes-30-flash)接入 `agnes-3.0-flash`，Base URL 为 `https://apihub.agnes-ai.com/v1`。

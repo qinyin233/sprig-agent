@@ -84,6 +84,47 @@ class TuiTests(unittest.IsolatedAsyncioTestCase):
             self.assertFalse(app.busy)
             self.assertEqual(app.pending_tasks, [])
 
+    async def test_worktree_creation_and_listing_use_approvals_without_switching_context_or_provider(self):
+        from tests.test_worktrees import init_repo
+        head = init_repo(self.root)
+        provider = ScriptedProvider([])
+        app = self.app(provider)
+        target = self.parent / "new task with spaces"
+        async with app.run_test(size=(110, 36)) as pilot:
+            await self.send_text(pilot, "/worktree " + str(target))
+            for _ in range(4):
+                await self.until(pilot, lambda: isinstance(app.screen, ApprovalScreen))
+                previous = app.screen
+                await self.click(pilot, "#approve")
+                await self.until(pilot, lambda: app.screen is not previous)
+            await self.until(pilot, lambda: not app.busy)
+            self.assertEqual(app.last_operation_status, 0)
+            self.assertEqual(app.config.workdir, self.config.workdir)
+            self.assertEqual((target / "base.txt").read_bytes(), b"base\n")
+            self.assertEqual(provider.calls, [])
+            await self.send_text(pilot, "/worktrees")
+            await self.until(pilot, lambda: isinstance(app.screen, ApprovalScreen))
+            await self.click(pilot, "#approve")
+            await self.until(pilot, lambda: not app.busy)
+            self.assertEqual(app.last_operation_status, 0)
+            self.assertEqual(provider.calls, [])
+            self.assertIsNone(app.messages)
+        self.assertEqual(len(head), 40)
+
+    async def test_worktree_command_in_read_only_tui_does_not_ask_or_create(self):
+        from dataclasses import replace
+        self.config = replace(self.config, read_only=True)
+        provider = ScriptedProvider([])
+        app = self.app(provider)
+        target = self.parent / "not-created"
+        async with app.run_test(size=(110, 36)) as pilot:
+            await self.send_text(pilot, "/worktree " + str(target))
+            await self.until(pilot, lambda: not app.busy)
+            self.assertNotIsInstance(app.screen, ApprovalScreen)
+            self.assertEqual(app.last_operation_status, 2)
+            self.assertFalse(target.exists())
+            self.assertEqual(provider.calls, [])
+
     async def test_pending_guidance_has_count_and_utf8_byte_caps_without_superseding_approval(self):
         from dataclasses import replace
         self.config = replace(self.config, max_context_bytes=4096)

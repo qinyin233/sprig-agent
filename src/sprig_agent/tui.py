@@ -459,7 +459,7 @@ class SprigApp(App[int]):
             def decide(approved):
                 answer[0] = approved
                 self.approval = None
-                if approved and self.local_action == "run":
+                if approved and self.local_action in {"run", "worktree-create", "worktree-list"}:
                     # Even a viewing command can invoke Git helpers. Treat its
                     # workspace effects conservatively, including cancellation.
                     self.invalidate_task()
@@ -537,6 +537,9 @@ class SprigApp(App[int]):
                     self.agent.record_workspace_change(self.messages, result)
                 elif name == "attach":
                     self.messages, result = self.agent.attach_files(arguments["paths"], self.messages)
+                elif name in {"worktree-create", "worktree-list"}:
+                    from .worktrees import worktree_action
+                    result = worktree_action(self.config, self.confirm, cancel_event=self.cancel_event, **arguments)
                 else:
                     result = self.tools.execute(name, arguments)
                 self.emit("[本地查看，不自动上传]\n" + json.dumps(result, ensure_ascii=False, indent=2))
@@ -799,6 +802,7 @@ class SprigApp(App[int]):
                         "/continue /new /add 文件路径 /map [名称或路径查询] /git /diff /compact\n"
                         "/changes /undo /redo /discard-history /sessions /prune [--dry-run]\n"
                         "/save [名称] /restore [名称] /delete [名称]\n"
+                        "/worktrees /worktree 新目录路径（完整剩余文本作为路径；不会切换当前对话）\n"
                         "执行中可输入普通消息调整引导。// 开头发送以 / 开头的普通消息。\n"
                         "提供商和模型通过 config.toml 或启动参数选择；恢复时仍校验绑定。\n")
             return
@@ -828,19 +832,25 @@ class SprigApp(App[int]):
         actions = {"/continue": "continue", "/new": "new", "/map": "map", "/git": "git", "/diff": "diff",
                    "/context": "context-budget", "/usage": "usage", "/compact": "compact",
                    "/changes": "changes", "/undo": "undo", "/redo": "redo", "/discard-history": "discard-history",
-                   "/sessions": "sessions", "/save": "save", "/restore": "restore", "/delete": "delete", "/add": "attach", "/prune": "prune-sessions"}
+                   "/sessions": "sessions", "/save": "save", "/restore": "restore", "/delete": "delete", "/add": "attach", "/prune": "prune-sessions",
+                   "/worktrees": "worktree-list", "/worktree": "worktree-create"}
         if command not in actions:
             self.append("\n未知本地命令；输入 /help。消息未发送给模型。\n")
             return
         if self.busy:
             self.append("\n该本地操作需要等待当前任务结束；可用 /cancel，或发送普通消息调整任务。\n")
             return
-        if argument and command not in {"/map", "/save", "/restore", "/delete", "/add", "/prune"}:
+        if argument and command not in {"/map", "/save", "/restore", "/delete", "/add", "/prune", "/worktree"}:
             self.append("\n该命令不接受参数；输入 /help。\n")
             return
         if command in {"/save", "/restore", "/delete"} and argument:
             self.query_one("#session-name", Input).value = argument
-        if command == "/prune":
+        if command in {"/worktrees", "/worktree"}:
+            if command == "/worktree" and not argument:
+                self.append("\n用法：/worktree 新目录路径；父目录须已存在，目标须在当前仓库外且不存在。\n")
+                return
+            self.start(local=(actions[command], {"path": argument} if argument else {}))
+        elif command == "/prune":
             if argument not in {"", "--dry-run"}:
                 self.append("\n用法：/prune [--dry-run]；需先配置会话保留策略。\n")
                 return

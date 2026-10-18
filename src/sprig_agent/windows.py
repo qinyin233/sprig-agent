@@ -99,7 +99,9 @@ def validate_component(name):
         raise ValueError("invalid Windows path component (device, stream or ambiguous name)")
 
 
-def open_file(path, *, directory=False, create=False, attributes=None, exclusive=False):
+def open_file(path, *, directory=False, create=False, attributes=None, exclusive=False, allow_git_metadata=False):
+    if allow_git_metadata and (create or exclusive):
+        raise ValueError("Git metadata capability is read-only")
     # FILE_LIST_DIRECTORY counts as read access for share-delete enforcement;
     # attribute-only handles do not pin directories against renaming.
     access = 0x20000 | (0x81 if directory else (0x40000000 if create else 0x80000000))
@@ -124,7 +126,7 @@ def open_file(path, *, directory=False, create=False, attributes=None, exclusive
         # Long names expose protected files addressed through DOS 8.3 aliases.
         for part in Path(final.value).parts[1:]:
             lowered = part.lower()
-            if lowered == ".git" or lowered == ".env" or lowered.startswith(".env."):
+            if (lowered == ".git" and not allow_git_metadata) or lowered == ".env" or lowered.startswith(".env."):
                 raise ValueError("path names a protected component")
         return handle
     except BaseException:
@@ -151,7 +153,9 @@ def existing_attributes(path):
         close_handle(handle)
 
 
-def file_descriptor(path, *, create=False, private=False, permissions_from=None, exclusive=False):
+def file_descriptor(path, *, create=False, private=False, permissions_from=None, exclusive=False, allow_git_metadata=False):
+    if allow_git_metadata and (create or exclusive or permissions_from is not None):
+        raise ValueError("Git metadata capability is read-only")
     if create and private:
         with private_attributes() as attributes:
             handle = open_file(path, create=True, attributes=attributes, exclusive=exclusive)
@@ -159,7 +163,7 @@ def file_descriptor(path, *, create=False, private=False, permissions_from=None,
         with existing_attributes(permissions_from) as attributes:
             handle = open_file(path, create=True, attributes=attributes)
     else:
-        handle = open_file(path, create=create, exclusive=exclusive)
+        handle = open_file(path, create=create, exclusive=exclusive, allow_git_metadata=allow_git_metadata)
     try:
         if private:
             check_private(handle)

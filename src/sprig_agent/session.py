@@ -92,6 +92,15 @@ class SessionStore:
         resolved = self.directory.resolve()
         if any(resolved.is_relative_to(root) for root in forbidden):
             raise SessionError("session directory must be outside the workspace/repository")
+        # A linked workspace has a different root from its original checkout.
+        # Check the destination too, so transcripts/backups cannot enter another
+        # checkout or a bare repository simply because the active root moved.
+        for parent in (resolved, *resolved.parents):
+            marker = parent / ".git"
+            if (marker.is_file() or (marker / "HEAD").is_file()
+                    or ((parent / "HEAD").is_file() and (parent / "config").is_file()
+                        and (parent / "objects").is_dir())):
+                raise SessionError("session directory must be outside every Git repository")
         directory_handle = Directory(self.directory.anchor)
         try:
             for part in self.directory.parts[1:]:
