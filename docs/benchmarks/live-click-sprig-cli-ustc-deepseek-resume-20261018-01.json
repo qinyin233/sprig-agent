@@ -1,0 +1,195 @@
+{
+  "schema": 1,
+  "scope": "four-request normal-CLI continuation of an earlier six-request failed session; not a fresh task score or controlled comparison",
+  "source_commit": "548e62a73410a6d8cf7c16c32ae069a9da33b0d4",
+  "max_steps": 4,
+  "max_context_bytes": 32768,
+  "max_output": 6000,
+  "max_tokens": 2048,
+  "stream": false,
+  "thinking": false,
+  "compact_context": true,
+  "check_before_task": true,
+  "check_after_edit": true,
+  "model": "deepseek-flash",
+  "base_url": "https://api.llm.ustc.edu.cn/v1",
+  "exit_code": 1,
+  "elapsed_ms": 179954.731,
+  "initial_candidate_sha256": "cd5c28d37e22ac09236d52349599776c220648241ec2410c02585c13c0d34bc6",
+  "final_candidate_sha256": "cd5c28d37e22ac09236d52349599776c220648241ec2410c02585c13c0d34bc6",
+  "requests": {
+    "available": true,
+    "scope": "current provider instance; not persisted or sent to the model",
+    "attempts": 2,
+    "not_attempted": 0,
+    "outcomes": {
+      "success": 2,
+      "error": 0,
+      "cancelled": 0
+    },
+    "failures": {},
+    "request_bytes": 57444,
+    "response_bytes": 3094,
+    "elapsed_ms": 63594.766,
+    "usage": {
+      "prompt_tokens": {
+        "reported_sum": 14818,
+        "known_requests": 2,
+        "unknown_requests": 0,
+        "complete_sum": 14818
+      },
+      "completion_tokens": {
+        "reported_sum": 597,
+        "known_requests": 2,
+        "unknown_requests": 0,
+        "complete_sum": 597
+      },
+      "total_tokens": {
+        "reported_sum": 15415,
+        "known_requests": 2,
+        "unknown_requests": 0,
+        "complete_sum": 15415
+      }
+    },
+    "recent_limit": 128,
+    "recent_dropped": 0,
+    "recent": [
+      {
+        "attempted": true,
+        "streamed": false,
+        "outcome": "success",
+        "http_status": 200,
+        "request_bytes": 26103,
+        "response_bytes": 1108,
+        "elapsed_ms": 39882.394,
+        "first_text_ms": null,
+        "usage": {
+          "prompt_tokens": 6743,
+          "completion_tokens": 189,
+          "total_tokens": 6932
+        },
+        "finish_reason": "tool_calls",
+        "error_code": null
+      },
+      {
+        "attempted": true,
+        "streamed": false,
+        "outcome": "success",
+        "http_status": 200,
+        "request_bytes": 31341,
+        "response_bytes": 1986,
+        "elapsed_ms": 23712.372,
+        "first_text_ms": null,
+        "usage": {
+          "prompt_tokens": 8075,
+          "completion_tokens": 408,
+          "total_tokens": 8483
+        },
+        "finish_reason": "tool_calls",
+        "error_code": null
+      }
+    ]
+  },
+  "post_external": {
+    "checks_passed": 640,
+    "pytest_returncode": 1,
+    "public_exception_contract": true,
+    "skipped": 0,
+    "collected": 642,
+    "schema": 1,
+    "passed": false,
+    "failed": [
+      "tests/test_options.py::test_unknown_options[--foo]",
+      "tests/test_options.py::test_unknown_options[-f]"
+    ],
+    "other_failures": 0
+  },
+  "post_self_tests": {
+    "schema": 1,
+    "returncode": 1,
+    "collected": 642,
+    "checks_passed": 641,
+    "failed_count": 1,
+    "skipped": 0
+  },
+  "original_session_unchanged": true,
+  "initial_workspace_backup_unchanged": true,
+  "historical_messages_preserved_except_system": true,
+  "verifier_intact": true,
+  "candidate_retained": true,
+  "session_branch_retained": true,
+  "task_passed": false,
+  "completion_reason": "context_budget_exceeded_before_provider",
+  "candidate_unchanged": true,
+  "pre_external": {
+    "checks_passed": 640,
+    "pytest_returncode": 1,
+    "collected": 642,
+    "public_exception_contract": true,
+    "schema": 1,
+    "skipped": 0,
+    "passed": false,
+    "failed": [
+      "tests/test_options.py::test_unknown_options[--foo]",
+      "tests/test_options.py::test_unknown_options[-f]"
+    ],
+    "other_failures": 0
+  },
+  "pre_self_tests": {
+    "schema": 1,
+    "returncode": 1,
+    "collected": 642,
+    "checks_passed": 641,
+    "failed_count": 1,
+    "skipped": 0
+  },
+  "model_tool_calls": {
+    "read_file": 3,
+    "search": 1
+  },
+  "application_checks": {
+    "baseline": 2
+  },
+  "model_requests_allowed_this_continuation": 4,
+  "model_requests_sent_this_continuation": 2,
+  "remaining_request_allowance": 2,
+  "previous_diagnostic_report": "live-click-sprig-cli-ustc-deepseek-compact-recovery-20261018-01.json",
+  "source_session_sha256": "ecf28666b8c537d0462c49c8fb3d808475ff32836c2caf8ef7700c5856a2eced",
+  "private_numeric_report_sha256": "3db7bded606610eed215ce39ff3fc17e86e088cf538b130883c9b3cd95058206",
+  "private_session_sha256": "9b94480a7d44de74508040493c8a985ad14844383ebcfb95db3f0e66af52cd34",
+  "private_launcher_sha256": "0ff67df58092b56b9e8ce0c1c6ffc98c98a909ea11ec2bf8cd802b30208c44f6",
+  "prior_model_requests": 6,
+  "prior_model_source_commit": "c9bac12381c4c9a89bf864e8b66faf2651567bb9",
+  "effective_task_sha256": "63edc0c717f3f5811b086276919c68878ca17ff4509ed680ef3f262f8c3113a1",
+  "verifier_sha256": "b2aad5ce7e8c4595eb6c132f3900843986da292683ca8e20cec2eb6035786bf3",
+  "self_checker_sha256": "9a9eac219c1c56ecede9e2a2937da19bd7d3450b22e1ff851425dcf466d3d6db",
+  "request_contexts_offline_replayed": [
+    {
+      "step": 1,
+      "before_bytes": 48477,
+      "sent_bytes": 26103,
+      "compacted": true
+    },
+    {
+      "step": 2,
+      "before_bytes": 54143,
+      "sent_bytes": 31341,
+      "compacted": true
+    }
+  ],
+  "offline_replay_all_sizes_match_measured": true,
+  "blocked_next_request_context": {
+    "before_bytes": 59363,
+    "after_bytes": 36561,
+    "budget_bytes": 32768,
+    "within_budget": false
+  },
+  "task_message_added": false,
+  "operator_manual_solution_hints": false,
+  "automatic_retry": false,
+  "billing_cost": null,
+  "controlled_comparison": false,
+  "fresh_task_score": false,
+  "cumulative_model_requests": 8,
+  "cumulative_reported_tokens": 53873
+}

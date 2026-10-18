@@ -1,0 +1,47 @@
+{
+  "schema": 1,
+  "scope": "offline replay of an unsent third continuation request; not a model response, token saving, or acceptance result",
+  "model_requests": 0,
+  "candidate_code_executed": false,
+  "max_context_bytes": 32768,
+  "max_steps": 4,
+  "step": 3,
+  "driver_sha256": "84a18a80efdf0faaf6b1a9d111fd3c26e55f4b5dec7326a50ce3a5514fe62687",
+  "variants": {
+    "before": {
+      "source_commit": "548e62a73410a6d8cf7c16c32ae069a9da33b0d4",
+      "implementation_sha256": "992889243661fbb39a543e80ddf0123d411d0e7d9d58937d8aed00c5c8c5d774",
+      "input_session_sha256": "9b94480a7d44de74508040493c8a985ad14844383ebcfb95db3f0e66af52cd34",
+      "before_bytes": 59363,
+      "after_bytes": 36561,
+      "within_budget": false,
+      "wire_sha256": "86eae937f57ff107cce4640307099657396927e2bbe4698be5fff4f5948b8cad",
+      "recent_messages_unchanged": true,
+      "user_messages_unchanged": true,
+      "latest_failed_checks_unchanged": true,
+      "tool_status_values_unchanged": true,
+      "ordinary_error_and_refusal_messages_unchanged": true,
+      "read_ids_remaining_in_request": 9,
+      "superseded_check_result_references": 0,
+      "session_file_unchanged": true
+    },
+    "after": {
+      "source_commit": "85499d3a38b77cbf3d83326cf34bf68c7fc13217",
+      "implementation_sha256": "869589fe300104978634ccea20e9ff091f44718ee0c6bb1b4e5bdf1a7ce9ab36",
+      "input_session_sha256": "9b94480a7d44de74508040493c8a985ad14844383ebcfb95db3f0e66af52cd34",
+      "before_bytes": 59363,
+      "after_bytes": 32574,
+      "within_budget": true,
+      "wire_sha256": "c9ca8984b7c6c94b673af62dc844ec5044323f66f3893d4270c33d50b0c5577a",
+      "recent_messages_unchanged": true,
+      "user_messages_unchanged": true,
+      "latest_failed_checks_unchanged": true,
+      "tool_status_values_unchanged": true,
+      "ordinary_error_and_refusal_messages_unchanged": true,
+      "read_ids_remaining_in_request": 3,
+      "superseded_check_result_references": 2,
+      "session_file_unchanged": true
+    }
+  },
+  "bytes_removed_from_previously_oversized_request": 3987
+}
