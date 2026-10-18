@@ -68,3 +68,5 @@ uv run --locked python -m unittest discover -s tests -q
 ```
 
 涉及 Windows 句柄行为的验证必须等待包含当前提交的 Windows runner；POSIX 平台跳过该用例不能算 Windows 通过。
+
+本批功能 SHA `ad2f1d59f773e0cc33f3a5083fe6688f951f65f8` 的 [Windows/Ubuntu 原生 CI](https://github.com/qinyin233/sprig-agent/actions/runs/39104363629) 已全部成功，两个作业的精确提交核对和完整 unittest 步骤均成功。macOS 和完整版本矩阵没有在本批运行；后续仅更新验证文档的提交跳过 CI。

@@ -54,6 +54,8 @@
 
 冻结源码后本地主测试：Windows Python 3.13.0 共 646 项、631 通过、15 平台跳过；WSL Python 3.13.14 共 646 项、628 通过、18 平台跳过。两端 mini SDK 各 25 项通过；uv 锁文件、wheel/sdist 和无缓存新 wheel 目标目录安装检查通过，安装检查复用锁定依赖，核对实际导入源码并执行本地 CLI 创建、四次明确批准、脏文件保留及跨仓库会话拒绝。未调用付费模型。这是实质 Windows 行为更新，提交使用 `[skip ci]` 避开完整矩阵，随后对该精确 SHA 手动运行精简 Windows/Ubuntu workflow；原生 CI 结果必须等实际完成后另行记录，不借用父提交或本地 WSL 结果。
 
+原生 CI 已完成：功能提交 `ad2f1d59f773e0cc33f3a5083fe6688f951f65f8` 对应 [Native regression 39104363629](https://github.com/qinyin233/sprig-agent/actions/runs/39104363629)。`core (windows-latest)`（job `117606946779`）与 `core (ubuntu-latest)`（job `117606946966`）均为 completed/success，逐项核对两端 `Verify exact commit` 和完整 unittest 步骤均为 completed/success，整个 run 也为 success。只运行这两个原生作业，没有完整 Python/client/macOS 矩阵。后续补充 CI 结果的文档提交使用 `[skip ci]`；绿色结论对应上述功能 SHA，不把它记为后续文档 SHA 的新 CI，也不代表真实模型编码成绩提高。
+
 请求准备内存（2026-10-17）：不再为预算预览和压缩构造完整请求；使用标准 JSON 字符串分块编码精确计数，Provider 超限时在完整封包与网络前拒绝。发送仍由原编码器完成，并保留最终实际长度检查。计数可取消，不改变历史、请求内容、生成参数或压缩选择，也不新增配置开关。三组同机离线夹具的输入/输出请求摘要一致，新增分配峰值由约 12–41 MiB 降至 0.3–0.4 MiB；ASCII 耗时样本略慢，不宣称全面加速或真实模型成功率提高。范围、原始数值和源码身份见[测量说明](context-memory.md)。
 
 冻结源码后，Windows Python 3.13.0 共 616 项、601 通过、15 平台跳过；WSL Python 3.13.14 共 616 项、599 通过、17 平台跳过；两端各 25 项 mini SDK 回归通过。标准 JSON 混合类型/键转换/Unicode/转义对照、真实 HTTP、超限零请求、增量内存与取消回归通过，原有 16 KiB 请求预算不变。锁文件、wheel/sdist、包内源码与测量源码摘要核对，以及无缓存新 wheel 目录安装检查通过，使用已锁定本机依赖。未改原生 OS 后端、未调用付费模型；小批次使用 `[skip ci]`，没有本次功能提交的远程 CI，不借用父提交 `eb64955` 的绿色结果。
