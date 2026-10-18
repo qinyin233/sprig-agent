@@ -201,7 +201,7 @@ trigger_ratio = 0.8
 keep_recent_messages = 10
 ```
 
-`max_bytes` 是完整序列化请求的字节上限，不是模型 token 窗口。启用 `compact` 后，到达 `max_bytes * trigger_ratio` 才尝试省略旧成功工具输出和已批准完成的编辑文本；比例为 0–1，默认 0，保留原先显式压缩始终尝试的行为。`keep_recent_messages` 为 6–1000，默认 6，只能增加保护窗口。失败、拒绝、用户要求、未完成调用与最新计划仍按原规则保留；完整保存历史不改写。压缩后仍超限时不发请求。当前没有模型摘要请求或自动付费重试。
+`max_bytes` 是完整序列化请求的字节上限，不是模型 token 窗口。启用 `compact` 后，到达 `max_bytes * trigger_ratio` 才尝试省略旧成功工具输出和已批准完成的编辑文本；比例为 0–1，默认 0，保留原先显式压缩始终尝试的行为。`keep_recent_messages` 为 6–1000，默认 6，只能增加保护窗口。拒绝、用户要求、未完成调用与最新计划保留；最新失败和普通失败命令的详细输出保留。固定检查已有更新的可靠观察时，旧检查可省略 argv 和正文，但保留失败/批准状态及新观察引用；旧读取正文省略时也省略其附属版本/行位置元数据，见[固定检查上下文](check-history-context.md)。完整保存历史不改写，压缩后仍超限时不发请求。当前没有模型摘要请求或自动付费重试。
 
 同层 `[context].max_bytes/compact` 覆盖旧 `[agent].max_context_bytes/compact_context`；旧写法继续支持，未知或无效低层设置也会报错。用户、profile、显式受限项目层均可设置，CLI 的 `--max-context-bytes`、`--compact-context`、`--context-trigger-ratio`、`--context-keep-recent-messages` 优先。`--show-config`/TUI `/config` 展示实际值与来源。`/context` 和 `/compact` 的本地预览显示强制压缩的潜力，真实请求仍遵循配置阈值；关闭压缩时阈值不使它自动开启。
 

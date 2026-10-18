@@ -48,6 +48,27 @@ def _successful(result):
             and result.get("returncode", 0) == 0)
 
 
+def _fixed_check(config, function, content):
+    """Only complete approved observations of a configured default-cwd check."""
+    if not config.checks or function.get("name") != "run":
+        return None
+    arguments = _result(function.get("arguments"))
+    if (arguments is None or set(arguments) != {"argv"} or not isinstance(arguments["argv"], list)
+            or not all(isinstance(arg, str) for arg in arguments["argv"])):
+        return None
+    argv = tuple(arguments["argv"])
+    if argv not in config.checks:
+        return None
+    result = _result(content)
+    if (result is None or "error" in result or result.get("approved") is not True
+            or type(result.get("returncode")) is not int or result["returncode"] < 0
+            or not isinstance(result.get("output"), str) or result.get("context_elided")
+            or any(result.get(flag, False) is not False for flag in (
+                "timed_out", "output_limited", "skipped", "cancelled", "interrupted", "outcome"))):
+        return None
+    return argv
+
+
 def _edit_path(arguments, *, by_line=False):
     value = _result(arguments)
     if value is None or not isinstance(value.get("path"), str) or not value["path"]:
@@ -119,12 +140,27 @@ def prepare_context(config, messages, tools, compact=False, *, force=False, chec
                         if identity not in ambiguous and calls.get(identity, (0, {}))[1].get("function", {}).get("name") == "update_plan"
                         and plan_result(_result(content)) is not None}
         latest_plan = max(plan_results, default=-1)
+        check_results, latest_checks = {}, {}
+        for identity, (index, content) in results.items():
+            if identity in ambiguous or identity not in calls or calls[identity][0] >= index:
+                continue
+            check = _fixed_check(config, calls[identity][1].get("function", {}), content)
+            if check is not None:
+                check_results[index] = check
+                latest_checks[check] = (index, identity)
+        superseded_checks = {index: latest_checks[check][1] for index, check in check_results.items()
+                             if index != latest_checks[check][0]}
         for identity, (index, call) in calls.items():
             result_index, content = results.get(identity, (len(selected), None))
             function = call.get("function", {})
             if identity in ambiguous or not index < result_index < cutoff:
                 continue
             result = _result(content)
+            if result_index in superseded_checks:
+                marker = json.dumps({"context_elided": True,
+                    "note": "Past fixed-check argv omitted; not runnable."}, separators=(",", ":"))
+                replace_string(function, "arguments", marker, index, identity, ["arguments"])
+                continue
             if function.get("name") == "update_plan" and result_index in plan_results and result_index != latest_plan:
                 arguments = _result(function.get("arguments"))
                 try:
@@ -149,16 +185,38 @@ def prepare_context(config, messages, tools, compact=False, *, force=False, chec
         for index, message in enumerate(selected[:cutoff]):
             if message.get("role") != "tool":
                 continue
+            if message.get("tool_call_id") in ambiguous:
+                continue
             result = _result(message.get("content"))
+            if index in superseded_checks:
+                reduced = {key: value for key, value in result.items() if key != "output"}
+                reduced.update(context_elided=True, check_ref=superseded_checks[index],
+                               note="Past check output omitted; newer approved result retained.")
+                content = json.dumps(reduced, ensure_ascii=False, separators=(",", ":"))
+                replace_string(message, "content", content, index, message["tool_call_id"], ["output"])
+                continue
             if not _successful(result):
                 continue
             fields = [name for name in ("content", "output", "files", "entries", "matches", "read_guidance", "search_guidance") if name in result]
+            note = "Older successful output elided; reread files if needed. Full result remains in saved history."
+            identity = message["tool_call_id"]
+            read = calls.get(identity, (len(selected), {}))
+            read_arguments = _result(read[1].get("function", {}).get("arguments"))
+            if ("content" in fields and identity not in ambiguous and read[0] < index
+                    and read[1].get("function", {}).get("name") == "read_file"
+                    and read_arguments is not None and isinstance(result.get("path"), str)
+                    and read_arguments.get("path") == result["path"]):
+                # A discarded read body is not current edit evidence. Keep its
+                # coverage flags; obtain provenance/pagination again by rereading.
+                fields.extend(name for name in ("sha256", "read_id", "line_numbers", "offset", "end_line", "total_lines",
+                                                "next_offset", "path", "symbol", "symbol_start_line", "symbol_end_line") if name in result)
+                note = "Past read omitted; reread source. Full history saved."
             if index in plan_results and index != latest_plan:
                 fields.extend(("plan", "explanation"))
             if not fields:
                 continue
             reduced = {key: value for key, value in result.items() if key not in fields}
-            reduced.update(context_elided=True, note="Older successful output elided; reread files if needed. Full result remains in saved history.")
+            reduced.update(context_elided=True, note=note)
             content = json.dumps(reduced, ensure_ascii=False, separators=(",", ":"))
             replace_string(message, "content", content, index, message["tool_call_id"], fields)
         # Count the actual serialized request, including redaction of new markers.
