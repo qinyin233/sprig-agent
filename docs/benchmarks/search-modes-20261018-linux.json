@@ -1,0 +1,219 @@
+{
+  "schema": 1,
+  "scope": "offline result bytes and file-discovery coverage; different output contracts, not model performance or latency",
+  "source_commit": "77b9da3a519b6ff9273ce38e4c6bbcb8d01d4df0",
+  "source_tree_sha256": "8bd9d3ef7c5de86debd332858df039028289f0efbd9f06effaf7f8f6e3e51740",
+  "git_source_check": "all measured Python sources compared to committed content with CRLF normalized; raw source digest retained separately",
+  "lock_sha256": "834405cf539c2a1803289a8f2e55955a53af7869bf931a33ce4d1f80e9010e17",
+  "driver_sha256": "d84fd19221b547ea3e56afd36195f4b06621576550a6201ccc1444588ab1477b",
+  "python": "3.13.14",
+  "platform": "Linux",
+  "model_requests": 0,
+  "candidate_code_executed": false,
+  "max_output": 6000,
+  "limit": 1000,
+  "context": 0,
+  "cases": [
+    {
+      "id": "dense-file-discovery",
+      "input_files": 40,
+      "input_bytes": 480000,
+      "input_sha256": "9a26842ebbde84d6831185ecdfb73e4eccb312e9e7f39b59f3610f52f7842f96",
+      "query": "needle",
+      "regex": false,
+      "path": ".",
+      "glob": "*.py",
+      "expected_matched_files": 40,
+      "expected_matched_lines": 32000,
+      "modes": {
+        "content": {
+          "tool_result_json_bytes": 5953,
+          "returned_records": 90,
+          "covered_expected_files": 1,
+          "all_expected_files_returned": false,
+          "returned_matching_lines": 90,
+          "truncated": true,
+          "files_read": 1,
+          "bytes_read": 12000,
+          "entries_scanned": 2,
+          "skipped_files": 0
+        },
+        "files": {
+          "tool_result_json_bytes": 1258,
+          "returned_records": 40,
+          "covered_expected_files": 40,
+          "all_expected_files_returned": true,
+          "returned_matching_lines": null,
+          "truncated": false,
+          "files_read": 40,
+          "bytes_read": 480000,
+          "entries_scanned": 41,
+          "skipped_files": 0
+        },
+        "count": {
+          "tool_result_json_bytes": 1818,
+          "returned_records": 40,
+          "covered_expected_files": 40,
+          "all_expected_files_returned": true,
+          "returned_matching_lines": 32000,
+          "truncated": false,
+          "files_read": 40,
+          "bytes_read": 480000,
+          "entries_scanned": 41,
+          "skipped_files": 0
+        }
+      }
+    },
+    {
+      "id": "click-literal-exceptions",
+      "input_files": 52,
+      "input_bytes": 752232,
+      "input_sha256": "cd5c28d37e22ac09236d52349599776c220648241ec2410c02585c13c0d34bc6",
+      "query": "NoSuch",
+      "regex": false,
+      "path": "src/click",
+      "glob": "*.py",
+      "expected_matched_files": 4,
+      "expected_matched_lines": 10,
+      "modes": {
+        "content": {
+          "tool_result_json_bytes": 1152,
+          "returned_records": 10,
+          "covered_expected_files": 4,
+          "all_expected_files_returned": true,
+          "returned_matching_lines": 10,
+          "truncated": false,
+          "files_read": 17,
+          "bytes_read": 398607,
+          "entries_scanned": 18,
+          "skipped_files": 0
+        },
+        "files": {
+          "tool_result_json_bytes": 274,
+          "returned_records": 4,
+          "covered_expected_files": 4,
+          "all_expected_files_returned": true,
+          "returned_matching_lines": null,
+          "truncated": false,
+          "files_read": 17,
+          "bytes_read": 398607,
+          "entries_scanned": 18,
+          "skipped_files": 0
+        },
+        "count": {
+          "tool_result_json_bytes": 322,
+          "returned_records": 4,
+          "covered_expected_files": 4,
+          "all_expected_files_returned": true,
+          "returned_matching_lines": 10,
+          "truncated": false,
+          "files_read": 17,
+          "bytes_read": 398607,
+          "entries_scanned": 18,
+          "skipped_files": 0
+        }
+      }
+    },
+    {
+      "id": "click-explicit-alternation",
+      "input_files": 52,
+      "input_bytes": 752232,
+      "input_sha256": "cd5c28d37e22ac09236d52349599776c220648241ec2410c02585c13c0d34bc6",
+      "query": "NoSuchCommand|Did you mean|did_you_mean|_did_you_mean",
+      "regex": true,
+      "path": ".",
+      "glob": "*.py",
+      "expected_matched_files": 5,
+      "expected_matched_lines": 16,
+      "modes": {
+        "content": {
+          "tool_result_json_bytes": 2038,
+          "returned_records": 16,
+          "covered_expected_files": 5,
+          "all_expected_files_returned": true,
+          "returned_matching_lines": 16,
+          "truncated": false,
+          "files_read": 48,
+          "bytes_read": 743607,
+          "entries_scanned": 56,
+          "skipped_files": 0
+        },
+        "files": {
+          "tool_result_json_bytes": 332,
+          "returned_records": 5,
+          "covered_expected_files": 5,
+          "all_expected_files_returned": true,
+          "returned_matching_lines": null,
+          "truncated": false,
+          "files_read": 48,
+          "bytes_read": 743607,
+          "entries_scanned": 56,
+          "skipped_files": 0
+        },
+        "count": {
+          "tool_result_json_bytes": 392,
+          "returned_records": 5,
+          "covered_expected_files": 5,
+          "all_expected_files_returned": true,
+          "returned_matching_lines": 16,
+          "truncated": false,
+          "files_read": 48,
+          "bytes_read": 743607,
+          "entries_scanned": 56,
+          "skipped_files": 0
+        }
+      }
+    },
+    {
+      "id": "click-explicit-testing-alternation",
+      "input_files": 52,
+      "input_bytes": 752232,
+      "input_sha256": "cd5c28d37e22ac09236d52349599776c220648241ec2410c02585c13c0d34bc6",
+      "query": "e_type = SystemExit|except SystemExit|result.exception",
+      "regex": true,
+      "path": "src/click/testing.py",
+      "glob": "*.py",
+      "expected_matched_files": 1,
+      "expected_matched_lines": 1,
+      "modes": {
+        "content": {
+          "tool_result_json_bytes": 227,
+          "returned_records": 1,
+          "covered_expected_files": 1,
+          "all_expected_files_returned": true,
+          "returned_matching_lines": 1,
+          "truncated": false,
+          "files_read": 1,
+          "bytes_read": 22714,
+          "entries_scanned": 0,
+          "skipped_files": 0
+        },
+        "files": {
+          "tool_result_json_bytes": 189,
+          "returned_records": 1,
+          "covered_expected_files": 1,
+          "all_expected_files_returned": true,
+          "returned_matching_lines": null,
+          "truncated": false,
+          "files_read": 1,
+          "bytes_read": 22714,
+          "entries_scanned": 0,
+          "skipped_files": 0
+        },
+        "count": {
+          "tool_result_json_bytes": 201,
+          "returned_records": 1,
+          "covered_expected_files": 1,
+          "all_expected_files_returned": true,
+          "returned_matching_lines": 1,
+          "truncated": false,
+          "files_read": 1,
+          "bytes_read": 22714,
+          "entries_scanned": 0,
+          "skipped_files": 0
+        }
+      }
+    }
+  ],
+  "inputs_and_source_unchanged": true
+}
