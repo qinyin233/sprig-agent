@@ -1,0 +1,77 @@
+{
+  "schema": 1,
+  "scope": "offline known-declaration retrieval on a previous failed model candidate; not a task score, model run or performance comparison",
+  "source_commit": "e0f8f902b6c5c98ce6f9e3581c28671210dc13c1",
+  "source_files_sha256": {
+    "tools.py": "f84955bb02e199387fbe969b937768086265da8aed74a4534f1445526abf28bc",
+    "index.py": "c152c9a3f7b0de46f93f316721b09802b3d1e6c612246fd8d84bff2a2c87c158",
+    "syntax.py": "0af7a15cb492ab8271ac6e29da78722e09e2073b437f5c3b54005d2f97feb13c",
+    "agent.py": "586d4183b561a6b6066680623f6fd410db4766897dfcc910af950d4fe14d4539"
+  },
+  "private_script_sha256": "1d51816c215c016bb9b5d2e6183a27089641e8ce4803a6d1374fbf22bddca53a",
+  "candidate_sha256": "cd5c28d37e22ac09236d52349599776c220648241ec2410c02585c13c0d34bc6",
+  "original_snapshot_unchanged": true,
+  "copied_candidate_unchanged": true,
+  "model_requests": 0,
+  "commands_executed": 0,
+  "file_edits": 0,
+  "max_output": 6000,
+  "targets": [
+    {
+      "path": "src/click/exceptions.py",
+      "symbol": "NoSuchOption",
+      "error": false,
+      "symbol_complete": true,
+      "start_line": 228,
+      "end_line": 253,
+      "content_bytes": 889,
+      "has_read_id": true,
+      "file_truncated": true
+    },
+    {
+      "path": "src/click/exceptions.py",
+      "symbol": "NoSuchCommand",
+      "error": false,
+      "symbol_complete": true,
+      "start_line": 256,
+      "end_line": 285,
+      "content_bytes": 1088,
+      "has_read_id": true,
+      "file_truncated": true
+    },
+    {
+      "path": "src/click/core.py",
+      "symbol": "MultiCommand.resolve_command",
+      "error": true,
+      "symbol_complete": null,
+      "start_line": null,
+      "end_line": null,
+      "content_bytes": 0,
+      "has_read_id": false,
+      "file_truncated": null
+    },
+    {
+      "path": "tests/test_commands.py",
+      "symbol": "test_unknown_command_suggests_close_names",
+      "error": false,
+      "symbol_complete": true,
+      "start_line": 323,
+      "end_line": 343,
+      "content_bytes": 648,
+      "has_read_id": true,
+      "file_truncated": true
+    },
+    {
+      "path": "tests/test_options.py",
+      "symbol": "test_unknown_options",
+      "error": false,
+      "symbol_complete": true,
+      "start_line": 136,
+      "end_line": 144,
+      "content_bytes": 342,
+      "has_read_id": true,
+      "file_truncated": true
+    }
+  ],
+  "all_selected_declarations_complete": false
+}
