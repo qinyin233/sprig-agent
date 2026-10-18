@@ -1,0 +1,305 @@
+{
+  "schema": 1,
+  "scope": "six-request recovery diagnostic from a previous failed candidate; not a fresh task score or controlled comparison",
+  "source_commit": "018e3d87838c07871a8a2cb03581734837220360",
+  "max_steps": 6,
+  "max_context_bytes": 32768,
+  "max_output": 6000,
+  "max_tokens": 2048,
+  "stream": false,
+  "thinking": false,
+  "compact_context": true,
+  "check_before_task": true,
+  "check_after_edit": true,
+  "model": "deepseek-flash",
+  "base_url": "https://api.llm.ustc.edu.cn/v1",
+  "exit_code": 2,
+  "initial_candidate_sha256": "cd5c28d37e22ac09236d52349599776c220648241ec2410c02585c13c0d34bc6",
+  "final_candidate_sha256": "cd5c28d37e22ac09236d52349599776c220648241ec2410c02585c13c0d34bc6",
+  "original_task_sha256": "2908db436a3b9ac92c17b2d60eed48baae6c6549b9a1c83bb775bc816bcf6273",
+  "effective_task_sha256": "63edc0c717f3f5811b086276919c68878ca17ff4509ed680ef3f262f8c3113a1",
+  "repository_task": {
+    "protocol": 1,
+    "repository": "pallets/click",
+    "snapshot_files": 52,
+    "base_commit": "19fd4d6e18bc9fce451f92f422696b11169faa57",
+    "base_sha256": "7d610833c8a6564f980f747e4601e7f4821872702c4a59f32ff9c5d653300d08",
+    "acceptance_commit": "831c8f0948af519e45b90801d7430ff25451f972",
+    "acceptance_snapshot_sha256": "62d0162a63fa5322307e29d1710ec7624bd3ca20572329fddbdae1fe628f628d",
+    "expected_upstream_checks": 642,
+    "public_exception_contract": true,
+    "acceptance_python": "3.12",
+    "acceptance_pytest": "8.4.2",
+    "entry_sha256": "f140413cd276f36c79bfcece77a03073668235db3661eddf2feca0c0d1e012e9",
+    "adapter_sha256": "309d80e760b4203ca0ad8548a7d841eb6b3f54ec39792d6c7724dca4826b08b8",
+    "comparison_lock_sha256": "eb1207065a83573e2e9fd9a879694ffcb458c93f15a00a504a4c607a1d2e32e2",
+    "task_sha256": "2908db436a3b9ac92c17b2d60eed48baae6c6549b9a1c83bb775bc816bcf6273"
+  },
+  "verifier_sha256": "53e7f74201df4c2a49bae9d4a6b8243ffd68c39f81134c3dd45d6e7fae2dcaac",
+  "verifier_intact": true,
+  "self_check_intact": true,
+  "elapsed_ms": 71728.043,
+  "requests": {
+    "available": true,
+    "scope": "current provider instance; not persisted or sent to the model",
+    "attempts": 6,
+    "not_attempted": 0,
+    "outcomes": {
+      "success": 6,
+      "error": 0,
+      "cancelled": 0
+    },
+    "failures": {},
+    "request_bytes": 136578,
+    "response_bytes": 6190,
+    "elapsed_ms": 43368.503,
+    "usage": {
+      "prompt_tokens": {
+        "reported_sum": 35779,
+        "known_requests": 6,
+        "unknown_requests": 0,
+        "complete_sum": 35779
+      },
+      "completion_tokens": {
+        "reported_sum": 1160,
+        "known_requests": 6,
+        "unknown_requests": 0,
+        "complete_sum": 1160
+      },
+      "total_tokens": {
+        "reported_sum": 36939,
+        "known_requests": 6,
+        "unknown_requests": 0,
+        "complete_sum": 36939
+      }
+    },
+    "recent_limit": 128,
+    "recent_dropped": 0,
+    "recent": [
+      {
+        "attempted": true,
+        "streamed": false,
+        "outcome": "success",
+        "http_status": 200,
+        "request_bytes": 14582,
+        "response_bytes": 889,
+        "elapsed_ms": 5509.434,
+        "first_text_ms": null,
+        "usage": {
+          "prompt_tokens": 3601,
+          "completion_tokens": 147,
+          "total_tokens": 3748
+        },
+        "finish_reason": "tool_calls",
+        "error_code": null
+      },
+      {
+        "attempted": true,
+        "streamed": false,
+        "outcome": "success",
+        "http_status": 200,
+        "request_bytes": 19294,
+        "response_bytes": 1198,
+        "elapsed_ms": 13065.724,
+        "first_text_ms": null,
+        "usage": {
+          "prompt_tokens": 4858,
+          "completion_tokens": 284,
+          "total_tokens": 5142
+        },
+        "finish_reason": "tool_calls",
+        "error_code": null
+      },
+      {
+        "attempted": true,
+        "streamed": false,
+        "outcome": "success",
+        "http_status": 200,
+        "request_bytes": 30451,
+        "response_bytes": 1428,
+        "elapsed_ms": 6140.502,
+        "first_text_ms": null,
+        "usage": {
+          "prompt_tokens": 8113,
+          "completion_tokens": 258,
+          "total_tokens": 8371
+        },
+        "finish_reason": "tool_calls",
+        "error_code": null
+      },
+      {
+        "attempted": true,
+        "streamed": false,
+        "outcome": "success",
+        "http_status": 200,
+        "request_bytes": 27439,
+        "response_bytes": 856,
+        "elapsed_ms": 4182.517,
+        "first_text_ms": null,
+        "usage": {
+          "prompt_tokens": 7322,
+          "completion_tokens": 141,
+          "total_tokens": 7463
+        },
+        "finish_reason": "tool_calls",
+        "error_code": null
+      },
+      {
+        "attempted": true,
+        "streamed": false,
+        "outcome": "success",
+        "http_status": 200,
+        "request_bytes": 20688,
+        "response_bytes": 870,
+        "elapsed_ms": 5492.375,
+        "first_text_ms": null,
+        "usage": {
+          "prompt_tokens": 5388,
+          "completion_tokens": 172,
+          "total_tokens": 5560
+        },
+        "finish_reason": "tool_calls",
+        "error_code": null
+      },
+      {
+        "attempted": true,
+        "streamed": false,
+        "outcome": "success",
+        "http_status": 200,
+        "request_bytes": 24124,
+        "response_bytes": 949,
+        "elapsed_ms": 8977.951,
+        "first_text_ms": null,
+        "usage": {
+          "prompt_tokens": 6497,
+          "completion_tokens": 158,
+          "total_tokens": 6655
+        },
+        "finish_reason": "tool_calls",
+        "error_code": null
+      }
+    ]
+  },
+  "post_external": {
+    "public_exception_contract": true,
+    "schema": 1,
+    "skipped": 0,
+    "pytest_returncode": 1,
+    "collected": 642,
+    "checks_passed": 640,
+    "passed": false,
+    "failed": [
+      "tests/test_options.py::test_unknown_options[--foo]",
+      "tests/test_options.py::test_unknown_options[-f]"
+    ],
+    "other_failures": 0
+  },
+  "private_session_retained": true,
+  "candidate_retained": true,
+  "task_passed": false,
+  "completion_reason": "model_request_budget_exhausted",
+  "starting_point": "previous failed candidate; fresh session; original task plus explicit recovery disclosure",
+  "pre_external": {
+    "collected": 642,
+    "checks_passed": 640,
+    "public_exception_contract": true,
+    "schema": 1,
+    "skipped": 0,
+    "pytest_returncode": 1,
+    "passed": false,
+    "failed": [
+      "tests/test_options.py::test_unknown_options[--foo]",
+      "tests/test_options.py::test_unknown_options[-f]"
+    ],
+    "other_failures": 0
+  },
+  "pre_self_tests": {
+    "schema": 1,
+    "returncode": 1,
+    "collected": 642,
+    "checks_passed": 641,
+    "failed_count": 1,
+    "skipped": 0
+  },
+  "post_self_tests": {
+    "schema": 1,
+    "returncode": 1,
+    "collected": 642,
+    "checks_passed": 641,
+    "failed_count": 1,
+    "skipped": 0
+  },
+  "model_tool_calls": {
+    "search": 8,
+    "read_file": 5
+  },
+  "application_checks": {
+    "baseline": 2
+  },
+  "after_edit_check_exercised": false,
+  "candidate_unchanged": true,
+  "tool_errors": [
+    {
+      "tool": "search",
+      "code": "context_out_of_range",
+      "value": 40,
+      "allowed_min": 0,
+      "allowed_max": 10
+    },
+    {
+      "tool": "search",
+      "code": "context_out_of_range",
+      "value": 25,
+      "allowed_min": 0,
+      "allowed_max": 10
+    }
+  ],
+  "request_contexts_offline_replayed": [
+    {
+      "step": 1,
+      "before_bytes": 14582,
+      "sent_bytes": 14582,
+      "compacted": false
+    },
+    {
+      "step": 2,
+      "before_bytes": 19294,
+      "sent_bytes": 19294,
+      "compacted": false
+    },
+    {
+      "step": 3,
+      "before_bytes": 30451,
+      "sent_bytes": 30451,
+      "compacted": false
+    },
+    {
+      "step": 4,
+      "before_bytes": 31143,
+      "sent_bytes": 27439,
+      "compacted": true
+    },
+    {
+      "step": 5,
+      "before_bytes": 33448,
+      "sent_bytes": 20688,
+      "compacted": true
+    },
+    {
+      "step": 6,
+      "before_bytes": 36884,
+      "sent_bytes": 24124,
+      "compacted": true
+    }
+  ],
+  "offline_replay_all_sizes_match_measured": true,
+  "private_session_sha256": "036d3ef1fcf508183c98ac413e9a438e7df1cd20e78806c916e91b63090244b4",
+  "private_numeric_report_sha256": "98cfcad63341de092dcd231937356742325c983223dc27660f4b171f68300888",
+  "private_launcher_sha256": "67271913f4e19c3a0c42de3cda2133a3a9696557dd5866399e90a39f0912f60b",
+  "self_check_sha256": "9a9eac219c1c56ecede9e2a2937da19bd7d3450b22e1ff851425dcf466d3d6db",
+  "billing_cost": null,
+  "controlled_comparison": false,
+  "fresh_task_score": false,
+  "operator_manual_solution_hints": false,
+  "automatic_retry": false
+}
