@@ -72,7 +72,7 @@ class SyntaxParser:
             self.parsers[language] = parser
         return self.parsers[language]
 
-    def parse(self, text, language, check_cancelled):
+    def parse(self, text, language, check_cancelled, *, spans=False):
         check_cancelled()
         # Match physical CR/LF line numbers from read_file/search. These bytes
         # are temporary; only declaration metadata enters SymbolIndex's cache.
@@ -91,10 +91,11 @@ class SyntaxParser:
             raise IndexUnavailable("symbol parsing exceeded its time limit")
         if tree.root_node.has_error:
             return None
-        return declarations(tree.root_node, raw, language, check_cancelled)
+        return (declarations(tree.root_node, raw, language, check_cancelled, spans=True) if spans
+                else declarations(tree.root_node, raw, language, check_cancelled))
 
 
-def declarations(root, raw, language, check_cancelled):
+def declarations(root, raw, language, check_cancelled, *, spans=False):
     symbols, seen, pending, visited = [], set(), [(root, "")], 0
 
     def name_of(node):
@@ -111,9 +112,13 @@ def declarations(root, raw, language, check_cancelled):
         if len(qualified.encode("utf-8")) > MAX_NAME_BYTES:
             raise IndexUnavailable("qualified declaration name exceeds index limit")
         item = (qualified, node.start_point.row + 1, kind)
-        if item not in seen:
-            seen.add(item)
-            symbols.append({"name": item[0], "line": item[1], "kind": item[2]})
+        identity = (*item, node.start_byte, node.end_byte) if spans else item
+        if identity not in seen:
+            seen.add(identity)
+            record = {"name": item[0], "line": item[1], "kind": item[2]}
+            if spans:
+                record.update(start_line=item[1], end_line=max(item[1], node.end_point.row + bool(node.end_point.column)))
+            symbols.append(record)
             if len(symbols) > MAX_SYMBOLS:
                 raise IndexUnavailable("symbol count exceeds index limit")
         return qualified + "."

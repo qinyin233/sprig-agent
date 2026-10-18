@@ -62,10 +62,10 @@ class SymbolIndex:
         self.entries[key] = (encoded, size)
         self.bytes += size
 
-    def symbols(self, text, language, check_cancelled=lambda: None):
+    def symbols(self, text, language, check_cancelled=lambda: None, *, spans=False):
         check_cancelled()
         # Content, not mtime, identifies a parse. Never cache raw source or ASTs.
-        key = language.encode("ascii") + b"\0" + hashlib.sha256(text.encode("utf-8")).digest()
+        key = language.encode("ascii") + (b"\0spans\0" if spans else b"\0") + hashlib.sha256(text.encode("utf-8")).digest()
         if self._scan is not None and key in self._scan[0]:
             self._scan[1].add(key)
         if key in self.entries:
@@ -74,9 +74,10 @@ class SymbolIndex:
             return json.loads(encoded)
         else:
             if language == "python":
-                data = self._python(text, check_cancelled)
+                data = self._python(text, check_cancelled, spans=True) if spans else self._python(text, check_cancelled)
             else:
-                data = self.syntax.parse(text, language, check_cancelled)
+                data = (self.syntax.parse(text, language, check_cancelled, spans=True) if spans
+                        else self.syntax.parse(text, language, check_cancelled))
             check_cancelled()
             encoded = json.dumps(data, ensure_ascii=False, separators=(",", ":"))
             size = len(encoded.encode("utf-8")) + len(key)
@@ -85,7 +86,7 @@ class SymbolIndex:
         return data
 
     @staticmethod
-    def _python(text, check_cancelled):
+    def _python(text, check_cancelled, *, spans=False):
         try:
             tree = ast.parse(text.removeprefix("\ufeff"))
             symbols, pending, visited = [], [(tree.body, "")], 0
@@ -108,8 +109,12 @@ class SymbolIndex:
                             raise IndexUnavailable("qualified declaration name exceeds index limit")
                         if len(symbols) >= MAX_SYMBOLS:
                             raise IndexUnavailable("symbol count exceeds index limit")
-                        symbols.append({"name": name, "line": node.lineno,
-                                        "kind": "class" if isinstance(node, ast.ClassDef) else "function"})
+                        record = {"name": name, "line": node.lineno,
+                                  "kind": "class" if isinstance(node, ast.ClassDef) else "function"}
+                        if spans:
+                            record.update(start_line=min([node.lineno, *(item.lineno for item in node.decorator_list)]),
+                                          end_line=node.end_lineno)
+                        symbols.append(record)
                         if isinstance(node, ast.ClassDef):
                             pending.append((node.body, name + "."))
             return sorted(symbols, key=lambda item: item["line"])

@@ -19,6 +19,7 @@ Inspect before editing. Make the smallest correct change and verify it with appr
 For an unfamiliar repository, prefer project_map with a relevant symbol/path query for orientation
 over walking directories one request at a time. Follow it with targeted searches and ranged reads.
 Maps show declarations, not full behavior; check truncation and inspect implementation before edits.
+If a declaration name is known, read_file(symbol="Class.method") reads its indexed span; check symbol_complete.
 For line changes, read_file(line_numbers=true), then edit_lines with its read_id. Never copy display prefixes.
 Use update_plan when available for tasks with multiple stages; skip it for trivial requests.
 Keep the plan current after new guidance. Plan completion is your report, not approval or test evidence.

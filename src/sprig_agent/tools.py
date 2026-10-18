@@ -51,16 +51,17 @@ STRING = {"type": "string"}
 TOOL_SCHEMAS = [
     schema("list_files", "List one workspace directory; no symlinks or protected files.",
            {"path": STRING}),
-    schema("read_file", "UTF-8. offset/limit: 1-based lines; ranges numbered (N: display only); line_numbers=false for raw. Long lines: cursor='start', then next_cursor; raw version-bound pages, no line options. Scans <=8 MiB; partial lines lack read_id.",
+    schema("read_file", "UTF-8. Modes: 1-based offset/limit; exact symbol (Class.method, <=512 KiB; check symbol_complete); cursor='start'/next_cursor. Ranges numbered; line_numbers=false raw. Scans <=8 MiB; partial lines lack read_id.",
            {"path": STRING, "offset": {"type": "integer", "minimum": 1, "maximum": 1000000},
             "limit": {"type": "integer", "minimum": 1, "maximum": 10000}, "line_numbers": {"type": "boolean"},
-            "cursor": {"type": "string", "maxLength": 80}}, ["path"]),
+            "cursor": {"type": "string", "maxLength": 80},
+            "symbol": {"type": "string", "minLength": 1, "maxLength": 1024}}, ["path"]),
     schema("search", "Recursive literal or RE2 (regex=true; no lookaround/backreferences; ASCII \\w/\\d/\\b). ignore_case: full Unicode folding for literals, simple folding for RE2. Case-sensitive glob: basename or workspace path; * stays within /, ** spans components. context=0-10 surrounding lines; limit=1-1000 matching physical CR/LF lines (default 100). Query<=1000 chars; RE2: 1 MiB, cooperative 1s. Whole-file privacy, read/output bounds and cancellation. Truncated/timed_out/skipped results cannot establish absence.",
            {"query": STRING, "path": STRING, "glob": {"type": "string", "minLength": 1, "maxLength": 256},
             "ignore_case": {"type": "boolean"}, "regex": {"type": "boolean"},
             "context": {"type": "integer", "minimum": 0, "maximum": 10},
             "limit": {"type": "integer", "minimum": 1, "maximum": 1000}}, ["query"]),
-    schema("project_map", "Map paths and 1-based declarations for Python, JS/TS/TSX, Rust, Go, C/C++ and Java. query matches literal names/paths case-insensitively; exact then prefix matches rank first. Use a focused query if the full map is truncated. Syntax only; unsupported files have paths, unavailable parses are flagged. Read implementation before editing.",
+    schema("project_map", "Map paths and 1-based declarations (Python, JS/TS/TSX, Rust, Go, C/C++, Java). query matches literal names/paths case-insensitively; exact then prefix rank first. Focus query if truncated. Syntax only; unsupported files have paths, failed parses flagged. Read implementation before editing.",
            {"path": STRING, "query": {"type": "string", "minLength": 1, "maxLength": 256}}),
     schema("edit_file", "Exact text edits with complete diff approval, atomic write and undo. Choose old/new (old='' creates only) OR edits (<=32 unique replacements in ORIGINAL text). Parent must exist. Reread after a match failure. Prefer edit_lines for focused line changes.",
            {"path": STRING, "old": STRING, "new": STRING,
@@ -243,7 +244,7 @@ class Tools:
                 entries.append({"name": entry.name, "type": kind})
         return {"entries": sorted(entries, key=lambda item: item["name"]), "truncated": truncated}
 
-    def read_file(self, path, offset=1, limit=None, *, line_numbers=_MISSING, cursor=_MISSING):
+    def read_file(self, path, offset=1, limit=None, *, line_numbers=_MISSING, cursor=_MISSING, symbol=_MISSING):
         self._require_tool("read_file")
         if type(offset) is not int or not 1 <= offset <= 1000000:
             raise ToolError("offset must be an integer from 1 to 1000000 (1-based line number)")
@@ -251,6 +252,13 @@ class Tools:
             raise ToolError("limit must be an integer from 1 to 10000")
         if line_numbers is not _MISSING and type(line_numbers) is not bool:
             raise ToolError("line_numbers must be a boolean")
+        if symbol is not _MISSING:
+            if (not isinstance(symbol, str) or not symbol.strip() or len(symbol) > 1024
+                    or any(ord(char) < 32 or ord(char) == 127 or 0xd800 <= ord(char) <= 0xdfff for char in symbol)
+                    or len(symbol.encode("utf-8")) > 1024):
+                raise ToolError("symbol must be an exact indexed name of at most 1024 UTF-8 bytes without control characters")
+            if offset != 1 or limit is not None or cursor is not _MISSING:
+                raise ToolError("symbol cannot be combined with offset, limit or cursor; continue using ordinary line reads")
         if cursor is not _MISSING and (offset != 1 or limit is not None or line_numbers is not _MISSING):
             raise ToolError("cursor cannot be combined with line options")
         ranged = offset != 1 or limit is not None
@@ -258,6 +266,9 @@ class Tools:
         parts = self._parts(path)
         if self.config.project_instructions:
             self.instructions.register(parts[:-1])
+        if symbol is not _MISSING:
+            return self._read_result(parts, self._read_symbol(path, symbol,
+                                     line_numbers=True if line_numbers is _MISSING else line_numbers))
         if cursor is not _MISSING:
             return self._read_bytes(path, parts, cursor)
         if ranged or numbered:
@@ -285,21 +296,25 @@ class Tools:
             result["read_id"] = self.read_versions.remember(parts, result["sha256"])
         return result
 
-    def _read_validated(self, path):
+    def _read_validated(self, path, *, scan_limit=MAX_READ):
         # Validate the whole bounded file before exposing a page: selecting a
         # clean line must not bypass the credential/binary policy elsewhere.
+        if type(scan_limit) is not int or not 0 < scan_limit <= MAX_READ:
+            raise ToolError("invalid source scan limit")
         raw = bytearray()
+        error = ("ranged read exceeds the 8 MiB scan limit" if scan_limit == MAX_READ else
+                 "symbol read exceeds the 512 KiB scan limit; use ordinary ranged reads or byte pages")
         with self._parent(path) as (directory, name), directory.open_read(name) as handle:
-            if os.fstat(handle.fileno()).st_size > MAX_READ:
-                raise ToolError("ranged read exceeds the 8 MiB scan limit")
+            if os.fstat(handle.fileno()).st_size > scan_limit:
+                raise ToolError(error)
             while True:
                 self._check_cancelled()
-                chunk = handle.read(min(65536, MAX_READ - len(raw) + 1))
+                chunk = handle.read(min(65536, scan_limit - len(raw) + 1))
                 if not chunk:
                     break
                 raw.extend(chunk)
-                if len(raw) > MAX_READ:
-                    raise ToolError("ranged read exceeds the 8 MiB scan limit")
+                if len(raw) > scan_limit:
+                    raise ToolError(error)
         self._check_cancelled()
         text = self._decode(raw)
         return raw, text
@@ -341,6 +356,42 @@ class Tools:
 
     def _read_page(self, path, offset, limit, *, line_numbers=False):
         raw, text = self._read_validated(path)
+        return self._line_page(path, raw, text, offset, limit, line_numbers=line_numbers)
+
+    def _read_symbol(self, path, symbol, *, line_numbers):
+        language = language_for(path)
+        if language is None:
+            raise ToolError("symbol reads require a supported source language; use ordinary line reads")
+        raw, text = self._read_validated(path, scan_limit=MAX_FILE)
+        try:
+            records = self.index.symbols(text, language, self._check_cancelled, spans=True)
+        except IndexUnavailable:
+            raise ToolError("symbol parsing reached a resource limit; use ordinary line reads") from None
+        if records is None:
+            raise ToolError("file could not be parsed for symbols; use ordinary line reads")
+        matches = [item for item in records if item["name"] == symbol]
+        if not matches:
+            return {"error": "symbol not found; use an exact project_map name or ordinary line reads", "symbol_match_count": 0}
+        if len(matches) != 1:
+            result = {"error": "symbol is ambiguous; use ordinary offset/limit reads", "symbol_match_count": len(matches),
+                      "symbol_locations": [], "symbol_locations_truncated": True}
+            for item in matches[:8]:
+                location = {key: item[key] for key in ("start_line", "end_line")}
+                candidate = {**result, "symbol_locations": [*result["symbol_locations"], location],
+                             "symbol_locations_truncated": False}
+                if max(encoded_size(candidate), encoded_size(redact(candidate, self.config.secrets))) > self.config.max_output:
+                    break
+                result = candidate
+            result["symbol_locations_truncated"] = len(result["symbol_locations"]) < len(matches)
+            return result
+        selected = matches[0]
+        result = self._line_page(path, raw, text, selected["start_line"],
+                                 min(10000, selected["end_line"] - selected["start_line"] + 1), line_numbers=line_numbers)
+        result.update(symbol=selected["name"], symbol_start_line=selected["start_line"], symbol_end_line=selected["end_line"],
+                      symbol_complete=not result["line_truncated"] and result["end_line"] >= selected["end_line"])
+        return result
+
+    def _line_page(self, path, raw, text, offset, limit, *, line_numbers=False):
         selected, size, partial, capped, total = [], 0, False, False, 0
         # Iterate rather than allocating one list entry per line for a file
         # containing millions of blank lines. Keep CR/LF endings unchanged.
