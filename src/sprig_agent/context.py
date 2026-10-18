@@ -152,7 +152,7 @@ def prepare_context(config, messages, tools, compact=False, *, force=False, chec
             result = _result(message.get("content"))
             if not _successful(result):
                 continue
-            fields = [name for name in ("content", "output", "files", "entries", "matches") if name in result]
+            fields = [name for name in ("content", "output", "files", "entries", "matches", "read_guidance") if name in result]
             if index in plan_results and index != latest_plan:
                 fields.extend(("plan", "explanation"))
             if not fields:

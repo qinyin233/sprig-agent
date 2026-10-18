@@ -33,6 +33,7 @@ from .syntax import IndexUnavailable
 MAX_FILE = 512 * 1024
 MAX_READ = 8 * 1024 * 1024
 MAX_EDITS = 32
+DIRECTORY_GUIDANCE = "For optional directory arguments, omit the field or use '.' for the selected workspace; paths in argv do not define cwd."
 _MISSING = object()
 SKIP_DIRS = {"node_modules", ".venv", "__pycache__"}
 
@@ -143,10 +144,10 @@ class Tools:
 
     def _parts(self, path):
         if not isinstance(path, str) or not path or len(path) > 4096 or "\0" in path or "\\" in path:
-            raise ToolError("path must be a nonempty relative POSIX path")
+            raise ToolError("path must be a nonempty relative POSIX path using '/' separators. " + DIRECTORY_GUIDANCE)
         parsed = PurePosixPath(path)
         if parsed.is_absolute() or ".." in parsed.parts or any(protected(p.lower() if os.name == "nt" else p) for p in parsed.parts):
-            raise ToolError("path escapes workdir or names a protected component")
+            raise ToolError("path escapes workdir or names a protected component. " + DIRECTORY_GUIDANCE)
         self.policy.reload()
         if self.policy.excluded(parsed.parts):
             raise ToolError("path is excluded by file privacy policy")
@@ -287,6 +288,9 @@ class Tools:
         else:
             text = self._decode(raw)
         result = {"path": path, "content": text, "truncated": truncated}
+        if truncated:
+            result["read_guidance"] = ("Prefix only; no edit read_id. Use offset/limit for complete numbered lines, "
+                                       "symbol for a known indexed declaration, or cursor='start' for byte pages, within scan limits.")
         if not truncated and not any(secret in text for secret in self.config.credential_secrets):
             result["sha256"] = hashlib.sha256(raw).hexdigest()
         return self._read_result(parts, result)
@@ -438,7 +442,8 @@ class Tools:
         if not isinstance(regex, bool):
             raise ToolError("regex must be a boolean")
         if isinstance(context, bool) or not isinstance(context, int) or not 0 <= context <= 10:
-            raise ToolError("context must be an integer between 0 and 10")
+            raise ToolError("context must be an integer between 0 and 10; use bounded search to find lines, "
+                            "then read_file offset/limit or symbol for more surrounding code")
         if isinstance(limit, bool) or not isinstance(limit, int) or not 1 <= limit <= 1000:
             raise ToolError("limit must be an integer between 1 and 1000")
         file_glob = FileGlob(glob) if glob is not _MISSING else None
