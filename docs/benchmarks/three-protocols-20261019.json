@@ -1,0 +1,381 @@
+{
+  "date": "2026-10-19",
+  "functional_commit": "6d993c7743db427982bb2965aa5e1f3b19beaefd",
+  "protocols": [
+    "chat_completions",
+    "messages",
+    "responses"
+  ],
+  "validation": {
+    "Windows": {
+      "python": "3.13.0",
+      "tests": 888,
+      "passed": 871,
+      "skipped": 17,
+      "elapsed_seconds": 152.99
+    },
+    "WSL_Ubuntu_26_04": {
+      "python": "3.13.14",
+      "tests": 888,
+      "passed": 866,
+      "skipped": 22,
+      "elapsed_seconds": 116.76
+    },
+    "mini_sdk": {
+      "Windows_passed": 25,
+      "WSL_passed": 25,
+      "skipped": 0
+    },
+    "new_native_protocol_tests": {
+      "tests": 13,
+      "skipped": 0
+    },
+    "lock_check": true,
+    "schema_matches_generator": true,
+    "wheel_sdist_build": true,
+    "wheel_verification": {
+      "installed_source_files_checked": 37,
+      "source_files_digest": "d23020e97ff1400f8afe8f85a1161df3877dfb9e5e5c2b436e5418343d2153a0",
+      "installed_native_protocol_tests": 13,
+      "installed_native_protocol_tests_skipped": 0,
+      "fresh_no_cache_install": true,
+      "sdist_contains_new_module_tests_and_docs": true,
+      "installed_live_refresh": true,
+      "installed_session_metadata_only": true,
+      "installed_cli_native_path": true,
+      "readonly_reference_phase_no_approvals_or_workspace_edits": true,
+      "installed_mkdir_move_delete_and_exact_undo": true,
+      "lifecycle_fresh_approval_count": 7,
+      "installed_windows_restore_private_acl": true,
+      "installed_reasoning_http_and_sse": true,
+      "installed_application_check_observations": true,
+      "installed_reasoning_saved_but_not_displayed": true,
+      "protocol_fixture_http_requests": 4,
+      "protocol_fixture_check_approvals": 4,
+      "wheel_sha256": "51ad43c5a309b6e8cc25708cab25bb85f2f8ee47d3133d1ad8cab806ed0f140c"
+    },
+    "real_Windows_8dot3_alias_regression_passed": true,
+    "file_actions_module": {
+      "Windows": {
+        "tests": 35,
+        "passed": 34,
+        "skipped": 1
+      },
+      "WSL": {
+        "tests": 35,
+        "passed": 33,
+        "skipped": 2
+      }
+    },
+    "file_action_TUI_repeated_case": {
+      "Windows_passed": 10,
+      "WSL_passed": 10,
+      "skipped": 0
+    },
+    "latest_sdist_contains_fixed_TUI_test": true
+  },
+  "live_smoke": {
+    "scope": "bounded toy smoke; not a coding-agent comparison",
+    "paid_cost": "unknown; token usage is provider-reported, not a bill",
+    "results": [
+      {
+        "provider": "agnes",
+        "model": "agnes-3.0-flash",
+        "protocol": "chat_completions",
+        "request_cap": 4,
+        "output_token_cap_per_request": 1536,
+        "automatic_retries": 0,
+        "elapsed_ms": 22794.213,
+        "error": null,
+        "fresh_write_approvals": 1,
+        "refused_operations": 0,
+        "passed_cases": 9,
+        "total_cases": 9,
+        "metrics": {
+          "available": true,
+          "scope": "current provider instance; not persisted or sent to the model",
+          "attempts": 4,
+          "not_attempted": 0,
+          "outcomes": {
+            "success": 4,
+            "error": 0,
+            "cancelled": 0
+          },
+          "failures": {},
+          "request_bytes": 32481,
+          "response_bytes": 17888,
+          "elapsed_ms": 22766.818,
+          "usage": {
+            "prompt_tokens": {
+              "reported_sum": 9093,
+              "known_requests": 4,
+              "unknown_requests": 0,
+              "complete_sum": 9093
+            },
+            "completion_tokens": {
+              "reported_sum": 258,
+              "known_requests": 4,
+              "unknown_requests": 0,
+              "complete_sum": 258
+            },
+            "total_tokens": {
+              "reported_sum": 9351,
+              "known_requests": 4,
+              "unknown_requests": 0,
+              "complete_sum": 9351
+            }
+          },
+          "recent_limit": 128,
+          "recent_dropped": 0,
+          "recent": [
+            {
+              "attempted": true,
+              "streamed": true,
+              "outcome": "success",
+              "http_status": 200,
+              "request_bytes": 7346,
+              "response_bytes": 1664,
+              "elapsed_ms": 10604.244,
+              "first_text_ms": null,
+              "usage": {
+                "prompt_tokens": 2044,
+                "completion_tokens": 26,
+                "total_tokens": 2070
+              },
+              "finish_reason": "tool_calls",
+              "error_code": null
+            },
+            {
+              "attempted": true,
+              "streamed": true,
+              "outcome": "success",
+              "http_status": 200,
+              "request_bytes": 7859,
+              "response_bytes": 2307,
+              "elapsed_ms": 2825.711,
+              "first_text_ms": null,
+              "usage": {
+                "prompt_tokens": 2214,
+                "completion_tokens": 83,
+                "total_tokens": 2297
+              },
+              "finish_reason": "tool_calls",
+              "error_code": null
+            },
+            {
+              "attempted": true,
+              "streamed": true,
+              "outcome": "success",
+              "http_status": 200,
+              "request_bytes": 8348,
+              "response_bytes": 1664,
+              "elapsed_ms": 6721.39,
+              "first_text_ms": null,
+              "usage": {
+                "prompt_tokens": 2327,
+                "completion_tokens": 26,
+                "total_tokens": 2353
+              },
+              "finish_reason": "tool_calls",
+              "error_code": null
+            },
+            {
+              "attempted": true,
+              "streamed": true,
+              "outcome": "success",
+              "http_status": 200,
+              "request_bytes": 8928,
+              "response_bytes": 12253,
+              "elapsed_ms": 2615.473,
+              "first_text_ms": 2517.539,
+              "usage": {
+                "prompt_tokens": 2508,
+                "completion_tokens": 123,
+                "total_tokens": 2631
+              },
+              "finish_reason": "stop",
+              "error_code": null
+            }
+          ]
+        }
+      },
+      {
+        "provider": "USTC",
+        "model": "deepseek-flash",
+        "protocol": "chat_completions",
+        "request_cap": 4,
+        "output_token_cap_per_request": 1536,
+        "automatic_retries": 0,
+        "elapsed_ms": 45047.428,
+        "error": "timeout",
+        "fresh_write_approvals": 0,
+        "refused_operations": 0,
+        "passed_cases": 4,
+        "total_cases": 9,
+        "metrics": {
+          "available": true,
+          "scope": "current provider instance; not persisted or sent to the model",
+          "attempts": 1,
+          "not_attempted": 0,
+          "outcomes": {
+            "success": 0,
+            "error": 1,
+            "cancelled": 0
+          },
+          "failures": {
+            "timeout": 1
+          },
+          "request_bytes": 7345,
+          "response_bytes": 0,
+          "elapsed_ms": 45040.36,
+          "usage": {
+            "prompt_tokens": {
+              "reported_sum": 0,
+              "known_requests": 0,
+              "unknown_requests": 1,
+              "complete_sum": null
+            },
+            "completion_tokens": {
+              "reported_sum": 0,
+              "known_requests": 0,
+              "unknown_requests": 1,
+              "complete_sum": null
+            },
+            "total_tokens": {
+              "reported_sum": 0,
+              "known_requests": 0,
+              "unknown_requests": 1,
+              "complete_sum": null
+            }
+          },
+          "recent_limit": 128,
+          "recent_dropped": 0,
+          "recent": [
+            {
+              "attempted": true,
+              "streamed": true,
+              "outcome": "error",
+              "http_status": null,
+              "request_bytes": 7345,
+              "response_bytes": 0,
+              "elapsed_ms": 45040.36,
+              "first_text_ms": null,
+              "usage": null,
+              "finish_reason": null,
+              "error_code": "timeout"
+            }
+          ]
+        }
+      }
+    ]
+  },
+  "limits": {
+    "paid_model_scope": "existing two suppliers, configured Chat Completions only; no per-model certification",
+    "requests_cap_per_provider": 4,
+    "output_tokens_cap_per_request": 1536,
+    "request_timeout_seconds": 45,
+    "automatic_retries": 0,
+    "fixture": "single pure Python clamp function; same task and nine external cases for both providers",
+    "fixture_baseline_passed": 4,
+    "agent_commands_disabled": true,
+    "writes_fresh_approval_scoped_to": "clamp.py only",
+    "external_checker": "restricted AST, no imports, attributes, loops or arbitrary calls; only min/max callable",
+    "USTC_fixture_bytes_unchanged": true,
+    "interpretation": "toy end-to-end smoke, not an agent performance comparison; no global success-rate claim; timeout token consumption and all bills unknown"
+  },
+  "feature_commit": "ca75ac95dbb5b55883dcc5f182d0dc65cb50248c",
+  "live_smoke_source_commit": "ca75ac95dbb5b55883dcc5f182d0dc65cb50248c",
+  "initial_ci": {
+    "id": 39252993854,
+    "head_sha": "ca75ac95dbb5b55883dcc5f182d0dc65cb50248c",
+    "event": "workflow_dispatch",
+    "status": "completed",
+    "conclusion": "failure",
+    "html_url": "https://github.com/qinyin233/sprig-agent/actions/runs/39252993854",
+    "created_at": "2026-10-19T12:33:33Z",
+    "updated_at": "2026-10-19T12:37:14Z",
+    "jobs": [
+      {
+        "id": 118061171702,
+        "name": "core (ubuntu-latest)",
+        "status": "completed",
+        "conclusion": "success",
+        "html_url": "https://github.com/qinyin233/sprig-agent/actions/runs/39252993854/job/118061171702"
+      },
+      {
+        "id": 118061172020,
+        "name": "core (windows-latest)",
+        "status": "completed",
+        "conclusion": "failure",
+        "html_url": "https://github.com/qinyin233/sprig-agent/actions/runs/39252993854/job/118061172020"
+      }
+    ],
+    "exact_sha_native_success": false
+  },
+  "initial_ci_failure": "Windows test asserted TEMP spelling rather than directory identity; actual RUNNER~1 alias resolved to runneradmin. Corrected assertion and locally reproduced a real 8.3 alias.",
+  "ci_commit": "fb342bb6d9a6a165caa519ce4964535eba0749cd",
+  "runtime_source_unchanged_after_functional_commit": true,
+  "second_ci": {
+    "id": 39253935761,
+    "head_sha": "6d993c7743db427982bb2965aa5e1f3b19beaefd",
+    "event": "workflow_dispatch",
+    "status": "completed",
+    "conclusion": "failure",
+    "html_url": "https://github.com/qinyin233/sprig-agent/actions/runs/39253935761",
+    "created_at": "2026-10-19T12:40:48Z",
+    "updated_at": "2026-10-19T12:44:29Z",
+    "jobs": [
+      {
+        "id": 118064369435,
+        "name": "core (ubuntu-latest)",
+        "status": "completed",
+        "conclusion": "success",
+        "html_url": "https://github.com/qinyin233/sprig-agent/actions/runs/39253935761/job/118064369435"
+      },
+      {
+        "id": 118064369806,
+        "name": "core (windows-latest)",
+        "status": "completed",
+        "conclusion": "failure",
+        "html_url": "https://github.com/qinyin233/sprig-agent/actions/runs/39253935761/job/118064369806"
+      }
+    ],
+    "exact_sha_native_success": false
+  },
+  "second_ci_failure": "TUI test clicked approval before modal children were mounted; synchronized modal controls and UI idle, then repeated the full move/steering case ten times on each local platform.",
+  "native_ci": {
+    "id": 39254844116,
+    "head_sha": "fb342bb6d9a6a165caa519ce4964535eba0749cd",
+    "event": "workflow_dispatch",
+    "status": "completed",
+    "conclusion": "success",
+    "html_url": "https://github.com/qinyin233/sprig-agent/actions/runs/39254844116",
+    "created_at": "2026-10-19T12:47:44Z",
+    "updated_at": "2026-10-19T12:51:16Z",
+    "jobs": [
+      {
+        "id": 118067430100,
+        "name": "core (windows-latest)",
+        "status": "completed",
+        "conclusion": "success",
+        "html_url": "https://github.com/qinyin233/sprig-agent/actions/runs/39254844116/job/118067430100"
+      },
+      {
+        "id": 118067430399,
+        "name": "core (ubuntu-latest)",
+        "status": "completed",
+        "conclusion": "success",
+        "html_url": "https://github.com/qinyin233/sprig-agent/actions/runs/39254844116/job/118067430399"
+      }
+    ],
+    "exact_sha_native_success": true
+  },
+  "ci_strategy": {
+    "automatic_full_matrix_skipped": true,
+    "explicit_native_runner_jobs_per_run": 2,
+    "runs_in_this_batch": 3,
+    "initial_two_failures_fixed": true,
+    "latest_required_jobs_all_successful": true,
+    "following_evidence_only_commit_skips_ci": true
+  }
+}
