@@ -26,6 +26,7 @@ from .map_selection import MapSelection, encoded_size
 from .policy import FilePolicy, command_environment
 from .output import CommandOutput
 from .edit_match import failure_details
+from .edit_batch import EditPreview, digest, preflight
 from .line_edits import replace_lines, validate_edits
 from .search import FileGlob, RegexBudgetExceeded, RegexMatcher, matching_lines
 from .syntax import IndexUnavailable
@@ -107,6 +108,8 @@ class Tools:
         self.index = SymbolIndex()
         self.plan = TaskPlan()
         self.read_versions = ReadVersions()
+        self._edit_preview = False
+        self._edit_batch = None
         self.emit_output = emit_output
         self.instructions = ProjectInstructions(self._read_instruction, self._check_cancelled,
                                                 config.project_instructions, config.instruction_files)
@@ -204,6 +207,9 @@ class Tools:
 
     def execute(self, name, arguments):
         self._check_cancelled()
+        batch = self._edit_batch if name in {"edit_file", "edit_lines"} else None
+        if batch is not None and batch.failed:
+            return batch.stopped_result()
         try:
             self.root.ensure_open()
             self._require_tool(name)
@@ -216,9 +222,16 @@ class Tools:
             if method is None:
                 raise ToolError("unknown tool")
             result = method(**arguments)
-            return redact(result, self.config.secrets)
         except (OSError, ToolError, ChangeError, TypeError, ValueError) as exc:
-            return {"error": redact(str(exc), self.config.secrets)}
+            result = {"error": str(exc)}
+        if isinstance(result, EditPreview):
+            return result
+        if batch is not None:
+            batch.finish(arguments, result)
+        return redact(result, self.config.secrets)
+
+    def edit_batch(self, requests):
+        return preflight(self, requests)
 
     def update_plan(self, plan, explanation=""):
         self._require_tool("update_plan")
@@ -755,7 +768,7 @@ class Tools:
         if edits is _MISSING:
             raise ToolError("edit_lines requires edits")
         result = self.edit_file(path, sha256=digest, line_edits=edits)
-        if "edit_failure" in result:
+        if isinstance(result, dict) and "edit_failure" in result:
             result["edit_failure"] = {**result["edit_failure"], "source": "read_id"}
         return result
 
@@ -806,6 +819,8 @@ class Tools:
         with self._parent(path) as (fd, name):
             before_raw, before_stat = self._snapshot(fd, name)
             before = self._decode(before_raw or b"")
+            if self._edit_batch is not None:
+                self._edit_batch.check_source(self, parts, before_raw, before_stat)
             if by_line:
                 if before_stat is None:
                     raise ToolError("line_edits require an existing file")
@@ -847,6 +862,10 @@ class Tools:
             self._decode(data)
             if any(secret in before or secret in after for secret in self.config.credential_secrets):
                 raise ToolError("configured API key must not appear in change backups")
+            if self._edit_preview:
+                return EditPreview(path, parts, self._revision(before_stat), digest(before_raw), digest(data), rules)
+            if self._edit_batch is not None:
+                self._edit_batch.check_proposal(parts, data)
             if before_stat is not None and before == after:
                 return {"changed": False}
             diff = self._diff(path, before if before_stat else None, after)
@@ -856,6 +875,8 @@ class Tools:
             self._parts(path)
             self.instructions.recheck_action(parts[:-1], rules)
             self._unchanged(fd, name, before_raw, before_stat)
+            if self._edit_batch is not None:
+                self._edit_batch.check_pending(self)
             self._check_cancelled()
             self.read_versions.discard(parts)
             mode = stat.S_IMODE(before_stat.st_mode) & 0o777 if before_stat else 0o600

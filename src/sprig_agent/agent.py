@@ -1,6 +1,7 @@
 """One model → tools → model loop. No orchestration framework."""
 
 import copy
+from contextlib import nullcontext
 import json
 import uuid
 
@@ -12,7 +13,24 @@ from .planning import TaskPlan
 from .revisions import ReadVersions
 from .provider import ProviderError, validate_message
 from .session import validate_history
-from .tools import TOOL_SCHEMAS
+from .tools import TOOL_SCHEMAS, Tools
+
+
+def tool_arguments(function):
+    try:
+        arguments = json.loads(function["arguments"])
+        # Python versions differ in their JSON recursion limit.
+        pending = [(arguments, 0)]
+        while pending:
+            value, depth = pending.pop()
+            if isinstance(value, (dict, list)):
+                if depth >= 64:
+                    raise ValueError("tool arguments are too deeply nested")
+                children = value.values() if isinstance(value, dict) else value
+                pending.extend((child, depth + 1) for child in children)
+        return function["name"], arguments, None
+    except (ValueError, RecursionError):
+        return function["name"], None, {"error": "tool arguments are not valid JSON"}
 
 SYSTEM_PROMPT = """You are Sprig, a small coding assistant operating in a user-selected workspace.
 Inspect before editing. Make the smallest correct change and verify it with appropriate tests.
@@ -361,44 +379,39 @@ class Agent:
                     return messages, status == "passed"
                 return messages, True
             edited, batch_steered = False, False
-            for index, call in enumerate(calls):
-                self._check_cancelled()
-                if self._steer(messages, calls[index:]):
-                    batch_steered = True
-                    break
-                function = call["function"]
-                self.emit(f"[tool] {function['name']}")
-                try:
-                    arguments = json.loads(function["arguments"])
-                    # Python versions differ in their JSON recursion limit.
-                    pending = [(arguments, 0)]
-                    while pending:
-                        value, depth = pending.pop()
-                        if isinstance(value, (dict, list)):
-                            if depth >= 64:
-                                raise ValueError("tool arguments are too deeply nested")
-                            children = value.values() if isinstance(value, dict) else value
-                            pending.extend((child, depth + 1) for child in children)
-                except (ValueError, RecursionError):
-                    result = {"error": "tool arguments are not valid JSON"}
-                else:
-                    result = self._execute_model_tool(function["name"], arguments)
-                if (function["name"] in {"edit_file", "edit_lines"} and result.get("approved") is True
-                        and result.get("changed") is True and "error" not in result
-                        and not any(result.get(flag) for flag in ("outcome", "skipped", "cancelled", "interrupted"))):
-                    edited = True
-                content = json.dumps(redact(result, self.config.secrets), ensure_ascii=False)
-                messages.append({"role": "tool", "tool_call_id": call["id"], "content": content})
-                self.checkpoint(messages)
-                if "error" in result:
-                    self.emit(f"[tool error] {result['error']}")
-                elif result.get("approved") is False:
-                    self.emit("[rejected] No action taken")
-                elif function["name"] == "update_plan":
-                    self.emit("[plan; model-reported, not acceptance] " + content)
-                elif function["name"] == "run":
-                    self.emit(json.dumps({key: value for key, value in result.items() if key != "output"}, ensure_ascii=False)
-                              if result.get("streamed") else content)
+            requests = [tool_arguments(call["function"]) for call in calls]
+            batch = self.tools.edit_batch(requests) if isinstance(self.tools, Tools) else nullcontext(None)
+            with batch as blocked:
+                for index, call in enumerate(calls):
+                    self._check_cancelled()
+                    if self._steer(messages, calls[index:]):
+                        batch_steered = True
+                        break
+                    function = call["function"]
+                    self.emit(f"[tool] {function['name']}")
+                    name, arguments, error = requests[index]
+                    if blocked is not None:
+                        result = blocked[index]
+                    elif error is not None:
+                        result = error
+                    else:
+                        result = self._execute_model_tool(name, arguments)
+                    if (name in {"edit_file", "edit_lines"} and result.get("approved") is True
+                            and result.get("changed") is True and "error" not in result
+                            and not any(result.get(flag) for flag in ("outcome", "skipped", "cancelled", "interrupted"))):
+                        edited = True
+                    content = json.dumps(redact(result, self.config.secrets), ensure_ascii=False)
+                    messages.append({"role": "tool", "tool_call_id": call["id"], "content": content})
+                    self.checkpoint(messages)
+                    if "error" in result:
+                        self.emit(f"[tool error] {result['error']}")
+                    elif result.get("approved") is False:
+                        self.emit("[rejected] No action taken")
+                    elif name == "update_plan":
+                        self.emit("[plan; model-reported, not acceptance] " + content)
+                    elif name == "run":
+                        self.emit(json.dumps({key: value for key, value in result.items() if key != "output"}, ensure_ascii=False)
+                                  if result.get("streamed") else content)
             if self.config.check_after_edit and edited and not batch_steered:
                 self.edit_check_status = "running"
                 try:
