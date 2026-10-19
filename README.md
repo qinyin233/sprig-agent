@@ -255,11 +255,14 @@ CLI 与 TUI 都实时显示命令输出，保留 UTF-8 分段，遮盖跨片段�
 | `edit_file(path, old, new)` 或 `edit_file(path, edits=[...])` | 单片段或同文件多片段替换，展示合并 diff，经确认后一次写入 |
 | `edit_lines(path, read_id, edits=[...])` | 使用读取返回的短版本标识进行整行替换；内部核对完整摘要，仍需完整 diff 和新批准 |
 | `run(argv, cwd=".", timeout=...)` | 运行参数数组所指定的命令；可选超时不能超过全局上限 |
+| `file_action(action, path, read_id=..., destination=...)` | 创建单个目录、读取标识关联的删除或复制后删除的移动；逐阶段新批准，不覆盖目标，支持文件撤销 |
 | `update_plan(plan, explanation="")` | 更新有界的模型进度清单；TUI 计划页和 `/plan` 查看，随显式保存的会话恢复；不批准操作、不代表验收通过 |
 
 大文本使用[文件与传输说明](docs/text-transfer.md)：超长单行可用 `read_file(cursor="start")`，随后传回 `next_cursor` 续读；页面绑定路径与内容版本，按 UTF-8 码点边界截取。TUI 超限输入保留草稿，待处理引导有数量和字节限额，显示裁剪与模型历史分开。
 
 需要随编辑刷新的文件，可设置 `[context].files = ["src/main.py"]` 或输入 `/ref src/main.py`。完整小文件只进入当前请求；大文件以路径和大小提示按需读取。引用元数据随启用保存的会话恢复；`/refs` 查看，`/unref PATH` 或 `/refs clear` 移除。Windows 终端可传工作区内的本机绝对路径。完整请求预检失败也保留 TUI 草稿；详见[实时文件引用](docs/live-file-references.md)。
+
+目录、删除和移动有[专用文件操作](docs/file-actions.md)。删除/移动最多 512 KiB 的普通 UTF-8 文件，先读取获得当前标识，再分别批准具体变化。移动分复制和删除两步，中断可能保留两份；明确成功后实时引用跟随移动或移除，阶段检查与独立最终验收继续生效。它不是原子 rename 或递归目录工具。
 
 长会话压缩时，`[context].keep_read_bytes` 在原请求硬限额内保留少量完整的旧源码窗口，默认 8192 个编码字节，0 关闭；不足时仍省略，不自动增加请求。保留正文标为历史快照并移除旧读取标识，详见[源码窗口保留](docs/read-retention.md)。
 

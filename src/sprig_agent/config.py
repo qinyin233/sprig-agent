@@ -9,7 +9,7 @@ import re
 import unicodedata
 from urllib.parse import urlsplit, urlunsplit
 
-TOOL_NAMES = ("list_files", "read_file", "search", "project_map", "edit_file", "run", "update_plan", "edit_lines")
+TOOL_NAMES = ("list_files", "read_file", "search", "project_map", "edit_file", "run", "update_plan", "edit_lines", "file_action")
 SHORTCUT_ACTIONS = ("cancel", "quit", "focus_input", "toggle_sidebar", "help", "new_conversation")
 GENERATION_FIELDS = ("max_tokens", "thinking", "temperature", "top_p", "reasoning_effort", "seed", "token_limit_field", "extra_body")
 RESERVED_BODY_FIELDS = {"model", "messages", "tools", "tool_choice", "stream", "stream_options", "n",
@@ -386,7 +386,7 @@ class Config:
 
     def tool_enabled(self, name):
         return (name in TOOL_NAMES and name not in self.disabled_tools
-                and (name != "edit_lines" or "edit_file" not in self.disabled_tools))
+                and (name not in {"edit_lines", "file_action"} or "edit_file" not in self.disabled_tools))
 
     def binding(self):
         binding = {"base_url": self.base_url, "model": self.model, "workdir": str(self.workdir)}

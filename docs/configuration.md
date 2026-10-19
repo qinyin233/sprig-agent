@@ -185,6 +185,8 @@ uv run --locked sprig --config-schema
 
 ## 工具、文件与执行环境
 
+`[tools].file_action=false` 禁用目录创建、读取标识删除和复制后删除的移动；`edit_file=false` 也同时禁用 `file_action` 与 `edit_lines`，显式项目层不能重新打开。CLI 为 `--disable-tool file_action`；只读模式在 schema 和实际执行层阻止这些写入。移动的两个阶段分别取得新批准，不提供原子 rename，见[专用文件操作](file-actions.md)。
+
 `[tools]` 对八种工具设置 true/false：`list_files`、`read_file`、`search`、`project_map`、`edit_file`、`edit_lines`、`run`、`update_plan`。false 同时移除模型工具 schema，并在分发、直接方法和撤销/重做处执行限制；CLI `--disable-tool NAME` 可重复。关闭 `read_file` 也阻止 `/add` 附件；关闭 `edit_file` 同时禁止 `edit_lines`，项目不能重新启用。整行编辑的短版本标识仍关联完整摘要并要求新批准，见[读取绑定编辑](read-bound-edits.md)。`run=false` 或 `read_only=true` 不能配置非空 `checks`。`update_plan` 只维护模型报告的进度，不授权执行或替代验收，详见[任务计划](task-plans.md)。
 
 禁用单个工具只控制该工具接口，例如 `search` 仍会读取匹配内容。要禁止某些路径通过所有文件工具访问，使用 `[files].exclude`；要禁用全部命令，使用 `run=false` 或只读模式。任意获批命令仍无 OS 沙箱，不能把文件排除当作命令隔离。

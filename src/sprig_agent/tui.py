@@ -188,9 +188,12 @@ class SprigApp(App[int]):
             def execute(self, name, arguments):
                 result = super().execute(name, arguments)
                 if result.get("approved") is False and app.ui_call(lambda: bool(app.pending_tasks)):
-                    result = {**result, "skipped": True,
-                              "error": "Not executed: superseded by new user guidance. Follow the updated request and request fresh approval for any new action."}
-                summary = {key: result[key] for key in ("approved", "changed", "returncode", "timed_out", "output_limited", "error") if key in result}
+                    note = ("Stopped after a workspace change; inspect current files: " if result.get("changed") or result.get("outcome")
+                            else "Not executed: ")
+                    result = {**result, "skipped": True, "error": note +
+                              "superseded by new user guidance. Follow the updated request and request fresh approval for any new action."}
+                summary = {key: result[key] for key in ("approved", "changed", "returncode", "timed_out", "output_limited",
+                                                       "outcome", "partial", "copied", "source_removed", "path", "destination", "error") if key in result}
                 if app._ui_ready and not app._unmounted:
                     app.ui_call(app.event, name + ": " + json.dumps(summary, ensure_ascii=False))
                     if name == "update_plan":

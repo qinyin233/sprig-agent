@@ -4,6 +4,7 @@ import copy
 from contextlib import nullcontext
 import json
 import os
+from pathlib import PurePosixPath
 import uuid
 
 from .config import redact
@@ -75,7 +76,7 @@ class Agent:
         self._prepared_reference_observations = []
         self.schemas = [copy.deepcopy(schema) for schema in TOOL_SCHEMAS
                         if config.tool_enabled(schema["function"]["name"])
-                        and (not config.read_only or schema["function"]["name"] not in {"edit_file", "edit_lines", "run"})]
+                        and (not config.read_only or schema["function"]["name"] not in {"edit_file", "edit_lines", "file_action", "run"})]
         for schema in self.schemas:
             if schema["function"]["name"] == "run":
                 schema["function"]["parameters"]["properties"]["timeout"]["maximum"] = config.timeout
@@ -221,6 +222,11 @@ class Agent:
         return {"available": False, "reason": "provider does not record numeric request measurements"}
 
     def record_workspace_change(self, messages, result):
+        if result.get("approved") is True and result.get("changed") is True and result.get("file_removed") is True and "error" not in result:
+            selected = self._references_after_file_action({"action": "delete", "path": result["path"]})
+            if selected is not None:
+                self.references.files = selected
+                self.references.observed = [row for row in self.references.observed if row["path"] in selected]
         if messages and (result.get("changed") or result.get("outcome") == "uncertain"):
             messages.append({"role": "user", "content": redact(
                 "User local " + result["action"] + " of " + json.dumps(result["path"]) +
@@ -250,11 +256,33 @@ class Agent:
             raise KeyboardInterrupt
 
     def _execute_model_tool(self, name, arguments):
+        if name == "file_action":
+            try:
+                self._references_after_file_action(arguments)
+            except ValueError as error:
+                return {"changed": False, "error": str(error)}
         instructions = getattr(self.tools, "instructions", None)
         if isinstance(instructions, ProjectInstructions):
             with instructions.model_action():
                 return self.tools.execute(name, arguments)
         return self.tools.execute(name, arguments)
+
+    def _references_after_file_action(self, arguments):
+        """Plan selection updates before approval; commit only after definite success."""
+        if not isinstance(arguments, dict) or not isinstance(arguments.get("path"), str):
+            return None
+        action = arguments.get("action")
+        if action not in ("delete", "move"):
+            return None
+        key = lambda path: PurePosixPath(path).as_posix().casefold() if os.name == "nt" else PurePosixPath(path).as_posix()
+        source = key(arguments["path"])
+        if not any(key(path) == source for path in self.references.files):
+            return None
+        target = arguments.get("destination")
+        if action == "move" and not isinstance(target, str):
+            return None  # Let the tool return its normal argument diagnostic.
+        return reference_paths([target if key(path) == source else path for path in self.references.files]
+                               if action == "move" else [path for path in self.references.files if key(path) != source])
 
     def _request_messages(self, messages, step):
         self._check_cancelled()
@@ -460,7 +488,14 @@ class Agent:
                         result = error
                     else:
                         result = self._execute_model_tool(name, arguments)
-                    if (name in {"edit_file", "edit_lines"} and result.get("approved") is True
+                    if (name == "file_action" and result.get("approved") is True and result.get("changed") is True
+                            and "error" not in result and not any(result.get(flag) for flag in ("outcome", "partial", "cancelled", "skipped"))):
+                        selected = self._references_after_file_action(arguments)
+                        if selected is not None:
+                            self.references.files = selected
+                            self.references.observed = [row for row in self.references.observed
+                                                        if row["path"] in selected and row["path"] != arguments.get("destination")]
+                    if (name in {"edit_file", "edit_lines", "file_action"} and result.get("approved") is True
                             and result.get("changed") is True and "error" not in result
                             and not any(result.get(flag) for flag in ("outcome", "skipped", "cancelled", "interrupted"))):
                         edited = True
@@ -473,6 +508,8 @@ class Agent:
                         self.emit("[rejected] No action taken")
                     elif name == "update_plan":
                         self.emit("[plan; model-reported, not acceptance] " + content)
+                    elif name == "file_action":
+                        self.emit(content)
                     elif name == "run":
                         self.emit(json.dumps({key: value for key, value in result.items() if key != "output"}, ensure_ascii=False)
                                   if result.get("streamed") else content)

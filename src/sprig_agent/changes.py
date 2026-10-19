@@ -69,7 +69,7 @@ class ChangeHistory:
                 if (not isinstance(record, dict) or not isinstance(record["id"], str) or len(record["id"]) != 32
                         or not isinstance(record["path"], str) or not 0 < len(record["path"]) <= 4096
                         or type(record["mode"]) is not int or not 0 <= record["mode"] <= 0o777
-                        or not isinstance(record["after"], str)):
+                        or (record["before"] is None and record["after"] is None)):
                     raise ValueError
                 for field in ("before", "after"):
                     if record[field] is not None and (not isinstance(record[field], str) or len(unpack(record[field])) > 512 * 1024):
@@ -128,7 +128,7 @@ class ChangeHistory:
                 "records": [{"id": record["id"], "path": record["path"],
                              "applied": None if self.state["pending"] and self.state["pending"]["path"] == record["path"] else index < self.state["cursor"],
                              "before_bytes": None if record["before"] is None else len(unpack(record["before"])),
-                             "after_bytes": len(unpack(record["after"]))}
+                             "after_bytes": None if record["after"] is None else len(unpack(record["after"]))}
                             for index, record in enumerate(self.state["records"])]}
 
     def begin_edit(self, path, before, after, mode, revision):

@@ -177,6 +177,9 @@
         },
         "edit_lines": {
           "type": "boolean"
+        },
+        "file_action": {
+          "type": "boolean"
         }
       },
       "additionalProperties": false
@@ -903,6 +906,9 @@
                 "type": "boolean"
               },
               "edit_lines": {
+                "type": "boolean"
+              },
+              "file_action": {
                 "type": "boolean"
               }
             },

@@ -51,41 +51,44 @@ def schema(name, description, properties, required=()):
 
 STRING = {"type": "string"}
 TOOL_SCHEMAS = [
-    schema("list_files", "List one workspace directory; no symlinks or protected files.",
+    schema("list_files", "List one directory; no symlinks/protected files.",
            {"path": STRING}),
-    schema("read_file", "UTF-8 numbered offset/limit (line_numbers=false raw): check range_complete; truncated may mean later lines. symbol exact <=512KiB: check symbol_complete. cursor='start'/next_cursor bytes; scan<=8MiB. Partial lines lack read_id.",
+    schema("read_file", "UTF-8 ranges: range_complete covers window; truncated may mean later lines. symbol_complete: exact <=512KiB span. cursor='start'/next_cursor byte pages; scan<=8MiB. Partial lines lack read_id.",
            {"path": STRING, "offset": {"type": "integer", "minimum": 1, "maximum": 1000000},
             "limit": {"type": "integer", "minimum": 1, "maximum": 10000}, "line_numbers": {"type": "boolean"},
             "cursor": {"type": "string", "maxLength": 80},
             "symbol": {"type": "string", "minLength": 1, "maxLength": 1024}}, ["path"]),
-    schema("search", "Literal default; regex=true for A|B. RE2: no lookaround/backreferences; ASCII \\w/\\d/\\b; 1MiB/cooperative 1s. ignore_case: full folding literal, simple folding RE2. glob: case-sensitive * within /, ** across. output_mode: content (default, context=0-10), files (paths), count (matching physical CR/LF lines/file); files/count need context=0. limit caps records (default 100). truncated/timed_out/skipped cannot prove absence.",
+    schema("search", "Literal/RE2 regex: no lookaround/backrefs; ASCII \\w/\\d/\\b; 1MiB/cooperative 1s. ignore_case: full literal/simple folding RE2. glob * within /, ** across, case-sensitive. output_mode content(context<=10), files or count(physical CR/LF lines/file, context=0). truncated/timed_out/skipped cannot prove absence.",
            {"query": STRING, "path": STRING, "glob": {"type": "string", "minLength": 1, "maxLength": 256},
             "ignore_case": {"type": "boolean"}, "regex": {"type": "boolean"},
             "context": {"type": "integer", "minimum": 0, "maximum": 10},
             "limit": {"type": "integer", "minimum": 1, "maximum": 1000},
             "output_mode": {"enum": ["content", "files", "count"]}}, ["query"]),
-    schema("project_map", "Map 1-based declarations (Python/JS/TS/TSX/Rust/Go/C/C++/Java). Literal case-insensitive name/path query; exact/prefix first. include_calls: simple name only; syntax matches, not resolved references. Check parse/truncation flags; read source before edits.",
+    schema("project_map", "Python/JS/TS/TSX/Rust/Go/C/C++/Java declarations, 1-based. Case-insensitive literal name/path, exact/prefix first. include_calls: syntax, not resolved references. Check flags; read source before edits.",
            {"path": STRING, "query": {"type": "string", "minLength": 1, "maxLength": 256},
             "include_calls": {"type": "boolean"}}),
-    schema("edit_file", "Exact text edits with complete diff approval, atomic write and undo. Choose old/new (old='' creates only) OR edits (<=32 unique replacements in ORIGINAL text). Parent must exist. Reread after a match failure. Prefer edit_lines for focused line changes.",
+    schema("edit_file", "Unique exact old/new (old='' creates) OR <=32 edits in ORIGINAL text. Parent must exist. Approved full diff, atomic write, undo; reread mismatches. Prefer edit_lines.",
            {"path": STRING, "old": STRING, "new": STRING,
             "edits": {"type": "array", "minItems": 1, "maxItems": MAX_EDITS,
                       "items": {"type": "object", "properties": {"old": STRING, "new": STRING},
                                 "required": ["old", "new"], "additionalProperties": False}}}, ["path"]),
-    schema("edit_lines", "Whole-line edits after read_file: read_id pins this file's hash; stale IDs fail before diff approval. IDs expire after writes/commands/continuation. 1-based inclusive; insert end_line=start_line-1. Preserve LF/CRLF; no overlap.",
+    schema("edit_lines", "read_id pins read_file hash; stale/expired IDs fail before approval. Whole-line, 1-based inclusive; insert end_line=start_line-1. Preserve line endings; no overlap.",
            {"path": STRING, "read_id": {"type": "string", "pattern": READ_ID_PATTERN, "maxLength": 64},
             "edits": {"type": "array", "minItems": 1, "maxItems": MAX_EDITS,
                            "items": {"type": "object", "properties": {
                                "start_line": {"type": "integer", "minimum": 1, "maximum": 1000000},
                                "end_line": {"type": "integer", "minimum": 0, "maximum": 1000000}, "new": STRING},
                                "required": ["start_line", "end_line", "new"], "additionalProperties": False}}}, ["path", "read_id", "edits"]),
-    schema("update_plan", "Replace your task checklist (<=16 steps; <=1 in_progress; <=4 KiB total). Model-reported progress only: not approval or test evidence. No files or commands. Revise after new guidance; [] clears it.",
+    schema("update_plan", "Plan <=16, <=1 in_progress, <=4KiB; [] clears. Revise after guidance. Not approval/acceptance evidence.",
            {"plan": {"type": "array", "maxItems": 16, "items": {"type": "object", "properties": {
                "step": {"type": "string", "minLength": 1, "maxLength": 256},
                "status": {"enum": ["pending", "in_progress", "completed"]}},
                "required": ["step", "status"], "additionalProperties": False}},
             "explanation": {"type": "string", "maxLength": 512}}, ["plan"]),
-    schema("run", "Run argv after approval. NOT sandboxed (outside files/network). Omit timeout for configured limit.",
+    schema("file_action", "mkdir (parent exists); delete/move UTF-8 <=512KiB with source read_id. Move copies then deletes: two approvals, both may remain. No overwrite/recursive delete.",
+           {"action": {"enum": ["mkdir", "delete", "move"]}, "path": STRING, "destination": STRING,
+            "read_id": STRING}, ["action", "path"]),
+    schema("run", "Approve argv; NOT sandboxed (outside files/network). Omit timeout for configured cap.",
            {"argv": {"type": "array", "items": STRING, "minItems": 1}, "cwd": STRING,
             "timeout": {"type": "number", "exclusiveMinimum": 0, "maximum": 120}}, ["argv"]),
 ]
@@ -219,7 +222,7 @@ class Tools:
             method = {"list_files": self.list_files, "read_file": self.read_file,
                       "search": self.search, "project_map": self.project_map,
                       "edit_file": self.edit_file, "edit_lines": self.edit_lines,
-                      "run": self.run, "update_plan": self.update_plan}.get(name)
+                      "run": self.run, "update_plan": self.update_plan, "file_action": self.file_action}.get(name)
             if method is None:
                 raise ToolError("unknown tool")
             result = method(**arguments)
@@ -233,6 +236,10 @@ class Tools:
 
     def edit_batch(self, requests):
         return preflight(self, requests)
+
+    def file_action(self, action, path, read_id=None, destination=None):
+        from .file_actions import execute
+        return execute(self, action, path, read_id, destination)
 
     def update_plan(self, plan, explanation=""):
         self._require_tool("update_plan")
@@ -701,13 +708,13 @@ class Tools:
         if self._revision(info) != self._revision(before_stat) or data != before_raw:
             raise ToolError("file changed during approval; request a fresh diff")
 
-    def _replace(self, fd, name, data, mode, before_stat):
+    def _replace(self, fd, name, data, mode, before_stat, *, private=False):
         if data is None:
             fd.unlink(name)
         else:
             temp = f".sprig-{uuid.uuid4().hex}.tmp"
             try:
-                fd.write_new(temp, data, mode, permissions_from=name if before_stat else None)
+                fd.write_new(temp, data, mode, private=private, permissions_from=name if before_stat else None)
                 fd.replace(temp, name)
             finally:
                 try:
@@ -753,6 +760,8 @@ class Tools:
             if any(secret in (text or "") for secret in self.config.credential_secrets for text in (before, after)):
                 raise ToolError("configured API key must not appear in change backups")
             description = action.upper() + " " + json.dumps(path) + "\n" + (self._diff(path, before, after) or "(empty file create/delete)")
+            if os.name == "nt" and info is None and target is not None:
+                description += "\nRe-created Windows file uses a private current-user ACL; previous shared access is not restored."
             if not self.approve(description):
                 return {"approved": False, "changed": False}
             self._parts(path)  # File privacy rules may have changed during review.
@@ -761,12 +770,14 @@ class Tools:
             try:
                 self.read_versions.discard(self._parts(path))
                 self.history.begin_restore(action, path)
-                self._replace(fd, name, target, record["mode"], info)
+                self._replace(fd, name, target, record["mode"], info,
+                              private=os.name == "nt" and info is None and target is not None)
                 self.history.complete(self._revision(fd.stat(name)) if target is not None else None)
             except (OSError, ChangeError) as error:
                 return {"approved": True, "changed": False, "outcome": "uncertain", "path": path, "action": action,
                         "error": "Restore outcome is uncertain; inspect current files and the pending backup before continuing: " + str(error)}
         return {"approved": True, "changed": True, "path": path, "action": action,
+                "file_removed": target is None,
                 "note": "Workspace changed; previous model conclusions and acceptance results need rechecking."}
 
     def edit_lines(self, path, read_id=_MISSING, edits=_MISSING):
