@@ -169,8 +169,16 @@ def complete_stream(response, on_text, secret, *, on_usage=None, on_delta=None, 
             if not isinstance(fragment, dict):
                 raise ProviderError("invalid streamed tool call")
             index = fragment.get("index")
-            if type(index) is not int or not 0 <= index < MAX_TOOL_CALLS or index in indices:
+            if type(index) is not int or not 0 <= index < MAX_TOOL_CALLS:
                 raise ProviderError("invalid or duplicate streamed tool call index")
+            if index in indices:
+                # Gateways can coalesce an intent and its argument continuation
+                # into one delta array. Only argument-only continuations may
+                # repeat an index; a second identity/name remains ambiguous.
+                continuation = fragment.get("function")
+                if ("id" in fragment or not isinstance(continuation, dict)
+                        or set(continuation) != {"arguments"}):
+                    raise ProviderError("invalid or duplicate streamed tool call index")
             indices.add(index)
             call = calls.setdefault(index, {"function": {"name": "", "arguments": ""}})
             for field in ("id", "type"):

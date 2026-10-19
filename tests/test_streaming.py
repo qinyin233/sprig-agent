@@ -138,6 +138,32 @@ class StreamTests(unittest.TestCase):
             with self.assertRaises(ProviderError):
                 complete_stream(io.BytesIO(body), None, "")
 
+    def test_coalesced_argument_continuations_keep_one_complete_tool_intent(self):
+        body = sse(chunk({"tool_calls": [
+            {"index": 0, "id": "read", "type": "function", "function": {"name": "read_file", "arguments": ""}},
+            {"index": 0, "type": "function", "function": {"arguments": '{"path":'}},
+            {"index": 0, "function": {"arguments": '"源码.py"}'}}
+        ]}), chunk(reason="tool_calls"))
+        for size in (1, 17, 8192):
+            with self.subTest(size=size):
+                reply = complete_stream(Fragmented(body, size), None, "")
+                self.assertEqual(reply["tool_calls"], [{"id": "read", "type": "function", "function": {
+                    "name": "read_file", "arguments": '{"path":"源码.py"}'}}])
+        with self.assertRaises(ProviderError):
+            complete_stream(Fragmented(body.removesuffix(b"data: [DONE]\n\n")), None, "")
+
+    def test_coalesced_continuations_reject_identity_name_type_and_invalid_arguments(self):
+        first = {"index": 0, "id": "read", "type": "function", "function": {"name": "read_file", "arguments": ""}}
+        continuations = [
+            {"index": 0, "id": "other", "function": {"arguments": "{}"}},
+            {"index": 0, "function": {"name": "run", "arguments": "{}"}},
+            {"index": 0, "type": "other", "function": {"arguments": "{}"}},
+            {"index": 0, "function": {"arguments": []}},
+        ]
+        for continuation in continuations:
+            with self.subTest(continuation=continuation), self.assertRaises(ProviderError):
+                complete_stream(Fragmented(sse(chunk({"tool_calls": [first, continuation]}), chunk(reason="tool_calls"))), None, "")
+
     def test_compatible_provider_usage_event_keeps_empty_choice(self):
         usage = chunk()
         usage["usage"] = {"total_tokens": 10}
