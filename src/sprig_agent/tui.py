@@ -288,6 +288,8 @@ class SprigApp(App[int]):
         self.refresh_plan()
         self.append("Sprig 就绪。任务、读取内容和工具结果会发送到所示服务。\n写入和命令逐次确认；命令没有沙箱。\n")
         self.append("输入 /help 查看本地命令；Enter 发送，Shift+Enter / Ctrl+J 换行。\n")
+        if self.config.preserve_reasoning:
+            self.append("已启用推理协议兼容：推理字段不显示，会随后续请求发送；启用会话保存时一并保存（不加密）。\n")
         if self.tools.history.store is not None:
             self.append("已显式启用本地修改备份（不加密）；仅记录文件工具编辑，命令修改不在撤销范围内。\n")
         if self.messages:

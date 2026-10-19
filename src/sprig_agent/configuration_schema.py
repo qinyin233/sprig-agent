@@ -63,6 +63,8 @@ def configuration_schema():
         "model": model_name, "base_url": text, "api_key": {**text, "writeOnly": True}, "api_key_env": environment,
         "request_timeout": number(0, 120, True), "proxy": {**text, "description": "system, direct, or an HTTP(S) proxy URL without credentials."},
         "api_key_header": text, "api_key_scheme": {"enum": ["bearer", "raw"]}, "headers": headers,
+        "preserve_reasoning": boolean,
+        "check_history_format": {"enum": ["tool_calls", "observations"]},
         "headers_env": {**headers, "additionalProperties": environment}, "generation": generation,
         "models": {"type": "object", "maxProperties": 64, "propertyNames": {"pattern": identifier}, "additionalProperties": model},
     }, **{"not": {"required": ["api_key", "api_key_env"]}})

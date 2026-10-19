@@ -357,7 +357,7 @@ class Agent:
                 return "steered"
             call_id = ("sprig-baseline-" if baseline else "sprig-edit-check-" if after_edit else "sprig-check-") + uuid.uuid4().hex
             seen_ids.add(call_id)
-            messages.append({"role": "assistant", "content": None, "tool_calls": [{
+            messages.append({"role": "assistant", "content": None, "sprig_check": phase, "tool_calls": [{
                 "id": call_id, "type": "function", "function": {
                     "name": "run", "arguments": json.dumps({"argv": list(argv)})}}]})
             self.checkpoint(messages)
@@ -452,7 +452,7 @@ class Agent:
                 # not save its tool intents or execute its stale actions.
                 self.emit("[steering] 旧响应已停止采用，正在按新要求继续")
                 continue
-            message = redact(validate_message(response), self.config.secrets)
+            message = redact(validate_message(response, preserve_reasoning=self.config.preserve_reasoning), self.config.secrets)
             calls = message.get("tool_calls", [])
             if any(call["id"] in seen_ids for call in calls):
                 raise ProviderError("provider reused a tool call ID; stopped without replaying it")

@@ -120,7 +120,7 @@ GROUP_FIELDS = {
 }
 TUI_FIELDS = {"theme": "tui_theme", "sidebar": "tui_sidebar", "editor_height": "tui_editor_height",
               "steering_mode": "steering_mode", "metrics": "show_metrics", "keybindings": "tui_keybindings"}
-TRANSPORT_FIELDS = {"request_timeout", "proxy", "api_key_header", "api_key_scheme"}
+TRANSPORT_FIELDS = {"request_timeout", "proxy", "api_key_header", "api_key_scheme", "preserve_reasoning", "check_history_format"}
 CONTEXT_FIELDS = {"max_bytes": "max_context_bytes", "compact": "compact_context",
                   "trigger_ratio": "context_trigger_ratio", "keep_recent_messages": "context_keep_recent_messages",
                   "keep_read_bytes": "context_keep_read_bytes", "files": "reference_files"}
@@ -530,6 +530,8 @@ def public_config(config, metadata):
             "generation": config.generation_options(),
             "context": {name: getattr(config, field) for name, field in CONTEXT_FIELDS.items()},
             "transport": {"request_timeout": config.request_timeout, "proxy": config.proxy,
+                          "preserve_reasoning": config.preserve_reasoning,
+                          "check_history_format": config.check_history_format,
                           "api_key_header": config.api_key_header, "api_key_scheme": config.api_key_scheme,
                           "header_names": [name for name, _ in config.headers]},
             "tools": {name: config.tool_enabled(name) for name in TOOL_NAMES},

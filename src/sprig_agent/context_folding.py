@@ -39,7 +39,8 @@ def fold_inspections(messages, changes, cutoff, ambiguous, budget, wire_size, ch
     def batch_at(index):
         message = messages[index]
         calls = message.get("tool_calls", [])
-        if message.get("role") != "assistant" or not calls or index + len(calls) >= cutoff:
+        if (message.get("role") != "assistant" or "reasoning_content" in message
+                or not calls or index + len(calls) >= cutoff):
             return None
         rows = []
         for number, call in enumerate(calls, index + 1):

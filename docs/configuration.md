@@ -118,6 +118,8 @@ TUI 内也可输入 `/add src/main.py`；路径有空格时整段作为一个相
 
 ## 完整配置与模型目录
 
+提供商可配置 `preserve_reasoning`（默认 false）与 `check_history_format`（默认 `"tool_calls"`，可选 `"observations"`），用于显式保留助手推理协议字段及投影应用固定检查历史。两者按提供商/CLI 解析、显示来源并绑定会话；项目层不能自行开启，默认不影响原有请求。启用保留会使后续请求和已启用的私有保存包含该字段，终端不显示正文。CLI 参数与 DeepSeek 格式示例见[推理工具历史兼容](reasoning-protocol.md)。
+
 可复制的所有设置见 [`config.example.toml`](../config.example.toml)；开源样本的文件格式、设置范围与 Sprig 对应情况见[调研表](configuration-comparison.md)。示例不含真实密钥。旧 `[agent].max_tokens/thinking` 继续兼容；同层 `[generation]` 的同名设置优先。表以键合并，标量和数组以高优先级整体替换；`extra_body` 整个对象替换，不隐式深合并。文件排除在项目层与用户/profile 排除合并。
 
 ```toml

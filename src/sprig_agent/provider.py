@@ -88,7 +88,7 @@ class NoRedirect(urllib.request.HTTPRedirectHandler):
         raise ProviderError("HTTP redirects are disabled; use the final trusted base URL", code="redirect")
 
 
-def validate_message(message):
+def validate_message(message, *, preserve_reasoning=False):
     if not isinstance(message, dict) or message.get("role") != "assistant":
         raise ProviderError("invalid assistant message")
     content = message.get("content")
@@ -122,6 +122,19 @@ def validate_message(message):
     result = {"role": "assistant", "content": content}
     if calls:
         result["tool_calls"] = calls
+    if preserve_reasoning and "reasoning_content" in message:
+        reasoning = message["reasoning_content"]
+        if reasoning is not None and not isinstance(reasoning, str):
+            raise ProviderError("invalid reasoning_content; expected text or null")
+        if isinstance(reasoning, str):
+            if len(reasoning) > MAX_RESPONSE:
+                raise ProviderError("reasoning_content exceeds response limit", code="response_limit")
+            try:
+                if len(reasoning.encode("utf-8")) > MAX_RESPONSE:
+                    raise ProviderError("reasoning_content exceeds response limit", code="response_limit")
+            except UnicodeEncodeError:
+                raise ProviderError("invalid Unicode in reasoning_content") from None
+        result["reasoning_content"] = reasoning
     return result
 
 
@@ -214,7 +227,7 @@ class Provider:
                     from .streaming import complete_stream
                     return complete_stream(reader, on_text, config.secrets,
                                            on_usage=measurement.observe_usage, on_delta=measurement.text_received,
-                                           on_finish=measurement.observe_finish)
+                                           on_finish=measurement.observe_finish, preserve_reasoning=config.preserve_reasoning)
                 raw = reader.read(MAX_RESPONSE + 1)
             if len(raw) > MAX_RESPONSE:
                 raise ProviderError("provider response exceeds 2 MiB", code="response_limit")
@@ -228,7 +241,7 @@ class Provider:
             measurement.observe_finish(choice.get("finish_reason"))
             if choice.get("finish_reason") not in {"stop", "tool_calls"}:
                 raise completion_failure(choice.get("finish_reason"))
-            return redact(validate_message(choice["message"]), config.secrets)
+            return redact(validate_message(choice["message"], preserve_reasoning=config.preserve_reasoning), config.secrets)
         except urllib.error.HTTPError as exc:
             if type(exc.code) is int and 100 <= exc.code <= 599:
                 measurement.status = exc.code

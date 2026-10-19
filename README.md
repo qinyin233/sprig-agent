@@ -112,6 +112,8 @@ uv run sprig '为现有函数补一个最小测试，并运行测试' --workdir 
 
 基础地址须指向 API 根路径，程序在其后追加 `/chat/completions`。只允许 HTTPS，回环地址上的 HTTP 可用于本地服务或测试；HTTP 重定向被拒绝。请只配置你信任的服务，任务、读取的内容和工具结果会作为上下文发送到该服务。
 
+需要 `reasoning_content` 连续回传或拒绝客户端插入工具调用的服务，可在提供商表显式设置 `preserve_reasoning=true`、`check_history_format="observations"`。推理正文不显示，但会占用请求预算，并在启用私有会话保存时保留；默认关闭，也不自动开启模型思考。示例、参数格式和保存边界见[推理工具历史兼容](docs/reasoning-protocol.md)。
+
 模型请求失败时，按 HTTP 状态提示鉴权、权限、端点、请求大小、限流或服务故障；网络错误区分 socket 超时和 TLS 证书校验失败。错误响应正文、服务端原因和其他诊断头不会显示。对于 429 / 503，有效的 [`Retry-After`](https://www.rfc-editor.org/rfc/rfc9110.html#name-retry-after) 秒数或 UTC HTTP 日期只转成建议等待秒数；提示最多接受 24 小时，过长、非法或重复的字段被忽略。程序不等待或自动重试，也不保证等待后请求一定成功；CLI 使用 `/continue`，TUI 点击“继续当前对话”，明确发起下一次请求。
 
 ### 确认流程

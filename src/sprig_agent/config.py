@@ -153,6 +153,8 @@ class Config:
     setting_sources: tuple = field(default=(), repr=False, compare=False)
     command_output_limit: int | None = None
     reference_files: tuple = ()
+    preserve_reasoning: bool = False
+    check_history_format: str = "tool_calls"
 
     def __post_init__(self):
         root = Path(self.workdir).expanduser().resolve(strict=True)
@@ -244,6 +246,10 @@ class Config:
             raise ValueError("max-tokens must be between 1 and 65536")
         if not isinstance(self.thinking, bool):
             raise ValueError("thinking must be a boolean")
+        if type(self.preserve_reasoning) is not bool:
+            raise ValueError("preserve-reasoning must be a boolean")
+        if self.check_history_format not in ("tool_calls", "observations"):
+            raise ValueError("check-history-format must be tool_calls or observations")
         if not isinstance(self.checks, tuple) or len(self.checks) > 16:
             raise ValueError("at most 16 acceptance checks are supported")
         if type(self.check_before_task) is not bool or (self.check_before_task and not self.checks):
@@ -412,6 +418,10 @@ class Config:
             binding["max_tokens"] = self.max_tokens
         if self.thinking:
             binding["thinking"] = True
+        if self.preserve_reasoning:
+            binding["preserve_reasoning"] = True
+        if self.check_history_format != "tool_calls":
+            binding["check_history_format"] = self.check_history_format
         for name in ("temperature", "top_p", "reasoning_effort", "seed"):
             if getattr(self, name) is not None:
                 binding[name] = getattr(self, name)

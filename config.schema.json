@@ -522,6 +522,15 @@
               "pattern": "^[^\\x00-\\x1f]+$"
             }
           },
+          "preserve_reasoning": {
+            "type": "boolean"
+          },
+          "check_history_format": {
+            "enum": [
+              "tool_calls",
+              "observations"
+            ]
+          },
           "headers_env": {
             "type": "object",
             "maxProperties": 16,

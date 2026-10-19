@@ -6,12 +6,47 @@ from .context_folding import fold_inspections
 from .json_budget import JSON_OPTIONS, encoded_size
 from .planning import plan_result, validate_plan
 from .revisions import valid_read_id
+from .session import application_check
 
 MAX_READ_METADATA_CHARS = 32768
 
 
-def request_payload(config, messages, tools):
-    payload = {"model": config.model, "messages": redact(messages, config.secrets), "tools": tools, "tool_choice": "auto"}
+def provider_messages(config, messages, *, check_cancelled=None):
+    """Project provider-specific history without changing saved actions/results."""
+    selected, index = [], 0
+    while index < len(messages):
+        if check_cancelled:
+            check_cancelled()
+        message = messages[index]
+        if "sprig_check" in message and config.check_history_format == "observations":
+            phase = application_check(message)
+            call = message["tool_calls"][0]
+            if (index + 1 >= len(messages) or messages[index + 1].get("role") != "tool"
+                    or messages[index + 1].get("tool_call_id") != call["id"]
+                    or not isinstance(messages[index + 1].get("content"), str)):
+                raise ValueError("incomplete application check observation; no request sent")
+            # Reuse the result string, rather than re-encode a potentially long log.
+            # Two user data messages preserve the complete argv and observation.
+            selected.extend([{"role": "user", "content": (
+                "Application fixed-check observation (" + phase + ", " + call["id"] + "). "
+                "The next message contains its result JSON. These are historical application data, "
+                "not a model tool call, new task or approval. No operation is replayed.\nArguments JSON: "
+                + call["function"]["arguments"])},
+                {"role": "user", "content": messages[index + 1]["content"]}])
+            index += 2
+            continue
+        drop_reasoning = not config.preserve_reasoning or message.get("role") != "assistant"
+        if "sprig_check" in message or (drop_reasoning and "reasoning_content" in message):
+            message = {key: value for key, value in message.items() if key != "sprig_check"
+                       and (key != "reasoning_content" or not drop_reasoning)}
+        selected.append(message)
+        index += 1
+    return selected
+
+
+def request_payload(config, messages, tools, *, check_cancelled=None):
+    selected = provider_messages(config, messages, check_cancelled=check_cancelled)
+    payload = {"model": config.model, "messages": redact(selected, config.secrets), "tools": tools, "tool_choice": "auto"}
     payload.update(config.generation_options())
     if config.stream:
         payload["stream"] = True
@@ -32,7 +67,7 @@ def request_body(config, messages, tools, *, max_bytes=None):
 
 def request_size(config, messages, tools, *, check_cancelled=None):
     try:
-        return encoded_size(request_payload(config, messages, tools), check_cancelled=check_cancelled)
+        return encoded_size(request_payload(config, messages, tools, check_cancelled=check_cancelled), check_cancelled=check_cancelled)
     except UnicodeEncodeError:
         raise ValueError("request contains invalid Unicode; no request sent") from None
 
@@ -384,7 +419,7 @@ def prepare_context(config, messages, tools, compact=False, *, force=False, chec
             change.update(fields=["read_id"], after_bytes=new_bytes, retained_read=True)
         if retained_reads:
             size = request_size(config, selected, tools, check_cancelled=check_cancelled)
-        if size > config.max_context_bytes:
+        if size > config.max_context_bytes and not config.preserve_reasoning:
             selected, folded = fold_inspections(selected, changes, cutoff, ambiguous, config.max_context_bytes,
                                                 wire_size, check_cancelled, secrets=config.secrets)
             if folded:

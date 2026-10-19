@@ -94,9 +94,10 @@ class TextOutput:
             stage.finish()
 
 
-def complete_stream(response, on_text, secret, *, on_usage=None, on_delta=None, on_finish=None):
+def complete_stream(response, on_text, secret, *, on_usage=None, on_delta=None, on_finish=None, preserve_reasoning=False):
     output = TextOutput(on_text, secret)
     content, refusal, calls, finished = [], [], {}, None
+    reasoning, reasoning_seen, reasoning_text = [], False, False
     for event in events(response):
         if event == "[DONE]":
             if finished is None:
@@ -108,7 +109,9 @@ def complete_stream(response, on_text, secret, *, on_usage=None, on_delta=None, 
                 message["tool_calls"] = [calls[index] for index in sorted(calls)]
             if refusal:
                 message["refusal"] = "".join(refusal)
-            result = redact(validate_message(message), secret)
+            if preserve_reasoning and reasoning_seen:
+                message["reasoning_content"] = "".join(reasoning) if reasoning_text else None
+            result = redact(validate_message(message, preserve_reasoning=preserve_reasoning), secret)
             if not content and not calls and refusal:
                 output.write("".join(refusal))
             output.finish()
@@ -138,6 +141,14 @@ def complete_stream(response, on_text, secret, *, on_usage=None, on_delta=None, 
             raise ProviderError("invalid delta or data after stream completion")
         if delta.get("role") not in {None, "assistant"} or delta.get("function_call") is not None:
             raise ProviderError("only assistant text and function tools are supported")
+        if preserve_reasoning and "reasoning_content" in delta:
+            reasoning_seen = True
+            text = delta["reasoning_content"]
+            if text is not None:
+                if not isinstance(text, str):
+                    raise ProviderError("invalid streamed reasoning_content; expected text or null")
+                reasoning_text = True
+                reasoning.append(text)
         for field, target in (("content", content), ("refusal", refusal)):
             text = delta.get(field)
             if text is not None:

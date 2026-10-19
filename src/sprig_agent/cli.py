@@ -207,6 +207,10 @@ def main(argv=None):
     parser.add_argument("--proxy", help="system, direct, or credential-free HTTP(S) proxy URL")
     parser.add_argument("--disable-tool", action="append", choices=TOOL_NAMES, help="disable a tool in schemas and execution; repeatable")
     parser.add_argument("--thinking", action=argparse.BooleanOptionalAction, default=None, help="request chat_template_kwargs.enable_thinking; provider support required, off unless selected")
+    parser.add_argument("--preserve-reasoning", action=argparse.BooleanOptionalAction, default=None,
+                        help="opt in to retaining reasoning_content for provider tool continuity; hidden from terminal, included in enabled private session saves")
+    parser.add_argument("--check-history-format", choices=("tool_calls", "observations"),
+                        help="encode application fixed checks as tool calls (default) or labeled user observations for compatible providers")
     parser.add_argument("--stream", action=argparse.BooleanOptionalAction, default=None, help="display model text as it arrives")
     parser.add_argument("--request-usage", action=argparse.BooleanOptionalAction, default=None, help="request final stream token statistics; requires --stream or --tui and provider support")
     parser.add_argument("--metrics", dest="show_metrics", action=argparse.BooleanOptionalAction, default=None, help="print local numeric request measurements at CLI exit; missing token counts stay unknown")
@@ -366,6 +370,8 @@ def main(argv=None):
         emit("Prompts and tool results are sent to this endpoint. Commands are NOT sandboxed and may access outside files/network. Writes and commands require approval.")
         if store:
             emit("Local transcript saving enabled (not encrypted). Resume never replays pending actions.")
+        if config.preserve_reasoning:
+            emit("Provider reasoning metadata is retained for subsequent requests and enabled local saves (not encrypted); its text is not displayed.")
         history = ChangeHistory(config, change_dir)
         if change_dir:
             emit("Exact edit backups persist locally (not encrypted). Only file-tool edits can be undone; commands are not tracked.")

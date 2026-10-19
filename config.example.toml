@@ -6,6 +6,8 @@ interface = "tui"
 # profile = "review"
 
 [providers.agnes]
+preserve_reasoning = false # opt in only for reasoning_content protocol continuity; private saves then retain it
+check_history_format = "tool_calls" # observations for APIs rejecting client-inserted check calls
 model = "fast"
 base_url = "https://apihub.agnes-ai.com/v1"
 api_key_env = "AGNES_API_KEY"

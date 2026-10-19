@@ -27,6 +27,26 @@ class SessionError(Exception):
     pass
 
 
+def application_check(message):
+    """Validate application-origin metadata; it never authorizes an operation."""
+    if "sprig_check" not in message:
+        return None
+    phase = message["sprig_check"]
+    prefixes = {"baseline": "sprig-baseline-", "edit-check": "sprig-edit-check-", "acceptance": "sprig-check-"}
+    calls = message.get("tool_calls")
+    if (not isinstance(phase, str) or phase not in prefixes or message.get("role") != "assistant"
+            or message.get("content") is not None or not isinstance(calls, list) or len(calls) != 1):
+        raise ValueError("invalid application check marker")
+    call = calls[0]
+    function = call.get("function") if isinstance(call, dict) else None
+    if (not isinstance(call, dict) or call.get("type") != "function" or not isinstance(call.get("id"), str)
+            or not re.fullmatch(re.escape(prefixes[phase]) + r"[0-9a-f]{32}", call["id"])
+            or not isinstance(function, dict) or function.get("name") != "run"
+            or not isinstance(function.get("arguments"), str)):
+        raise ValueError("invalid application check marker")
+    return phase
+
+
 def validate_history(messages):
     if not isinstance(messages, list) or not messages or len(messages) > 5000:
         raise SessionError("invalid session history")
@@ -47,8 +67,11 @@ def validate_history(messages):
             raise SessionError("unfinished tool calls before another message")
         elif role == "assistant":
             try:
-                normalized = validate_message(message)
-            except ProviderError as exc:
+                normalized = validate_message(message, preserve_reasoning=True)
+                phase = application_check(message)
+                if phase is not None:
+                    normalized["sprig_check"] = phase
+            except (ProviderError, ValueError) as exc:
                 raise SessionError(str(exc)) from None
             pending = [call["id"] for call in normalized.get("tool_calls", [])]
             if any(call_id in seen for call_id in pending):
