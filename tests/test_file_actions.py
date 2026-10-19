@@ -562,7 +562,11 @@ class FileActionTuiTests(unittest.IsolatedAsyncioTestCase):
     async def until(self, pilot, predicate):
         for _ in range(300):
             if predicate():
-                return
+                # A modal can become app.screen before composition/layout has
+                # completed. Drain UI work, then recheck the observed state.
+                await pilot.pause()
+                if predicate():
+                    return
             await pilot.pause(0.02)
         self.fail("TUI lifecycle state did not arrive")
 
@@ -592,9 +596,11 @@ class FileActionTuiTests(unittest.IsolatedAsyncioTestCase):
                     editor.load_text("Move source.py to moved.py")
                     editor.focus()
                     await pilot.press("enter")
-                    await self.until(pilot, lambda: isinstance(app.screen, ApprovalScreen) and app.screen.description.startswith("COPY FOR MOVE"))
+                    await self.until(pilot, lambda: isinstance(app.screen, ApprovalScreen) and app.screen.description.startswith("COPY FOR MOVE")
+                                     and app.screen.is_mounted and bool(app.screen.query("#approve")))
                     await pilot.click("#approve")
-                    await self.until(pilot, lambda: isinstance(app.screen, ApprovalScreen) and app.screen.description.startswith("DELETE"))
+                    await self.until(pilot, lambda: isinstance(app.screen, ApprovalScreen) and app.screen.description.startswith("DELETE")
+                                     and app.screen.is_mounted and bool(app.screen.query("#approval-task")))
                     self.assertEqual((root / "moved.py").read_text(encoding="utf-8"), "value = 42\n")
                     guidance = app.screen.query_one("#approval-task", TextArea)
                     guidance.load_text("Keep both copies; stop moving")
