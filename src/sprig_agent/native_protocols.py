@@ -72,7 +72,9 @@ def _blocks(protocol, items, *, partial=False):
                     else:
                         raise ProviderError("unsupported Responses message content; no tools were executed")
                     texts.append(text)
-                block = {"type": kind, "role": "assistant", "content": content}
+                # ResponseOutputMessage input requires a status alongside its
+                # output_text/refusal content; EasyInputMessage is a different union.
+                block = {"type": kind, "role": "assistant", "content": content, "status": "completed"}
                 if item.get("phase") is not None:
                     _require(item["phase"] in ("commentary", "final_answer"))
                     block["phase"] = item["phase"]
@@ -98,6 +100,8 @@ def _blocks(protocol, items, *, partial=False):
                 raise ProviderError("unsupported Responses output item; no tools were executed")
             if "id" in item:
                 block["id"] = _text(item["id"])
+            if item.get("status") is not None:
+                block["status"] = item["status"]
         clean.append(block)
     _require(len(calls) <= MAX_TOOL_CALLS)
     result = {"role": "assistant", "content": "".join(texts) or None}
