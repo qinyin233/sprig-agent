@@ -133,7 +133,7 @@ def chat(agent, task, messages, emit, *, autostart=True):
             elif task == "/compact":
                 preview = agent.context_preview(messages)
                 emit(json.dumps(preview, ensure_ascii=False, indent=2))
-                if approve(f"Enable configured request-only compaction? Complete historical reads may survive within the byte caps. User instructions, failures, refusals and the last {agent.config.context_keep_recent_messages} messages are preserved; saved history is unchanged."):
+                if approve(f"Enable configured request-only compaction? Complete historical reads may survive within the byte caps; closed old inspections may be folded if still oversized. User instructions, failures, refusals and the last {agent.config.context_keep_recent_messages} messages are preserved; saved history is unchanged."):
                     agent.compact_context = True
             elif task in {"/changes", "/undo", "/redo", "/discard-history"}:
                 result = agent.tools.change_action(task[1:])
@@ -201,7 +201,7 @@ def main(argv=None):
     parser.add_argument("--read-only", action=argparse.BooleanOptionalAction, default=None, help="allow file inspection only; block writes and all commands")
     parser.add_argument("--inherit-env", action=argparse.BooleanOptionalAction, default=None, help="let approved commands inherit additional environment variables")
     parser.add_argument("--max-context-bytes", type=int, help="maximum serialized model request size; not a token/cost estimate")
-    parser.add_argument("--compact-context", action=argparse.BooleanOptionalAction, default=None, help="compact old tool output, superseded fixed checks and completed edit text in requests; keep full saved history")
+    parser.add_argument("--compact-context", action=argparse.BooleanOptionalAction, default=None, help="compact old output/edit text; fold closed inspections if still oversized; keep full saved history")
     parser.add_argument("--context-trigger-ratio", type=float, help="compact at this fraction of the request byte cap (0..1), only when compaction is enabled")
     parser.add_argument("--context-keep-recent-messages", type=int, help="protect 6..1000 recent messages from compaction")
     parser.add_argument("--context-keep-read-bytes", type=int, help="retain up to 0..262144 encoded bytes of historical complete reads within the request cap; 0 disables retention")

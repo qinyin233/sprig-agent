@@ -18,6 +18,7 @@ from sprig_agent.session import validate_history
 from sprig_agent.tools import TOOL_SCHEMAS, Tools
 from tests.test_named_reads import call
 from tests.test_planning import replies
+from tests.test_context_folding import projected_inspections
 
 
 class FixedCheckContextTests(unittest.TestCase):
@@ -120,16 +121,16 @@ class FixedCheckContextTests(unittest.TestCase):
         for number in range(5):
             self.append(history, str(number), "read_file", {"path": "file.py", "offset": 1, "limit": 1000}, read)
         selected, _ = self.compact(history)
-        old = json.loads(selected[3]["content"])
+        old = projected_inspections(selected)["0"][2]
         self.assertTrue(old["context_elided"] and old["range_complete"] and old["truncated"])
         self.assertFalse(old["line_truncated"])
         for field in ("content", "sha256", "read_id", "offset", "end_line", "total_lines", "next_offset", "line_numbers", "path"):
             self.assertNotIn(field, old)
-        self.assertEqual(selected[2], history[2])
+        self.assertEqual(projected_inspections(selected)["0"][1], json.loads(history[2]["tool_calls"][0]["function"]["arguments"]))
         self.assertEqual(selected[-6:], history[-6:])
         history[3]["content"] = json.dumps({**read, "path": "different.py"})
         selected, _ = self.compact(history)
-        self.assertIn("read_id", json.loads(selected[3]["content"]))
+        self.assertIn("read_id", projected_inspections(selected)["0"][2])
 
     def test_redaction_and_json_escaping_use_the_actual_wire_size_while_original_history_stays_intact(self):
         secret = "dummy-credential-value"

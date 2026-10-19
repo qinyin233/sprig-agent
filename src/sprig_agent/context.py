@@ -2,6 +2,7 @@
 import json
 from collections import deque
 from .config import redact
+from .context_folding import fold_inspections
 from .json_budget import JSON_OPTIONS, encoded_size
 from .planning import plan_result, validate_plan
 from .revisions import valid_read_id
@@ -177,7 +178,7 @@ def prepare_context(config, messages, tools, compact=False, *, force=False, chec
     """Keep the saved transcript intact; never discard user instructions or refusals."""
     selected = redact(messages, config.secrets)
     before = size = request_size(config, selected, tools, check_cancelled=check_cancelled)
-    changes, retained_reads = [], []
+    changes, retained_reads, folded = [], [], []
     retained_bytes = 0
     def wire_size(value):
         return encoded_size(redact(value, config.secrets), check_cancelled=check_cancelled)
@@ -383,9 +384,17 @@ def prepare_context(config, messages, tools, compact=False, *, force=False, chec
             change.update(fields=["read_id"], after_bytes=new_bytes, retained_read=True)
         if retained_reads:
             size = request_size(config, selected, tools, check_cancelled=check_cancelled)
+        if size > config.max_context_bytes:
+            selected, folded = fold_inspections(selected, changes, cutoff, ambiguous, config.max_context_bytes,
+                                                wire_size, check_cancelled, secrets=config.secrets)
+            if folded:
+                size = request_size(config, selected, tools, check_cancelled=check_cancelled)
+                changes.extend({"message": group["first_message"], "fields": ["tool_call_batches"],
+                                "operation": "fold_inspections", "before_bytes": group["before_bytes"],
+                                "after_bytes": group["after_bytes"]} for group in folded)
     return selected, {"before_bytes": before, "after_bytes": size, "budget_bytes": config.max_context_bytes,
                       "within_budget": size <= config.max_context_bytes, "changes": changes,
                       "compaction_triggered": triggered, "trigger_ratio": config.context_trigger_ratio,
                       "keep_recent_messages": config.context_keep_recent_messages,
                       "keep_read_bytes": config.context_keep_read_bytes, "retained_read_bytes": retained_bytes,
-                      "retained_reads": retained_reads}
+                      "retained_reads": retained_reads, "folded_inspections": folded}
