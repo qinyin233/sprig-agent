@@ -1,0 +1,53 @@
+{
+  "schema": 1,
+  "scope": "exact byte accounting of a blocked third request; no inference of model success or safe deletability",
+  "source_commit": "914dbfbc3890c40372e2b2f5248f289cf38da956",
+  "input_session_sha256": "49bdc694ee3809fa99f79f385d0baa6fd95e16a6dde5b9a37fea5373162c25d1",
+  "driver_sha256": "7e3621ef1fa91c497faad190e2ab086f4fb6bc0c518d779a390476a8772ea42b",
+  "model_requests": 0,
+  "candidate_code_executed": false,
+  "request_bytes": 35991,
+  "budget_bytes": 32768,
+  "request_envelope_and_tool_schemas_bytes": 5021,
+  "message_separator_bytes": 56,
+  "message_groups_bytes": {
+    "mandatory_system_and_user": 7433,
+    "older_assistant": 6723,
+    "older_tool_results": 9579,
+    "protected_tail": 7179
+  },
+  "message_groups_counts": {
+    "mandatory_system_and_user": 6,
+    "older_assistant": 18,
+    "older_tool_results": 27,
+    "protected_tail": 6
+  },
+  "protected_tail": [
+    {
+      "role": "assistant",
+      "bytes": 458
+    },
+    {
+      "role": "tool",
+      "bytes": 234
+    },
+    {
+      "role": "tool",
+      "bytes": 2669
+    },
+    {
+      "role": "assistant",
+      "bytes": 458
+    },
+    {
+      "role": "tool",
+      "bytes": 1780
+    },
+    {
+      "role": "tool",
+      "bytes": 1580
+    }
+  ],
+  "protected_tail_unchanged": true,
+  "saved_history_unchanged": true
+}

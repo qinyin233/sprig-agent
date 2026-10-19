@@ -1,0 +1,343 @@
+{
+  "schema": 1,
+  "scope": "offline version-and-window retention replay; no model, token, fee or task success claim",
+  "model_requests": 0,
+  "candidate_code_executed": false,
+  "max_context_bytes": 32768,
+  "keep_read_bytes": 8192,
+  "before_source_commit": "800b0b5e96eeba02e81e5cb8bd80d20337912634",
+  "after_source_commit": "914dbfbc3890c40372e2b2f5248f289cf38da956",
+  "before_context_sha256": "e2f01f613cf2df107f8178c4b6ba6a4fb140b934e9816ab775b85bdd6c15c5ab",
+  "after_context_sha256": "702110c437e8fdfa82372b17dbce89ca68ce04e81721a899f7468541351f2d74",
+  "driver_sha256": "afeb7de4c4b9289acae4d974472f7243f8bb2ab3347e252088aa42399d59a86a",
+  "cases": [
+    {
+      "case": "previously_unsent_third",
+      "input_session_sha256": "9b94480a7d44de74508040493c8a985ad14844383ebcfb95db3f0e66af52cd34",
+      "prefix_messages": 35,
+      "max_steps": 4,
+      "step": 3,
+      "session_file_unchanged": true,
+      "variants": {
+        "before": {
+          "before_bytes": 59363,
+          "after_bytes": 32574,
+          "wire_sha256": "c9ca8984b7c6c94b673af62dc844ec5044323f66f3893d4270c33d50b0c5577a",
+          "within_budget": true,
+          "retained_read_bytes": 0,
+          "source_windows": [
+            {
+              "path": "src/click/exceptions.py",
+              "offset": 256,
+              "end_line": 285,
+              "sha256": "1b57f232882c13f255205ed57d8edd143db9adffab5d3280b11a55efa5f9d16e",
+              "symbol": "NoSuchCommand",
+              "symbol_complete": true,
+              "restored_by_retention": false,
+              "has_read_id": true
+            },
+            {
+              "path": "tests/test_commands.py",
+              "offset": 300,
+              "end_line": 359,
+              "sha256": "7193f87207bd5528c5eea4c0415b698c88473b2cfa1052d4f3ab86247ff2e793",
+              "symbol": null,
+              "symbol_complete": null,
+              "restored_by_retention": false,
+              "has_read_id": true
+            },
+            {
+              "path": "src/click/core.py",
+              "offset": 1940,
+              "end_line": 1979,
+              "sha256": "44229d3c370a3f630f0365be38923e3bade6baa9ae312e3f6b1aa531d006286b",
+              "symbol": null,
+              "symbol_complete": null,
+              "restored_by_retention": false,
+              "has_read_id": true
+            }
+          ],
+          "source_window_count": 3,
+          "visible_line_count": 130,
+          "named_declaration_count": 1,
+          "distinct_source_files": 3,
+          "protected_tail_unchanged": true,
+          "user_messages_unchanged": true,
+          "latest_checks_unchanged": true,
+          "errors_refusals_unchanged": true,
+          "tool_statuses_unchanged": true
+        },
+        "after": {
+          "before_bytes": 59363,
+          "after_bytes": 32574,
+          "wire_sha256": "c9ca8984b7c6c94b673af62dc844ec5044323f66f3893d4270c33d50b0c5577a",
+          "within_budget": true,
+          "retained_read_bytes": 0,
+          "source_windows": [
+            {
+              "path": "src/click/exceptions.py",
+              "offset": 256,
+              "end_line": 285,
+              "sha256": "1b57f232882c13f255205ed57d8edd143db9adffab5d3280b11a55efa5f9d16e",
+              "symbol": "NoSuchCommand",
+              "symbol_complete": true,
+              "restored_by_retention": false,
+              "has_read_id": true
+            },
+            {
+              "path": "tests/test_commands.py",
+              "offset": 300,
+              "end_line": 359,
+              "sha256": "7193f87207bd5528c5eea4c0415b698c88473b2cfa1052d4f3ab86247ff2e793",
+              "symbol": null,
+              "symbol_complete": null,
+              "restored_by_retention": false,
+              "has_read_id": true
+            },
+            {
+              "path": "src/click/core.py",
+              "offset": 1940,
+              "end_line": 1979,
+              "sha256": "44229d3c370a3f630f0365be38923e3bade6baa9ae312e3f6b1aa531d006286b",
+              "symbol": null,
+              "symbol_complete": null,
+              "restored_by_retention": false,
+              "has_read_id": true
+            }
+          ],
+          "source_window_count": 3,
+          "visible_line_count": 130,
+          "named_declaration_count": 1,
+          "distinct_source_files": 3,
+          "protected_tail_unchanged": true,
+          "user_messages_unchanged": true,
+          "latest_checks_unchanged": true,
+          "errors_refusals_unchanged": true,
+          "tool_statuses_unchanged": true
+        }
+      }
+    },
+    {
+      "case": "continuation_first_sent",
+      "input_session_sha256": "bc11f9e49fb57a5b1f2e15dc61192c0b8cd28ae76e15266ccadd8f908b8c0f4f",
+      "prefix_messages": 40,
+      "max_steps": 2,
+      "step": 1,
+      "session_file_unchanged": true,
+      "variants": {
+        "before": {
+          "before_bytes": 63227,
+          "after_bytes": 31048,
+          "wire_sha256": "e4ed2100ae0c70a6c2a54781e23e7dbabb0fb342e6fa0ff2cd3a77313bdc0b1c",
+          "within_budget": true,
+          "retained_read_bytes": 4077,
+          "source_windows": [
+            {
+              "path": "src/click/exceptions.py",
+              "offset": 256,
+              "end_line": 285,
+              "sha256": "1b57f232882c13f255205ed57d8edd143db9adffab5d3280b11a55efa5f9d16e",
+              "symbol": "NoSuchCommand",
+              "symbol_complete": true,
+              "restored_by_retention": true,
+              "has_read_id": false
+            },
+            {
+              "path": "tests/test_commands.py",
+              "offset": 300,
+              "end_line": 359,
+              "sha256": "7193f87207bd5528c5eea4c0415b698c88473b2cfa1052d4f3ab86247ff2e793",
+              "symbol": null,
+              "symbol_complete": null,
+              "restored_by_retention": true,
+              "has_read_id": false
+            },
+            {
+              "path": "src/click/core.py",
+              "offset": 1940,
+              "end_line": 1979,
+              "sha256": "44229d3c370a3f630f0365be38923e3bade6baa9ae312e3f6b1aa531d006286b",
+              "symbol": null,
+              "symbol_complete": null,
+              "restored_by_retention": false,
+              "has_read_id": true
+            }
+          ],
+          "source_window_count": 3,
+          "visible_line_count": 130,
+          "named_declaration_count": 1,
+          "distinct_source_files": 3,
+          "protected_tail_unchanged": true,
+          "user_messages_unchanged": true,
+          "latest_checks_unchanged": true,
+          "errors_refusals_unchanged": true,
+          "tool_statuses_unchanged": true
+        },
+        "after": {
+          "before_bytes": 63227,
+          "after_bytes": 32547,
+          "wire_sha256": "582b43efdfc7ba86d88fd964b45c26525fa88902897b65a33c5c54d0be610a1c",
+          "within_budget": true,
+          "retained_read_bytes": 5714,
+          "source_windows": [
+            {
+              "path": "src/click/exceptions.py",
+              "offset": 130,
+              "end_line": 159,
+              "sha256": "1b57f232882c13f255205ed57d8edd143db9adffab5d3280b11a55efa5f9d16e",
+              "symbol": null,
+              "symbol_complete": null,
+              "restored_by_retention": true,
+              "has_read_id": false
+            },
+            {
+              "path": "src/click/exceptions.py",
+              "offset": 256,
+              "end_line": 285,
+              "sha256": "1b57f232882c13f255205ed57d8edd143db9adffab5d3280b11a55efa5f9d16e",
+              "symbol": "NoSuchCommand",
+              "symbol_complete": true,
+              "restored_by_retention": true,
+              "has_read_id": false
+            },
+            {
+              "path": "tests/test_commands.py",
+              "offset": 300,
+              "end_line": 359,
+              "sha256": "7193f87207bd5528c5eea4c0415b698c88473b2cfa1052d4f3ab86247ff2e793",
+              "symbol": null,
+              "symbol_complete": null,
+              "restored_by_retention": true,
+              "has_read_id": false
+            },
+            {
+              "path": "src/click/core.py",
+              "offset": 1940,
+              "end_line": 1979,
+              "sha256": "44229d3c370a3f630f0365be38923e3bade6baa9ae312e3f6b1aa531d006286b",
+              "symbol": null,
+              "symbol_complete": null,
+              "restored_by_retention": false,
+              "has_read_id": true
+            }
+          ],
+          "source_window_count": 4,
+          "visible_line_count": 160,
+          "named_declaration_count": 1,
+          "distinct_source_files": 3,
+          "protected_tail_unchanged": true,
+          "user_messages_unchanged": true,
+          "latest_checks_unchanged": true,
+          "errors_refusals_unchanged": true,
+          "tool_statuses_unchanged": true
+        }
+      }
+    },
+    {
+      "case": "continuation_second_sent",
+      "input_session_sha256": "bc11f9e49fb57a5b1f2e15dc61192c0b8cd28ae76e15266ccadd8f908b8c0f4f",
+      "prefix_messages": 43,
+      "max_steps": 2,
+      "step": 2,
+      "session_file_unchanged": true,
+      "variants": {
+        "before": {
+          "before_bytes": 65885,
+          "after_bytes": 32257,
+          "wire_sha256": "56746ad502d8e35e8995ce238b364c622a5bdbf42923b6ebdde9ec9ad51d0fb1",
+          "within_budget": true,
+          "retained_read_bytes": 4799,
+          "source_windows": [
+            {
+              "path": "tests/test_commands.py",
+              "offset": 300,
+              "end_line": 359,
+              "sha256": "7193f87207bd5528c5eea4c0415b698c88473b2cfa1052d4f3ab86247ff2e793",
+              "symbol": null,
+              "symbol_complete": null,
+              "restored_by_retention": true,
+              "has_read_id": false
+            },
+            {
+              "path": "src/click/core.py",
+              "offset": 1940,
+              "end_line": 1979,
+              "sha256": "44229d3c370a3f630f0365be38923e3bade6baa9ae312e3f6b1aa531d006286b",
+              "symbol": null,
+              "symbol_complete": null,
+              "restored_by_retention": true,
+              "has_read_id": false
+            },
+            {
+              "path": "src/click/exceptions.py",
+              "offset": 1,
+              "end_line": 40,
+              "sha256": "1b57f232882c13f255205ed57d8edd143db9adffab5d3280b11a55efa5f9d16e",
+              "symbol": null,
+              "symbol_complete": null,
+              "restored_by_retention": false,
+              "has_read_id": true
+            }
+          ],
+          "source_window_count": 3,
+          "visible_line_count": 140,
+          "named_declaration_count": 0,
+          "distinct_source_files": 3,
+          "protected_tail_unchanged": true,
+          "user_messages_unchanged": true,
+          "latest_checks_unchanged": true,
+          "errors_refusals_unchanged": true,
+          "tool_statuses_unchanged": true
+        },
+        "after": {
+          "before_bytes": 65885,
+          "after_bytes": 31561,
+          "wire_sha256": "50023d069c89fa84910b40f191400dd0544dbf854f8e097e56f2dd539e9a2122",
+          "within_budget": true,
+          "retained_read_bytes": 4104,
+          "source_windows": [
+            {
+              "path": "src/click/exceptions.py",
+              "offset": 256,
+              "end_line": 285,
+              "sha256": "1b57f232882c13f255205ed57d8edd143db9adffab5d3280b11a55efa5f9d16e",
+              "symbol": "NoSuchCommand",
+              "symbol_complete": true,
+              "restored_by_retention": true,
+              "has_read_id": false
+            },
+            {
+              "path": "src/click/core.py",
+              "offset": 1940,
+              "end_line": 1979,
+              "sha256": "44229d3c370a3f630f0365be38923e3bade6baa9ae312e3f6b1aa531d006286b",
+              "symbol": null,
+              "symbol_complete": null,
+              "restored_by_retention": true,
+              "has_read_id": false
+            },
+            {
+              "path": "src/click/exceptions.py",
+              "offset": 1,
+              "end_line": 40,
+              "sha256": "1b57f232882c13f255205ed57d8edd143db9adffab5d3280b11a55efa5f9d16e",
+              "symbol": null,
+              "symbol_complete": null,
+              "restored_by_retention": false,
+              "has_read_id": true
+            }
+          ],
+          "source_window_count": 3,
+          "visible_line_count": 110,
+          "named_declaration_count": 1,
+          "distinct_source_files": 2,
+          "protected_tail_unchanged": true,
+          "user_messages_unchanged": true,
+          "latest_checks_unchanged": true,
+          "errors_refusals_unchanged": true,
+          "tool_statuses_unchanged": true
+        }
+      }
+    }
+  ]
+}
