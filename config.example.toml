@@ -94,6 +94,7 @@ max_bytes = 131072 # actual serialized request bytes, never a token estimate
 compact = false # explicitly opt in; full saved history is preserved
 trigger_ratio = 0.8 # begin elision at 80% of max_bytes; 0 keeps old always-on behavior
 keep_recent_messages = 6 # 6..1000; failures, refusals and user requirements also survive
+keep_read_bytes = 8192 # 0..262144; historical complete reads, only within max_bytes; 0 disables
 
 [storage]
 auto_save_session = false # opt in to private, unencrypted transcripts

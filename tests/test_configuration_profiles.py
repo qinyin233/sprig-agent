@@ -276,11 +276,13 @@ max_bytes=65536
 compact=true
 trigger_ratio=0.8
 keep_recent_messages=10
+keep_read_bytes=4096
 [storage]
 session_max_age_days=30
 session_max_count=64
 [profiles.work.context]
 trigger_ratio=0.7
+keep_read_bytes=6144
 [profiles.work.storage]
 session_max_count=20
 ''')
@@ -290,6 +292,7 @@ session_max_count=20
         self.assertEqual(config.max_context_bytes, 65536)
         self.assertEqual(config.context_trigger_ratio, 0.9)
         self.assertEqual(config.context_keep_recent_messages, 12)
+        self.assertEqual(config.context_keep_read_bytes, 6144)
         visible = public_config(config, metadata)
         self.assertEqual(visible["storage"]["session_max_count"], 20)
         self.assertEqual(visible["storage"]["session_max_age_days"], 30)
@@ -297,10 +300,15 @@ session_max_count=20
         self.assertEqual(sources["max_context_bytes"], "user")
         self.assertEqual(sources["context_trigger_ratio"], "CLI")
         self.assertEqual(sources["context_keep_recent_messages"], "project")
+        self.assertEqual(sources["context_keep_read_bytes"], "profile")
+        overridden, _ = self.resolve(load_settings(self.path).with_project(project), profile="work", context_keep_read_bytes=0)
+        self.assertEqual(overridden.context_keep_read_bytes, 0)
+        project.write_text('[context]\nkeep_read_bytes=2048\n', encoding="utf-8")
+        self.assertEqual(self.resolve(load_settings(self.path).with_project(project), profile="work")[0].context_keep_read_bytes, 2048)
         self.assertEqual(sources["session_max_count"], "profile")
         # These settings do not change the model, tool policy or authorization
         # of historical actions and need not invalidate a private transcript.
-        self.assertEqual(config.binding(), replace(config, context_trigger_ratio=0.2, session_max_count=1).binding())
+        self.assertEqual(config.binding(), replace(config, context_trigger_ratio=0.2, context_keep_read_bytes=0, session_max_count=1).binding())
         forbidden = self.write('[storage]\nsession_max_count=1\n', self.root / "storage-project.toml")
         with self.assertRaisesRegex(ValueError, "storage"):
             load_settings(self.path).with_project(forbidden)
@@ -308,7 +316,9 @@ session_max_count=20
     def test_invalid_context_or_retention_is_rejected_even_if_hidden_by_profile(self):
         for index, text in enumerate(('[context]\ntrigger_ratio="0.8"', '[context]\nkeep_recent_messages=5',
                      '[storage]\nsession_max_age_days=0', '[storage]\nsession_max_count=true',
-                     '[storage]\nsession_max_count=257', '[context]\nmax_bytes=1000')):
+                     '[storage]\nsession_max_count=257', '[context]\nmax_bytes=1000',
+                     '[context]\nkeep_read_bytes=true', '[context]\nkeep_read_bytes=-1',
+                     '[context]\nkeep_read_bytes=262145')):
             with self.subTest(text=text):
                 path = self.write(text + '\n[profiles.valid.context]\nmax_bytes=65536\n', self.parent / f"bad-context-{index}.toml")
                 with self.assertRaises(ValueError):

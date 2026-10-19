@@ -111,7 +111,7 @@ GROUP_FIELDS = {
     "agent": set(AGENT_DEFAULTS), "generation": set(GENERATION_FIELDS), "tools": set(TOOL_NAMES),
     "files": {"exclude"}, "execution": {"inherit_env", "timeout", "max_output", "env_allowlist", "env"},
     "storage": {"session_dir", "change_history_dir", "auto_save_session", "session_max_age_days", "session_max_count"},
-    "context": {"max_bytes", "compact", "trigger_ratio", "keep_recent_messages"},
+    "context": {"max_bytes", "compact", "trigger_ratio", "keep_recent_messages", "keep_read_bytes"},
     "tui": {"theme", "sidebar", "editor_height", "steering_mode", "metrics", "keybindings"},
     "instructions": {"files", "response_language"},
 }
@@ -119,7 +119,8 @@ TUI_FIELDS = {"theme": "tui_theme", "sidebar": "tui_sidebar", "editor_height": "
               "steering_mode": "steering_mode", "metrics": "show_metrics", "keybindings": "tui_keybindings"}
 TRANSPORT_FIELDS = {"request_timeout", "proxy", "api_key_header", "api_key_scheme"}
 CONTEXT_FIELDS = {"max_bytes": "max_context_bytes", "compact": "compact_context",
-                  "trigger_ratio": "context_trigger_ratio", "keep_recent_messages": "context_keep_recent_messages"}
+                  "trigger_ratio": "context_trigger_ratio", "keep_recent_messages": "context_keep_recent_messages",
+                  "keep_read_bytes": "context_keep_read_bytes"}
 IDENTIFIER = re.compile(r"[A-Za-z0-9_-]{1,64}")
 
 

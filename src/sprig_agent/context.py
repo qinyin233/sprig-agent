@@ -1,5 +1,6 @@
 """Request byte budgets and explicit, non-destructive history elision."""
 import json
+from collections import deque
 from .config import redact
 from .json_budget import JSON_OPTIONS, encoded_size
 from .planning import plan_result, validate_plan
@@ -104,11 +105,40 @@ def _edit_path(arguments, *, by_line=False):
     return value["path"]
 
 
+def _complete_read(result, arguments):
+    """A complete observed window, never a prefix or an unvalidated byte page."""
+    digest = result.get("sha256")
+    if (not isinstance(result.get("content"), str) or not result["content"]
+            or result.get("context_elided") or not valid_read_id(result.get("read_id"))
+            or not isinstance(digest, str) or len(digest) != 64
+            or any(c not in "0123456789abcdef" for c in digest) or "cursor" in arguments
+            or any(result.get(flag, False) is not False for flag in (
+                "line_truncated", "timed_out", "output_limited", "skipped", "cancelled", "interrupted", "outcome"))
+            or ("approved" in result and result["approved"] is not True)
+            or ("returncode" in result and (type(result["returncode"]) is not int or result["returncode"] != 0))):
+        return False
+    if "symbol" in arguments:
+        return result.get("symbol_complete") is True
+    if "offset" not in result:
+        return result.get("truncated") is False
+    # Older saved reads predate range_complete. Verify their exact requested
+    # range from the original call and the returned physical-line metadata.
+    offset, end, total = (result.get(name) for name in ("offset", "end_line", "total_lines"))
+    limit = arguments.get("limit", 2000)
+    return (all(type(value) is int for value in (offset, end, total, limit))
+            and type(arguments.get("offset", 1)) is int
+            and offset == arguments.get("offset", 1) and offset >= 1 and total >= end >= offset
+            and 1 <= limit <= 10000 and result.get("line_truncated") is False
+            and result.get("range_complete", True) is True
+            and end == min(total, offset + limit - 1))
+
+
 def prepare_context(config, messages, tools, compact=False, *, force=False, check_cancelled=None):
     """Keep the saved transcript intact; never discard user instructions or refusals."""
     selected = redact(messages, config.secrets)
     before = size = request_size(config, selected, tools, check_cancelled=check_cancelled)
-    changes = []
+    changes, retained_reads = [], []
+    retained_bytes = 0
     def wire_size(value):
         return encoded_size(redact(value, config.secrets), check_cancelled=check_cancelled)
     def replace_string(container, field, value, index, identity, fields):
@@ -136,6 +166,21 @@ def prepare_context(config, messages, tools, compact=False, *, force=False, chec
                 if identity in results:
                     ambiguous.add(identity)
                 results[identity] = (index, message.get("content"))
+        # Inspect small read arguments, not the potentially large protected
+        # result bodies. A newer read attempt on a path suppresses older picks,
+        # including a failed or incomplete attempt; this is a recency policy,
+        # not a claim that different windows are duplicates.
+        latest_reads = {}
+        if config.context_keep_read_bytes:
+            for identity, (index, call) in calls.items():
+                function = call.get("function", {})
+                if function.get("name") == "read_file":
+                    arguments = _result(function.get("arguments"))
+                    if arguments is not None and isinstance(arguments.get("path"), str):
+                        path = arguments["path"]
+                        if index > latest_reads.get(path, (-1, None))[0]:
+                            latest_reads[path] = (index, identity)
+        read_candidates = deque(maxlen=32)
         plan_results = {index for identity, (index, content) in results.items()
                         if identity not in ambiguous and calls.get(identity, (0, {}))[1].get("function", {}).get("name") == "update_plan"
                         and plan_result(_result(content)) is not None}
@@ -211,6 +256,9 @@ def prepare_context(config, messages, tools, compact=False, *, force=False, chec
                 fields.extend(name for name in ("sha256", "read_id", "line_numbers", "offset", "end_line", "total_lines",
                                                 "next_offset", "path", "symbol", "symbol_start_line", "symbol_end_line") if name in result)
                 note = "Past read omitted; reread source. Full history saved."
+                if (config.context_keep_read_bytes and latest_reads.get(result["path"], (None, None))[1] == identity
+                        and _complete_read(result, read_arguments)):
+                    read_candidates.append((index, identity, message["content"]))
             if index in plan_results and index != latest_plan:
                 fields.extend(("plan", "explanation"))
             if not fields:
@@ -222,7 +270,43 @@ def prepare_context(config, messages, tools, compact=False, *, force=False, chec
         # Count the actual serialized request, including redaction of new markers.
         if changes:
             size = request_size(config, selected, tools, check_cancelled=check_cancelled)
+        # Restore a few complete snapshots only when both independent byte caps
+        # permit it. Keep their original transcript position, redact before
+        # sizing, and remove read_id: historical text is not a fresh observation.
+        for index, identity, original in reversed(read_candidates):
+            if check_cancelled:
+                check_cancelled()
+            message = selected[index]
+            if message["content"] == original:
+                continue  # Too small to elide; already retained by existing policy.
+            snapshot = _result(original)
+            available = min(config.context_keep_read_bytes - retained_bytes,
+                            config.max_context_bytes - size + wire_size(message["content"]))
+            # The body alone is a lower bound on the doubly encoded result.
+            # Do not allocate a giant JSON string merely to reject its size.
+            if len(snapshot["content"]) > available or wire_size(snapshot["content"]) > available:
+                continue
+            snapshot.pop("read_id", None)
+            snapshot.update(context_retained=True,
+                note="Historical read snapshot; may be stale. Reread before editing. No current read_id or approval.")
+            if wire_size(snapshot) > available:
+                continue  # Include all metadata before allocating the inner JSON.
+            content = json.dumps(snapshot, ensure_ascii=False, separators=(",", ":"))
+            new_bytes, old_bytes = wire_size(content), wire_size(message["content"])
+            if (retained_bytes + new_bytes > config.context_keep_read_bytes
+                    or size - old_bytes + new_bytes > config.max_context_bytes):
+                continue
+            message["content"] = content
+            size += new_bytes - old_bytes
+            retained_bytes += new_bytes
+            retained_reads.append({"message": index, "tool_call_id": identity, "bytes": new_bytes})
+            change = next(change for change in changes if change["message"] == index and change["fields"] != ["arguments"])
+            change.update(fields=["read_id"], after_bytes=new_bytes, retained_read=True)
+        if retained_reads:
+            size = request_size(config, selected, tools, check_cancelled=check_cancelled)
     return selected, {"before_bytes": before, "after_bytes": size, "budget_bytes": config.max_context_bytes,
                       "within_budget": size <= config.max_context_bytes, "changes": changes,
                       "compaction_triggered": triggered, "trigger_ratio": config.context_trigger_ratio,
-                      "keep_recent_messages": config.context_keep_recent_messages}
+                      "keep_recent_messages": config.context_keep_recent_messages,
+                      "keep_read_bytes": config.context_keep_read_bytes, "retained_read_bytes": retained_bytes,
+                      "retained_reads": retained_reads}

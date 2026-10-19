@@ -133,7 +133,7 @@ def chat(agent, task, messages, emit, *, autostart=True):
             elif task == "/compact":
                 preview = agent.context_preview(messages)
                 emit(json.dumps(preview, ensure_ascii=False, indent=2))
-                if approve("Enable request-only elision of older successful tool output and completed approved edit arguments? User instructions, failures, refusals and the last six messages are preserved; saved history is unchanged."):
+                if approve(f"Enable configured request-only compaction? Complete historical reads may survive within the byte caps. User instructions, failures, refusals and the last {agent.config.context_keep_recent_messages} messages are preserved; saved history is unchanged."):
                     agent.compact_context = True
             elif task in {"/changes", "/undo", "/redo", "/discard-history"}:
                 result = agent.tools.change_action(task[1:])
@@ -204,6 +204,7 @@ def main(argv=None):
     parser.add_argument("--compact-context", action=argparse.BooleanOptionalAction, default=None, help="compact old tool output, superseded fixed checks and completed edit text in requests; keep full saved history")
     parser.add_argument("--context-trigger-ratio", type=float, help="compact at this fraction of the request byte cap (0..1), only when compaction is enabled")
     parser.add_argument("--context-keep-recent-messages", type=int, help="protect 6..1000 recent messages from compaction")
+    parser.add_argument("--context-keep-read-bytes", type=int, help="retain up to 0..262144 encoded bytes of historical complete reads within the request cap; 0 disables retention")
     parser.add_argument("--project-instructions", action=argparse.BooleanOptionalAction, default=None, help="load workspace AGENTS.md guidance; never reads parent/home directories")
     parser.add_argument("--instruction-file", dest="instruction_files", action="append", help="additional workspace-relative guidance file; repeatable, replaces configured files")
     parser.add_argument("--response-language", help="preferred language for explanations; direct task requests take precedence")

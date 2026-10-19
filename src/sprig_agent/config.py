@@ -138,6 +138,7 @@ class Config:
     session_max_count: int | None = None
     context_trigger_ratio: float = 0
     context_keep_recent_messages: int = 6
+    context_keep_read_bytes: int = 8192
     tui_theme: str | None = None
     tui_sidebar: bool = True
     tui_editor_height: int = 5
@@ -185,6 +186,8 @@ class Config:
             raise ValueError("context-trigger-ratio must be between 0 and 1")
         if type(self.context_keep_recent_messages) is not int or not 6 <= self.context_keep_recent_messages <= 1000:
             raise ValueError("context-keep-recent-messages must be between 6 and 1000")
+        if type(self.context_keep_read_bytes) is not int or not 0 <= self.context_keep_read_bytes <= 262144:
+            raise ValueError("context-keep-read-bytes must be between 0 and 262144")
         for name, high in (("session_max_age_days", 36500), ("session_max_count", 256)):
             value = getattr(self, name)
             if value is not None and (type(value) is not int or not 1 <= value <= high):

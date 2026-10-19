@@ -910,7 +910,7 @@ class SprigApp(App[int]):
                         self.agent.compact_context = True
                         self.event("已启用请求上下文压缩；保存的完整对话保留")
 
-                self.push_screen(ApprovalScreen(f"按配置阈值省略请求里的旧成功工具输出及已批准完成的旧编辑正文；用户要求、失败、拒绝和最近 {self.config.context_keep_recent_messages} 条消息保留。完整会话文件保留；下方为强制压缩潜力预览。\n"
+                self.push_screen(ApprovalScreen(f"按配置阈值压缩旧成功工具输出及已批准完成的旧编辑正文；限额内可保留少量完整源码快照。用户要求、失败、拒绝和最近 {self.config.context_keep_recent_messages} 条消息保留。完整会话文件保留；下方为强制触发预览。\n"
                                                + json.dumps(preview, ensure_ascii=False, indent=2)), compact)
             elif identity == "delete":
                 name = self.query_one("#session-name", Input).value.strip()
