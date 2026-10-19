@@ -1,0 +1,125 @@
+{
+  "date": "2026-10-19",
+  "source_commit": "075158534880b920cc6bffb4e0e9c3cdc948a955",
+  "paid_model_requests": 0,
+  "core": {
+    "windows": {
+      "python": "3.13.0",
+      "tests": 849,
+      "passed": 832,
+      "skipped": 17,
+      "failures": 0,
+      "errors": 0,
+      "seconds": 156.63
+    },
+    "wsl_ubuntu_26_04": {
+      "python": "3.13.14",
+      "tests": 849,
+      "passed": 827,
+      "skipped": 22,
+      "failures": 0,
+      "errors": 0,
+      "seconds": 107.84
+    }
+  },
+  "mini_sdk": {
+    "windows": {
+      "tests": 25,
+      "passed": 25,
+      "skipped": 0
+    },
+    "wsl": {
+      "tests": 25,
+      "passed": 25,
+      "skipped": 0
+    }
+  },
+  "new_tests": 35,
+  "lock_checked": true,
+  "schema_matches_generator": true,
+  "wheel_and_sdist_built": true,
+  "fresh_wheel": {
+    "installed_source_files_checked": 36,
+    "source_files_digest": "6a9a6be747122b55996ed31edd6c257b43d79d16dfbd8ef37b0aca8b10684b4a",
+    "fresh_no_cache_install": true,
+    "sdist_contains_new_module_tests_and_docs": true,
+    "installed_live_refresh": true,
+    "installed_session_metadata_only": true,
+    "installed_cli_native_path": true,
+    "readonly_reference_phase_no_approvals_or_workspace_edits": true,
+    "installed_mkdir_move_delete_and_exact_undo": true,
+    "lifecycle_fresh_approval_count": 7,
+    "installed_windows_restore_private_acl": true,
+    "wheel_sha256": "126146359e5edad48c2ee0d8a5a2eca51c1dee66c0fb26c8807ce963313239e8"
+  },
+  "tool_schema": {
+    "before_commit": "6745c9a5317f846acb9143ec450a7c13b28b1563",
+    "before_tools": 8,
+    "before_bytes": 4932,
+    "after_tools": 9,
+    "after_bytes": 4920
+  },
+  "scripted_loopback": {
+    "http_requests": 3,
+    "request_budget_bytes": 32768,
+    "approval_count": 7,
+    "fixed_check_approvals": 2,
+    "final_check_passed": true,
+    "phases": [
+      "fresh_source_reads",
+      "mkdir",
+      "exclusive_copy",
+      "source_delete",
+      "obsolete_delete",
+      "import_edit",
+      "stage_check",
+      "independent_final_check"
+    ],
+    "scripted_fixture_not_model_evaluation": true
+  },
+  "limitations": [
+    "platform skips are not passes",
+    "move is approved copy plus separately approved delete, not an atomic OS rename",
+    "partial moves can leave both files; uncertain deletion does not imply source preservation",
+    "directories are not in file undo history",
+    "Windows restored missing files use private ACL and may restrict earlier sharing",
+    "no new real-model coding-performance evidence"
+  ],
+  "source_files_digest": "6a9a6be747122b55996ed31edd6c257b43d79d16dfbd8ef37b0aca8b10684b4a",
+  "native_ci": {
+    "id": 39218634465,
+    "head_sha": "075158534880b920cc6bffb4e0e9c3cdc948a955",
+    "event": "workflow_dispatch",
+    "status": "completed",
+    "conclusion": "success",
+    "html_url": "https://github.com/qinyin233/sprig-agent/actions/runs/39218634465",
+    "created_at": "2026-10-19T07:50:50Z",
+    "updated_at": "2026-10-19T07:54:10Z",
+    "jobs": [
+      {
+        "id": 117948401704,
+        "name": "core (windows-latest)",
+        "status": "completed",
+        "conclusion": "success",
+        "html_url": "https://github.com/qinyin233/sprig-agent/actions/runs/39218634465/job/117948401704"
+      },
+      {
+        "id": 117948402137,
+        "name": "core (ubuntu-latest)",
+        "status": "completed",
+        "conclusion": "success",
+        "html_url": "https://github.com/qinyin233/sprig-agent/actions/runs/39218634465/job/117948402137"
+      }
+    ],
+    "exact_sha_native_success": true
+  },
+  "functional_commit_skips_automatic_matrix": true,
+  "native_ci_dispatched_explicitly": true,
+  "existing_large_edit_replay": {
+    "uncompacted_http_requests": 4,
+    "compacted_http_requests": 7,
+    "compacted_complete": true,
+    "budget_bytes": 131072,
+    "baseline_request_counts_preserved": true
+  }
+}
