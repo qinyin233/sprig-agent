@@ -1,0 +1,636 @@
+{
+  "date": "2026-10-19",
+  "provider": "USTC",
+  "models_allowlist": [
+    "deepseek-flash",
+    "deepseek-flash-2"
+  ],
+  "protocol": "chat_completions",
+  "sequential": true,
+  "concurrent_model_requests": 1,
+  "total_network_request_cap_per_model": 4,
+  "attempts_per_model": {
+    "deepseek-flash": 4,
+    "deepseek-flash-2": 4
+  },
+  "total_network_requests": 8,
+  "automatic_retries": 0,
+  "request_socket_timeout_seconds": 120,
+  "output_token_cap_per_request": 1536,
+  "max_request_bytes": 32768,
+  "fixture": {
+    "file": "clamp.py",
+    "initial_implementation": "def clamp(value, low, high):\n    return min(low, max(high, value))\n",
+    "baseline_passed": 4,
+    "total_cases": 9,
+    "cases_value_low_high_expected": [
+      [
+        -4,
+        0,
+        10,
+        0
+      ],
+      [
+        0,
+        0,
+        10,
+        0
+      ],
+      [
+        4,
+        0,
+        10,
+        4
+      ],
+      [
+        10,
+        0,
+        10,
+        10
+      ],
+      [
+        14,
+        0,
+        10,
+        10
+      ],
+      [
+        -5,
+        -8,
+        -2,
+        -5
+      ],
+      [
+        8,
+        3,
+        3,
+        3
+      ],
+      [
+        0.5,
+        0,
+        1,
+        0.5
+      ],
+      [
+        -2,
+        -1,
+        1,
+        -1
+      ]
+    ],
+    "external_checker": "restricted AST; only min/max calls; no model command execution",
+    "fresh_write_approval_scope": "clamp.py only",
+    "fresh_workspace_per_phase_and_model": true
+  },
+  "credentials": {
+    "model_requests_read_key_from_child_process_environment": true,
+    "credential_values_or_raw_response_bodies_in_this_report": false
+  },
+  "known_reported_tokens": 13443,
+  "requests_with_unknown_usage": 2,
+  "total_bill": "unknown",
+  "functional_commit": "4124d72008211d50c07ab2bfceb1e2a54784544e",
+  "runtime_source_digest": "3d1ebe864ed8d38bf3bc1b25fdd7441336a2c4d8d5ac19cbb69136f26e11f222",
+  "validation": {
+    "Windows": {
+      "tests": 890,
+      "passed": 873,
+      "skipped": 17,
+      "elapsed_seconds": 257.592
+    },
+    "WSL_Ubuntu_26_04": {
+      "tests": 890,
+      "passed": 868,
+      "skipped": 22,
+      "elapsed_seconds": 150.307
+    },
+    "mini_sdk": {
+      "Windows_passed": 25,
+      "WSL_passed": 25,
+      "skipped": 0
+    },
+    "focused_regression": {
+      "tests": 60,
+      "skipped": 0
+    },
+    "new_synthetic_streaming_tests": 2,
+    "lock_check": true,
+    "wheel_sdist_build": true,
+    "wheel_verification": {
+      "installed_source_files_checked": 37,
+      "source_files_digest": "3d1ebe864ed8d38bf3bc1b25fdd7441336a2c4d8d5ac19cbb69136f26e11f222",
+      "installed_native_protocol_tests": 13,
+      "installed_native_protocol_tests_skipped": 0,
+      "installed_coalesced_fragment_tests": 2,
+      "installed_coalesced_fragment_tests_skipped": 0,
+      "fresh_no_cache_install": true,
+      "sdist_contains_new_module_tests_and_docs": true,
+      "installed_live_refresh": true,
+      "installed_session_metadata_only": true,
+      "installed_cli_native_path": true,
+      "readonly_reference_phase_no_approvals_or_workspace_edits": true,
+      "installed_mkdir_move_delete_and_exact_undo": true,
+      "lifecycle_fresh_approval_count": 7,
+      "installed_windows_restore_private_acl": true,
+      "installed_reasoning_http_and_sse": true,
+      "installed_application_check_observations": true,
+      "installed_reasoning_saved_but_not_displayed": true,
+      "protocol_fixture_http_requests": 4,
+      "protocol_fixture_check_approvals": 4,
+      "wheel_sha256": "76b1c575fc76da7ab893a8206beee6d485fa7e891025e790873c0d1d38abe766"
+    }
+  },
+  "ci": {
+    "run_for_this_change": false,
+    "commit_messages_include_skip_ci": true,
+    "reason": "small generic streaming compatibility fix; conserve user Actions quota"
+  },
+  "observed_gateway_shape": {
+    "tool_calls_in_one_delta": [
+      {
+        "index": 0,
+        "id": "synthetic-id",
+        "type": "function",
+        "function": {
+          "name": "read_file",
+          "arguments": ""
+        }
+      },
+      {
+        "index": 0,
+        "type": "function",
+        "function": {
+          "arguments": "{\"path\":\"clamp.py\"}"
+        }
+      }
+    ]
+  },
+  "phases": [
+    {
+      "name": "initial_two_model_test",
+      "runtime_source_digest": "d23020e97ff1400f8afe8f85a1161df3877dfb9e5e5c2b436e5418343d2153a0",
+      "runtime_commit": "a3b5f60bc86199ae166db6a20d9344478ba81b44",
+      "runner_recorded_HEAD": "a3b5f60bc86199ae166db6a20d9344478ba81b44",
+      "source_was_uncommitted_during_capture": false,
+      "scope": "bounded toy smoke; not a coding-agent comparison",
+      "runner_sha256": "b37b7fe19890b4b4c1a7200c7e152ce2ca81cc98fa0b789de19a707a572766da",
+      "models_allowlist": [
+        "deepseek-flash",
+        "deepseek-flash-2"
+      ],
+      "sequential": true,
+      "concurrent_requests": 1,
+      "request_cap_per_model": 4,
+      "request_socket_timeout_seconds": 120,
+      "automatic_retries": 0,
+      "paid_cost": "unknown; token usage is provider-reported, not a bill",
+      "results": [
+        {
+          "provider": "USTC",
+          "model": "deepseek-flash",
+          "protocol": "chat_completions",
+          "request_cap": 4,
+          "output_token_cap_per_request": 1536,
+          "automatic_retries": 0,
+          "elapsed_ms": 293836.828,
+          "error": null,
+          "fresh_write_approvals": 1,
+          "refused_operations": 0,
+          "passed_cases": 9,
+          "total_cases": 9,
+          "metrics": {
+            "available": true,
+            "scope": "current provider instance; not persisted or sent to the model",
+            "attempts": 4,
+            "not_attempted": 0,
+            "outcomes": {
+              "success": 4,
+              "error": 0,
+              "cancelled": 0
+            },
+            "failures": {},
+            "request_bytes": 32876,
+            "response_bytes": 27888,
+            "elapsed_ms": 293758.212,
+            "usage": {
+              "prompt_tokens": {
+                "reported_sum": 8768,
+                "known_requests": 4,
+                "unknown_requests": 0,
+                "complete_sum": 8768
+              },
+              "completion_tokens": {
+                "reported_sum": 427,
+                "known_requests": 4,
+                "unknown_requests": 0,
+                "complete_sum": 427
+              },
+              "total_tokens": {
+                "reported_sum": 9195,
+                "known_requests": 4,
+                "unknown_requests": 0,
+                "complete_sum": 9195
+              }
+            },
+            "recent_limit": 128,
+            "recent_dropped": 0,
+            "recent": [
+              {
+                "attempted": true,
+                "streamed": true,
+                "outcome": "success",
+                "http_status": 200,
+                "request_bytes": 7345,
+                "response_bytes": 2086,
+                "elapsed_ms": 40258.605,
+                "first_text_ms": 39470.761,
+                "usage": {
+                  "prompt_tokens": 1940,
+                  "completion_tokens": 47,
+                  "total_tokens": 1987
+                },
+                "finish_reason": "tool_calls",
+                "error_code": null
+              },
+              {
+                "attempted": true,
+                "streamed": true,
+                "outcome": "success",
+                "http_status": 200,
+                "request_bytes": 7887,
+                "response_bytes": 6690,
+                "elapsed_ms": 100542.033,
+                "first_text_ms": 98858.742,
+                "usage": {
+                  "prompt_tokens": 2097,
+                  "completion_tokens": 161,
+                  "total_tokens": 2258
+                },
+                "finish_reason": "tool_calls",
+                "error_code": null
+              },
+              {
+                "attempted": true,
+                "streamed": true,
+                "outcome": "success",
+                "http_status": 200,
+                "request_bytes": 8565,
+                "response_bytes": 1321,
+                "elapsed_ms": 78718.003,
+                "first_text_ms": 77842.968,
+                "usage": {
+                  "prompt_tokens": 2288,
+                  "completion_tokens": 41,
+                  "total_tokens": 2329
+                },
+                "finish_reason": "tool_calls",
+                "error_code": null
+              },
+              {
+                "attempted": true,
+                "streamed": true,
+                "outcome": "success",
+                "http_status": 200,
+                "request_bytes": 9079,
+                "response_bytes": 17791,
+                "elapsed_ms": 74239.571,
+                "first_text_ms": 68742.021,
+                "usage": {
+                  "prompt_tokens": 2443,
+                  "completion_tokens": 178,
+                  "total_tokens": 2621
+                },
+                "finish_reason": "stop",
+                "error_code": null
+              }
+            ]
+          },
+          "request_socket_timeout_seconds": 120,
+          "baseline_passed_cases": 4,
+          "agent_finished": true,
+          "candidate_unchanged": false,
+          "fixture_before_sha256": "718103b44e8c899e9eb611003b9533745f0c61046ee72708923d436055485a6e",
+          "fixture_after_sha256": "191c8101e19d49dda7236e729f6c39ae53c8d7a60634ee280651b282ba7c306b",
+          "tool_results": [
+            {
+              "approved": null,
+              "has_error": false
+            },
+            {
+              "approved": true,
+              "has_error": false
+            },
+            {
+              "approved": null,
+              "has_error": false
+            }
+          ]
+        },
+        {
+          "provider": "USTC",
+          "model": "deepseek-flash-2",
+          "protocol": "chat_completions",
+          "request_cap": 4,
+          "output_token_cap_per_request": 1536,
+          "automatic_retries": 0,
+          "elapsed_ms": 10656.587,
+          "error": "invalid_response",
+          "fresh_write_approvals": 0,
+          "refused_operations": 0,
+          "passed_cases": 4,
+          "total_cases": 9,
+          "metrics": {
+            "available": true,
+            "scope": "current provider instance; not persisted or sent to the model",
+            "attempts": 1,
+            "not_attempted": 0,
+            "outcomes": {
+              "success": 0,
+              "error": 1,
+              "cancelled": 0
+            },
+            "failures": {
+              "invalid_response": 1
+            },
+            "request_bytes": 7347,
+            "response_bytes": 1042,
+            "elapsed_ms": 10624.038,
+            "usage": {
+              "prompt_tokens": {
+                "reported_sum": 0,
+                "known_requests": 0,
+                "unknown_requests": 1,
+                "complete_sum": null
+              },
+              "completion_tokens": {
+                "reported_sum": 0,
+                "known_requests": 0,
+                "unknown_requests": 1,
+                "complete_sum": null
+              },
+              "total_tokens": {
+                "reported_sum": 0,
+                "known_requests": 0,
+                "unknown_requests": 1,
+                "complete_sum": null
+              }
+            },
+            "recent_limit": 128,
+            "recent_dropped": 0,
+            "recent": [
+              {
+                "attempted": true,
+                "streamed": true,
+                "outcome": "error",
+                "http_status": 200,
+                "request_bytes": 7347,
+                "response_bytes": 1042,
+                "elapsed_ms": 10624.038,
+                "first_text_ms": 2271.973,
+                "usage": null,
+                "finish_reason": null,
+                "error_code": "invalid_response"
+              }
+            ]
+          },
+          "request_socket_timeout_seconds": 120,
+          "baseline_passed_cases": 4,
+          "agent_finished": false,
+          "candidate_unchanged": true,
+          "fixture_before_sha256": "718103b44e8c899e9eb611003b9533745f0c61046ee72708923d436055485a6e",
+          "fixture_after_sha256": "718103b44e8c899e9eb611003b9533745f0c61046ee72708923d436055485a6e",
+          "tool_results": []
+        }
+      ]
+    },
+    {
+      "name": "single_manual_diagnostic",
+      "runtime_source_digest": "d23020e97ff1400f8afe8f85a1161df3877dfb9e5e5c2b436e5418343d2153a0",
+      "runtime_commit": "a3b5f60bc86199ae166db6a20d9344478ba81b44",
+      "runner_recorded_HEAD": "a3b5f60bc86199ae166db6a20d9344478ba81b44",
+      "source_was_uncommitted_during_capture": false,
+      "scope": "bounded toy smoke; not a coding-agent comparison",
+      "runner_sha256": "621224d64436d692d4a20c9278abcd359ee277908e69b7c469995d4df89e2977",
+      "models_allowlist": [
+        "deepseek-flash-2"
+      ],
+      "sequential": true,
+      "concurrent_requests": 1,
+      "request_cap_per_model": 3,
+      "request_socket_timeout_seconds": 120,
+      "automatic_retries": 0,
+      "paid_cost": "unknown; token usage is provider-reported, not a bill",
+      "results": [
+        {
+          "provider": "USTC",
+          "model": "deepseek-flash-2",
+          "protocol": "chat_completions",
+          "request_cap": 3,
+          "output_token_cap_per_request": 1536,
+          "automatic_retries": 0,
+          "elapsed_ms": 25005.555,
+          "error": "invalid_response",
+          "fresh_write_approvals": 0,
+          "refused_operations": 0,
+          "passed_cases": 4,
+          "total_cases": 9,
+          "metrics": {
+            "available": true,
+            "scope": "current provider instance; not persisted or sent to the model",
+            "attempts": 1,
+            "not_attempted": 0,
+            "outcomes": {
+              "success": 0,
+              "error": 1,
+              "cancelled": 0
+            },
+            "failures": {
+              "invalid_response": 1
+            },
+            "request_bytes": 7347,
+            "response_bytes": 634,
+            "elapsed_ms": 24981.155,
+            "usage": {
+              "prompt_tokens": {
+                "reported_sum": 0,
+                "known_requests": 0,
+                "unknown_requests": 1,
+                "complete_sum": null
+              },
+              "completion_tokens": {
+                "reported_sum": 0,
+                "known_requests": 0,
+                "unknown_requests": 1,
+                "complete_sum": null
+              },
+              "total_tokens": {
+                "reported_sum": 0,
+                "known_requests": 0,
+                "unknown_requests": 1,
+                "complete_sum": null
+              }
+            },
+            "recent_limit": 128,
+            "recent_dropped": 0,
+            "recent": [
+              {
+                "attempted": true,
+                "streamed": true,
+                "outcome": "error",
+                "http_status": 200,
+                "request_bytes": 7347,
+                "response_bytes": 634,
+                "elapsed_ms": 24981.155,
+                "first_text_ms": 18844.286,
+                "usage": null,
+                "finish_reason": null,
+                "error_code": "invalid_response"
+              }
+            ]
+          },
+          "error_detail": "invalid or duplicate streamed tool call index",
+          "request_socket_timeout_seconds": 120,
+          "baseline_passed_cases": 4,
+          "agent_finished": false,
+          "candidate_unchanged": true,
+          "fixture_before_sha256": "718103b44e8c899e9eb611003b9533745f0c61046ee72708923d436055485a6e",
+          "fixture_after_sha256": "718103b44e8c899e9eb611003b9533745f0c61046ee72708923d436055485a6e",
+          "tool_results": []
+        }
+      ]
+    },
+    {
+      "name": "remaining_budget_after_generic_parser_fix",
+      "runtime_source_digest": "3d1ebe864ed8d38bf3bc1b25fdd7441336a2c4d8d5ac19cbb69136f26e11f222",
+      "runtime_commit": "4124d72008211d50c07ab2bfceb1e2a54784544e",
+      "runner_recorded_HEAD": "a3b5f60bc86199ae166db6a20d9344478ba81b44",
+      "source_was_uncommitted_during_capture": true,
+      "scope": "bounded toy smoke; not a coding-agent comparison",
+      "runner_sha256": "59e3fd377a539eec2814c1f1a5a1d23304c005f01e82fa63cf823ce8cfc44b16",
+      "models_allowlist": [
+        "deepseek-flash-2"
+      ],
+      "sequential": true,
+      "concurrent_requests": 1,
+      "request_cap_per_model": 2,
+      "request_socket_timeout_seconds": 120,
+      "automatic_retries": 0,
+      "paid_cost": "unknown; token usage is provider-reported, not a bill",
+      "results": [
+        {
+          "provider": "USTC",
+          "model": "deepseek-flash-2",
+          "protocol": "chat_completions",
+          "request_cap": 2,
+          "output_token_cap_per_request": 1536,
+          "automatic_retries": 0,
+          "elapsed_ms": 15333.731,
+          "error": null,
+          "fresh_write_approvals": 1,
+          "refused_operations": 0,
+          "passed_cases": 9,
+          "total_cases": 9,
+          "metrics": {
+            "available": true,
+            "scope": "current provider instance; not persisted or sent to the model",
+            "attempts": 2,
+            "not_attempted": 0,
+            "outcomes": {
+              "success": 2,
+              "error": 0,
+              "cancelled": 0
+            },
+            "failures": {},
+            "request_bytes": 15446,
+            "response_bytes": 5029,
+            "elapsed_ms": 15273.573,
+            "usage": {
+              "prompt_tokens": {
+                "reported_sum": 4056,
+                "known_requests": 2,
+                "unknown_requests": 0,
+                "complete_sum": 4056
+              },
+              "completion_tokens": {
+                "reported_sum": 192,
+                "known_requests": 2,
+                "unknown_requests": 0,
+                "complete_sum": 192
+              },
+              "total_tokens": {
+                "reported_sum": 4248,
+                "known_requests": 2,
+                "unknown_requests": 0,
+                "complete_sum": 4248
+              }
+            },
+            "recent_limit": 128,
+            "recent_dropped": 0,
+            "recent": [
+              {
+                "attempted": true,
+                "streamed": true,
+                "outcome": "success",
+                "http_status": 200,
+                "request_bytes": 7347,
+                "response_bytes": 1581,
+                "elapsed_ms": 2624.967,
+                "first_text_ms": 938.986,
+                "usage": {
+                  "prompt_tokens": 1915,
+                  "completion_tokens": 64,
+                  "total_tokens": 1979
+                },
+                "finish_reason": "tool_calls",
+                "error_code": null
+              },
+              {
+                "attempted": true,
+                "streamed": true,
+                "outcome": "success",
+                "http_status": 200,
+                "request_bytes": 8099,
+                "response_bytes": 3448,
+                "elapsed_ms": 12648.606,
+                "first_text_ms": 783.744,
+                "usage": {
+                  "prompt_tokens": 2141,
+                  "completion_tokens": 128,
+                  "total_tokens": 2269
+                },
+                "finish_reason": "tool_calls",
+                "error_code": null
+              }
+            ]
+          },
+          "error_detail": null,
+          "request_socket_timeout_seconds": 120,
+          "baseline_passed_cases": 4,
+          "agent_finished": false,
+          "candidate_unchanged": false,
+          "fixture_before_sha256": "718103b44e8c899e9eb611003b9533745f0c61046ee72708923d436055485a6e",
+          "fixture_after_sha256": "191c8101e19d49dda7236e729f6c39ae53c8d7a60634ee280651b282ba7c306b",
+          "tool_results": [
+            {
+              "approved": null,
+              "has_error": false
+            },
+            {
+              "approved": true,
+              "has_error": false
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "limits": [
+    "one toy task, not a repository benchmark or stable model ranking",
+    "flash-2 successful phase used a fixed parser and only two remaining requests",
+    "flash-2 repaired fixture passes nine cases but agent final reply was not requested at budget limit",
+    "do not directly compare flash full-task latency with flash-2 two-call repair latency",
+    "first-text measurements cannot separate networking, server queueing and internal inference",
+    "two failed requests have unknown token consumption; known token sum is not a total bill"
+  ]
+}
