@@ -1,0 +1,87 @@
+{
+  "date": "2026-10-19",
+  "source_commit": "1e10e7b99f0c79802270262ec22e9c5a5e09a1e6",
+  "paid_model_requests": 0,
+  "core": {
+    "windows": {
+      "python": "3.13.0",
+      "tests": 738,
+      "passed": 723,
+      "skipped": 15,
+      "failures": 0,
+      "errors": 0,
+      "seconds": 133.218
+    },
+    "wsl_ubuntu_26_04": {
+      "python": "3.13.14",
+      "tests": 738,
+      "passed": 719,
+      "skipped": 19,
+      "failures": 0,
+      "errors": 0,
+      "seconds": 88.264
+    }
+  },
+  "mini_sdk": {
+    "windows": {
+      "tests": 25,
+      "passed": 25,
+      "skipped": 0
+    },
+    "wsl": {
+      "tests": 25,
+      "passed": 25,
+      "skipped": 0
+    }
+  },
+  "lock_checked": true,
+  "wheel_and_sdist_built": true,
+  "fresh_wheel": {
+    "no_cache": true,
+    "no_deps": true,
+    "source_files_checked": 33,
+    "sha256": "97d0979d0e633e3a56ff5788be435848276dbc867105de404f182196642fc6d4",
+    "sdist_contains_new_module_and_tests": true,
+    "invalid_batch_zero_writes": true,
+    "valid_batch_individual_approvals": 2
+  },
+  "new_tests": 23,
+  "http_evidence": [
+    "invalid independent edit batch closes all three tool results without approval or write",
+    "corrected batch accepted under unchanged 16384-byte request budget",
+    "three file approvals and a stage check, followed by an independently approved final check"
+  ],
+  "limitations": [
+    "No cross-file atomic transaction or implicit rollback",
+    "Repeated targets and mixed tool replies keep sequential semantics",
+    "Skipped tests are not passes",
+    "No paid-model or performance-parity evidence"
+  ],
+  "ci": {
+    "id": 39191343961,
+    "head_sha": "1e10e7b99f0c79802270262ec22e9c5a5e09a1e6",
+    "event": "workflow_dispatch",
+    "status": "completed",
+    "conclusion": "success",
+    "html_url": "https://github.com/qinyin233/sprig-agent/actions/runs/39191343961",
+    "created_at": "2026-10-19T02:44:04Z",
+    "updated_at": "2026-10-19T02:47:12Z",
+    "jobs": [
+      {
+        "id": 117864639646,
+        "name": "core (ubuntu-latest)",
+        "status": "completed",
+        "conclusion": "success",
+        "html_url": "https://github.com/qinyin233/sprig-agent/actions/runs/39191343961/job/117864639646"
+      },
+      {
+        "id": 117864639901,
+        "name": "core (windows-latest)",
+        "status": "completed",
+        "conclusion": "success",
+        "html_url": "https://github.com/qinyin233/sprig-agent/actions/runs/39191343961/job/117864639901"
+      }
+    ],
+    "exact_sha_native_success": true
+  }
+}
