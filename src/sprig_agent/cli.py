@@ -185,6 +185,8 @@ def main(argv=None):
     parser.add_argument("--max-steps", type=int)
     parser.add_argument("--timeout", type=float)
     parser.add_argument("--max-output", type=int)
+    parser.add_argument("--command-output-limit", type=int,
+                        help="raw command output kill limit (256..8388608 bytes); above max-output uses bounded head/tail display")
     parser.add_argument("--max-tokens", type=int, help="request a provider output-token limit per model call (1-65536); not a total billing cap")
     parser.add_argument("--temperature", type=float)
     parser.add_argument("--top-p", type=float)

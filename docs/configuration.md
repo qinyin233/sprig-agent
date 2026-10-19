@@ -193,6 +193,8 @@ uv run --locked sprig --config-schema
 
 `[execution]` 可设置 `inherit_env`、`timeout`、`max_output`（同层优先于 agent 中旧字段），以及 `env_allowlist=["CC", "CFLAGS"]` 和 `env={BUILD_MODE="debug"}`。数组只额外继承具名变量，表提供字面覆盖；不执行替换、取密钥命令或 shell。即使允许列表或继承全部环境，也移除所有配置提供商的凭据变量、头变量及包含已知模型凭据的值。禁止用 env 注入模型凭据变量或凭据值。配置的字面值不显示在日志中；值若用于执行代码、模块搜索路径等，应按正常命令审批审阅其影响。
 
+长测试日志可显式设置 `[execution].output_limit`，将原始总输出上限与 `max_output` 展示预算分开：例如 `output_limit=1048576` 允许至多 1 MiB 输出，展示仍保留有界首尾。范围 256–8388608，默认沿用 `max_output`，CLI 为 `--command-output-limit`，显式值绑定会话。首尾展示的 `output_truncated` 与进程被停止的 `output_limited` 含义不同，见[命令输出与验收边界](command-output.md)。
+
 ## 存储与终端
 
 ### 上下文策略

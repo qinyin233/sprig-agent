@@ -109,7 +109,7 @@ def initialize_config(path, approve):
 
 GROUP_FIELDS = {
     "agent": set(AGENT_DEFAULTS), "generation": set(GENERATION_FIELDS), "tools": set(TOOL_NAMES),
-    "files": {"exclude"}, "execution": {"inherit_env", "timeout", "max_output", "env_allowlist", "env"},
+    "files": {"exclude"}, "execution": {"inherit_env", "timeout", "max_output", "output_limit", "env_allowlist", "env"},
     "storage": {"session_dir", "change_history_dir", "auto_save_session", "session_max_age_days", "session_max_count"},
     "context": {"max_bytes", "compact", "trigger_ratio", "keep_recent_messages", "keep_read_bytes"},
     "tui": {"theme", "sidebar", "editor_height", "steering_mode", "metrics", "keybindings"},
@@ -145,6 +145,8 @@ def _flatten(layer, directory):
     values.update({CONTEXT_FIELDS[name]: value for name, value in layer.get("context", {}).items()})
     execution = layer.get("execution", {})
     values.update({name: execution[name] for name in ("inherit_env", "timeout", "max_output") if name in execution})
+    if "output_limit" in execution:
+        values["command_output_limit"] = execution["output_limit"]
     if "env_allowlist" in execution:
         values["env_allowlist"] = tuple(execution["env_allowlist"])
     if "env" in execution:
@@ -411,7 +413,7 @@ class Settings:
         sources = {name: "default" for name in {*AGENT_DEFAULTS, *GENERATION_FIELDS, *TRANSPORT_FIELDS,
                     *TUI_FIELDS.values(), "instruction_files", "response_language", "excluded_paths",
                     "session_dir", "change_history_dir", "auto_save_session", "env_allowlist", "command_env",
-                    "session_max_age_days", "session_max_count", *CONTEXT_FIELDS.values()}}
+                    "session_max_age_days", "session_max_count", "command_output_limit", *CONTEXT_FIELDS.values()}}
         def apply(entries, label):
             if "tui_keybindings" in entries:
                 merged = dict(values.get("tui_keybindings", ()))
@@ -450,7 +452,7 @@ class Settings:
         apply({name: selected[name] for name in TRANSPORT_FIELDS if name in selected}, "provider")
         configurable = {*AGENT_DEFAULTS, *GENERATION_FIELDS, *TRANSPORT_FIELDS, *CONTEXT_FIELDS.values(),
                         "session_dir", "change_history_dir", "show_metrics", "instruction_files", "response_language",
-                        "session_max_age_days", "session_max_count"}
+                        "session_max_age_days", "session_max_count", "command_output_limit"}
         apply({name: value for name, value in options.items() if name in configurable and value is not None}, "CLI")
         if options.get("_tui_stream"):
             sources["stream"] = "TUI"
@@ -522,7 +524,8 @@ def public_config(config, metadata):
             "tools": {name: config.tool_enabled(name) for name in TOOL_NAMES},
             "files": {"exclude": config.excluded_paths},
             "instructions": {"files": config.instruction_files, "response_language": config.response_language},
-            "execution": {"env_allowlist": config.env_allowlist, "env_names": [name for name, _ in config.command_env]},
+            "execution": {"env_allowlist": config.env_allowlist, "env_names": [name for name, _ in config.command_env],
+                          "max_output": config.max_output, "output_limit": config.command_output_limit or config.max_output},
             "storage": {"session_dir": str(config.session_dir) if config.session_dir else None,
                         "change_history_dir": str(config.change_history_dir) if config.change_history_dir else None,
                         "auto_save_session": config.auto_save_session,

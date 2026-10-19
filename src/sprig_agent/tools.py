@@ -24,7 +24,7 @@ from .planning import TaskPlan, validate_plan
 from .revisions import READ_ID_PATTERN, ReadVersions, valid_read_id
 from .map_selection import MapSelection, encoded_size
 from .policy import FilePolicy, command_environment
-from .output import CommandOutput
+from .output import CommandOutput, SampledCommandOutput
 from .edit_match import failure_details
 from .edit_batch import EditPreview, digest, preflight
 from .line_edits import replace_lines, validate_edits
@@ -908,9 +908,12 @@ class Tools:
             pass
         directory = self.config.workdir.joinpath(*parts)
         rules = self.instructions.prepare_action(parts)
+        output_limit = self.config.command_output_limit or self.config.max_output
         description = (f"RUN (NOT SANDBOXED; may access outside files/network)\n"
                        f"cwd: {json.dumps(str(directory))}\nargv: {json.dumps(argv)}\n"
-                       f"timeout: {seconds}s; output cap: {self.config.max_output} bytes")
+                       f"timeout: {seconds}s; output cap: {output_limit} bytes")
+        if output_limit > self.config.max_output:
+            description += f"; displayed output cap: {self.config.max_output} bytes, head/tail with omission notice"
         if self.config.env_allowlist or self.config.command_env or self.config.inherit_env:
             description += ("\nenvironment: " + ("expanded inheritance" if self.config.inherit_env else "minimal inheritance")
                             + "; additional inherited names: " + json.dumps(self.config.env_allowlist)
@@ -924,15 +927,19 @@ class Tools:
             pass
         env = command_environment(self.config)
         self.instructions.recheck_action(parts, rules)
-        stream = CommandOutput(self.emit_output, self.config.secrets)
+        sampled = output_limit > self.config.max_output
+        stream = (SampledCommandOutput(self.emit_output, self.config.secrets, self.config.max_output) if sampled
+                  else CommandOutput(self.emit_output, self.config.secrets))
         self.read_versions.clear()
         if os.name == "nt":
             from .windows import run_command
             try:
-                result = run_command(argv, directory, env, seconds, self.config.max_output, self.cancel_event, stream.write)
+                result = run_command(argv, directory, env, seconds, output_limit, self.cancel_event, stream.write)
             finally:
                 self.read_versions.clear()
-            stream.finish()
+            summary = stream.finish()
+            if sampled:
+                result.update(summary)
             if self.emit_output:
                 result["streamed"] = True
             return result
@@ -952,11 +959,11 @@ class Tools:
                         reason = "timeout"
                         break
                     for key, _ in selector.select(min(remaining, 0.1)):
-                        chunk = os.read(key.fileobj.fileno(), min(65536, self.config.max_output - len(output) + 1))
+                        chunk = os.read(key.fileobj.fileno(), min(65536, output_limit - len(output) + 1))
                         if not chunk:
                             selector.unregister(key.fileobj)
                         else:
-                            space = self.config.max_output - len(output)
+                            space = output_limit - len(output)
                             output.extend(chunk[:space])
                             stream.write(chunk[:space])
                             if len(chunk) > space:
@@ -985,7 +992,10 @@ class Tools:
             process.wait()
             process.stdout.close()
             self.read_versions.clear()
-        stream.finish()
-        return {"approved": True, "returncode": process.returncode, "streamed": bool(self.emit_output),
+        summary = stream.finish()
+        result = {"approved": True, "returncode": process.returncode, "streamed": bool(self.emit_output),
                 "output": output.decode("utf-8", errors="replace"),
                 "timed_out": reason == "timeout", "output_limited": reason == "output_limit"}
+        if sampled:
+            result.update(summary)
+        return result
