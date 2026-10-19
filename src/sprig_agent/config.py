@@ -14,7 +14,8 @@ SHORTCUT_ACTIONS = ("cancel", "quit", "focus_input", "toggle_sidebar", "help", "
 GENERATION_FIELDS = ("max_tokens", "thinking", "temperature", "top_p", "reasoning_effort", "seed", "token_limit_field", "extra_body")
 RESERVED_BODY_FIELDS = {"model", "messages", "tools", "tool_choice", "stream", "stream_options", "n",
                         "max_tokens", "max_completion_tokens", "temperature", "top_p", "reasoning_effort", "seed",
-                        "prompt", "system", "input", "instructions", "api_key", "headers", "base_url"}
+                        "prompt", "system", "input", "instructions", "api_key", "headers", "base_url",
+                        "store", "previous_response_id", "conversation", "background", "include", "max_output_tokens"}
 ENV_NAME = re.compile(r"[A-Za-z_][A-Za-z0-9_]{0,127}")
 HEADER_NAME = re.compile(r"[!#$%&'*+.^_`|~0-9A-Za-z-]{1,64}")
 FORBIDDEN_HEADERS = {"host", "content-length", "content-type", "transfer-encoding", "connection", "upgrade",
@@ -122,8 +123,8 @@ class Config:
     extra_body: dict | str = field(default="{}", repr=False)
     request_timeout: float | None = None
     proxy: str = "system"
-    api_key_header: str = "Authorization"
-    api_key_scheme: str = "bearer"
+    api_key_header: str = "auto"
+    api_key_scheme: str = "auto"
     headers: tuple = field(default=(), repr=False)
     secret_values: tuple = field(default=(), repr=False, compare=False)
     disabled_tools: tuple = ()
@@ -155,8 +156,15 @@ class Config:
     reference_files: tuple = ()
     preserve_reasoning: bool = False
     check_history_format: str = "tool_calls"
+    wire_api: str = "chat_completions"
 
     def __post_init__(self):
+        if self.wire_api not in ("chat_completions", "messages", "responses"):
+            raise ValueError("wire-api must be chat_completions, messages or responses")
+        if self.api_key_header == "auto":
+            object.__setattr__(self, "api_key_header", "x-api-key" if self.wire_api == "messages" else "Authorization")
+        if self.api_key_scheme == "auto":
+            object.__setattr__(self, "api_key_scheme", "raw" if self.wire_api == "messages" else "bearer")
         root = Path(self.workdir).expanduser().resolve(strict=True)
         if not root.is_dir():
             raise ValueError("workdir must be a directory")
@@ -246,6 +254,8 @@ class Config:
             raise ValueError("max-tokens must be between 1 and 65536")
         if not isinstance(self.thinking, bool):
             raise ValueError("thinking must be a boolean")
+        if self.wire_api != "chat_completions" and (self.seed is not None or self.token_limit_field != "max_tokens"):
+            raise ValueError("seed and token-limit-field are Chat Completions settings")
         if type(self.preserve_reasoning) is not bool:
             raise ValueError("preserve-reasoning must be a boolean")
         if self.check_history_format not in ("tool_calls", "observations"):
@@ -278,6 +288,12 @@ class Config:
             if not isinstance(extra, dict) or set(extra) & RESERVED_BODY_FIELDS or len(extra) > 32:
                 raise ValueError
             if self.thinking and "chat_template_kwargs" in extra:
+                raise ValueError
+            if self.thinking and ((self.wire_api == "messages" and "thinking" in extra)
+                                  or (self.wire_api == "responses" and "reasoning" in extra)):
+                raise ValueError
+            if self.reasoning_effort is not None and ((self.wire_api == "messages" and "output_config" in extra)
+                                                      or (self.wire_api == "responses" and "reasoning" in extra)):
                 raise ValueError
             pending = [(extra, 0)]
             while pending:
@@ -380,14 +396,28 @@ class Config:
         """Only explicitly selected options; defaults leave the wire unchanged."""
         options = {} if self.extra_body == "{}" else json.loads(self.extra_body)
         if self.max_tokens is not None:
-            options[self.token_limit_field] = self.max_tokens
+            options["max_output_tokens" if self.wire_api == "responses" else self.token_limit_field] = self.max_tokens
+        elif self.wire_api == "messages":
+            options["max_tokens"] = 4096  # Required by Messages; an output cap, not a billing cap.
         if self.thinking:
-            if "chat_template_kwargs" in options:
-                raise ValueError("thinking and extra-body.chat_template_kwargs cannot both be configured")
-            options["chat_template_kwargs"] = {"enable_thinking": True}
+            if self.wire_api == "messages":
+                if "thinking" in options:
+                    raise ValueError("thinking and extra-body.thinking cannot both be configured")
+                options["thinking"] = {"type": "adaptive"}
+            elif self.wire_api == "responses":
+                if "reasoning" in options:
+                    raise ValueError("thinking and extra-body.reasoning cannot both be configured")
+                options["reasoning"] = {"effort": self.reasoning_effort or "medium"}
+            else:
+                options["chat_template_kwargs"] = {"enable_thinking": True}
         for name in ("temperature", "top_p", "reasoning_effort", "seed"):
             if getattr(self, name) is not None:
-                options[name] = getattr(self, name)
+                if name == "reasoning_effort" and self.wire_api == "responses":
+                    options.setdefault("reasoning", {})["effort"] = self.reasoning_effort
+                elif name == "reasoning_effort" and self.wire_api == "messages":
+                    options.setdefault("output_config", {})["effort"] = self.reasoning_effort
+                else:
+                    options[name] = getattr(self, name)
         return options
 
     def tool_enabled(self, name):
@@ -396,6 +426,8 @@ class Config:
 
     def binding(self):
         binding = {"base_url": self.base_url, "model": self.model, "workdir": str(self.workdir)}
+        if self.wire_api != "chat_completions":
+            binding["wire_api"] = self.wire_api
         if self.command_output_limit is not None:
             binding["command_output_limit"] = self.command_output_limit
         if self.checks:

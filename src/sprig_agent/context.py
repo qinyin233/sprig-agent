@@ -46,6 +46,11 @@ def provider_messages(config, messages, *, check_cancelled=None):
 
 def request_payload(config, messages, tools, *, check_cancelled=None):
     selected = provider_messages(config, messages, check_cancelled=check_cancelled)
+    if config.wire_api != "chat_completions":
+        from .native_protocols import payload
+        return redact(payload(config, selected, tools), config.secrets)
+    if any("native_state" in message for message in selected):
+        raise ValueError("native protocol history cannot be sent through Chat Completions")
     payload = {"model": config.model, "messages": redact(selected, config.secrets), "tools": tools, "tool_choice": "auto"}
     payload.update(config.generation_options())
     if config.stream:
@@ -273,7 +278,7 @@ def prepare_context(config, messages, tools, compact=False, *, force=False, chec
         for identity, (index, call) in calls.items():
             result_index, content = results.get(identity, (len(selected), None))
             function = call.get("function", {})
-            if identity in ambiguous or not index < result_index < cutoff:
+            if identity in ambiguous or not index < result_index < cutoff or "native_state" in selected[index]:
                 continue
             result = _result(content)
             if result_index in superseded_checks:

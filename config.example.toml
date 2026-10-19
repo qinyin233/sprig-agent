@@ -6,6 +6,7 @@ interface = "tui"
 # profile = "review"
 
 [providers.agnes]
+wire_api = "chat_completions" # chat_completions / messages / responses; see docs/provider-protocols.md
 preserve_reasoning = false # opt in only for reasoning_content protocol continuity; private saves then retain it
 check_history_format = "tool_calls" # observations for APIs rejecting client-inserted check calls
 model = "fast"
@@ -13,8 +14,8 @@ base_url = "https://apihub.agnes-ai.com/v1"
 api_key_env = "AGNES_API_KEY"
 request_timeout = 60
 proxy = "system" # system / direct / http://localhost:7890 (no proxy credentials)
-api_key_header = "Authorization"
-api_key_scheme = "bearer" # raw for services using an alternate auth header
+api_key_header = "auto" # Authorization for Chat/Responses; x-api-key for Messages
+api_key_scheme = "auto" # bearer for Chat/Responses; raw for Messages; explicit overrides allowed
 
 [providers.agnes.models.fast]
 id = "agnes-3.0-flash"

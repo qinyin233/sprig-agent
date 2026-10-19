@@ -67,7 +67,7 @@ def validate_history(messages):
             raise SessionError("unfinished tool calls before another message")
         elif role == "assistant":
             try:
-                normalized = validate_message(message, preserve_reasoning=True)
+                normalized = validate_message(message, preserve_reasoning=True, wire_api="saved")
                 phase = application_check(message)
                 if phase is not None:
                     normalized["sprig_check"] = phase

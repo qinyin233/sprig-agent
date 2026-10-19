@@ -1,4 +1,4 @@
-"""Minimal Chat Completions client; optional SSE and no automatic retries."""
+"""Bounded three-protocol HTTP client; optional SSE and no automatic retries."""
 
 import json
 from datetime import datetime, timezone
@@ -58,14 +58,14 @@ def retry_after_seconds(value, *, now=None):
 def http_failure(status, headers, secret=""):
     """Expose fixed diagnostics and numeric delay only; never server error text."""
     hints = {
-        400: "request rejected; check model and Chat Completions tool compatibility",
+        400: "request rejected; check model, wire_api and function tool compatibility",
         401: "authentication failed; check the configured API key",
         403: "access denied; check account permissions and model access",
         404: "endpoint or model not found; check --base-url and --model",
-        405: "Chat Completions POST not accepted; check --base-url",
+        405: "protocol POST not accepted; check --base-url and wire_api",
         408: "service request timed out; check provider status before retrying manually",
         413: "request too large for the service; review /context or reduce --max-context-bytes",
-        422: "request rejected; check model and Chat Completions tool compatibility",
+        422: "request rejected; check model, wire_api and function tool compatibility",
         429: "rate limit or quota reached; check service limits",
         504: "service request timed out; check provider status before retrying manually",
     }
@@ -88,7 +88,7 @@ class NoRedirect(urllib.request.HTTPRedirectHandler):
         raise ProviderError("HTTP redirects are disabled; use the final trusted base URL", code="redirect")
 
 
-def validate_message(message, *, preserve_reasoning=False):
+def validate_message(message, *, preserve_reasoning=False, wire_api="chat_completions"):
     if not isinstance(message, dict) or message.get("role") != "assistant":
         raise ProviderError("invalid assistant message")
     content = message.get("content")
@@ -135,6 +135,9 @@ def validate_message(message, *, preserve_reasoning=False):
             except UnicodeEncodeError:
                 raise ProviderError("invalid Unicode in reasoning_content") from None
         result["reasoning_content"] = reasoning
+    if wire_api != "chat_completions" and "native_state" in message:
+        from .native_protocols import validate_state
+        result["native_state"] = validate_state(message["native_state"], result, None if wire_api == "saved" else wire_api)
     return result
 
 
@@ -152,6 +155,8 @@ class Provider:
     def _headers(self, *, stream=False):
         config = self.config
         headers = {"Content-Type": "application/json", "User-Agent": "sprig-agent/0.1.0", **dict(config.headers)}
+        if config.wire_api == "messages" and not any(key.lower() == "anthropic-version" for key in headers):
+            headers["anthropic-version"] = "2023-06-01"
         if stream:
             headers["Accept"] = "text/event-stream"
         if config.api_key:
@@ -215,7 +220,8 @@ class Provider:
         if len(body) > config.max_context_bytes:
             raise ProviderError("context byte budget exceeded; request was not sent", code="request_budget")
         headers = self._headers(stream=config.stream)
-        request = urllib.request.Request(config.base_url + "/chat/completions", body, headers)
+        from .native_protocols import PATHS
+        request = urllib.request.Request(config.base_url + PATHS[config.wire_api], body, headers)
         measurement.begin(len(body))
         try:
             with self.opener.open(request, timeout=config.request_timeout or config.timeout) as response:
@@ -224,6 +230,9 @@ class Provider:
                     measurement.status = status
                 reader = MeasuredResponse(response, measurement)
                 if config.stream:
+                    if config.wire_api != "chat_completions":
+                        from .native_protocols import complete_stream as native_stream
+                        return native_stream(config.wire_api, reader, on_text, config.secrets, measurement)
                     from .streaming import complete_stream
                     return complete_stream(reader, on_text, config.secrets,
                                            on_usage=measurement.observe_usage, on_delta=measurement.text_received,
@@ -232,6 +241,13 @@ class Provider:
             if len(raw) > MAX_RESPONSE:
                 raise ProviderError("provider response exceeds 2 MiB", code="response_limit")
             data = json.loads(raw)
+            if config.wire_api != "chat_completions":
+                from .native_protocols import parse_response, usage
+                if isinstance(data, dict):
+                    measurement.observe_usage(usage(config.wire_api, data.get("usage")))
+                result = parse_response(config.wire_api, data)
+                measurement.observe_finish("tool_calls" if result.get("tool_calls") else "stop")
+                return redact(result, config.secrets)
             if isinstance(data, dict):
                 measurement.observe_usage(data.get("usage"))
             if (not isinstance(data, dict) or not isinstance(data.get("choices"), list)
@@ -264,4 +280,4 @@ class Provider:
                 code = "connection_error"
             raise ProviderError(redact(f"provider {hint}; no automatic retry", config.secrets), code=code) from None
         except (KeyError, IndexError, TypeError, ValueError, RecursionError):
-            raise ProviderError("invalid Chat Completions response") from None
+            raise ProviderError("invalid provider protocol response") from None

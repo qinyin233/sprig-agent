@@ -4,7 +4,7 @@
 
 - Python 3.11+，模型与文件执行核心使用标准库，TUI 使用 Textual，跨语言声明索引使用 Tree-sitter
 - Linux / macOS / Windows 10+ / Windows WSL
-- Chat Completions + function tools，可选 SSE 流式输出
+- Chat Completions、Messages、Responses 三种协议，函数工具与 SSE 流式输出
 - 可选每次模型输出 token 上限与兼容服务的思考模式
 - 分层 `config.toml`、命名提供商/模型别名/profile、生成/代理/鉴权参数、配置 Schema 与离线诊断
 - 工具禁用、文件排除、命令环境白名单、会话存储和 TUI 偏好设置
@@ -88,7 +88,7 @@ uv run --locked sprig --workdir /path/to/repo-task --tui
 
 ## 开始使用
 
-选择支持普通 Chat Completions function tools 的模型。模型名须通过 `config.toml`、`--model` 或 `SPRIG_MODEL` 指定；没有自动选择的备用模型。
+选择支持所配置协议和函数工具的模型。供应商 `wire_api` 支持 `chat_completions`（默认）、`messages` 和 `responses`，参见[协议配置](docs/provider-protocols.md)。模型名须通过 `config.toml`、`--model` 或 `SPRIG_MODEL` 指定；没有自动选择的备用模型。
 
 以下密钥输入示例适用于 Bash，输入不会回显，也不会把密钥文字写入命令历史：
 
@@ -110,7 +110,7 @@ export SPRIG_BASE_URL='https://your-provider.example/v1'
 uv run sprig '为现有函数补一个最小测试，并运行测试' --workdir ./my-project
 ```
 
-基础地址须指向 API 根路径，程序在其后追加 `/chat/completions`。只允许 HTTPS，回环地址上的 HTTP 可用于本地服务或测试；HTTP 重定向被拒绝。请只配置你信任的服务，任务、读取的内容和工具结果会作为上下文发送到该服务。
+基础地址须指向 API 根路径，程序按 `wire_api` 追加 `/chat/completions`、`/messages` 或 `/responses`。只允许 HTTPS，回环地址上的 HTTP 可用于本地服务或测试；HTTP 重定向被拒绝。请只配置你信任的服务，任务、读取的内容和工具结果会作为上下文发送到该服务。
 
 需要 `reasoning_content` 连续回传或拒绝客户端插入工具调用的服务，可在提供商表显式设置 `preserve_reasoning=true`、`check_history_format="observations"`。推理正文不显示，但会占用请求预算，并在启用私有会话保存时保留；默认关闭，也不自动开启模型思考。示例、参数格式和保存边界见[推理工具历史兼容](docs/reasoning-protocol.md)。
 
@@ -412,10 +412,10 @@ uv run python scripts/live-tui-smoke.py
 - `--max-steps` 限制循环步数，`--max-context-bytes` 限制发送大小；均不是精确 token / 费用预算，也不保证适合每个模型的上下文窗口
 - 网络请求不自动重试，避免不明确地重复计费；POSIX 命令使用进程组终止机制，不承诺清理主动脱离进程组的进程；Windows 命令使用 Job Object
 - HTTP 超时是 socket 等待超时，持续缓慢返回的响应可能超过所设秒数；响应仍有 2 MiB 大小限制，可用 Ctrl-C 中断
-- “OpenAI-compatible” 不保证模型、工具格式和响应行为兼容；所选服务与模型必须支持本项目发送的 Chat Completions function tools
+- “OpenAI-compatible” 不保证模型、工具格式和响应行为兼容；所选服务与模型必须支持配置的协议和客户端函数工具
 - Windows 需要支持受保护 DACL 的文件系统及 Job Object API（Windows 10+）；不支持 FAT/exFAT 会话目录，或权限/作业策略禁止必要 API 的环境
 
-本项目用标准库 `urllib` 发送 `POST /chat/completions`，默认非流式，`--stream` 使用 SSE。OpenAI 在[官方 Chat API 文档](https://developers.openai.com/api/reference/resources/chat)中建议新项目尝试 Responses API；这里为了保留更广泛的兼容服务接入，明确选择 Chat Completions。若只接入 OpenAI，可按实际需求另行迁移。
+本项目用标准库 `urllib` 支持三种 HTTP 协议，默认 Chat Completions、非流式，`--stream` 使用各协议的 SSE 事件。Messages 和 Responses 保留必要的原生推理状态，仍共用 Sprig 的批准、取消、请求预算和私有会话边界。详见[协议支持范围](docs/provider-protocols.md)。
 
 ## 源码导览
 
@@ -423,7 +423,8 @@ uv run python scripts/live-tui-smoke.py
 - `src/sprig_agent/tui.py`：Textual 全屏终端界面、确认窗、任务取消与本地会话操作
 - `src/sprig_agent/config.py`：环境变量与运行配置校验
 - `src/sprig_agent/settings.py` / `diagnostics.py`：私有 TOML、提供商选择、密钥引用、初始化及离线诊断
-- `src/sprig_agent/provider.py`：Chat Completions HTTP 请求
+- `src/sprig_agent/provider.py`：三种协议共享的有界 HTTP 传输
+- `src/sprig_agent/native_protocols.py`：Messages / Responses 请求、完整响应和 SSE 适配
 - `src/sprig_agent/streaming.py`：有界 SSE 解码、文本遮盖和工具片段组装
 - `src/sprig_agent/agent.py`：模型与工具之间的代理循环
 - `src/sprig_agent/tools.py`：文件工具、diff 确认和命令执行

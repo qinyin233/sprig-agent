@@ -269,3 +269,5 @@ uv run --locked sprig --project-config /trusted/private/project.toml
 项目文件也需私有权限，并显式指定；不会沿工作区父目录搜索。允许 `model`、`interface`、`generation`、`context`、`agent`、`tools`、`files`、`instructions`、`tui`（不含 keybindings）、`schema_version=1`。禁止 providers、profile、execution、storage；不能添加 checks 命令或开启 inherit_env，不能关闭用户/profile 只读或已启用基线、启用已关闭的工具或移除其文件排除。CLI 的显式用户选择仍最高优先级。
 
 MCP、插件、hooks、沙箱、自动批准等没有对应执行后端的字段都会报错。后续功能需要同时实现后端与安全测试，不能只添加一个可解析开关。
+
+模型协议由供应商表的 wire_api 选择，支持 chat_completions（默认）、messages、responses；CLI 对应 --wire-api。认证、生成参数映射、原生推理状态、会话绑定与限制见 [模型协议](provider-protocols.md)。

@@ -191,6 +191,7 @@ def main(argv=None):
     parser.add_argument("--profile", help="select a trusted named profile (or SPRIG_PROFILE)")
     parser.add_argument("--project-config", type=Path, help="explicit private project TOML; request/UI preferences and tighter policy only; never auto-discovered")
     parser.add_argument("--model", help="model override (or SPRIG_MODEL)")
+    parser.add_argument("--wire-api", choices=("chat_completions", "messages", "responses"), help="provider HTTP protocol")
     parser.add_argument("--base-url", help="API root override (or SPRIG_BASE_URL); configured credentials cannot follow a changed URL")
     parser.add_argument("--max-steps", type=int)
     parser.add_argument("--timeout", type=float)
@@ -370,7 +371,7 @@ def main(argv=None):
         emit("Prompts and tool results are sent to this endpoint. Commands are NOT sandboxed and may access outside files/network. Writes and commands require approval.")
         if store:
             emit("Local transcript saving enabled (not encrypted). Resume never replays pending actions.")
-        if config.preserve_reasoning:
+        if config.preserve_reasoning or config.wire_api != "chat_completions":
             emit("Provider reasoning metadata is retained for subsequent requests and enabled local saves (not encrypted); its text is not displayed.")
         history = ChangeHistory(config, change_dir)
         if change_dir:

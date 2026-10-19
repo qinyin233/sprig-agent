@@ -7,13 +7,13 @@ from .config import redact
 from .provider import MAX_RESPONSE, MAX_TOOL_CALLS, ProviderError, completion_failure, validate_message
 
 
-def events(response):
+def events(response, *, completion_marker="[DONE]"):
     """Read incrementally, including CR/LF, comments and multiline data fields."""
     buffer, data, total, first = b"", [], 0, True
     while True:
         chunk = response.read1(min(8192, MAX_RESPONSE - total + 1))
         if not chunk:
-            raise ProviderError("provider stream ended before [DONE]; no tools were executed", code="incomplete_stream")
+            raise ProviderError("provider stream ended before " + completion_marker + "; no tools were executed", code="incomplete_stream")
         total += len(chunk)
         if total > MAX_RESPONSE:
             raise ProviderError("provider response exceeds 2 MiB", code="response_limit")

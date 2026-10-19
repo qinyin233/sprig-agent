@@ -124,18 +124,24 @@
             "not": {
               "enum": [
                 "api_key",
+                "background",
                 "base_url",
+                "conversation",
                 "headers",
+                "include",
                 "input",
                 "instructions",
                 "max_completion_tokens",
+                "max_output_tokens",
                 "max_tokens",
                 "messages",
                 "model",
                 "n",
+                "previous_response_id",
                 "prompt",
                 "reasoning_effort",
                 "seed",
+                "store",
                 "stream",
                 "stream_options",
                 "system",
@@ -504,6 +510,7 @@
           },
           "api_key_scheme": {
             "enum": [
+              "auto",
               "bearer",
               "raw"
             ]
@@ -521,6 +528,13 @@
               "maxLength": 4096,
               "pattern": "^[^\\x00-\\x1f]+$"
             }
+          },
+          "wire_api": {
+            "enum": [
+              "chat_completions",
+              "messages",
+              "responses"
+            ]
           },
           "preserve_reasoning": {
             "type": "boolean"
@@ -593,18 +607,24 @@
                   "not": {
                     "enum": [
                       "api_key",
+                      "background",
                       "base_url",
+                      "conversation",
                       "headers",
+                      "include",
                       "input",
                       "instructions",
                       "max_completion_tokens",
+                      "max_output_tokens",
                       "max_tokens",
                       "messages",
                       "model",
                       "n",
+                      "previous_response_id",
                       "prompt",
                       "reasoning_effort",
                       "seed",
+                      "store",
                       "stream",
                       "stream_options",
                       "system",
@@ -685,18 +705,24 @@
                         "not": {
                           "enum": [
                             "api_key",
+                            "background",
                             "base_url",
+                            "conversation",
                             "headers",
+                            "include",
                             "input",
                             "instructions",
                             "max_completion_tokens",
+                            "max_output_tokens",
                             "max_tokens",
                             "messages",
                             "model",
                             "n",
+                            "previous_response_id",
                             "prompt",
                             "reasoning_effort",
                             "seed",
+                            "store",
                             "stream",
                             "stream_options",
                             "system",
@@ -863,18 +889,24 @@
                   "not": {
                     "enum": [
                       "api_key",
+                      "background",
                       "base_url",
+                      "conversation",
                       "headers",
+                      "include",
                       "input",
                       "instructions",
                       "max_completion_tokens",
+                      "max_output_tokens",
                       "max_tokens",
                       "messages",
                       "model",
                       "n",
+                      "previous_response_id",
                       "prompt",
                       "reasoning_effort",
                       "seed",
+                      "store",
                       "stream",
                       "stream_options",
                       "system",
