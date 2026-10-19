@@ -72,7 +72,7 @@ class ReadRetentionTests(unittest.TestCase):
         self.assertTrue(json.loads(omitted[3]["content"])["context_elided"])
         self.assertTrue(info["within_budget"])
 
-    def test_newest_attempt_per_path_suppresses_older_window_without_claiming_equivalence(self):
+    def test_unreliable_or_incomplete_latest_attempt_suppresses_older_windows(self):
         for recent in (False, True):
             for result in ({"error": "excluded"}, {"approved": False}, None):
                 history = self.history()[:4]
@@ -85,6 +85,98 @@ class ReadRetentionTests(unittest.TestCase):
                 if recent or result:
                     self.assertEqual(selected[5], history[5])
                 self.assertEqual(history, original)
+
+    def test_disjoint_and_partially_overlapping_windows_of_the_same_version_survive_a_recent_read(self):
+        for old_start, old_end, new_start, new_end, restored in (
+            (1, 20, 21, 40, True), (1, 20, 10, 30, True), (5, 15, 1, 20, False),
+        ):
+            history = self.history()[:2]
+            base = json.loads(self.history()[3]["content"])
+            old = {**base, "offset": old_start, "end_line": old_end}
+            new = {**base, "offset": new_start, "end_line": new_end}
+            self.append(history, "old", "a.py", old, offset=old_start, limit=old_end-old_start+1)
+            self.append(history, "recent", "a.py", new, offset=new_start, limit=new_end-new_start+1)
+            history.extend({"role": "user", "content": "constraint"} for _ in range(4))
+            original = copy.deepcopy(history)
+            selected, info = self.compact(history)
+            shown = json.loads(selected[3]["content"])
+            self.assertEqual(bool(shown.get("context_retained")), restored)
+            self.assertEqual(selected[-6:], original[-6:])
+            self.assertEqual(history, original)
+            self.assertEqual(info["after_bytes"], len(request_body(self.config, selected, TOOL_SCHEMAS)))
+            if restored:
+                self.assertEqual(shown["content"], old["content"])
+                self.assertNotIn("read_id", shown)
+
+    def test_new_versions_or_full_file_coverage_cannot_resurrect_obsolete_or_redundant_windows(self):
+        base = json.loads(self.history()[3]["content"])
+        for new in ({**base, "sha256": "b" * 64},
+                    {"path": "a.py", "content": base["content"], "sha256": "a" * 64,
+                     "read_id": base["read_id"], "truncated": False}):
+            history = self.history()[:4]
+            self.append(history, "recent", "a.py", new, limit=80)
+            history.extend({"role": "user", "content": "constraint"} for _ in range(4))
+            selected, report = self.compact(history)
+            self.assertTrue(json.loads(selected[3]["content"])["context_elided"])
+            self.assertFalse(report["retained_reads"])
+            self.assertEqual(selected[-6:], history[-6:])
+
+    def test_complete_named_units_take_priority_without_discarding_other_files(self):
+        history = self.history()[:2]
+        base = json.loads(self.history()[3]["content"])
+        named = {**base, "symbol": "Example", "symbol_complete": True,
+                 "symbol_start_line": 1, "symbol_end_line": 80}
+        self.append(history, "old", "a.py", named, symbol="Example")
+        self.append(history, "other", "b.py", limit=80)
+        self.append(history, "focus", "a.py", {**base, "offset": 81, "end_line": 100}, offset=81, limit=20)
+        history.extend({"role": "user", "content": "constraint"} for _ in range(4))
+        selected, report = self.compact(history)
+        self.assertEqual([r["tool_call_id"] for r in report["retained_reads"]], ["old", "other"])
+        self.assertEqual(selected[-6:], history[-6:])
+        cap = report["retained_reads"][0]["bytes"]
+        selected, report = self.compact(history, replace(self.config, context_keep_read_bytes=cap))
+        self.assertEqual([r["tool_call_id"] for r in report["retained_reads"]], ["old"])
+
+    def test_recent_adjacent_windows_cover_an_older_window_without_restoring_its_body(self):
+        history = self.history()[:2]
+        base = json.loads(self.history()[3]["content"])
+        for identity, start, end in (("old", 10, 30), ("left", 1, 15), ("right", 16, 40)):
+            self.append(history, identity, "a.py", {**base, "offset": start, "end_line": end},
+                        offset=start, limit=end-start+1)
+        history.extend({"role": "user", "content": "constraint"} for _ in range(2))
+        selected, report = self.compact(history)
+        self.assertTrue(json.loads(selected[3]["content"])["context_elided"])
+        self.assertFalse(report["retained_reads"])
+        self.assertEqual(selected[-6:], history[-6:])
+
+    def test_disjoint_window_precedes_partially_overlapping_text_when_only_one_fits(self):
+        history = self.history()[:2]
+        base = json.loads(self.history()[3]["content"])
+        for identity, start, end in (("far", 70, 80), ("near", 20, 40), ("header", 1, 30)):
+            self.append(history, identity, "a.py", {**base, "offset": start, "end_line": end},
+                        offset=start, limit=end-start+1)
+        history.extend({"role": "user", "content": "constraint"} for _ in range(4))
+        _, report = self.compact(history)
+        self.assertEqual([r["tool_call_id"] for r in report["retained_reads"]], ["far", "near"])
+        cap = report["retained_reads"][0]["bytes"]
+        selected, report = self.compact(history, replace(self.config, context_keep_read_bytes=cap))
+        self.assertEqual([r["tool_call_id"] for r in report["retained_reads"]], ["far"])
+        self.assertEqual(selected[-6:], history[-6:])
+
+    def test_protected_large_latest_body_is_not_decoded_to_infer_a_version(self):
+        history = self.history()[:4]
+        base = json.loads(history[3]["content"])
+        self.append(history, "large", "a.py", {**base, "content": "x" * 100000}, limit=80)
+        history.extend({"role": "user", "content": "constraint"} for _ in range(4))
+        body = history[5]["content"]
+        decode = json.loads
+        def bounded(value, *args, **kwargs):
+            self.assertNotEqual(value, body, "large protected body was decoded")
+            return decode(value, *args, **kwargs)
+        with patch("sprig_agent.context.json.loads", side_effect=bounded):
+            selected, report = self.compact(history, replace(self.config, max_context_bytes=1048576))
+        self.assertFalse(report["retained_reads"])
+        self.assertEqual(selected[-6:], history[-6:])
 
     def test_incomplete_mismatched_unversioned_or_ambiguous_reads_are_never_restored(self):
         base = json.loads(self.history()[3]["content"])
@@ -104,13 +196,23 @@ class ReadRetentionTests(unittest.TestCase):
         selected, info = self.compact(history)
         self.assertEqual(selected, history)
         self.assertFalse(info["retained_reads"])
+        history = self.history()[:4]
+        self.append(history, "duplicate", "a.py", limit=80)
+        history.append(copy.deepcopy(history[4]))
+        history.extend({"role": "user", "content": "constraint"} for _ in range(6))
+        selected, info = self.compact(history)
+        self.assertTrue(json.loads(selected[3]["content"])["context_elided"])
+        self.assertFalse(info["retained_reads"])
 
     def test_legacy_windows_named_reads_and_plain_complete_reads_have_explicit_completeness(self):
         base = json.loads(self.history()[3]["content"])
         legacy = {key: value for key, value in base.items() if key != "range_complete"}
         cases = [(legacy, {"limit": 80}, True), (legacy, {"limit": 81}, False),
-                 ({**base, "symbol_complete": True}, {"symbol": "Example"}, True),
+                 ({**base, "symbol_complete": True, "symbol": "Example",
+                   "symbol_start_line": 1, "symbol_end_line": 80}, {"symbol": "Example"}, True),
                  ({**base, "symbol_complete": False}, {"symbol": "Example"}, False),
+                 ({**base, "symbol_complete": True}, {"symbol": "Example"}, False),
+                 ({**base, "symbol_complete": True, "offset": True}, {"symbol": "Example"}, False),
                  ({k: v for k, v in base.items() if k not in {"offset", "end_line", "total_lines"}}, {}, False),
                  ({"path": "a.py", "content": base["content"], "sha256": "a" * 64,
                    "read_id": base["read_id"], "truncated": False}, {}, True),
@@ -178,8 +280,10 @@ class ReadRetentionTests(unittest.TestCase):
         args = {"path": "source.py", "offset": 1, "limit": 80, "line_numbers": True}
         with closing(Tools(self.config, approve)) as tools:
             observed = tools.execute("read_file", args)
+            header = tools.execute("read_file", {**args, "limit": 10})
         self.append(history, "past", "source.py", observed, **{k: v for k, v in args.items() if k != "path"})
-        history.extend({"role": "user", "content": "keep every line but change first to new"} for _ in range(6))
+        self.append(history, "header", "source.py", header, offset=1, limit=10, line_numbers=True)
+        history.extend({"role": "user", "content": "keep every line but change first to new"} for _ in range(4))
         original = copy.deepcopy(history)
         edit = {"path": "source.py", "read_id": observed["read_id"],
                 "edits": [{"start_line": 1, "end_line": 1, "new": "new\n"}]}
