@@ -47,6 +47,9 @@ thinking = false
 files = [] # e.g. ["CONTRIBUTING.md"], relative to the selected workspace
 # response_language = "English"
 
+[context]
+files = [] # initial live references; small complete files refresh before requests
+
 # Optional additional shortcuts; Enter and approval keys remain fixed.
 # [tui.keybindings]
 # help = ["f1"]
@@ -111,7 +114,7 @@ GROUP_FIELDS = {
     "agent": set(AGENT_DEFAULTS), "generation": set(GENERATION_FIELDS), "tools": set(TOOL_NAMES),
     "files": {"exclude"}, "execution": {"inherit_env", "timeout", "max_output", "output_limit", "env_allowlist", "env"},
     "storage": {"session_dir", "change_history_dir", "auto_save_session", "session_max_age_days", "session_max_count"},
-    "context": {"max_bytes", "compact", "trigger_ratio", "keep_recent_messages", "keep_read_bytes"},
+    "context": {"max_bytes", "compact", "trigger_ratio", "keep_recent_messages", "keep_read_bytes", "files"},
     "tui": {"theme", "sidebar", "editor_height", "steering_mode", "metrics", "keybindings"},
     "instructions": {"files", "response_language"},
 }
@@ -120,7 +123,7 @@ TUI_FIELDS = {"theme": "tui_theme", "sidebar": "tui_sidebar", "editor_height": "
 TRANSPORT_FIELDS = {"request_timeout", "proxy", "api_key_header", "api_key_scheme"}
 CONTEXT_FIELDS = {"max_bytes": "max_context_bytes", "compact": "compact_context",
                   "trigger_ratio": "context_trigger_ratio", "keep_recent_messages": "context_keep_recent_messages",
-                  "keep_read_bytes": "context_keep_read_bytes"}
+                  "keep_read_bytes": "context_keep_read_bytes", "files": "reference_files"}
 IDENTIFIER = re.compile(r"[A-Za-z0-9_-]{1,64}")
 
 
@@ -191,6 +194,8 @@ def _validate_layer(layer, directory):
         raise ValueError("files exclude must be an array")
     if "files" in layer.get("instructions", {}) and not isinstance(layer["instructions"]["files"], list):
         raise ValueError("instruction files must be an array")
+    if "files" in layer.get("context", {}) and not isinstance(layer["context"]["files"], list):
+        raise ValueError("context files must be an array of workspace-relative POSIX paths")
     shortcuts = layer.get("tui", {}).get("keybindings", {})
     if not isinstance(shortcuts, dict) or any(not isinstance(keys, list) for keys in shortcuts.values()):
         raise ValueError("TUI keybindings must map actions to arrays of keys")
@@ -453,7 +458,12 @@ class Settings:
         configurable = {*AGENT_DEFAULTS, *GENERATION_FIELDS, *TRANSPORT_FIELDS, *CONTEXT_FIELDS.values(),
                         "session_dir", "change_history_dir", "show_metrics", "instruction_files", "response_language",
                         "session_max_age_days", "session_max_count", "command_output_limit"}
-        apply({name: value for name, value in options.items() if name in configurable and value is not None}, "CLI")
+        overrides = {name: value for name, value in options.items() if name in configurable and value is not None}
+        if "reference_files" in overrides:
+            from .references import user_reference_paths
+            overrides["reference_files"] = user_reference_paths(Path(options.get("workdir", ".")).expanduser().resolve(strict=True),
+                                                                overrides["reference_files"])
+        apply(overrides, "CLI")
         if options.get("_tui_stream"):
             sources["stream"] = "TUI"
         for name in options.get("disable_tool") or ():

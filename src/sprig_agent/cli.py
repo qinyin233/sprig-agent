@@ -85,7 +85,7 @@ def chat(agent, task, messages, emit, *, autostart=True):
 
     if task or (messages is not None and autostart):
         run(task)
-    emit("Chat ready. Enter a task; /continue, /help, /status, /plan, /context, /usage, /compact, /changes, /undo, /redo, /diff, /git or /exit.")
+    emit("Chat ready. Enter a task; /continue, /help, /status, /ref PATH, /refs, /unref PATH, /context, /changes or /exit.")
     while True:
         try:
             task = input("sprig> ").strip()
@@ -100,8 +100,16 @@ def chat(agent, task, messages, emit, *, autostart=True):
             return status
         try:
             if task == "/help":
+                emit("/ref PATH adds a live file reference; /unref PATH removes it; /refs lists metadata; /refs clear removes all. No model request is sent. Small complete files refresh before requests; larger files provide path/size only.")
                 emit("/worktrees lists local checkouts; /worktree PATH creates a detached checkout after fresh approvals. All remaining text is the path; the current conversation stays in this workspace.")
                 emit("Enter a task to continue the same conversation. /continue explicitly continues retained history without adding a duplicate request; /status shows local context; /plan shows model-reported progress, never approval or acceptance; /context previews the request budget; /usage shows local numeric request measurements and unknown token counts; /compact confirms request-only elision; /changes lists exact edit backups; /undo and /redo require diff approval; /discard-history confirms removal of backups; /diff and /git show Git changes with approval; /exit closes chat.")
+            elif task == "/refs":
+                emit(json.dumps(redact(agent.reference_state(), agent.config.secrets), ensure_ascii=False, indent=2))
+            elif task == "/refs clear" or task.startswith(("/ref ", "/unref ")):
+                operation = "clear" if task == "/refs clear" else "remove" if task.startswith("/unref ") else "add"
+                paths = () if operation == "clear" else [task.partition(" ")[2].strip()]
+                messages, result = agent.update_references(paths, operation=operation, messages=messages)
+                emit(json.dumps(redact(result, agent.config.secrets), ensure_ascii=False))
             elif task == "/continue":
                 if messages and len(messages) >= 2:
                     run(None)
@@ -174,6 +182,8 @@ def main(argv=None):
     parser.add_argument("--version", action="version", version=__version__)
     parser.add_argument("--workdir", default=".")
     parser.add_argument("--file", action="append", default=[], metavar="RELATIVE_PATH", help="attach a complete workspace text snapshot before the task; repeatable, privacy and context limits apply")
+    parser.add_argument("--reference-file", "--ref-file", dest="reference_files", action="append", metavar="PATH",
+                        help="explicit live workspace file reference; refresh small complete files, attach path/size only for larger files")
     configuration = parser.add_mutually_exclusive_group()
     configuration.add_argument("--config", type=Path, help="explicit trusted TOML path (or SPRIG_CONFIG); default: ~/.sprig/config.toml")
     configuration.add_argument("--no-config", action="store_true", help="ignore configuration files, including SPRIG_CONFIG")
@@ -351,7 +361,7 @@ def main(argv=None):
                 messages = store.load(args.resume)
             else:
                 store.ensure_new(session_name)
-            checkpoint = lambda history: store.save(session_name, history)
+            checkpoint = lambda history: store.save(session_name, history, **agent.reference_save_options())
         emit(f"Sprig | model: {config.model} | endpoint: {config.base_url} | workdir: {config.workdir}")
         emit("Prompts and tool results are sent to this endpoint. Commands are NOT sandboxed and may access outside files/network. Writes and commands require approval.")
         if store:
@@ -362,6 +372,11 @@ def main(argv=None):
         tools = Tools(config, confirm, emit_output=emit_delta, history=history)
         provider = Provider(config)
         agent = Agent(config, provider, tools, emit, checkpoint, emit_delta=emit_delta)
+        if args.resume:
+            state = getattr(store, "loaded_references", None)
+            agent.restore_references(state if isinstance(state, dict) else None)
+            if args.reference_files:
+                messages, _ = agent.update_references(config.reference_files, messages=messages)
         if args.file:
             messages, attached = agent.attach_files(args.file, messages)
             emit("[attached snapshots] " + json.dumps(attached, ensure_ascii=False))

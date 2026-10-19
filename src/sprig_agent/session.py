@@ -15,6 +15,7 @@ from .config import redact
 from .filesystem import Directory
 from .json_budget import JsonBudgetExceeded, encoded_size
 from .provider import ProviderError, validate_message
+from .references import reference_state
 
 MAX_SESSION = 8 * 1024 * 1024
 MAX_LIST_ENTRIES = 4096
@@ -83,6 +84,7 @@ class SessionStore:
                     self.directory = target.joinpath(*self.directory.parts[2:])
                     break
         self.config = config
+        self.loaded_references = reference_state()
         # A nested workdir must not allow storing transcripts elsewhere in the same repo.
         forbidden = [config.workdir]
         for parent in (config.workdir, *config.workdir.parents):
@@ -179,16 +181,28 @@ class SessionStore:
                 return
             raise SessionError("session already exists; use --resume or choose a new name")
 
-    def save_new(self, name, messages):
+    def save_new(self, name, messages, *, references=None):
         """Reserve and save a fresh name together, retaining ownership only on success."""
         with self._reservation(name):
             self.ensure_new(name)
-            self.save(name, messages)
+            if references is None:
+                self.save(name, messages)
+            else:
+                self.save(name, messages, references=references)
 
-    def save(self, name, messages):
+    def save(self, name, messages, *, references=None):
         filename = self._filename(name)
-        payload = redact({"version": 1, "binding": self.config.binding(), "messages": messages},
-                         self.config.secrets)
+        payload = {"version": 1, "binding": self.config.binding(), "messages": messages}
+        if references is not None:
+            try:
+                selected = reference_state(references)
+            except ValueError:
+                raise SessionError("invalid file reference state; no data was overwritten") from None
+            if selected["files"]:
+                if redact(selected["files"], self.config.secrets) != selected["files"]:
+                    raise SessionError("configured credentials cannot appear in saved file reference paths")
+                payload["file_references"] = selected
+        payload = redact(payload, self.config.secrets)
         try:
             encoded_size(payload, max_bytes=MAX_SESSION, indent=2)
         except JsonBudgetExceeded:
@@ -213,6 +227,7 @@ class SessionStore:
                     pass
 
     def load(self, name):
+        self.loaded_references = reference_state()
         filename = self._filename(name)
         with self._reservation(name):
             return self._load(filename)
@@ -233,7 +248,13 @@ class SessionStore:
             raise SessionError("unsupported session format")
         if saved.get("binding") != self.config.binding():
             raise SessionError("session endpoint/model/workdir changed; history will not be sent. Resume with the original settings or start a new session")
-        return redact(validate_history(saved.get("messages")), self.config.secrets)
+        history = redact(validate_history(saved.get("messages")), self.config.secrets)
+        try:
+            selected = reference_state(saved.get("file_references"))
+        except ValueError:
+            raise SessionError("invalid saved file reference state; no files were read") from None
+        self.loaded_references = selected
+        return history
 
     def list(self):
         """List local metadata without loading transcripts into a conversation."""
@@ -287,6 +308,7 @@ class SessionStore:
                         if not isinstance(saved, dict) or saved.get("version") != 1 or not isinstance(saved.get("binding"), dict):
                             raise ValueError
                         history = validate_history(saved.get("messages"))
+                        selected = reference_state(saved.get("file_references"))
                         if self._stamp(self._check_file(entry.name)) != self._stamp(info):
                             raise ValueError("session changed during scan")
                         binding = {key: saved["binding"][key][:4096] for key in ("model", "base_url", "workdir")
@@ -294,6 +316,8 @@ class SessionStore:
                         record.update(binding=binding, messages=len(history), modified_ns=info.st_mtime_ns,
                                       bytes=info.st_size, _revision=self._stamp(info),
                                       _digest=hashlib.sha256(raw).digest(), _active=owned)
+                        if selected["files"]:
+                            record["reference_files"] = len(selected["files"])
                 except SessionError as error:
                     if "busy" in str(error):
                         record["busy"] = True

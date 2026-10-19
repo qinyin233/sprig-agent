@@ -10,6 +10,7 @@ from textual import on, work
 from textual.app import App, ComposeResult
 from textual.binding import Binding
 from textual.containers import Horizontal, Vertical, VerticalScroll
+from textual.css.query import NoMatches
 from textual.message import Message
 from textual.screen import ModalScreen
 from textual.widgets import Button, Footer, Header, Input, RichLog, Static, TabbedContent, TabPane, TextArea
@@ -170,6 +171,7 @@ class SprigApp(App[int]):
         self.approval = None
         # UI-thread-owned queue. Only the single agent worker takes its contents.
         self.pending_tasks = []
+        self._draft_submission = None
         if self.session_name:
             self.store = SessionStore(self.session_dir, config)
             try:
@@ -208,8 +210,13 @@ class SprigApp(App[int]):
         try:
             self.agent = Agent(config, provider or Provider(config), self.tools, self.emit,
                                checkpoint=self.checkpoint, emit_delta=self.emit_delta, cancel_event=self.cancel_event,
-                               receive_input=self.receive_input)
+                               receive_input=self.receive_input, on_request_ready=self.request_ready)
             self.agent.restore_plan(self.messages)
+            if resume and self.store:
+                selected = getattr(self.store, "loaded_references", None)
+                self.agent.restore_references(selected if isinstance(selected, dict) else None)
+                if dict(config.setting_sources).get("reference_files") == "CLI" and config.reference_files:
+                    self.messages, _ = self.agent.update_references(config.reference_files, messages=self.messages)
             if files:
                 self.messages, _ = self.agent.attach_files(files, self.messages)
         except BaseException:
@@ -375,10 +382,26 @@ class SprigApp(App[int]):
         if not busy:
             self.action_focus_task()
 
+    def request_ready(self):
+        if self._ui_ready and not self._unmounted:
+            self.ui_call(self.clear_ready_draft)
+
+    def clear_ready_draft(self):
+        selected, self._draft_submission = self._draft_submission, None
+        if selected is None:
+            return
+        identity, draft, _ = selected
+        try:
+            editor = self.query_one("#" + identity, TaskInput)
+        except NoMatches:
+            return
+        if editor.text == draft:
+            editor.load_text("")
+
     def checkpoint(self, history):
         self.messages = history
         if self.store and self.session_name:
-            self.store.save(self.session_name, history)
+            self.store.save(self.session_name, history, **self.agent.reference_save_options())
 
     def take_pending(self):
         count = 1 if self.config.steering_mode == "one-at-a-time" else len(self.pending_tasks)
@@ -537,6 +560,8 @@ class SprigApp(App[int]):
                     self.agent.record_workspace_change(self.messages, result)
                 elif name == "attach":
                     self.messages, result = self.agent.attach_files(arguments["paths"], self.messages)
+                elif name == "references":
+                    self.messages, result = self.agent.update_references(messages=self.messages, **arguments)
                 elif name in {"worktree-create", "worktree-list"}:
                     from .worktrees import worktree_action
                     result = worktree_action(self.config, self.confirm, cancel_event=self.cancel_event, **arguments)
@@ -558,7 +583,7 @@ class SprigApp(App[int]):
                     if self.agent._steer(self.messages):
                         message += "；新要求已保留，点击继续执行"
                     if self.store and self.session_name:
-                        self.store.save(self.session_name, self.messages)
+                        self.store.save(self.session_name, self.messages, **self.agent.reference_save_options())
             except (OSError, SessionError, RuntimeError) as error:
                 status, message = 1, "已取消，但会话保存失败: " + self.safe(error)
         except Exception as error:
@@ -654,11 +679,15 @@ class SprigApp(App[int]):
                 event.editor.load_text("")
             self.slash_command(task)
             return
+        if (self.busy and self._draft_submission is not None
+                and self._draft_submission == (event.editor.id, event.draft, task)):
+            self.set_state("请求仍在准备；可编辑输入发送新要求")
+            return
         if ((self.busy or self.pending_tasks) and (len(self.pending_tasks) >= self.MAX_PENDING_TASKS
                 or sum(len(item.encode("utf-8")) for item in self.pending_tasks) + len(task.encode("utf-8")) > limit)):
             self.reject_input(f"待处理引导最多 {self.MAX_PENDING_TASKS} 条、合计 {limit} UTF-8 字节；请等待处理后重发。")
             return
-        if event.editor.text == event.draft:
+        if self.busy and event.editor.text == event.draft:
             event.editor.load_text("")
         if self.busy:
             self.pending_tasks.append(task)
@@ -671,7 +700,11 @@ class SprigApp(App[int]):
             if self.approval:
                 self.approval.dismiss(False)
         else:
-            self.start(task)
+            previous = self._draft_submission
+            latest_user = next((message for message in reversed(self.messages or []) if message.get("role") == "user"), {})
+            retry = previous is not None and previous[2] == task and latest_user.get("content") == redact(task, self.config.secrets)
+            self._draft_submission = (event.editor.id, event.draft, task)
+            self.start(None if retry else task)
 
     def action_cancel(self):
         if not self.busy:
@@ -708,9 +741,9 @@ class SprigApp(App[int]):
             name = self.query_one("#session-name", Input).value.strip()
             store = self.get_store()
             if name != self.session_name:
-                store.save_new(name, self.messages)
+                store.save_new(name, self.messages, **self.agent.reference_save_options())
             else:
-                store.save(name, self.messages)
+                store.save(name, self.messages, **self.agent.reference_save_options())
             if self.session_name and name != self.session_name:
                 store.release(self.session_name)
             self.session_name = name
@@ -731,6 +764,9 @@ class SprigApp(App[int]):
                     self.store.release(self.session_name)
                 self.messages, self.session_name = history, name
                 self.agent.restore_plan(history)
+                selected = getattr(self.store, "loaded_references", None)
+                self.agent.restore_references(selected if isinstance(selected, dict) else None)
+                self._draft_submission = None
                 self.refresh_plan()
                 self.pending_tasks = []
                 self.transcript = ""
@@ -759,6 +795,8 @@ class SprigApp(App[int]):
             self.session_name = None
             self.messages = None
             self.agent.restore_plan(None)
+            self.agent.restore_references()
+            self._draft_submission = None
             self.refresh_plan()
             self.pending_tasks = []
             self.query_one("#session-name", Input).value = ""
@@ -799,7 +837,8 @@ class SprigApp(App[int]):
         if command == "/help":
             self.append("\n本地命令（不发送给模型）：\n"
                         "/help /keys /plan /status /config /models /context /usage /cancel /exit\n"
-                        "/continue /new /add 文件路径 /map [名称或路径查询] /git /diff /compact\n"
+                        "/continue /new /add 文件路径 /ref 文件路径 /unref 文件路径 /refs [clear]\n"
+                        "/map [名称或路径查询] /git /diff /compact\n"
                         "/changes /undo /redo /discard-history /sessions /prune [--dry-run]\n"
                         "/save [名称] /restore [名称] /delete [名称]\n"
                         "/worktrees /worktree 新目录路径（完整剩余文本作为路径；不会切换当前对话）\n"
@@ -816,6 +855,10 @@ class SprigApp(App[int]):
             return
         if command == "/status":
             self.append(f"\n[本地状态] {self.task_message} | 执行中: {self.busy} | 消息: {len(self.messages or [])} | 本次基线: {self.agent.baseline_status} | 编辑后检查: {self.agent.edit_check_status} | 待处理引导: {len(self.pending_tasks)}\n")
+            return
+        if command == "/refs" and not argument:
+            self.append("\n[当前文件引用；准备记录不是已发送证明]\n" + json.dumps(
+                redact(self.agent.reference_state(), self.config.secrets), ensure_ascii=False, indent=2) + "\n")
             return
         if command == "/config":
             details = {"provider": self.config.provider_name,
@@ -834,18 +877,25 @@ class SprigApp(App[int]):
                    "/changes": "changes", "/undo": "undo", "/redo": "redo", "/discard-history": "discard-history",
                    "/sessions": "sessions", "/save": "save", "/restore": "restore", "/delete": "delete", "/add": "attach", "/prune": "prune-sessions",
                    "/worktrees": "worktree-list", "/worktree": "worktree-create"}
+        actions.update({"/ref": "references", "/unref": "references", "/refs": "references"})
         if command not in actions:
             self.append("\n未知本地命令；输入 /help。消息未发送给模型。\n")
             return
         if self.busy:
             self.append("\n该本地操作需要等待当前任务结束；可用 /cancel，或发送普通消息调整任务。\n")
             return
-        if argument and command not in {"/map", "/save", "/restore", "/delete", "/add", "/prune", "/worktree"}:
+        if argument and command not in {"/map", "/save", "/restore", "/delete", "/add", "/prune", "/worktree", "/ref", "/unref", "/refs"}:
             self.append("\n该命令不接受参数；输入 /help。\n")
             return
         if command in {"/save", "/restore", "/delete"} and argument:
             self.query_one("#session-name", Input).value = argument
-        if command in {"/worktrees", "/worktree"}:
+        if command in {"/ref", "/unref", "/refs"}:
+            if (command == "/refs" and argument != "clear") or (command != "/refs" and not argument):
+                self.append("\n用法：/ref 文件路径、/unref 文件路径、/refs 或 /refs clear；引用本身不触发模型。\n")
+                return
+            operation = "clear" if command == "/refs" else "remove" if command == "/unref" else "add"
+            self.start(local=("references", {"operation": operation, "paths": [] if operation == "clear" else [argument]}))
+        elif command in {"/worktrees", "/worktree"}:
             if command == "/worktree" and not argument:
                 self.append("\n用法：/worktree 新目录路径；父目录须已存在，目标须在当前仓库外且不存在。\n")
                 return

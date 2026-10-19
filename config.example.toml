@@ -93,6 +93,7 @@ env_allowlist = [] # additional named variables; model credentials always remove
 
 [context]
 # Same-layer keys here override legacy [agent] context settings.
+files = [] # initial live references, e.g. ["src/main.py"]; workspace-relative POSIX paths
 max_bytes = 131072 # actual serialized request bytes, never a token estimate
 compact = false # explicitly opt in; full saved history is preserved
 trigger_ratio = 0.8 # begin elision at 80% of max_bytes; 0 keeps old always-on behavior

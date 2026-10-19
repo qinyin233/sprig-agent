@@ -152,6 +152,7 @@ class Config:
     tui_keybindings: tuple = ()
     setting_sources: tuple = field(default=(), repr=False, compare=False)
     command_output_limit: int | None = None
+    reference_files: tuple = ()
 
     def __post_init__(self):
         root = Path(self.workdir).expanduser().resolve(strict=True)
@@ -355,6 +356,11 @@ class Config:
                 if not isinstance(value, (str, os.PathLike)) or len(str(value)) > 4096 or "\0" in str(value):
                     raise ValueError("storage directories must be paths")
                 object.__setattr__(self, name, Path(value).expanduser().absolute())
+        from .references import reference_paths
+        selected = reference_paths(self.reference_files)
+        if any(secret in path for path in selected for secret in self.secrets):
+            raise ValueError("configured credentials cannot appear in file reference paths")
+        object.__setattr__(self, "reference_files", selected)
 
     @property
     def credential_secrets(self):

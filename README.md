@@ -8,7 +8,7 @@
 - 可选每次模型输出 token 上限与兼容服务的思考模式
 - 分层 `config.toml`、命名提供商/模型别名/profile、生成/代理/鉴权参数、配置 Schema 与离线诊断
 - 工具禁用、文件排除、命令环境白名单、会话存储和 TUI 偏好设置
-- CLI `--file` / TUI `/add` 主动附加有界文件快照
+- CLI `--file` / TUI `/add` 附加有界快照；`--ref-file` / `/ref` 维护请求前刷新的文件引用
 - 全屏终端 TUI、连续对话、项目代码地图、分目录 `AGENTS.md` 规则与本地 Git 查看
 - 九种语言按声明名读取源码，保留真实行号与版本绑定；见[命名读取](docs/named-reads.md)
 - 同一地图按名称查询语法调用位置及所属声明；见[调用线索与边界](docs/call-sites.md)
@@ -143,6 +143,7 @@ sprig [TASK] [--workdir PATH] [--file RELATIVE_PATH ...] [--model MODEL] [--base
 | `TASK` | 新会话必填；使用 `--chat`、`--tui` 或恢复会话时可省略 |
 | `--workdir` | `.`，文件工具的工作根目录 |
 | `--file RELATIVE_PATH` | 可重复；发送任务前附加完整文件快照，仍检查隐私、大小、路径及上下文预算；TUI 也可 `/add 路径` |
+| `--ref-file PATH` | 可重复，别名 `--reference-file`；小文件在每次请求前刷新，大文件只发送路径和大小；TUI/chat 用 `/ref`、`/unref`、`/refs clear` 管理 |
 | `--config PATH` / `--no-config` | 显式可信 TOML 路径 / 禁用文件；默认用户 `~/.sprig/config.toml`，不搜索仓库 |
 | `--provider` | 选择命名提供商；否则 `SPRIG_PROVIDER` 或配置默认提供商 |
 | `--init-config` / `--show-config` / `--doctor` | 确认创建私有模板 / 密钥值不显示的生效配置 / 离线诊断 |
@@ -257,6 +258,8 @@ CLI 与 TUI 都实时显示命令输出，保留 UTF-8 分段，遮盖跨片段�
 | `update_plan(plan, explanation="")` | 更新有界的模型进度清单；TUI 计划页和 `/plan` 查看，随显式保存的会话恢复；不批准操作、不代表验收通过 |
 
 大文本使用[文件与传输说明](docs/text-transfer.md)：超长单行可用 `read_file(cursor="start")`，随后传回 `next_cursor` 续读；页面绑定路径与内容版本，按 UTF-8 码点边界截取。TUI 超限输入保留草稿，待处理引导有数量和字节限额，显示裁剪与模型历史分开。
+
+需要随编辑刷新的文件，可设置 `[context].files = ["src/main.py"]` 或输入 `/ref src/main.py`。完整小文件只进入当前请求；大文件以路径和大小提示按需读取。引用元数据随启用保存的会话恢复；`/refs` 查看，`/unref PATH` 或 `/refs clear` 移除。Windows 终端可传工作区内的本机绝对路径。完整请求预检失败也保留 TUI 草稿；详见[实时文件引用](docs/live-file-references.md)。
 
 长会话压缩时，`[context].keep_read_bytes` 在原请求硬限额内保留少量完整的旧源码窗口，默认 8192 个编码字节，0 关闭；不足时仍省略，不自动增加请求。保留正文标为历史快照并移除旧读取标识，详见[源码窗口保留](docs/read-retention.md)。
 
