@@ -1,0 +1,137 @@
+{
+  "schema": 1,
+  "scope": "offline protocol folding comparison; no model, candidate execution, token saving or coding performance claim",
+  "model_requests": 0,
+  "candidate_code_executed": false,
+  "max_context_bytes": 32768,
+  "max_steps": 3,
+  "before_source_commit": "914dbfbc3890c40372e2b2f5248f289cf38da956",
+  "after_source_commit": "7df9d55b8aaf1b9cf2565a17e688c49d5d8661c9",
+  "input_session_sha256": "49bdc694ee3809fa99f79f385d0baa6fd95e16a6dde5b9a37fea5373162c25d1",
+  "driver_sha256": "9ab34eb4d81b227baaed1958f4ba3cd8e5f17d72cfb7163e3fe5e13042e99963",
+  "after_source_files_sha256": {
+    "src/sprig_agent/context.py": "351527af3455df65f444d09032676b0be913488ff01ae7060c9cd7dec25b0c01",
+    "src/sprig_agent/context_folding.py": "5a18dd42dcf64383b1bc7aca19155f2b3513560738c6ba562eade1f696174541"
+  },
+  "session_file_unchanged": true,
+  "cases": [
+    {
+      "case": "first_sent",
+      "prefix_messages": 51,
+      "step": 1,
+      "variants": {
+        "before": {
+          "before_bytes": 71413,
+          "after_bytes": 32286,
+          "within_budget": true,
+          "wire_sha256": "99dea7678615339d8137fcb2356548315faf0e29d8e2a6358ac64483dcce505c",
+          "message_count": 51,
+          "folded_groups": [],
+          "protected_tail_unchanged": true,
+          "user_messages_unchanged": true
+        },
+        "after": {
+          "before_bytes": 71413,
+          "after_bytes": 32286,
+          "within_budget": true,
+          "wire_sha256": "99dea7678615339d8137fcb2356548315faf0e29d8e2a6358ac64483dcce505c",
+          "message_count": 51,
+          "folded_groups": [],
+          "protected_tail_unchanged": true,
+          "user_messages_unchanged": true
+        }
+      },
+      "all_observation_ids_and_arguments_preserved": true,
+      "all_result_values_preserved_except_generated_elision_notes": true,
+      "assistant_text_preserved_in_order": true,
+      "nonfolded_protocol_unchanged": true,
+      "check_references_resolve": true
+    },
+    {
+      "case": "second_sent",
+      "prefix_messages": 54,
+      "step": 2,
+      "variants": {
+        "before": {
+          "before_bytes": 74777,
+          "after_bytes": 32170,
+          "within_budget": true,
+          "wire_sha256": "82c26f3e629ebbc9c360026289cd90f69598d4c0b7d86bb2cd4eda8045dee3d6",
+          "message_count": 54,
+          "folded_groups": [],
+          "protected_tail_unchanged": true,
+          "user_messages_unchanged": true
+        },
+        "after": {
+          "before_bytes": 74777,
+          "after_bytes": 32170,
+          "within_budget": true,
+          "wire_sha256": "82c26f3e629ebbc9c360026289cd90f69598d4c0b7d86bb2cd4eda8045dee3d6",
+          "message_count": 54,
+          "folded_groups": [],
+          "protected_tail_unchanged": true,
+          "user_messages_unchanged": true
+        }
+      },
+      "all_observation_ids_and_arguments_preserved": true,
+      "all_result_values_preserved_except_generated_elision_notes": true,
+      "assistant_text_preserved_in_order": true,
+      "nonfolded_protocol_unchanged": true,
+      "check_references_resolve": true
+    },
+    {
+      "case": "blocked_third",
+      "prefix_messages": 57,
+      "step": 3,
+      "variants": {
+        "before": {
+          "before_bytes": 78598,
+          "after_bytes": 35991,
+          "within_budget": false,
+          "wire_sha256": "be02c66b404131ccc091d2b604b31a784f8835b78758eeb75b8d09d65df1384a",
+          "message_count": 57,
+          "folded_groups": [],
+          "protected_tail_unchanged": true,
+          "user_messages_unchanged": true
+        },
+        "after": {
+          "before_bytes": 78598,
+          "after_bytes": 32689,
+          "within_budget": true,
+          "wire_sha256": "5d83858de2e830808446459ef66ffc84b66c3647fd9947b7797a27b1711235c7",
+          "message_count": 34,
+          "folded_groups": [
+            {
+              "first_message": 10,
+              "last_message": 23,
+              "inspections": 9,
+              "before_bytes": 4247,
+              "after_bytes": 2501
+            },
+            {
+              "first_message": 29,
+              "last_message": 34,
+              "inspections": 4,
+              "before_bytes": 1863,
+              "after_bytes": 1078
+            },
+            {
+              "first_message": 40,
+              "last_message": 45,
+              "inspections": 4,
+              "before_bytes": 2109,
+              "after_bytes": 1338
+            }
+          ],
+          "protected_tail_unchanged": true,
+          "user_messages_unchanged": true
+        }
+      },
+      "all_observation_ids_and_arguments_preserved": true,
+      "all_result_values_preserved_except_generated_elision_notes": true,
+      "assistant_text_preserved_in_order": true,
+      "nonfolded_protocol_unchanged": true,
+      "check_references_resolve": true
+    }
+  ]
+}

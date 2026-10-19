@@ -1,0 +1,173 @@
+{
+  "schema": 1,
+  "scope": "one-request normal-CLI continuation after inspection folding; prior twelve requests retained; not a fresh task score or controlled comparison",
+  "source_commit": "7df9d55b8aaf1b9cf2565a17e688c49d5d8661c9",
+  "max_steps": 1,
+  "max_context_bytes": 32768,
+  "max_output": 6000,
+  "max_tokens": 2048,
+  "stream": false,
+  "thinking": false,
+  "compact_context": true,
+  "check_before_task": true,
+  "check_after_edit": true,
+  "model": "deepseek-flash",
+  "base_url": "https://api.llm.ustc.edu.cn/v1",
+  "exit_code": 1,
+  "elapsed_ms": 148985.661,
+  "initial_candidate_sha256": "cd5c28d37e22ac09236d52349599776c220648241ec2410c02585c13c0d34bc6",
+  "final_candidate_sha256": "cd5c28d37e22ac09236d52349599776c220648241ec2410c02585c13c0d34bc6",
+  "requests": {
+    "available": true,
+    "scope": "current provider instance; not persisted or sent to the model",
+    "attempts": 1,
+    "not_attempted": 0,
+    "outcomes": {
+      "success": 0,
+      "error": 1,
+      "cancelled": 0
+    },
+    "failures": {
+      "timeout": 1
+    },
+    "request_bytes": 30377,
+    "response_bytes": 0,
+    "elapsed_ms": 60024.014,
+    "usage": {
+      "prompt_tokens": {
+        "reported_sum": 0,
+        "known_requests": 0,
+        "unknown_requests": 1,
+        "complete_sum": null
+      },
+      "completion_tokens": {
+        "reported_sum": 0,
+        "known_requests": 0,
+        "unknown_requests": 1,
+        "complete_sum": null
+      },
+      "total_tokens": {
+        "reported_sum": 0,
+        "known_requests": 0,
+        "unknown_requests": 1,
+        "complete_sum": null
+      }
+    },
+    "recent_limit": 128,
+    "recent_dropped": 0,
+    "recent": [
+      {
+        "attempted": true,
+        "streamed": false,
+        "outcome": "error",
+        "http_status": null,
+        "request_bytes": 30377,
+        "response_bytes": 0,
+        "elapsed_ms": 60024.014,
+        "first_text_ms": null,
+        "usage": null,
+        "finish_reason": null,
+        "error_code": "timeout"
+      }
+    ]
+  },
+  "post_external": {
+    "checks_passed": 640,
+    "pytest_returncode": 1,
+    "skipped": 0,
+    "public_exception_contract": true,
+    "schema": 1,
+    "collected": 642,
+    "passed": false,
+    "failed": [
+      "tests/test_options.py::test_unknown_options[--foo]",
+      "tests/test_options.py::test_unknown_options[-f]"
+    ],
+    "other_failures": 0
+  },
+  "post_self_tests": {
+    "schema": 1,
+    "returncode": 1,
+    "collected": 642,
+    "checks_passed": 641,
+    "failed_count": 1,
+    "skipped": 0
+  },
+  "original_session_unchanged": true,
+  "initial_workspace_backup_unchanged": true,
+  "historical_messages_preserved_except_system": true,
+  "verifier_intact": true,
+  "candidate_retained": true,
+  "session_branch_retained": true,
+  "task_passed": false,
+  "external_candidate_passed": false,
+  "candidate_unchanged": true,
+  "completion_reason": "provider_timeout",
+  "pre_external": {
+    "pytest_returncode": 1,
+    "collected": 642,
+    "schema": 1,
+    "public_exception_contract": true,
+    "checks_passed": 640,
+    "skipped": 0,
+    "passed": false,
+    "failed": [
+      "tests/test_options.py::test_unknown_options[--foo]",
+      "tests/test_options.py::test_unknown_options[-f]"
+    ],
+    "other_failures": 0
+  },
+  "pre_self_tests": {
+    "schema": 1,
+    "returncode": 1,
+    "collected": 642,
+    "checks_passed": 641,
+    "failed_count": 1,
+    "skipped": 0
+  },
+  "model_tool_calls": {},
+  "model_tool_statuses": {},
+  "application_checks": {
+    "baseline": 2
+  },
+  "model_requests_allowed_this_continuation": 1,
+  "unused_request_allowance": 0,
+  "automatic_retry": false,
+  "operator_manual_solution_hints": false,
+  "task_message_added": false,
+  "controlled_comparison": false,
+  "fresh_task_score": false,
+  "billing_cost": null,
+  "request_contexts_offline_replayed": [],
+  "all_successful_request_sizes_match_measured": true,
+  "source_session_sha256": "49bdc694ee3809fa99f79f385d0baa6fd95e16a6dde5b9a37fea5373162c25d1",
+  "private_numeric_report_sha256": "ded1eca9ac1815a98f328088cb896168ed68abe503401d455a21a2fda326c03c",
+  "private_session_sha256": "0df8ff2732a9651ce2fc6de0dbcb48f5693e1c9367814511805b4cc7e5d3f6e5",
+  "private_launcher_sha256": "922da4c8ae355c0eb783700eb33b01eac6393df82cef7eee237ef74d9a5710bf",
+  "publisher_sha256": "2f6892225797a6b66261af03e609739ee040849d44e005f1e2924450ccdd4df7",
+  "effective_task_sha256": "63edc0c717f3f5811b086276919c68878ca17ff4509ed680ef3f262f8c3113a1",
+  "verifier_sha256": "b2aad5ce7e8c4595eb6c132f3900843986da292683ca8e20cec2eb6035786bf3",
+  "self_checker_sha256": "9a9eac219c1c56ecede9e2a2937da19bd7d3450b22e1ff851425dcf466d3d6db",
+  "prior_model_requests": 12,
+  "previous_diagnostic_report": "live-click-sprig-cli-ustc-deepseek-windows-20261019-01.json",
+  "failed_request_context_offline_replayed": {
+    "step": 1,
+    "outcome": "timeout",
+    "before_bytes": 82462,
+    "sent_bytes": 30377,
+    "wire_sha256": "c8e23ad32e12d3eb93a565c20cbd6bcc431f9eb46a7ceba0c3264abecf6dfeef",
+    "folded_groups": 3,
+    "folded_inspections": 17,
+    "pre_fold_source_bytes": 33679,
+    "pre_fold_source_within_budget": false,
+    "protected_tail_unchanged": true
+  },
+  "model_requests_attempted_this_continuation": 1,
+  "complete_model_responses": 0,
+  "cumulative_reported_tokens_complete": false,
+  "all_attempted_request_sizes_match_measured": true,
+  "folding_was_used": true,
+  "pre_fold_comparison_source_commit": "914dbfbc3890c40372e2b2f5248f289cf38da956",
+  "cumulative_model_requests": 13,
+  "cumulative_reported_tokens": 86277
+}
