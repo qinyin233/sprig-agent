@@ -1,0 +1,103 @@
+{
+  "date": "2026-10-19",
+  "source_commit": "2a78f62eb568e647afabc6977146850153a17097",
+  "source_files_digest": "86d06866261cfd24bd465e8d12f0c398c8a6737d1c99fcc4c464defa39e0afde",
+  "paid_model_requests": 0,
+  "core": {
+    "windows": {
+      "python": "3.13.0",
+      "tests": 875,
+      "passed": 858,
+      "skipped": 17,
+      "failures": 0,
+      "errors": 0,
+      "seconds": 153.639
+    },
+    "wsl_ubuntu_26_04": {
+      "python": "3.13.14",
+      "tests": 875,
+      "passed": 853,
+      "skipped": 22,
+      "failures": 0,
+      "errors": 0,
+      "seconds": 103.309
+    }
+  },
+  "mini_sdk": {
+    "windows": {
+      "tests": 25,
+      "passed": 25,
+      "skipped": 0
+    },
+    "wsl": {
+      "tests": 25,
+      "passed": 25,
+      "skipped": 0
+    }
+  },
+  "new_tests": 26,
+  "lock_checked": true,
+  "schema_matches_generator": true,
+  "tool_schema_bytes": 4920,
+  "wheel_and_sdist_built": true,
+  "fresh_wheel": {
+    "installed_source_files_checked": 36,
+    "source_files_digest": "86d06866261cfd24bd465e8d12f0c398c8a6737d1c99fcc4c464defa39e0afde",
+    "fresh_no_cache_install": true,
+    "sdist_contains_new_module_tests_and_docs": true,
+    "installed_live_refresh": true,
+    "installed_cli_native_path": true,
+    "readonly_reference_phase_no_approvals_or_workspace_edits": true,
+    "installed_mkdir_move_delete_and_exact_undo": true,
+    "lifecycle_fresh_approval_count": 7,
+    "installed_windows_restore_private_acl": true,
+    "installed_reasoning_http_and_sse": true,
+    "installed_application_check_observations": true,
+    "installed_reasoning_saved_but_not_displayed": true,
+    "protocol_fixture_http_requests": 4,
+    "protocol_fixture_check_approvals": 4,
+    "wheel_sha256": "566c25ddb93aaf911db006366ead0f13925b3fde895c7ea17626f8ddb6b2e75b",
+    "installed_reference_session_metadata_only": true
+  },
+  "strict_loopback": {
+    "default_field_loss_reproduces_http_400": true,
+    "reproduction_http_requests": 2,
+    "reproduction_writes": 0,
+    "automatic_retries": 0,
+    "success_modes": [
+      "non_streaming",
+      "sse"
+    ],
+    "http_requests_per_success_mode": 4,
+    "fresh_approvals_per_success_mode": 6,
+    "request_budget_bytes": 32768,
+    "stages": [
+      "failed_baseline",
+      "read",
+      "read_id_edit",
+      "stage_check",
+      "independent_final_check",
+      "next_user_turn",
+      "independent_final_check"
+    ],
+    "model_metadata_preserved_across_turns": true,
+    "application_checks_sent_as_observations": true,
+    "reasoning_not_rendered": true,
+    "scripted_fixture_not_model_evaluation": true
+  },
+  "remote_ci": {
+    "performed": false,
+    "run": null,
+    "skip_ci_commit": true,
+    "reason": "scoped protocol compatibility fix; conserve Actions minutes; no native OS backend changes"
+  },
+  "limitations": [
+    "platform skips are not passes",
+    "WSL is local POSIX coverage, not a GitHub native runner",
+    "no native DeepSeek service acceptance result",
+    "reasoning retention is opt-in and can increase saved/requested data",
+    "raw sessions remain private but unencrypted",
+    "Responses and native Anthropic backends remain unavailable",
+    "no new real-model coding-performance evidence"
+  ]
+}
