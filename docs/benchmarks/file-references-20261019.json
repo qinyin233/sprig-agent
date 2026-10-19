@@ -1,0 +1,104 @@
+{
+  "date": "2026-10-19",
+  "source_commit": "33e134a57314ddfbfab56b7d8c46c3920db26edc",
+  "paid_model_requests": 0,
+  "core": {
+    "windows": {
+      "python": "3.13.0",
+      "tests": 814,
+      "passed": 798,
+      "skipped": 16,
+      "failures": 0,
+      "errors": 0,
+      "seconds": 146.636
+    },
+    "wsl_ubuntu_26_04": {
+      "python": "3.13.14",
+      "tests": 814,
+      "passed": 794,
+      "skipped": 20,
+      "failures": 0,
+      "errors": 0,
+      "seconds": 97.425
+    }
+  },
+  "mini_sdk": {
+    "windows": {
+      "tests": 25,
+      "passed": 25,
+      "skipped": 0
+    },
+    "wsl": {
+      "tests": 25,
+      "passed": 25,
+      "skipped": 0
+    }
+  },
+  "new_tests": 28,
+  "lock_checked": true,
+  "schema_matches_generator": true,
+  "wheel_and_sdist_built": true,
+  "fresh_wheel": {
+    "installed_source_files_checked": 35,
+    "source_files_digest": "4e26435f36092de1678b3e495b258b0243b26e82a088f3341238d6c70610a375",
+    "fresh_no_cache_install": true,
+    "sdist_contains_new_module_tests_and_docs": true,
+    "installed_live_refresh": true,
+    "installed_session_metadata_only": true,
+    "installed_cli_native_path": true,
+    "readonly_no_approvals_or_workspace_edits": true,
+    "wheel_sha256": "ce7a34e99d00674d95a7fb12b6386d73c775874f06fcc6d6422eca02b46d5de4"
+  },
+  "scripted_loopback": {
+    "http_requests": 2,
+    "request_budget_bytes": 16384,
+    "approval_count": 2,
+    "final_check_passed": true,
+    "phases": [
+      "fresh_reference_context",
+      "read_id_edit",
+      "independent_fixed_check",
+      "refreshed_context"
+    ],
+    "saved_reference_body_absent": true,
+    "scripted_fixture_not_model_evaluation": true
+  },
+  "limitations": [
+    "platform skips are not passes",
+    "metadata-only references do not scan or upload source contents",
+    "reference snapshots are not a multi-file atomic read",
+    "model replies and tool history can still quote source and be saved",
+    "no general binary upload or remote resumable transfer",
+    "no new real model coding-performance evidence"
+  ],
+  "source_files_digest": "4e26435f36092de1678b3e495b258b0243b26e82a088f3341238d6c70610a375",
+  "native_ci": {
+    "id": 39214555102,
+    "head_sha": "33e134a57314ddfbfab56b7d8c46c3920db26edc",
+    "event": "workflow_dispatch",
+    "status": "completed",
+    "conclusion": "success",
+    "html_url": "https://github.com/qinyin233/sprig-agent/actions/runs/39214555102",
+    "created_at": "2026-10-19T07:12:59Z",
+    "updated_at": "2026-10-19T07:16:04Z",
+    "jobs": [
+      {
+        "id": 117935284703,
+        "name": "core (windows-latest)",
+        "status": "completed",
+        "conclusion": "success",
+        "html_url": "https://github.com/qinyin233/sprig-agent/actions/runs/39214555102/job/117935284703"
+      },
+      {
+        "id": 117935285078,
+        "name": "core (ubuntu-latest)",
+        "status": "completed",
+        "conclusion": "success",
+        "html_url": "https://github.com/qinyin233/sprig-agent/actions/runs/39214555102/job/117935285078"
+      }
+    ],
+    "exact_sha_native_success": true
+  },
+  "functional_commit_skips_automatic_matrix": true,
+  "native_ci_dispatched_explicitly": true
+}
