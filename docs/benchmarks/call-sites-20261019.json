@@ -1,0 +1,234 @@
+{
+  "date": "2026-10-19",
+  "source_commit": "7564fc3af28be728b7c0106c8a74871d472ff950",
+  "paid_model_requests": 0,
+  "source_files_digest": "d4c3cb457bb32b30335be561038e596f19595594042a2a6ccb428c577861540f",
+  "core": {
+    "windows": {
+      "python": "3.13.0",
+      "tests": 786,
+      "passed": 771,
+      "skipped": 15,
+      "failures": 0,
+      "errors": 0,
+      "seconds": 125.918
+    },
+    "wsl_ubuntu_26_04": {
+      "python": "3.13.14",
+      "tests": 786,
+      "passed": 767,
+      "skipped": 19,
+      "failures": 0,
+      "errors": 0,
+      "seconds": 91.982
+    }
+  },
+  "mini_sdk": {
+    "windows": {
+      "tests": 25,
+      "passed": 25,
+      "skipped": 0
+    },
+    "wsl": {
+      "tests": 25,
+      "passed": 25,
+      "skipped": 0
+    }
+  },
+  "new_tests": 25,
+  "lock_checked": true,
+  "wheel_and_sdist_built": true,
+  "fresh_wheel": {
+    "installed_source_files_checked": 34,
+    "fresh_no_cache_install": true,
+    "sdist_contains_new_module_and_tests": true,
+    "installed_python_and_javascript_call_lookup": true,
+    "dollar_identifier_supported": true,
+    "readonly_no_approvals_or_history_writes": true,
+    "wheel_sha256": "630505cb2e29cd4f6b41558637b78b469f5ac36ec5abc739cfac9e2bd5345333"
+  },
+  "scripted_loopback": {
+    "http_requests": 4,
+    "request_budget_bytes": 16384,
+    "approval_count": 2,
+    "final_check_passed": true,
+    "phases": [
+      "call_map",
+      "fresh_named_read",
+      "read_id_edit",
+      "independent_fixed_check"
+    ]
+  },
+  "static_click_lookup": {
+    "date": "2026-10-19",
+    "base_commit": "32543f1fb010cd1f1a5e86aaebb22b07e9cb6396",
+    "source_files_digest": "d4c3cb457bb32b30335be561038e596f19595594042a2a6ccb428c577861540f",
+    "source_files": 34,
+    "paid_model_requests": 0,
+    "executed_candidate_commands": 0,
+    "candidate_files": 52,
+    "candidate_before": "9704bc02bbeb75c36cfe07e46c4a67e3c213fe0b416a759cae5e44717d7b3aba",
+    "candidate_after": "9704bc02bbeb75c36cfe07e46c4a67e3c213fe0b416a759cae5e44717d7b3aba",
+    "candidate_unchanged": true,
+    "saved_session_unchanged": true,
+    "saved_session_sha256": "0df8ff2732a9651ce2fc6de0dbcb48f5693e1c9367814511805b4cc7e5d3f6e5",
+    "previous_tool_schema_bytes": 4932,
+    "current_tool_schema_bytes": 4932,
+    "queries": [
+      {
+        "query": "NoSuchCommand",
+        "include_calls": false,
+        "python_parses": 17,
+        "cache_entries": 17,
+        "cache_bytes": 34918,
+        "output_bytes": 328,
+        "truncated": false,
+        "observed_seconds": 0.053618,
+        "calls": []
+      },
+      {
+        "query": "NoSuchCommand",
+        "include_calls": true,
+        "python_parses": 17,
+        "cache_entries": 34,
+        "cache_bytes": 231378,
+        "output_bytes": 535,
+        "truncated": true,
+        "observed_seconds": 0.095672,
+        "calls": [
+          {
+            "path": "src/click/core.py",
+            "name": "NoSuchCommand",
+            "line": 1968,
+            "column": 23,
+            "enclosing": "Group.resolve_command"
+          }
+        ]
+      },
+      {
+        "query": "resolve_command",
+        "include_calls": false,
+        "python_parses": 0,
+        "cache_entries": 34,
+        "cache_bytes": 231378,
+        "output_bytes": 190,
+        "truncated": false,
+        "observed_seconds": 0.013196,
+        "calls": []
+      },
+      {
+        "query": "resolve_command",
+        "include_calls": true,
+        "python_parses": 0,
+        "cache_entries": 34,
+        "cache_bytes": 231378,
+        "output_bytes": 856,
+        "truncated": true,
+        "observed_seconds": 0.015749,
+        "calls": [
+          {
+            "path": "src/click/core.py",
+            "name": "resolve_command",
+            "line": 1896,
+            "column": 39,
+            "enclosing": "Group.invoke"
+          },
+          {
+            "path": "src/click/core.py",
+            "name": "resolve_command",
+            "line": 1918,
+            "column": 39,
+            "enclosing": "Group.invoke"
+          },
+          {
+            "path": "src/click/shell_completion.py",
+            "name": "resolve_command",
+            "line": 596,
+            "column": 39,
+            "enclosing": "_resolve_context"
+          },
+          {
+            "path": "src/click/shell_completion.py",
+            "name": "resolve_command",
+            "line": 610,
+            "column": 43,
+            "enclosing": "_resolve_context"
+          }
+        ]
+      },
+      {
+        "query": "UsageError",
+        "include_calls": false,
+        "python_parses": 0,
+        "cache_entries": 34,
+        "cache_bytes": 231378,
+        "output_bytes": 306,
+        "truncated": false,
+        "observed_seconds": 0.012796,
+        "calls": []
+      },
+      {
+        "query": "UsageError",
+        "include_calls": true,
+        "python_parses": 0,
+        "cache_entries": 34,
+        "cache_bytes": 231378,
+        "output_bytes": 500,
+        "truncated": true,
+        "observed_seconds": 0.015455,
+        "calls": [
+          {
+            "path": "src/click/core.py",
+            "name": "UsageError",
+            "line": 755,
+            "column": 15,
+            "enclosing": "Context.fail"
+          }
+        ]
+      }
+    ],
+    "limitations": [
+      "Static syntactic call candidates only; aliases, dynamic binding and implicit calls are not resolved",
+      "Truncation is preserved for unknown targets anywhere in the scanned sources",
+      "Timings are single observed tool calls, not a speed or model-success comparison",
+      "No provider was instantiated or called"
+    ]
+  },
+  "limitations": [
+    "Syntactic name candidates, not semantic bindings or complete references",
+    "No new paid-model outcome or repository-task completion evidence",
+    "Platform skips are not passes",
+    "Single observed tool timings are not a speed comparison"
+  ],
+  "ci": {
+    "id": 39208928002,
+    "head_sha": "7564fc3af28be728b7c0106c8a74871d472ff950",
+    "event": "workflow_dispatch",
+    "status": "completed",
+    "conclusion": "success",
+    "html_url": "https://github.com/qinyin233/sprig-agent/actions/runs/39208928002",
+    "created_at": "2026-10-19T06:16:06Z",
+    "updated_at": "2026-10-19T06:19:23Z",
+    "jobs": [
+      {
+        "id": 117917752886,
+        "name": "core (ubuntu-latest)",
+        "status": "completed",
+        "conclusion": "success",
+        "html_url": "https://github.com/qinyin233/sprig-agent/actions/runs/39208928002/job/117917752886"
+      },
+      {
+        "id": 117917752997,
+        "name": "core (windows-latest)",
+        "status": "completed",
+        "conclusion": "success",
+        "html_url": "https://github.com/qinyin233/sprig-agent/actions/runs/39208928002/job/117917752997"
+      }
+    ],
+    "exact_sha_native_success": true
+  },
+  "digest_protocols": {
+    "candidate": "SHA256 of compact JSON sorted [relative POSIX path, SHA256(raw file bytes)] pairs",
+    "source_files": "SHA256 of compact JSON sorted [src-relative POSIX path, SHA256(LF-normalized Python file bytes)] pairs"
+  }
+}
