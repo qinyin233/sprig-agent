@@ -72,7 +72,7 @@ class SyntaxParser:
             self.parsers[language] = parser
         return self.parsers[language]
 
-    def parse(self, text, language, check_cancelled, *, spans=False):
+    def parse(self, text, language, check_cancelled, *, spans=False, calls=False):
         check_cancelled()
         # Match physical CR/LF line numbers from read_file/search. These bytes
         # are temporary; only declaration metadata enters SymbolIndex's cache.
@@ -91,11 +91,15 @@ class SyntaxParser:
             raise IndexUnavailable("symbol parsing exceeded its time limit")
         if tree.root_node.has_error:
             return None
+        if calls:
+            from .call_sites import tree_calls
+            indexed = declarations(tree.root_node, raw, language, check_cancelled, spans=True, positions=True)
+            return tree_calls(tree.root_node, raw, indexed, check_cancelled)
         return (declarations(tree.root_node, raw, language, check_cancelled, spans=True) if spans
                 else declarations(tree.root_node, raw, language, check_cancelled))
 
 
-def declarations(root, raw, language, check_cancelled, *, spans=False):
+def declarations(root, raw, language, check_cancelled, *, spans=False, positions=False):
     symbols, seen, pending, visited = [], set(), [(root, "")], 0
 
     def name_of(node):
@@ -118,6 +122,8 @@ def declarations(root, raw, language, check_cancelled, *, spans=False):
             record = {"name": item[0], "line": item[1], "kind": item[2]}
             if spans:
                 record.update(start_line=item[1], end_line=max(item[1], node.end_point.row + bool(node.end_point.column)))
+            if positions:
+                record.update(_start_byte=node.start_byte, _end_byte=node.end_byte)
             symbols.append(record)
             if len(symbols) > MAX_SYMBOLS:
                 raise IndexUnavailable("symbol count exceeds index limit")

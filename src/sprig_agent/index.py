@@ -28,12 +28,15 @@ class SymbolIndex:
         return self.symbols(text, "python")
 
     @contextmanager
-    def scan(self, complete=lambda: True):
+    def scan(self, complete=lambda: True, *, modes=(b"\0",)):
         """Keep prior residents through a sweep larger than the cache capacity."""
         if self._scan is not None:
             yield
             return
-        protected, used = set(self.entries), set()
+        # Prune only formats covered by this sweep. Other formats remain
+        # ordinary LRU entries and may be evicted when capacity is needed.
+        protected = {key for key in self.entries if key[key.index(b"\0"):-32] in modes}
+        used = set()
         self._scan = (protected, used)
         try:
             yield
@@ -63,9 +66,30 @@ class SymbolIndex:
         self.bytes += size
 
     def symbols(self, text, language, check_cancelled=lambda: None, *, spans=False):
+        def parse():
+            if language == "python":
+                return self._python(text, check_cancelled, spans=True) if spans else self._python(text, check_cancelled)
+            return (self.syntax.parse(text, language, check_cancelled, spans=True) if spans
+                    else self.syntax.parse(text, language, check_cancelled))
+        return self._cached(text, language, b"\0spans\0" if spans else b"\0", check_cancelled, parse)
+
+    def call_sites(self, text, language, check_cancelled=lambda: None):
+        def parse():
+            if language != "python":
+                return self.syntax.parse(text, language, check_cancelled, calls=True)
+            from .call_sites import python_calls
+            try:
+                tree = ast.parse(text.removeprefix("\ufeff"))
+            except (SyntaxError, ValueError, RecursionError):
+                return None
+            check_cancelled()
+            return python_calls(tree, check_cancelled)
+        return self._cached(text, language, b"\0calls\0", check_cancelled, parse)
+
+    def _cached(self, text, language, mode, check_cancelled, parse):
         check_cancelled()
         # Content, not mtime, identifies a parse. Never cache raw source or ASTs.
-        key = language.encode("ascii") + (b"\0spans\0" if spans else b"\0") + hashlib.sha256(text.encode("utf-8")).digest()
+        key = language.encode("ascii") + mode + hashlib.sha256(text.encode("utf-8")).digest()
         if self._scan is not None and key in self._scan[0]:
             self._scan[1].add(key)
         if key in self.entries:
@@ -73,11 +97,7 @@ class SymbolIndex:
             self.entries[key] = (encoded, size)
             return json.loads(encoded)
         else:
-            if language == "python":
-                data = self._python(text, check_cancelled, spans=True) if spans else self._python(text, check_cancelled)
-            else:
-                data = (self.syntax.parse(text, language, check_cancelled, spans=True) if spans
-                        else self.syntax.parse(text, language, check_cancelled))
+            data = parse()
             check_cancelled()
             encoded = json.dumps(data, ensure_ascii=False, separators=(",", ":"))
             size = len(encoded.encode("utf-8")) + len(key)

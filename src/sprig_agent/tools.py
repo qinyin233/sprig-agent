@@ -64,8 +64,9 @@ TOOL_SCHEMAS = [
             "context": {"type": "integer", "minimum": 0, "maximum": 10},
             "limit": {"type": "integer", "minimum": 1, "maximum": 1000},
             "output_mode": {"enum": ["content", "files", "count"]}}, ["query"]),
-    schema("project_map", "Map paths and 1-based declarations (Python, JS/TS/TSX, Rust, Go, C/C++, Java). query matches literal names/paths case-insensitively; exact then prefix rank first. Focus query if truncated. Syntax only; unsupported files have paths, failed parses flagged. Read implementation before editing.",
-           {"path": STRING, "query": {"type": "string", "minLength": 1, "maxLength": 256}}),
+    schema("project_map", "Map 1-based declarations (Python/JS/TS/TSX/Rust/Go/C/C++/Java). Literal case-insensitive name/path query; exact/prefix first. include_calls: simple name only; syntax matches, not resolved references. Check parse/truncation flags; read source before edits.",
+           {"path": STRING, "query": {"type": "string", "minLength": 1, "maxLength": 256},
+            "include_calls": {"type": "boolean"}}),
     schema("edit_file", "Exact text edits with complete diff approval, atomic write and undo. Choose old/new (old='' creates only) OR edits (<=32 unique replacements in ORIGINAL text). Parent must exist. Reread after a match failure. Prefer edit_lines for focused line changes.",
            {"path": STRING, "old": STRING, "new": STRING,
             "edits": {"type": "array", "minItems": 1, "maxItems": MAX_EDITS,
@@ -578,20 +579,24 @@ class Tools:
                 result["search_guidance"] = guidance
         return result
 
-    def project_map(self, path=".", query=""):
+    def project_map(self, path=".", query="", include_calls=False):
         self._require_tool("project_map")
+        if type(include_calls) is not bool:
+            raise ToolError("include_calls must be a boolean")
         if not isinstance(query, str) or len(query.encode("utf-8")) > 256 or any(ord(char) < 32 or ord(char) == 127 for char in query):
             raise ToolError("query must be a literal string of at most 256 UTF-8 bytes without control characters")
         if query and not query.strip():
             raise ToolError("query must contain a non-whitespace character")
         query = query.strip().casefold()
+        if include_calls and not query.replace("$", "_").isidentifier():
+            raise ToolError("include_calls requires query to be one simple identifier, without a path or qualified name")
         def measure(record):
             size = encoded_size(record)
             if self.config.secrets:
                 size = max(size, encoded_size(redact(record, self.config.secrets)))
             return size
 
-        selection = MapSelection(self.config.max_output, measure) if query else None
+        selection = MapSelection(self.config.max_output, measure, include_calls=include_calls) if query else None
         parts = self._parts(path)
         files, scanned, budget, size, truncated = [], 0, 8 * 1024 * 1024, 0, False
 
@@ -628,12 +633,25 @@ class Tools:
                                 record["symbols_unavailable"] = True
                             else:
                                 try:
-                                    symbols = self.index.symbols(self._decode(raw), language, self._check_cancelled)
+                                    text = self._decode(raw)
+                                    if include_calls and any(secret in text for secret in self.config.secrets):
+                                        raise ToolError("configured credential blocks call-site indexing")
+                                    symbols = self.index.symbols(text, language, self._check_cancelled)
                                     self._check_cancelled()
                                     if symbols is None:
                                         record["symbols_unavailable"] = True
                                     else:
                                         record["symbols"] = symbols
+                                        if include_calls:
+                                            sites = self.index.call_sites(text, language, self._check_cancelled)
+                                            if sites is None:
+                                                record["symbols_unavailable"] = True
+                                                truncated = True
+                                            else:
+                                                record["symbols"] = sorted([*symbols, *(item for item in sites["calls"]
+                                                    if item["name"].casefold() == query)],
+                                                    key=lambda item: (item["line"], item.get("column", 0)))
+                                                truncated |= sites["unresolved"]
                                 except IndexUnavailable:
                                     truncated = True
                                     record["symbols_unavailable"] = True
@@ -655,7 +673,8 @@ class Tools:
                     except (OSError, ToolError):
                         truncated = True
 
-        with self._directory(parts) as directory, self.index.scan(lambda: not truncated):
+        with self._directory(parts) as directory, self.index.scan(
+                lambda: not truncated, modes=(b"\0", b"\0calls\0") if include_calls else (b"\0",)):
             walk(directory, parts, 0)
         if selection is not None:
             return selection.result(truncated, self._check_cancelled)

@@ -32,21 +32,28 @@ class Candidate:
             return self.score < other.score
         if self.record["path"] != other.record["path"]:
             return self.record["path"] > other.record["path"]
-        return self.line > other.line
+        return (self.line, self.column) > (other.line, other.column)
 
     @property
     def line(self):
         symbols = self.record.get("symbols", [])
         return symbols[0]["line"] if symbols else 0
 
+    @property
+    def column(self):
+        symbols = self.record.get("symbols", [])
+        return symbols[0].get("column", 0) if symbols else 0
+
 
 class MapSelection:
-    def __init__(self, max_output, measure=encoded_size):
+    def __init__(self, max_output, measure=encoded_size, *, include_calls=False):
         self.heap = []
         self.size = 0
         self.measure = measure
+        self.include_calls = include_calls
+        self.extra = {"calls_are_syntactic": True} if include_calls else {}
         # At most 5,000 files can be visited. Reserve the complete envelope.
-        self.budget = max_output - measure({"files": [], "truncated": False, "matched_files": 5000})
+        self.budget = max_output - measure({"files": [], "truncated": False, "matched_files": 5000, **self.extra})
         self.truncated = False
         self.matched_files = 0
 
@@ -56,8 +63,11 @@ class MapSelection:
             matches = []
             for symbol in record["symbols"]:
                 check_cancelled()
-                score = max(path_score, match_score(symbol["name"], query))
+                name = symbol["name"].replace("::", ".").replace("r#", "") if self.include_calls else symbol["name"]
+                score = max(path_score, match_score(name, query))
                 if score:
+                    if self.include_calls:
+                        score = score * 2 + (symbol.get("kind") != "call")
                     matches.append((score, symbol))
             if matches:
                 self.matched_files += 1
@@ -101,4 +111,5 @@ class MapSelection:
         for path, record in grouped.items():
             if len(record.get("symbols", [])) < totals[path]:
                 record["symbols_truncated"] = True
-        return {"files": list(grouped.values()), "truncated": self.truncated or incomplete, "matched_files": self.matched_files}
+        return {"files": list(grouped.values()), "truncated": self.truncated or incomplete,
+                "matched_files": self.matched_files, **self.extra}
