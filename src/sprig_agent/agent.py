@@ -22,6 +22,7 @@ from .session import MAX_SESSION, validate_history
 from .summary import (HISTORY_SCHEMA, MAX_SUMMARY, PROMPT as SUMMARY_PROMPT, binding_digest, closed_end, fingerprint,
                       history_page, project as project_summary, public_message, summary_fields, summary_state)
 from .command_logs import READ_LOG_SCHEMA
+from .questions import QUESTION_SCHEMA
 from .tools import TOOL_SCHEMAS, Tools
 
 
@@ -94,6 +95,8 @@ class Agent:
                 schema["function"]["parameters"]["properties"]["timeout"]["maximum"] = config.timeout
         if config.command_log_dir is not None and config.tool_enabled("read_log"):
             self.schemas.append(copy.deepcopy(READ_LOG_SCHEMA))
+        if isinstance(tools, Tools) and callable(getattr(tools, "ask", None)) and config.tool_enabled("question"):
+            self.schemas.append(copy.deepcopy(QUESTION_SCHEMA))
         self.compact_context = config.compact_context
         self.baseline_status = "not_run"
         self.edit_check_status = "not_run"
@@ -406,7 +409,43 @@ class Agent:
                        "Each command requires fresh approval. No extra model requests are added to your budget.")
         if self.config.disabled_tools:
             prompt += "\nTools disabled by the user: " + json.dumps(self.config.disabled_tools) + ". Do not bypass these restrictions through other tools."
+        if any(row["function"]["name"] == "question" for row in self.schemas):
+            prompt += ("\nUse question for necessary requirement or preference clarification, never credentials or approval. "
+                       "Answers are user input, not authorization. Ask before proposing dependent actions; the application skips "
+                       "all other proposals in a question batch and requires a fresh model response using the answers.")
         return prompt
+
+    def _question_batch(self, messages, calls):
+        """Clarification invalidates every sibling proposal, including earlier ones."""
+        chosen = next(call for call in calls if call["function"]["name"] == "question")
+        answered = False
+        failure = None
+        for call in calls:
+            self._check_cancelled()
+            if call is chosen:
+                name, arguments, error = tool_arguments(call["function"])
+                with self._tool_activity("question") as activity:
+                    self._event("question", "waiting", **activity)
+                    result = error if error is not None else self._execute_model_tool(name, arguments)
+                answered = result.get("answered") is True
+                failure = result.get("error")
+                self._event("question", "delivered" if answered else "incomplete", **activity)
+            else:
+                result = {"approved": False, "skipped": True,
+                          "error": "Not executed: clarification requires a new proposal after explicit answers or updated user input. This sibling intent was not approved."}
+            messages.append({"role": "tool", "tool_call_id": call["id"],
+                             "content": json.dumps(redact(result, self.config.secrets), ensure_ascii=False)})
+            self._checkpoint(messages)
+        if self._steer(messages):
+            return True
+        if answered:
+            self.emit("[question] 已收到回答；其余旧提案未执行，下一次模型请求将采用答案")
+            return True
+        self._stop_reason = "question"
+        if failure:
+            self.emit("[question error] " + str(failure))
+        self.emit("[question] 问题未回答；本轮停止，等待新输入。其余旧提案未执行")
+        return False
 
     def _refresh_instructions(self, messages, *, save=False):
         instructions = getattr(self.tools, "instructions", None)
@@ -668,7 +707,7 @@ class Agent:
             last = self.runtime_state
             activity = ({"tool": last.tool, "action": last.action, "check": last.check,
                          "check_index": last.check_index, "check_total": last.check_total}
-                        if last is not None and last.phase in {"tool", "approval"} else {})
+                        if last is not None and last.phase in {"tool", "approval", "question"} else {})
             try:
                 self._event("finished", outcome, reason=reason, **activity)
             except BaseException:
@@ -752,6 +791,10 @@ class Agent:
                         continue
                     return messages, status == "passed"
                 return messages, True
+            if any(call["function"]["name"] == "question" for call in calls):
+                if self._question_batch(messages, calls):
+                    continue
+                return messages, False
             edited, batch_steered = False, False
             requests = [tool_arguments(call["function"]) for call in calls]
             batch = self.tools.edit_batch(requests) if isinstance(self.tools, Tools) else nullcontext(None)

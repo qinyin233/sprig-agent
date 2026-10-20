@@ -33,7 +33,7 @@ CLI 可用 `--command-log-dir PATH` 覆盖，`--show-config` 和 TUI `/config` �
 
 `offset` 是保留文本的字符偏移，不是原始管道字节位置。每页完整 JSON 受 `min(max_output, 8192)` 字节限制，含元数据和转义开销，UTF-8 不截断码点。`complete=true` 只表示已读到这份保留文本末尾，必须同时看 `returncode`、`timed_out`、`output_limited`、`capture_limited`；它不表示命令成功或任务通过。
 
-普通任务仍有原九种工具；启用日志且 `[tools].read_log=true` 才增加回查工具，有摘要时可再增加 `read_history`。`read_log=false` / `--disable-tool read_log` 禁用模型回查，用户的本地查看入口仍保留。启用的确定性上下文压缩可省略旧成功回查正文，保留元数据；失败/超时/超限和近期记录仍受原保护规则约束。
+默认非交互任务仍有原九种工具；交互回调另可提供 [question](questions.md)。启用日志且 `[tools].read_log=true` 才增加回查工具，有摘要时可再增加 `read_history`。`read_log=false` / `--disable-tool read_log` 禁用模型回查，用户的本地查看入口仍保留。启用的确定性上下文压缩可省略旧成功回查正文，保留元数据；失败/超时/超限和近期记录仍受原保护规则约束。
 
 日志所有权随启用保存的会话写入少量元数据，完整日志正文不复制进会话 JSON；恢复只恢复只读访问范围，不执行命令。新对话生成新的所有权，不能继续读前一对话的日志。另存分支沿用来源对话的日志访问范围。若未保存会话，退出后应用会失去该次命名空间，日志仍可能留在私有存储中，直到后续获批清理或淘汰；因此示例同时开启自动保存。
 

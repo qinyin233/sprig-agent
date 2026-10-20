@@ -85,6 +85,7 @@ edit_lines = true # also disabled when edit_file=false
 file_action = true # mkdir/delete/move; also disabled when edit_file=false
 run = true
 update_plan = true # bounded task checklist, not approval or acceptance
+question = true # exposed only with an interactive callback; human answers never approve actions
 read_history = true # only exposed with an active summary; original conversation data, not current file evidence
 read_log = true # only exposed with command_log_dir; opaque current-conversation history, never file read_id
 

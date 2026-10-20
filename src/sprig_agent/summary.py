@@ -107,7 +107,7 @@ def latest_failure(messages, end):
             result = json.loads(row["content"])
         except (ValueError, TypeError, RecursionError):
             result = {"error": "unstructured result"}
-        if not isinstance(result, dict) or (result.get("error") or result.get("approved") is False
+        if not isinstance(result, dict) or (result.get("error") or result.get("approved") is False or result.get("answered") is False
                 or result.get("returncode", 0) != 0 or any(result.get(flag) for flag in (
                     "timed_out", "output_limited", "cancelled", "interrupted", "skipped", "outcome", "partial"))):
             stop = index + 1

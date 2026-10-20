@@ -24,6 +24,7 @@ from .composer import DraftPastes, MAX_PASTE_BYTES, paste_text
 from .mentions import DraftFiles, mention_query
 from .provider import Provider
 from .picker import PickerScreen
+from .question_ui import QuestionScreen
 from .runtime import runtime_label
 from .session import SessionError, SessionStore, validate_history
 from .settings import public_config
@@ -318,6 +319,7 @@ class SprigApp(App[int]):
         self._transcript_trimmed = False
         self.streaming = False
         self.approval = None
+        self.question = None
         # UI-thread-owned queue. Only the single agent worker takes its contents.
         self.pending_tasks = []
         self._draft_submission = None
@@ -353,7 +355,7 @@ class SprigApp(App[int]):
         history = None
         try:
             history = ChangeHistory(config, change_dir)
-            self.tools = UiTools(config, self.confirm, self.cancel_event, self.emit_command, history=history)
+            self.tools = UiTools(config, self.confirm, self.cancel_event, self.emit_command, history=history, ask=self.ask_questions)
         except BaseException:
             if history:
                 history.close()
@@ -667,6 +669,27 @@ class SprigApp(App[int]):
         self.check_cancelled()
         return answer[0]
 
+    def ask_questions(self, questions):
+        self.check_cancelled()
+        answers, done = [None], threading.Event()
+        def show():
+            self.flush_output()
+            if self.pending_tasks:
+                done.set()
+                return
+            def finish(result):
+                answers[0] = result
+                self.question = None
+                done.set()
+            self.question = QuestionScreen(questions, self.config.max_output, self.config.secrets,
+                                           self.queue_guidance, self.config.max_context_bytes)
+            self.push_screen(self.question, finish)
+        self.ui_call(show)
+        while not done.wait(0.05):
+            self.check_cancelled()
+        self.check_cancelled()
+        return answers[0]
+
     def start(self, task=None, local=None, *, context_files=(), preflight=False):
         if self.busy:
             return
@@ -757,6 +780,8 @@ class SprigApp(App[int]):
                 self.messages, complete = self.agent.run(task, self.messages, **options)
                 status = 0 if complete else 2
                 message = "验收通过" if complete and self.config.checks else ("本轮结束" if complete else "未完成 / 未验收")
+                if not complete and self.agent._stop_reason == "question":
+                    message = "问题未回答；等待新输入，旧提案未执行 / 未验收"
         except KeyboardInterrupt:
             status, message = 130, "已取消；待定操作不会重放"
             try:
@@ -817,13 +842,17 @@ class SprigApp(App[int]):
         return False
 
     def action_focus_task(self):
-        if isinstance(self.screen, ApprovalScreen) and self.screen.allow_steering:
+        if isinstance(self.screen, QuestionScreen):
+            self.screen.query_one("#question-guidance", Input).focus()
+        elif isinstance(self.screen, ApprovalScreen) and self.screen.allow_steering:
             self.screen.query_one("#approval-task", TextArea).focus()
         elif not isinstance(self.screen, ModalScreen):
             self.query_one("#task", TextArea).focus()
 
     def action_submit(self):
-        if isinstance(self.screen, ApprovalScreen) and self.screen.allow_steering:
+        if isinstance(self.screen, QuestionScreen):
+            self.screen.send_guidance()
+        elif isinstance(self.screen, ApprovalScreen) and self.screen.allow_steering:
             self.screen.query_one("#approval-task", TaskInput).action_send()
         elif not isinstance(self.screen, ModalScreen):
             self.query_one("#task", TaskInput).action_send()
@@ -944,21 +973,36 @@ class SprigApp(App[int]):
         if self.busy and event.editor.text == event.draft:
             event.editor.load_text("")
         if self.busy:
-            self.pending_tasks.append(task)
-            self.set_task_result(2, "新要求待处理，等待更新后的结果")
-            self.streaming = False
-            self.append("\n你> " + task + "\n")
-            self.append("[已接收新要求，将在下一个安全节点调整当前任务]\n")
-            self.event(f"收到执行中引导，待处理 {len(self.pending_tasks)} 条")
-            self.set_state(f"已接收 {len(self.pending_tasks)} 条新要求，等待安全节点")
-            if self.approval:
-                self.approval.dismiss(False)
+            self.queue_guidance(task)
         else:
             previous = self._draft_submission
             latest_user = next((message for message in reversed(self.messages or []) if message.get("role") == "user"), {})
             retry = previous is not None and previous[2] == task and latest_user.get("content") == redact(task, self.config.secrets)
             self._draft_submission = (event.editor.id, event.draft, task)
             self.start(None if retry else task, context_files=event.files, preflight=event.preflight)
+
+    def queue_guidance(self, task):
+        limit = self.config.max_context_bytes
+        try:
+            if (not task.strip() or len(task) > limit or len(task.encode("utf-8")) > limit
+                    or len(self.pending_tasks) >= self.MAX_PENDING_TASKS
+                    or sum(len(item.encode("utf-8")) for item in self.pending_tasks) + len(task.encode("utf-8")) > limit):
+                raise ValueError("新要求为空或超过待处理引导的数量/UTF-8 字节上限；请缩短后重发。")
+        except (ValueError, UnicodeError) as error:
+            self.reject_input(str(error))
+            return False
+        self.pending_tasks.append(task)
+        self.set_task_result(2, "新要求待处理，等待更新后的结果")
+        self.streaming = False
+        self.append("\n你> " + task + "\n")
+        self.append("[已接收新要求，将在下一个安全节点调整当前任务]\n")
+        self.event(f"收到执行中引导，待处理 {len(self.pending_tasks)} 条")
+        self.set_state(f"已接收 {len(self.pending_tasks)} 条新要求，等待安全节点")
+        if self.approval:
+            self.approval.dismiss(False)
+        if self.question:
+            self.question.settle(None)
+        return True
 
     def action_cancel(self):
         if not self.busy:
@@ -968,6 +1012,8 @@ class SprigApp(App[int]):
             self._output_condition.notify_all()
         if self.approval:
             self.approval.dismiss(False)
+        if self.question:
+            self.question.settle(None)
         self.set_state("正在取消；网络等待可能持续至超时")
 
     def action_quit(self):

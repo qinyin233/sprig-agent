@@ -26,6 +26,7 @@ from .map_selection import MapSelection, encoded_size
 from .policy import FilePolicy, command_environment
 from .output import CommandOutput, SampledCommandOutput
 from .command_logs import CommandLogs, LogCapture
+from .questions import answer_result, validate_questions
 from .edit_match import failure_details
 from .edit_batch import EditPreview, digest, preflight
 from .line_edits import replace_lines, validate_edits
@@ -104,9 +105,10 @@ def protected(name):
 
 
 class Tools:
-    def __init__(self, config, approve, cancel_event=None, emit_output=None, history=None):
+    def __init__(self, config, approve, cancel_event=None, emit_output=None, history=None, *, ask=None):
         self.config, self.approve = config, approve
         self.cancel_event = cancel_event
+        self.ask = ask
         self.root = Directory(config.workdir)
         self.history = history or ChangeHistory(config)
         self.policy = FilePolicy(self.root, (config.config_path, *config.config_paths), config.excluded_paths)
@@ -249,7 +251,7 @@ class Tools:
                       "search": self.search, "project_map": self.project_map,
                       "edit_file": self.edit_file, "edit_lines": self.edit_lines,
                       "run": self.run, "update_plan": self.update_plan, "file_action": self.file_action,
-                      "read_log": self.read_log}.get(name)
+                      "read_log": self.read_log, "question": self.question}.get(name)
             if method is None:
                 raise ToolError("unknown tool")
             result = method(**arguments)
@@ -944,6 +946,20 @@ class Tools:
         if by_line:
             result["sha256"] = hashlib.sha256(data).hexdigest()
         return result
+
+    def question(self, questions):
+        self._require_tool("question")
+        questions = validate_questions(questions, self.config.secrets)
+        if not callable(self.ask):
+            return {"answered": False, "error": "interactive questions are unavailable; wait for explicit user input instead of assuming a choice",
+                    "not_authorization": True}
+        self._check_cancelled()
+        answers = self.ask(questions)
+        self.root.ensure_open()
+        self._check_cancelled()
+        if answers is None:
+            return {"answered": False, "dismissed": True, "not_authorization": True}
+        return answer_result(questions, answers, self.config.max_output, self.config.secrets)
 
     def read_log(self, log_id, offset=0):
         self._require_tool("read_log")

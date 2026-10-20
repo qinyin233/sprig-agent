@@ -1,0 +1,74 @@
+{
+  "schema_version": 1,
+  "date": "2026-10-20",
+  "feature": "bounded interactive human clarification with fresh replanning and separate operation approval",
+  "base_commit": "c49e17dbff6a2885c23bd02db3f88d4a583f7df7",
+  "source_digest": {"files": 47, "sha256": "d0dee5573a58c89b2c117b2b961be7e55f5921a68c01d7c3d595991f48ffb1a1"},
+  "tests_digest": {"files": 68, "sha256": "14de6a975106dca885c0f3a578b746660fd6f7cc02faa2f3674f4201fa65ced2"},
+  "digest_method": "SHA256 of compact ASCII JSON arrays of [POSIX relative path, SHA256 of bytes with CRLF normalized to LF], sorted by path; src/sprig_agent/*.py and tests/*.py separately",
+  "local_suites": [
+    {"platform": "Windows 11", "python": "3.13.0", "command": "uv run --locked python -m unittest discover -s tests -q", "total": 1017, "passed": 999, "skipped": 18, "failures": 0, "errors": 0, "seconds": 315.799},
+    {"platform": "WSL Ubuntu-26.04", "python": "3.13.14", "command": "UV_PROJECT_ENVIRONMENT=.venv-wsl uv run --locked python -m unittest discover -s tests -q", "total": 1017, "passed": 995, "skipped": 22, "failures": 0, "errors": 0, "seconds": 213.002}
+  ],
+  "client_suite_command": "uv run --project benchmarks/clients/mini --locked python -I -B -m unittest discover -s benchmarks/clients/tests -q",
+  "client_suites": [
+    {"platform": "Windows 11", "total": 25, "passed": 25, "skipped": 0, "seconds": 35.743},
+    {"platform": "WSL Ubuntu-26.04", "environment": "UV_PROJECT_ENVIRONMENT=.venv-mini-wsl", "total": 25, "passed": 25, "skipped": 0, "seconds": 190.950}
+  ],
+  "focused_suite": {"platform": "Windows 11", "command": "uv run --locked python -m unittest tests.test_questions -q", "total": 22, "passed": 22, "skipped": 0, "seconds": 14.345},
+  "workflow_fixture": {
+    "kind": "fixed_response_model_with_real_loopback_http_and_sse",
+    "protocols": ["chat_completions", "messages", "responses"],
+    "completed_pipeline": "complete question call -> human callback -> canonical answers in the actual next provider request",
+    "incomplete_streams": "no question callback or operation execution",
+    "model_quality_or_general_performance_claim": false
+  },
+  "packaging": {
+    "uv_lock_check": "passed",
+    "configuration_schema_matches": true,
+    "compileall": "passed",
+    "cli_help": "passed",
+    "sdist_and_wheel_build": "passed",
+    "wheel_source_modules_match": 47,
+    "isolated_installed_wheel_tui_smoke": "passed: question -> answers -> fresh edit proposal -> explicit approval; old sibling skipped; main draft and private resume retained without replay",
+    "isolated_smoke_fixture_model_calls": 3,
+    "isolated_smoke_external_model_requests": 0,
+    "runtime_dependencies_added": []
+  },
+  "coverage": {
+    "new_test_methods": 22,
+    "question_core_protocol_and_cli": 14,
+    "question_tui": 8,
+    "no_interactive_schema_without_callback": true,
+    "disabled_tool_enforced_before_callback": true,
+    "read_only_clarification_allowed": true,
+    "all_sibling_proposals_skipped_even_before_question": true,
+    "human_yes_never_authorizes_edits_commands_or_fixed_checks": true,
+    "single_multiple_and_custom_answers_with_back_navigation": true,
+    "main_draft_preserved": true,
+    "small_terminal_long_prompt_scroll_and_guidance": true,
+    "multiline_or_oversized_paste_rejected_whole_with_old_input_preserved": true,
+    "no_partial_answer_persistence_or_replay": true,
+    "complete_answers_redacted_before_history_and_next_request": true,
+    "exact_utf8_json_prompt_and_result_budgets": true,
+    "dismissal_stops_without_another_model_request": true,
+    "new_guidance_closes_old_question_and_replans": true,
+    "cancellation_or_unmount_releases_waiting_worker": true,
+    "checkpoint_failure_before_or_after_answer_stops_continuation": true,
+    "dismissed_question_retained_as_negative_summary_observation": true
+  },
+  "development_corrections": [
+    "Read-only TextArea needs a visible cursor for keyboard scrolling; the small-terminal regression now reaches the last prompt line",
+    "Textual Input normally retains only the first pasted line; clarification fields explicitly reject the whole incompatible paste and prevent inherited fallback handling"
+  ],
+  "observed_fixture_diagnostic": "Windows reasoning-protocol fixture printed ConnectionResetError when its client closed before a server write; final full suite has zero failures/errors. The diagnostic was not suppressed.",
+  "remote_ci": {"run": false, "commit_policy": "[skip ci]", "reason": "Scoped shared Python interaction/UI update; native filesystem, process and network backends unchanged; preserve Actions minutes"},
+  "external_model_requests": 0,
+  "acceptance_scope": "Protocol and interaction correctness; existing channel models are actual models regardless of billing arrangement, with no requirement for extra paid-account tests",
+  "limitations": [
+    "Platform skips are not passes; WSL is not a native Ubuntu CI runner",
+    "No current-commit remote CI or full Python/platform matrix",
+    "No durable question inbox, persisted form drafts, background jobs or server-side forms",
+    "No new model coding-success, token-cost, latency or competitor-parity claim"
+  ]
+}

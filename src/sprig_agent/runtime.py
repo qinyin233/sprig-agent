@@ -4,7 +4,7 @@ from dataclasses import asdict, dataclass
 from typing import Literal
 
 
-Phase = Literal["starting", "preparing", "model", "steering", "tool", "approval", "check", "finished"]
+Phase = Literal["starting", "preparing", "model", "steering", "tool", "approval", "question", "check", "finished"]
 Outcome = Literal["running", "waiting", "approved", "rejected", "delivered", "completed", "passed",
                   "failed", "incomplete", "cancelled", "skipped", "uncertain", "unverified"]
 
@@ -29,6 +29,8 @@ class RuntimeEvent:
 
 
 def tool_outcome(result):
+    if result.get("answered") is False:
+        return "incomplete"
     if result.get("skipped"):
         return "skipped"
     if result.get("cancelled") or result.get("interrupted"):
@@ -48,7 +50,7 @@ def runtime_label(event, *, chinese=False):
     if chinese:
         phases = {"starting": "准备任务", "preparing": "准备模型上下文", "model": "等待模型响应",
                   "steering": "新要求已加入对话", "tool": "工具", "approval": "操作批准",
-                  "check": "检查", "finished": "本轮结束"}
+                  "question": "澄清问题", "check": "检查", "finished": "本轮结束"}
         outcomes = {"running": "进行中", "waiting": "等待确认", "approved": "已批准，仍需执行",
                     "rejected": "已拒绝", "delivered": "已递送", "completed": "已结束",
                     "passed": "检查通过", "failed": "失败", "incomplete": "未完成 / 未验收",
@@ -62,6 +64,8 @@ def runtime_label(event, *, chinese=False):
         reason = "; conversation checkpoint failed" if event.reason == "checkpoint" else ""
         budget = f"model steps {event.step}/{event.max_steps}; remaining {event.max_steps - event.step}"
     label = phases.get(event.phase, event.phase) + ": " + outcomes.get(event.outcome, event.outcome)
+    if chinese and event.phase == "question" and event.outcome == "waiting":
+        label = "澄清问题：等待回答"
     if event.tool:
         label += f" | #{event.action} {event.tool}"
     if event.check:

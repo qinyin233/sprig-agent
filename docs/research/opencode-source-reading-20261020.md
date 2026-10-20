@@ -293,6 +293,8 @@ Sprig 已有 `/add` 快照和 `/ref` 请求前刷新；应给这些现有后端�
 
 P1-C 的前台日志阶段重读固定提交 `tool-output.ts`：上游按 2000 行/50 KiB 展示预算截断文本，把全量内容写到工具输出文件并返回路径，另有七天保留清理。Sprig 实现[默认关闭的私有日志回查](../command-logs.md)，采用会话所有权与不透明句柄，整个专用 journal 有总量/数量限制，存储与候选淘汰进入逐次命令批准；保留原始退出状态，跨分块脱敏在容量截取前完成，重新脱敏和分页也有界。不复制上游的定时自动删除，不提供模型任意路径读取或后台任务；崩溃仅保留可检查状态，不重放命令。
 
+P2 的交互澄清阶段继续阅读同一固定提交的 [`tool/plugin/question.ts`](https://github.com/anomalyco/opencode/blob/9d90d892dcbfc52b47e95b2ea31b8aba877128fd/packages/core/src/tool/plugin/question.ts)、[`schema/src/question.ts`](https://github.com/anomalyco/opencode/blob/9d90d892dcbfc52b47e95b2ea31b8aba877128fd/packages/schema/src/question.ts) 和 `tool-question.test.ts`：上游通过表单回调收集单选、多选和自填，完整答案返回数组，关闭表单以失败停止当前步骤。Sprig 补上[实际 CLI/TUI 提问](../questions.md)，独立于操作审批；最多三题、单题六选项和有界 Unicode 结果，同批前后提案全部跳过，收到完整答案后重新规划，未完成草稿不保存、不重放。复核还发现 Textual 单行输入默认只保留多行粘贴首行，新增字段改为整段拒绝并提示使用主输入，避免静默丢失。此处是后续实现记录，不改写最初固定 Sprig 快照的缺项结论；没有持久 inbox、后台表单或新模型质量成绩。
+
 ## 14. 阅读清单与尚未验证的事项
 
 本次沿调用关系阅读的实现文件（部分为目标行段，不表示逐行审计全部代码）：

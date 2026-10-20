@@ -192,6 +192,9 @@
         },
         "read_log": {
           "type": "boolean"
+        },
+        "question": {
+          "type": "boolean"
         }
       },
       "additionalProperties": false
@@ -973,6 +976,9 @@
                 "type": "boolean"
               },
               "read_log": {
+                "type": "boolean"
+              },
+              "question": {
                 "type": "boolean"
               }
             },

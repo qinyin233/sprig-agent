@@ -17,6 +17,7 @@ from .runtime import runtime_label
 from .session import SessionError, SessionStore, validate_history
 from .settings import Settings, default_config_path, initialize_config, load_settings, public_config
 from .tools import Tools
+from .questions import terminal_questions
 
 
 def approve(description):
@@ -411,7 +412,8 @@ def main(argv=None):
         history = ChangeHistory(config, change_dir)
         if change_dir:
             emit("Exact edit backups persist locally (not encrypted). Only file-tool edits can be undone; commands are not tracked.")
-        tools = Tools(config, confirm, emit_output=emit_delta, history=history)
+        ask = (lambda questions: terminal_questions(questions, budget=config.max_output, secrets=key)) if sys.stdin.isatty() else None
+        tools = Tools(config, confirm, emit_output=emit_delta, history=history, ask=ask)
         provider = Provider(config)
         def runtime_event(event):
             if event.phase in {"model", "check", "finished"}:
