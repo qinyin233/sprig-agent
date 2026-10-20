@@ -765,6 +765,9 @@ class TuiTests(unittest.IsolatedAsyncioTestCase):
                     active -= 1
 
         app = self.app(Provider(), save_session="steering")
+        runtime_events = []
+        original_event = app.agent.on_event
+        app.agent.on_event = lambda event: (runtime_events.append(event), original_event(event))
         try:
             async with app.run_test(size=(110, 36)) as pilot:
                 editor = app.query_one("#task", TextArea)
@@ -785,6 +788,8 @@ class TuiTests(unittest.IsolatedAsyncioTestCase):
                                  ["initial task", "use blue", "preserve existing tests"])
                 self.assertFalse(any(m.get("tool_calls") for m in app.messages))
                 self.assertFalse((self.root / "stale.txt").exists())
+                self.assertTrue(any(event.phase == "steering" and event.outcome == "delivered" for event in runtime_events))
+                self.assertFalse(any(event.tool == "edit_file" for event in runtime_events))
                 self.assertEqual(app.messages, validate_history(app.messages))
                 self.assertEqual(app.store.load("steering"), app.messages)
                 self.assertIn("following updated requests", app.transcript)
@@ -1190,6 +1195,7 @@ class TuiTests(unittest.IsolatedAsyncioTestCase):
             await pilot.press("ctrl+c")
             await self.until(pilot, lambda: not app.busy)
             self.assertEqual(app.last_status, 130)
+            self.assertEqual(app.agent.runtime_state.outcome, "cancelled")
             self.assertFalse((self.root / "created.txt").exists())
             self.assertNotIsInstance(app.screen, ApprovalScreen)
             await self.click(pilot, "#map")
@@ -1221,6 +1227,7 @@ class TuiTests(unittest.IsolatedAsyncioTestCase):
                 gate.set()
                 await self.until(pilot, lambda: not app.busy)
                 self.assertEqual(app.last_status, 130)
+                self.assertEqual(app.agent.runtime_state.outcome, "cancelled")
                 self.assertFalse((self.root / "created.txt").exists())
                 self.assertFalse(any(message.get("tool_calls") for message in app.messages))
         finally:

@@ -1,19 +1,20 @@
 """One model → tools → model loop. No orchestration framework."""
 
 import copy
-from contextlib import nullcontext
+from contextlib import contextmanager, nullcontext
 import json
 import os
 from pathlib import PurePosixPath
 import uuid
 
-from .config import redact
+from .config import TOOL_NAMES, redact
 from .context import prepare_context
 from .instructions import ProjectInstructions
 from .metrics import Measurements
 from .planning import TaskPlan
 from .revisions import ReadVersions
 from .references import FileReferences, reference_paths, user_reference_paths
+from .runtime import RuntimeEvent, tool_outcome
 from .provider import ProviderError, validate_message
 from .session import validate_history
 from .tools import TOOL_SCHEMAS, Tools
@@ -65,13 +66,16 @@ Finish with a concise summary of changes, verification, and any remaining limita
 
 class Agent:
     def __init__(self, config, provider, tools, emit, checkpoint=None, emit_delta=None, cancel_event=None,
-                 receive_input=None, on_request_ready=None):
+                 receive_input=None, on_request_ready=None, on_event=None):
         self.config, self.provider, self.tools = config, provider, tools
         self.emit, self.checkpoint = emit, checkpoint or (lambda messages: None)
         self.emit_delta = emit_delta
         self.cancel_event = cancel_event
         self.receive_input = receive_input or (lambda: [])
         self.on_request_ready = on_request_ready
+        self.on_event = on_event
+        self.runtime_state = None
+        self._running = False
         self.references = FileReferences(config, tools, self._check_cancelled)
         self._prepared_reference_observations = []
         self.schemas = [copy.deepcopy(schema) for schema in TOOL_SCHEMAS
@@ -83,6 +87,45 @@ class Agent:
         self.compact_context = config.compact_context
         self.baseline_status = "not_run"
         self.edit_check_status = "not_run"
+
+    def runtime_snapshot(self):
+        return self.runtime_state.snapshot() if self.runtime_state else None
+
+    def reset_runtime(self):
+        if self._running:
+            raise ValueError("cannot reset runtime during a task")
+        self.runtime_state = None
+
+    def _event(self, phase, outcome="running", **metadata):
+        if not self._running:
+            return  # Recovery/local controls cannot overwrite a terminal run.
+        self._sequence += 1
+        event = RuntimeEvent(self._run_id, self._sequence, phase, outcome,
+                             self._step, self.config.max_steps, **metadata)
+        self.runtime_state = event  # One immutable latest observation, no transcript/ledger.
+        if self.on_event is not None:
+            self.on_event(event)  # The return value cannot authorize anything.
+
+    def _checkpoint(self, messages):
+        try:
+            self.checkpoint(messages)
+        except Exception:
+            self._stop_reason = "checkpoint"
+            raise
+
+    @contextmanager
+    def _tool_activity(self, name, *, check=None, check_index=0):
+        self._action += 1
+        metadata = {"tool": name if name in TOOL_NAMES else "unknown", "action": self._action,
+                    "check": check, "check_index": check_index,
+                    "check_total": len(self.config.checks) if check else 0}
+        self._event("tool", **metadata)
+        self._check_cancelled()
+        observe = (self.tools.observe_actions(lambda outcome: self._event(
+            "tool" if outcome == "running" else "approval", outcome, **metadata))
+                   if isinstance(self.tools, Tools) else nullcontext())
+        with observe:
+            yield metadata
 
     def restore_plan(self, messages):
         plan = getattr(self.tools, "plan", None)
@@ -129,7 +172,7 @@ class Agent:
             else:
                 self.references.observed = [row for row in original["observed"] if row["path"] in selected]
             self._check_cancelled()
-            self.checkpoint(candidate)
+            self._checkpoint(candidate)
         except BaseException:
             self.references.restore(original)
             raise
@@ -167,7 +210,7 @@ class Agent:
         if not budget["within_budget"]:
             raise ValueError("attachments exceed the request context budget; no files added and no request sent")
         self._check_cancelled()
-        self.checkpoint(candidate)
+        self._checkpoint(candidate)
         return candidate, {"attached": summary, "snapshot": True, "network_contacted": False}
 
     def context_preview(self, messages):
@@ -211,7 +254,7 @@ class Agent:
         if messages[0] != current:
             messages[0] = current
             if save:
-                self.checkpoint(messages)
+                self._checkpoint(messages)
                 self.emit(f"[project instructions] Refreshed {len(records)} guidance files")
         return records
 
@@ -233,7 +276,7 @@ class Agent:
                 (" has an uncertain outcome" if result.get("outcome") == "uncertain" else " changed the workspace") +
                 ": prior conclusions and acceptance results are stale. Inspect current files and rerun the fixed acceptance checks before claiming completion.",
                 self.config.secrets)})
-            self.checkpoint(messages)
+            self._checkpoint(messages)
 
     def _steer(self, messages, pending_calls=()):
         """Accept FIFO user guidance only at a boundary with complete tool results."""
@@ -247,7 +290,8 @@ class Agent:
                 "approved": False, "skipped": True,
                 "error": "Not executed: superseded by new user guidance. Inspect current state and follow the updated request."})})
         messages.extend({"role": "user", "content": redact(task, self.config.secrets)} for task in tasks)
-        self.checkpoint(messages)
+        self._checkpoint(messages)
+        self._event("steering", "delivered")
         self.emit(f"[steering] 已加入 {len(tasks)} 条新要求；下一次模型请求将使用更新后的对话")
         return True
 
@@ -314,6 +358,7 @@ class Agent:
         return messages
 
     def _complete(self, messages, *, step):
+        self._event("preparing")
         history = messages
         records = self._refresh_instructions(messages, save=True)
         messages = self._request_messages(messages, step)
@@ -323,7 +368,7 @@ class Agent:
             raise ProviderError("context byte budget exceeded; no request sent. Review /context and explicitly /compact, or increase --max-context-bytes.")
         if self.references.observed != self._prepared_reference_observations:
             self.references.observed = self._prepared_reference_observations
-            self.checkpoint(history)  # Metadata only; never save the projected file bodies.
+            self._checkpoint(history)  # Metadata only; never save the projected file bodies.
         if report["changes"]:
             self.emit(f"[context] {report['before_bytes']} → {report['after_bytes']} bytes; saved history unchanged")
         self._check_cancelled()  # A cancellation during local compaction must not start HTTP.
@@ -331,6 +376,7 @@ class Agent:
             self.tools.instructions.mark_served(records)
         if self.on_request_ready is not None:
             self.on_request_ready()
+        self._event("model")
         self._check_cancelled()
         if not self.config.stream or self.emit_delta is None:
             return self.provider.complete(messages, self.schemas)
@@ -351,7 +397,8 @@ class Agent:
         """Run fixed checks with fresh approval; checkpoints never complete tasks."""
         phase = "baseline" if baseline else "edit-check" if after_edit else "acceptance"
         passed = True
-        for argv in self.config.checks:
+        self._event("check", check=phase, check_total=len(self.config.checks))
+        for check_index, argv in enumerate(self.config.checks, 1):
             self._check_cancelled()
             if self._steer(messages):
                 return "steered"
@@ -360,26 +407,33 @@ class Agent:
             messages.append({"role": "assistant", "content": None, "sprig_check": phase, "tool_calls": [{
                 "id": call_id, "type": "function", "function": {
                     "name": "run", "arguments": json.dumps({"argv": list(argv)})}}]})
-            self.checkpoint(messages)
+            self._checkpoint(messages)
             self.emit("[" + phase + "] " + json.dumps(list(argv), ensure_ascii=False))
-            result = redact(self.tools.execute("run", {"argv": list(argv)}), self.config.secrets)
+            with self._tool_activity("run", check=phase, check_index=check_index) as activity:
+                result = redact(self.tools.execute("run", {"argv": list(argv)}), self.config.secrets)
             content = json.dumps(result, ensure_ascii=False)
             messages.append({"role": "tool", "tool_call_id": call_id, "content": content})
-            self.checkpoint(messages)
+            self._checkpoint(messages)
+            self._event("tool", tool_outcome(result), **activity)
             self.emit(content)
             if self._steer(messages):
                 return "steered"
             if result.get("approved") is False:
+                self._stop_reason = "check_rejected"
+                self._event("check", "rejected", check=phase, check_index=check_index, check_total=len(self.config.checks))
                 self.emit("[" + phase + "] Rejected; task remains unverified")
                 return "blocked"
             if (result.get("approved") is not True or type(result.get("returncode")) is not int
                              or (baseline and (result["returncode"] < 0 or result.get("timed_out") or result.get("output_limited")))
                              or result.get("skipped") or result.get("cancelled") or result.get("interrupted")
                              or result.get("outcome") or "error" in result):
+                self._stop_reason = "check_incomplete"
+                self._event("check", "incomplete", check=phase, check_index=check_index, check_total=len(self.config.checks))
                 self.emit("[" + phase + "] Check did not complete reliably; task remains unverified")
                 return "incomplete"
             passed = passed and result["returncode"] == 0 and not result.get("timed_out") and not result.get("output_limited")
         if passed:
+            self._event("check", "passed", check=phase, check_index=len(self.config.checks), check_total=len(self.config.checks))
             self.emit("[baseline] Checks passed before model actions; final acceptance is still required" if baseline
                       else "[edit-check] Checks passed after file edits; final acceptance is still required" if after_edit
                       else "[acceptance] All user checks passed")
@@ -396,11 +450,38 @@ class Agent:
             "then finish again. The application will rerun the same user-defined checks. "
             "Do not modify tests just to bypass acceptance. Every write and command still needs approval.")))
         messages.append({"role": "user", "content": notice})
-        self.checkpoint(messages)
+        self._checkpoint(messages)
         self.emit("[" + phase + "] Failed; returning evidence to the model for repair")
+        self._event("check", "failed", check=phase, check_index=len(self.config.checks), check_total=len(self.config.checks))
         return "failed"
 
     def run(self, task=None, messages=None):
+        self._run_id, self._sequence, self._step, self._action = uuid.uuid4().hex, 0, 0, 0
+        self._stop_reason = None
+        self._running = True
+        try:
+            self._event("starting")
+            history, complete = self._run(task, messages)
+            outcome = "passed" if complete and self.config.checks else "unverified" if complete else "incomplete"
+            self._event("finished", outcome, reason=self._stop_reason)
+            return history, complete
+        except BaseException as error:
+            outcome = "cancelled" if isinstance(error, KeyboardInterrupt) else "failed"
+            reason = self._stop_reason or ("cancelled" if outcome == "cancelled" else
+                                           "provider" if isinstance(error, ProviderError) else "error")
+            last = self.runtime_state
+            activity = ({"tool": last.tool, "action": last.action, "check": last.check,
+                         "check_index": last.check_index, "check_total": last.check_total}
+                        if last is not None and last.phase in {"tool", "approval"} else {})
+            try:
+                self._event("finished", outcome, reason=reason, **activity)
+            except BaseException:
+                pass  # An observer failure must not mask the original cancellation/error.
+            raise
+        finally:
+            self._running = False
+
+    def _run(self, task=None, messages=None):
         self.baseline_status = "not_run"
         self.edit_check_status = "not_run"
         versions = getattr(self.tools, "read_versions", None)
@@ -415,7 +496,7 @@ class Agent:
         self._steer(messages)
         if len(messages) < 2:
             raise ValueError("a task is required for a new session")
-        self.checkpoint(messages)
+        self._checkpoint(messages)
         seen_ids = {call["id"] for message in messages for call in message.get("tool_calls", [])}
         if self.config.check_before_task:
             self.baseline_status = "running"
@@ -431,6 +512,7 @@ class Agent:
                 self.emit("[baseline] Incomplete; no model request sent. Explicit continuation requires fresh check approval.")
                 return messages, False
         for step in range(1, self.config.max_steps + 1):
+            self._step = step
             self._check_cancelled()
             self._steer(messages)
             try:
@@ -444,7 +526,7 @@ class Agent:
                         "or treat this notice as approval. No automatic retry was made.")}
                     if messages[-1] != notice:
                         messages.append(notice)
-                        self.checkpoint(messages)
+                        self._checkpoint(messages)
                 raise
             self._check_cancelled()
             if self._steer(messages):
@@ -459,7 +541,7 @@ class Agent:
                 raise ProviderError("provider reused a tool call ID; stopped without replaying it")
             seen_ids.update(call["id"] for call in calls)
             messages.append(message)
-            self.checkpoint(messages)  # Save intent before any possible side effect.
+            self._checkpoint(messages)  # Save intent before any possible side effect.
             if message["content"] and not (self.config.stream and self.emit_delta is not None):
                 self.emit(message["content"])
             if not calls:
@@ -483,12 +565,13 @@ class Agent:
                     function = call["function"]
                     self.emit(f"[tool] {function['name']}")
                     name, arguments, error = requests[index]
-                    if blocked is not None:
-                        result = blocked[index]
-                    elif error is not None:
-                        result = error
-                    else:
-                        result = self._execute_model_tool(name, arguments)
+                    with self._tool_activity(name) as activity:
+                        if blocked is not None:
+                            result = blocked[index]
+                        elif error is not None:
+                            result = error
+                        else:
+                            result = self._execute_model_tool(name, arguments)
                     if (name == "file_action" and result.get("approved") is True and result.get("changed") is True
                             and "error" not in result and not any(result.get(flag) for flag in ("outcome", "partial", "cancelled", "skipped"))):
                         selected = self._references_after_file_action(arguments)
@@ -502,7 +585,8 @@ class Agent:
                         edited = True
                     content = json.dumps(redact(result, self.config.secrets), ensure_ascii=False)
                     messages.append({"role": "tool", "tool_call_id": call["id"], "content": content})
-                    self.checkpoint(messages)
+                    self._checkpoint(messages)
+                    self._event("tool", tool_outcome(result), **activity)
                     if "error" in result:
                         self.emit(f"[tool error] {result['error']}")
                     elif result.get("approved") is False:
@@ -527,4 +611,5 @@ class Agent:
                 if self.edit_check_status in {"blocked", "incomplete"}:
                     return messages, False
         self.emit("Maximum model steps reached; stopped. Last tool results are available in the session if saving is enabled.")
+        self._stop_reason = "step_limit"
         return messages, False

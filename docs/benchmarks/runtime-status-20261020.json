@@ -1,0 +1,112 @@
+{
+  "schema_version": 1,
+  "date": "2026-10-20",
+  "feature": "ephemeral structured run status for CLI and TUI",
+  "base_commit": "5c5b0df8a8b94311a5fce4f6a9b0b44dfed086e1",
+  "source_digest": {
+    "files": 38,
+    "sha256": "3295a37b7b54ea02bf7b925e2ba2489327af750a5eea3566934bb3bd2da5afbe"
+  },
+  "tests_digest": {
+    "files": 61,
+    "sha256": "406032300eb183e4a7da3fc1ccb07a49f9beb13214bcb72ebd2577282fbdaaf9"
+  },
+  "digest_method": "SHA256 of compact ASCII JSON arrays of [POSIX relative path, SHA256 of bytes with CRLF normalized to LF], sorted by path; src/sprig_agent/*.py and tests/*.py separately",
+  "local_suites": [
+    {
+      "platform": "Windows",
+      "python": "3.13.0",
+      "command": "uv run --locked python -m unittest discover -s tests -q",
+      "total": 900,
+      "passed": 883,
+      "skipped": 17,
+      "errors": 0,
+      "failures": 0,
+      "seconds": 161.097
+    },
+    {
+      "platform": "WSL Ubuntu-26.04",
+      "python": "3.13.14",
+      "command": "UV_PROJECT_ENVIRONMENT=.venv-wsl uv run --locked python -m unittest discover -s tests -q",
+      "total": 900,
+      "passed": 878,
+      "skipped": 22,
+      "errors": 0,
+      "failures": 0,
+      "seconds": 132.839
+    }
+  ],
+  "focused_suites": [
+    {
+      "platform": "Windows",
+      "module": "tests.test_runtime",
+      "total": 10,
+      "passed": 10,
+      "skipped": 0,
+      "seconds": 5.611
+    },
+    {
+      "platform": "WSL Ubuntu-26.04",
+      "modules": [
+        "tests.test_runtime",
+        "tests.test_tui"
+      ],
+      "total": 67,
+      "passed": 67,
+      "skipped": 0,
+      "seconds": 58.057
+    }
+  ],
+  "mini_sdk_suites": [
+    {
+      "platform": "Windows",
+      "command": "uv run --locked --project benchmarks/clients/mini python -m unittest discover -s benchmarks/clients/tests -q",
+      "total": 25,
+      "passed": 25,
+      "skipped": 0,
+      "seconds": 27.395
+    },
+    {
+      "platform": "WSL Ubuntu-26.04",
+      "command": "UV_PROJECT_ENVIRONMENT=.venv-wsl uv run --locked --project benchmarks/clients/mini python -m unittest discover -s benchmarks/clients/tests -q",
+      "total": 25,
+      "passed": 25,
+      "skipped": 0,
+      "seconds": 194.869
+    }
+  ],
+  "corrected_validation_attempts": [
+    {
+      "scope": "both main suites",
+      "total_each": 900,
+      "errors_each": 1,
+      "cause": "Existing CLI chat test Mock did not provide a JSON runtime_snapshot result for the new local /status output",
+      "correction": "Explicitly provide None in the test double, then rerun both complete suites"
+    },
+    {
+      "scope": "mini SDK prerequisite",
+      "cause": "Initial command used root uv environment without mini/httpx dependencies",
+      "correction": "Use the existing locked benchmarks/clients/mini project, with a separate WSL environment"
+    }
+  ],
+  "packaging": {
+    "uv_lock_check": "passed",
+    "sdist_and_wheel_build": "passed",
+    "installed_wheel_source_modules_match": 38,
+    "isolated_installed_wheel_smoke": "real Tools read plus two-response Agent loop; eight runtime events; unverified completion without configured checks",
+    "cli_help": "passed"
+  },
+  "paid_model_requests": 0,
+  "fixtures": "loopback HTTP, disposable files, fixed child processes and real Textual app; no live model service",
+  "remote_ci": {
+    "run": false,
+    "commit_policy": "[skip ci]",
+    "reason": "Scoped shared Python runtime/UI change; no native filesystem or process backend changes"
+  },
+  "limitations": [
+    "Platform skips are not passes; WSL is not a native Ubuntu CI runner",
+    "No current-commit remote CI or full Python/platform matrix",
+    "Runtime snapshot and queued guidance are not a durable inbox or audit log",
+    "No model task performance, token-cost or competitor-parity result"
+  ]
+}

@@ -11,7 +11,7 @@
 | 官方仓库 | <https://github.com/anomalyco/opencode> |
 | 默认分支 | `dev` |
 | 固定提交 | `9d90d892dcbfc52b47e95b2ea31b8aba877128fd` |
-| Sprig 对照基线 | `0aa8afce7144bd05ef824e35b4bce57eccccb1ae`，本次只修改文档 |
+| Sprig 对照基线 | `0aa8afce7144bd05ef824e35b4bce57eccccb1ae`，源码调研提交只修改文档，后续实施另记 |
 | 本地只读研究副本 | `C:\Users\25079\AppData\Local\Temp\sprig-opencode-source-20261020-c465e7f4` |
 | 获取方式 | `git clone --depth 1 --filter=blob:none`，随后记录 HEAD 与 `origin/HEAD` |
 | 仓库声明版本 | `2.0.32`；包管理器 `bun@1.4.2` |
@@ -273,7 +273,11 @@ Sprig 已有 `/add` 快照和 `/ref` 请求前刷新；应给这些现有后端�
 | P1-C：可重新读取的工具日志 | 为已有命令输出建立私有、有总量上限的 artifact，返回截断说明和受控读取句柄；先完成前台日志，再设计后台 Job/完成通知 | 日志总磁盘预算、逐页输出、Unicode、跨块秘密、取消/崩溃/过期清理、会话隔离与排除路径有测试；只读日志能力不能扩大任意路径访问；“没有保留输出”与“命令失败”分开显示 |
 | P2：扩展及较大工作流 | 在前述路径稳定后，再分别接入 question、MCP、skills/hooks、后台任务、消息级回滚和语义工具；每项先定义运行时与权限边界 | 有后端、可审查操作、断连/取消/恢复与隐私证据后才对外标已支持；不先堆配置项，不直接复制持久自动授权或崩溃后重放副作用 |
 
-每批先用 uv 锁定环境和离线 HTTP/模型 fixture，走正常 CLI/TUI；功能提交按 AGENTS.md 跑完整 unittest 与相关检查。Windows 行为改变时要有原生 Windows，POSIX 行为改变时要有对应 runner；平台 skip 不算通过。小更新使用 `[skip ci]` 并明确无该 SHA 的远程 CI，积累成大批更新再运行对应 CI、等待精确 SHA 全部必需作业成功。本次仅文档，不触发 CI。
+每批先用 uv 锁定环境和离线 HTTP/模型 fixture，走正常 CLI/TUI；功能提交按 AGENTS.md 跑完整 unittest 与相关检查。Windows 行为改变时要有原生 Windows，POSIX 行为改变时要有对应 runner；平台 skip 不算通过。小更新使用 `[skip ci]` 并明确无该 SHA 的远程 CI，积累成大批更新再运行对应 CI、等待精确 SHA 全部必需作业成功。源码调研提交仅文档，不触发 CI。
+
+### 后续实施记录
+
+2026-10-20 第一批实现 [P0-A 的运行阶段观察](../runtime-status.md)：运行层直接提供不可变事件和最近快照，接入 CLI/TUI，消除依赖模型文本前缀识别运行阶段；覆盖真实 HTTP/TUI 的过期编辑、修复和独立检查链，以及批准/取消/保存失败边界。原表是调研基线，这条记录不把整项 P0-A 或后续批次标为完成。持久待递送队列、独立任务队列、长期摘要和完整事件存储仍未实现。
 
 真实模型验证在实现与离线闭环之后按预算另行安排。USTC 仍仅使用 `deepseek-flash` / `deepseek-flash-2`；三种协议的兼容性不需要对所有付费模型逐一消费。本次没有新增模型调用或“已追平顶尖 agent”的结论。
 

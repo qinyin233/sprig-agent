@@ -37,7 +37,7 @@ def _remove(tools, path, raw, info, text, rules, *, move_to=None, after_approval
                             "On success, live references to this source follow the destination.")
         else:
             description += "\nApproved deletion removes this path from live references. Saved older messages are unchanged."
-        if not tools.approve(description):
+        if not tools.request_approval(description):
             return {"approved": False, "changed": False, "action": "delete", "path": path}
         after_approval()
         tools._parts(path)
@@ -66,7 +66,7 @@ def _mkdir(tools, path):
             pass
         else:
             raise ValueError("mkdir target already exists; no change made")
-        if not tools.approve("MKDIR " + json.dumps(path) + "\nCreate exactly this directory; parent must exist. "
+        if not tools.request_approval("MKDIR " + json.dumps(path) + "\nCreate exactly this directory; parent must exist. "
                              "Directory creation is not recorded in file undo history."):
             return {"approved": False, "changed": False, "action": "mkdir", "path": path}
         tools._parts(path)
@@ -104,7 +104,7 @@ def _move(tools, path, destination, raw, info, text, parts, rules):
                        (tools._diff(destination, None, text) or "(create empty file)"))
         if os.name == "nt":
             description += "\nThe new Windows copy has a private current-user ACL; filesystem metadata is not fully preserved."
-        if not tools.approve(description):
+        if not tools.request_approval(description):
             return {"approved": False, "changed": False, "action": "move", "path": path, "destination": destination}
         tools._parts(path)
         tools._parts(destination)

@@ -116,6 +116,7 @@ class ChatTests(unittest.TestCase):
     def test_turns_keep_history_and_slash_commands_do_not_call_model(self):
         agent, emitted = Mock(), []
         agent.config = Mock(model="test", checks=())
+        agent.runtime_snapshot.return_value = None
         first = [{"role": "assistant", "content": "first"}]
         second = first + [{"role": "assistant", "content": "second"}]
         agent.run.side_effect = [(first, True), (second, True)]

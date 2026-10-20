@@ -20,6 +20,7 @@ from .agent import Agent
 from .changes import ChangeHistory
 from .config import SHORTCUT_ACTIONS, redact, terminal_text
 from .provider import Provider
+from .runtime import runtime_label
 from .session import SessionError, SessionStore, validate_history
 from .settings import public_config
 from .tools import Tools
@@ -195,7 +196,8 @@ class SprigApp(App[int]):
                 summary = {key: result[key] for key in ("approved", "changed", "returncode", "timed_out", "output_limited",
                                                        "outcome", "partial", "copied", "source_removed", "path", "destination", "error") if key in result}
                 if app._ui_ready and not app._unmounted:
-                    app.ui_call(app.event, name + ": " + json.dumps(summary, ensure_ascii=False))
+                    if app.local_action is not None:
+                        app.ui_call(app.event, name + ": " + json.dumps(summary, ensure_ascii=False))
                     if name == "update_plan":
                         app.ui_call(app.refresh_plan)
                 return result
@@ -213,7 +215,7 @@ class SprigApp(App[int]):
         try:
             self.agent = Agent(config, provider or Provider(config), self.tools, self.emit,
                                checkpoint=self.checkpoint, emit_delta=self.emit_delta, cancel_event=self.cancel_event,
-                               receive_input=self.receive_input, on_request_ready=self.request_ready)
+                               receive_input=self.receive_input, on_request_ready=self.request_ready, on_event=self.runtime_event)
             self.agent.restore_plan(self.messages)
             if resume and self.store:
                 selected = getattr(self.store, "loaded_references", None)
@@ -362,6 +364,15 @@ class SprigApp(App[int]):
     def event(self, text):
         self.query_one("#events", RichLog).write(self.safe(text))
 
+    def runtime_event(self, event):
+        if self._ui_ready and not self._unmounted:
+            self.ui_call(self.show_runtime, event)
+
+    def show_runtime(self, event):
+        label = runtime_label(event, chinese=True)
+        self.set_state(label)
+        self.event(f"[{event.sequence}] " + label)
+
     def set_state(self, text):
         self.query_one("#state", Static).update(self.safe(text))
 
@@ -458,8 +469,6 @@ class SprigApp(App[int]):
             return
         self.streaming = False
         self.ui_call(self.append, str(text) + "\n")
-        if str(text).startswith("["):
-            self.ui_call(self.event, text)
 
     def emit_delta(self, text):
         self.check_cancelled()
@@ -493,9 +502,11 @@ class SprigApp(App[int]):
                     self.invalidate_task()
                     self.local_command_approved = True
                 done.set()
-                self.set_state("处理中")
+                if self.local_action is not None or not self.busy:
+                    self.set_state("处理中")
             self.approval = ApprovalScreen(self.safe(description), allow_steering=True)
-            self.set_state("等待确认")
+            if self.local_action is not None or not self.busy:
+                self.set_state("等待确认")
             self.push_screen(self.approval, decide)
 
         self.ui_call(show)
@@ -768,6 +779,7 @@ class SprigApp(App[int]):
                 if self.session_name and name != self.session_name:
                     self.store.release(self.session_name)
                 self.messages, self.session_name = history, name
+                self.agent.reset_runtime()
                 self.agent.restore_plan(history)
                 selected = getattr(self.store, "loaded_references", None)
                 self.agent.restore_references(selected if isinstance(selected, dict) else None)
@@ -799,6 +811,7 @@ class SprigApp(App[int]):
                 self.store.release(self.session_name)
             self.session_name = None
             self.messages = None
+            self.agent.reset_runtime()
             self.agent.restore_plan(None)
             self.agent.restore_references()
             self._draft_submission = None
@@ -860,6 +873,7 @@ class SprigApp(App[int]):
             return
         if command == "/status":
             self.append(f"\n[本地状态] {self.task_message} | 执行中: {self.busy} | 消息: {len(self.messages or [])} | 本次基线: {self.agent.baseline_status} | 编辑后检查: {self.agent.edit_check_status} | 待处理引导: {len(self.pending_tasks)}\n")
+            self.append("[最近运行；仅当前进程，待处理引导仅在内存]\n" + json.dumps(self.agent.runtime_snapshot(), ensure_ascii=False) + "\n")
             return
         if command == "/refs" and not argument:
             self.append("\n[当前文件引用；准备记录不是已发送证明]\n" + json.dumps(

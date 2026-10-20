@@ -13,6 +13,7 @@ from .changes import ChangeError, ChangeHistory
 from .config import TOOL_NAMES, redact, terminal_text
 from .diagnostics import diagnose
 from .provider import Provider, ProviderError
+from .runtime import runtime_label
 from .session import SessionError, SessionStore, validate_history
 from .settings import Settings, default_config_path, initialize_config, load_settings, public_config
 from .tools import Tools
@@ -132,6 +133,7 @@ def chat(agent, task, messages, emit, *, autostart=True):
                 emit(json.dumps(redact(result, agent.config.secrets), ensure_ascii=False, indent=2))
             elif task == "/status":
                 emit(f"Messages: {len(messages or [])} | model: {agent.config.model} | acceptance checks: {len(agent.config.checks)} | baseline: {agent.baseline_status} | edit checks: {agent.edit_check_status} | last status: {status}")
+                emit("Runtime (current process only): " + json.dumps(agent.runtime_snapshot(), ensure_ascii=False))
             elif task == "/context":
                 emit(json.dumps(agent.context_preview(messages), ensure_ascii=False, indent=2))
             elif task == "/plan":
@@ -378,7 +380,11 @@ def main(argv=None):
             emit("Exact edit backups persist locally (not encrypted). Only file-tool edits can be undone; commands are not tracked.")
         tools = Tools(config, confirm, emit_output=emit_delta, history=history)
         provider = Provider(config)
-        agent = Agent(config, provider, tools, emit, checkpoint, emit_delta=emit_delta)
+        def runtime_event(event):
+            if event.phase in {"model", "check", "finished"}:
+                emit("[runtime] " + runtime_label(event))
+
+        agent = Agent(config, provider, tools, emit, checkpoint, emit_delta=emit_delta, on_event=runtime_event)
         if args.resume:
             state = getattr(store, "loaded_references", None)
             agent.restore_references(state if isinstance(state, dict) else None)

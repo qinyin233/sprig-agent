@@ -114,6 +114,7 @@ class Tools:
         self.read_versions = ReadVersions()
         self._edit_preview = False
         self._edit_batch = None
+        self._action_observer = None
         self.emit_output = emit_output
         self.instructions = ProjectInstructions(self._read_instruction, self._check_cancelled,
                                                 config.project_instructions, config.instruction_files)
@@ -138,6 +139,28 @@ class Tools:
     def _check_cancelled(self):
         if self.cancel_event is not None and self.cancel_event.is_set():
             raise KeyboardInterrupt
+
+    @contextmanager
+    def observe_actions(self, observer):
+        previous, self._action_observer = self._action_observer, observer
+        try:
+            yield
+        finally:
+            self._action_observer = previous
+
+    def request_approval(self, description):
+        observer = self._action_observer
+        if observer is not None:
+            observer("waiting")
+        self._check_cancelled()
+        approved = self.approve(description)
+        if observer is not None:
+            observer("approved" if approved else "rejected")
+        self._check_cancelled()
+        if approved and observer is not None:
+            observer("running")
+            self._check_cancelled()
+        return approved
 
     def _require_tool(self, name):
         self.root.ensure_open()
@@ -731,7 +754,7 @@ class Tools:
                 result = self.history.summary()
             elif action == "discard-history":
                 description = "DISCARD exact edit backups (workspace files unchanged). Undo/redo will no longer be available.\n" + json.dumps(self.history.summary(), ensure_ascii=False)
-                if not self.approve(description):
+                if not self.request_approval(description):
                     result = {"approved": False}
                 else:
                     self._check_cancelled()
@@ -762,7 +785,7 @@ class Tools:
             description = action.upper() + " " + json.dumps(path) + "\n" + (self._diff(path, before, after) or "(empty file create/delete)")
             if os.name == "nt" and info is None and target is not None:
                 description += "\nRe-created Windows file uses a private current-user ACL; previous shared access is not restored."
-            if not self.approve(description):
+            if not self.request_approval(description):
                 return {"approved": False, "changed": False}
             self._parts(path)  # File privacy rules may have changed during review.
             self._unchanged(fd, name, current, info)
@@ -899,7 +922,7 @@ class Tools:
             if before_stat is not None and before == after:
                 return {"changed": False}
             diff = self._diff(path, before if before_stat else None, after)
-            if not self.approve(f"WRITE {json.dumps(path)}\n{diff or '(create empty file)'}"):
+            if not self.request_approval(f"WRITE {json.dumps(path)}\n{diff or '(create empty file)'}"):
                 return {"approved": False, "changed": False}
             # Recheck after approval: an editor may have changed the file while the user read the diff.
             self._parts(path)
@@ -948,7 +971,7 @@ class Tools:
             description += ("\nenvironment: " + ("expanded inheritance" if self.config.inherit_env else "minimal inheritance")
                             + "; additional inherited names: " + json.dumps(self.config.env_allowlist)
                             + "; override names: " + json.dumps([name for name, _ in self.config.command_env]))
-        if not self.approve(description):
+        if not self.request_approval(description):
             return {"approved": False}
         self._check_cancelled()
         # Unlike file tools, the approved program controls its own filesystem and network access.

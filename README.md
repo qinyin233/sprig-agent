@@ -437,6 +437,7 @@ uv run python scripts/live-tui-smoke.py
 - `scripts/live-smoke.py` / `live-tui-smoke.py`：可选真实 API 端到端测试，仅批准精确的临时夹具操作
 - [同类项目对照与开发路线](docs/agent-comparison.md)：参考实现、当前覆盖和后续差距
 - [OpenCode 源码阅读与基础能力补齐](docs/research/opencode-source-reading-20261020.md)：固定源码版本、实现与测试体、Sprig 对照及分批验收顺序
+- [执行阶段与运行结果](docs/runtime-status.md)：CLI/TUI 共用的步骤、工具批准、检查及取消状态；区分模型结束和独立验收
 - [产品能力与达标差距](docs/development-readiness.md)：完整基础能力盘点、未完成项和验收条件，区分功能交付与模型性能证据
 - [差异化调研与产品提案](docs/sprig-differentiation.md)：现有先例、需求变更工作台与分阶段验收标准；提案功能尚未实现
 - [其他产品方向调研](docs/sprig-alternative-directions.md)：首次跑通项目、失败复现卡、编程陪练等较小范围的产品方案
