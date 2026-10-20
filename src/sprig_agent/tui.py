@@ -19,6 +19,7 @@ from textual.worker import get_current_worker
 from .agent import Agent
 from .changes import ChangeHistory
 from .config import SHORTCUT_ACTIONS, redact, terminal_text
+from .mentions import DraftFiles, mention_query
 from .provider import Provider
 from .picker import PickerScreen
 from .runtime import runtime_label
@@ -46,11 +47,38 @@ class TaskInput(TextArea):
         Binding("tab", "complete", "补全", priority=True),
     ]
 
+    def __init__(self, *args, **kwargs):
+        self.files = DraftFiles()
+        super().__init__(*args, **kwargs)
+        self.files.sync(self.text)
+
+    def load_text(self, text):
+        super().load_text(text)
+        self.files = DraftFiles(self.text)
+
+    def edit(self, edit):
+        self.files.sync(self.text)
+        start = self.document.get_index_from_location(edit.top)
+        end = self.document.get_index_from_location(edit.bottom)
+        result = super().edit(edit)
+        self.files.sync(self.text, start, end)
+        return result
+
+    def action_undo(self):
+        super().action_undo()
+        self.files.sync(self.text)
+
+    def action_redo(self):
+        super().action_redo()
+        self.files.sync(self.text)
+
     class Submitted(Message):
         def __init__(self, editor, text, draft=None):
             super().__init__()
             self.editor, self.text = editor, text
             self.draft = editor.text if draft is None else draft
+            editor.files.sync(self.draft)
+            self.files = editor.files.paths()
 
     class Complete(Message):
         def __init__(self, editor):
@@ -247,7 +275,7 @@ class SprigApp(App[int]):
             with Vertical(id="chat"):
                 yield Static("对话", classes="pane-title", markup=False)
                 yield TextArea(read_only=True, show_cursor=False, id="transcript")
-                yield TaskInput(placeholder="输入消息；Enter 发送，Shift+Enter / Ctrl+J 换行；执行中可追加要求", id="task")
+                yield TaskInput(placeholder="Enter 发送，Shift+Enter 换行；@关键词 + Tab 选本轮文件；执行中可追加文字", id="task")
                 with Horizontal(id="task-buttons"):
                     yield Button("发送 / Enter", id="send", variant="primary")
                     yield Button("选择文件", id="files")
@@ -526,7 +554,7 @@ class SprigApp(App[int]):
         self.check_cancelled()
         return answer[0]
 
-    def start(self, task=None, local=None):
+    def start(self, task=None, local=None, *, context_files=()):
         if self.busy:
             return
         if not local and not task and not self.messages and not self.pending_tasks:
@@ -545,17 +573,18 @@ class SprigApp(App[int]):
             if self.pending_tasks:
                 self.pending_tasks.append(task)
                 task = None
-        self.execute(task, local)
+        self.execute(task, local, context_files)
 
     @work(thread=True, group="agent", exclusive=True, exit_on_error=False)
-    def execute(self, task, local):
+    def execute(self, task, local, context_files=()):
         # Finishing and submission are serialized on the UI thread. A late
         # request keeps this worker alive instead of racing a second worker.
         with self._lifecycle_lock:
             if self._closed:
                 return
             while True:
-                status, message = self.execute_turn(task, local)
+                options = {"context_files": context_files} if context_files else {}
+                status, message = self.execute_turn(task, local, **options)
                 try:
                     again = self.ui_call(self.finished, status, message)
                 except RuntimeError:
@@ -563,8 +592,9 @@ class SprigApp(App[int]):
                 if not again:
                     return
                 task, local = None, None
+                context_files = ()
 
-    def execute_turn(self, task, local):
+    def execute_turn(self, task, local, context_files=()):
         status, message = 0, "完成"
         try:
             if local:
@@ -598,7 +628,8 @@ class SprigApp(App[int]):
                 if "error" in result or result.get("approved") is False or result.get("returncode", 0) != 0:
                     status, message = 2, "本地操作未完成"
             else:
-                self.messages, complete = self.agent.run(task, self.messages)
+                options = {"context_files": context_files} if context_files else {}
+                self.messages, complete = self.agent.run(task, self.messages, **options)
                 status = 0 if complete else 2
                 message = "验收通过" if complete and self.config.checks else ("本轮结束" if complete else "未完成 / 未验收")
         except KeyboardInterrupt:
@@ -672,16 +703,37 @@ class SprigApp(App[int]):
         elif not isinstance(self.screen, ModalScreen):
             self.query_one("#task", TaskInput).action_send()
 
-    def open_picker(self, *, commands=False, query="", editor=None, command=None):
+    def open_picker(self, *, commands=False, query="", editor=None, command=None, mention=None):
         if self.busy or isinstance(self.screen, ModalScreen):
             self.notify("请等待当前任务结束后选择文件或命令", severity="warning")
             return
+
+        draft = editor.text if editor is not None else None
 
         def selected(result):
             if result is None or self.busy:
                 return
             kind, value = result
             if editor is not None:
+                if editor.text != draft:
+                    self.notify("草稿已变化，请重新选择文件或命令", severity="warning")
+                    return
+                if mention is not None:
+                    editor.files.sync(draft)
+                    try:
+                        candidate = editor.files.select(*mention, value)
+                    except ValueError as error:
+                        self.reject_input(str(error))
+                        return
+                    token = "@" + json.dumps(value, ensure_ascii=False)
+                    editor.replace(token, editor.document.get_location_from_index(mention[0]),
+                                   editor.document.get_location_from_index(mention[1]),
+                                   maintain_selection_offset=False)
+                    editor.files = candidate
+                    editor.move_cursor(editor.document.get_location_from_index(
+                        mention[0] + len(token)))
+                    editor.focus()
+                    return
                 if kind != "command" and value != value.strip():
                     self.notify("路径含首尾空白，请用“选择文件”直接添加；输入未修改", severity="warning")
                     return
@@ -699,8 +751,15 @@ class SprigApp(App[int]):
     def complete_input(self, event):
         event.stop()
         text = event.editor.text
-        if (event.editor.id != "task" or isinstance(self.screen, ModalScreen) or self.busy
-                or "\n" in text or not text.startswith("/") or text.startswith("//")):
+        if event.editor.id != "task" or isinstance(self.screen, ModalScreen) or self.busy:
+            self.screen.focus_next()
+            return
+        cursor = event.editor.document.get_index_from_location(event.editor.cursor_location)
+        mention = mention_query(text, cursor) if not text.startswith("/") else None
+        if mention is not None and event.editor.selection.is_empty:
+            self.open_picker(query=mention[2], editor=event.editor, mention=mention[:2])
+            return
+        if "\n" in text or not text.startswith("/") or text.startswith("//"):
             self.screen.focus_next()
             return
         command, separator, query = text.partition(" ")
@@ -745,6 +804,9 @@ class SprigApp(App[int]):
                 event.editor.load_text("")
             self.slash_command(task)
             return
+        if event.files and (self.busy or self.pending_tasks):
+            self.reject_input("文件选择只能随空闲时的新消息发送；执行中可发送普通文本引导。")
+            return
         if (self.busy and self._draft_submission is not None
                 and self._draft_submission == (event.editor.id, event.draft, task)):
             self.set_state("请求仍在准备；可编辑输入发送新要求")
@@ -770,7 +832,7 @@ class SprigApp(App[int]):
             latest_user = next((message for message in reversed(self.messages or []) if message.get("role") == "user"), {})
             retry = previous is not None and previous[2] == task and latest_user.get("content") == redact(task, self.config.secrets)
             self._draft_submission = (event.editor.id, event.draft, task)
-            self.start(None if retry else task)
+            self.start(None if retry else task, context_files=event.files)
 
     def action_cancel(self):
         if not self.busy:
@@ -911,7 +973,8 @@ class SprigApp(App[int]):
                         "/save [名称] /restore [名称] /delete [名称]\n"
                         "/worktrees /worktree 新目录路径（完整剩余文本作为路径；不会切换当前对话）\n"
                         "执行中可输入普通消息调整引导。// 开头发送以 / 开头的普通消息。\n"
-                        "Tab 补全本地命令或 /add、/ref 的文件参数；选择不会发送任务。\n"
+                        "Tab 补全本地命令或 /add、/ref 的文件参数；普通消息 @关键词 + Tab 选择本轮文件。\n"
+                        "选择不会发送任务；Enter 发送时读取文件，修改/删除标记撤销选择；/ref 用于后续轮次实时引用。\n"
                         "提供商和模型通过 config.toml 或启动参数选择；恢复时仍校验绑定。\n")
             return
         if command == "/keys":

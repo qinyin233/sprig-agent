@@ -1,0 +1,90 @@
+{
+  "schema_version": 1,
+  "date": "2026-10-20",
+  "feature": "explicit inline TUI file selections with request-only run context",
+  "base_commit": "3781fd240d068e633aac9fa7364d9d17a14fc0cd",
+  "source_digest": {
+    "files": 41,
+    "sha256": "0b66d35f2062ae61037b0211b6c03307b3e20696ad8e02524be2277069ef934b"
+  },
+  "tests_digest": {
+    "files": 63,
+    "sha256": "d77c19012b22a39a460136b23cf9f3424ca961fd3fc77942eb46dd6f271208ca"
+  },
+  "digest_method": "SHA256 of compact ASCII JSON arrays of [POSIX relative path, SHA256 of bytes with CRLF normalized to LF], sorted by path; src/sprig_agent/*.py and tests/*.py separately",
+  "local_suites": [
+    {
+      "platform": "Windows 11",
+      "python": "3.13.0",
+      "command": "uv run --locked python -m unittest discover -s tests -q",
+      "total": 928,
+      "passed": 910,
+      "skipped": 18,
+      "failures": 0,
+      "errors": 0,
+      "seconds": 208.000
+    },
+    {
+      "platform": "WSL Ubuntu-26.04",
+      "python": "3.13.14",
+      "command": "UV_PROJECT_ENVIRONMENT=.venv-wsl uv run --locked python -m unittest discover -s tests -q",
+      "total": 928,
+      "passed": 906,
+      "skipped": 22,
+      "failures": 0,
+      "errors": 0,
+      "seconds": 148.546
+    }
+  ],
+  "client_suites": [
+    {"platform": "Windows 11", "total": 25, "passed": 25, "skipped": 0, "seconds": 29.528},
+    {"platform": "WSL Ubuntu-26.04", "total": 25, "passed": 25, "skipped": 0, "seconds": 171.000}
+  ],
+  "corrected_validation_attempt": {
+    "scope": "initial Windows mentions, TUI, completion, attachments and runtime focused suite",
+    "total": 99,
+    "failures": 1,
+    "skipped": 1,
+    "seconds": 100.513,
+    "cause": "Passing an empty third positional argument changed the existing late-guidance execute_turn callback contract",
+    "correction": "Keep the old two-argument invocation when no files are selected; pass the optional keyword only for selected files",
+    "focused_followup": {"total": 17, "passed": 17, "skipped": 0, "seconds": 9.267},
+    "final_full_suites_after_correction": true
+  },
+  "packaging": {
+    "uv_lock_check": "passed",
+    "configuration_schema_matches": true,
+    "compileall": "passed",
+    "sdist_and_wheel_build": "passed",
+    "wheel_source_modules_match": 41,
+    "isolated_installed_wheel_tui_smoke": "passed: select Unicode file without Provider call; send fresh snapshot only on Enter; next task omits the snapshot",
+    "isolated_smoke_fixture_provider_calls": 2
+  },
+  "coverage": {
+    "new_test_methods": 16,
+    "actual_loopback_http_protocols": ["chat_completions", "messages", "responses"],
+    "file_body_in_saved_attachment_history": false,
+    "automatic_cross_run_attachment": false,
+    "fresh_read_and_privacy_check_on_retry": true,
+    "preflight_before_history_checkpoint_baseline_or_provider": true,
+    "busy_selected_draft_is_rejected_without_queueing_bodies": true,
+    "plain_text_steering_preserved": true,
+    "full_response_and_fresh_approval_boundaries_unchanged": true
+  },
+  "ci": {
+    "enabled": false,
+    "commit_marker": "[skip ci]",
+    "reason": "Small TUI/context workflow batch with no changed native OS behavior; conserve user Actions minutes",
+    "native_runner_validation_for_this_source": false,
+    "prior_commit_green_is_not_attributed_to_this_batch": true
+  },
+  "paid_model_requests": 0,
+  "limitations": [
+    "WSL is local POSIX coverage, not a native CI runner",
+    "Platform skips are not passes",
+    "No multi-select modal, image/PDF input or folded large paste",
+    "File selection is idle-only; in-flight steering remains plain text",
+    "Request-only snapshots are not resumed automatically",
+    "Fixture and UI results do not establish real model coding ability or near-top-agent parity"
+  ]
+}

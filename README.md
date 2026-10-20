@@ -440,6 +440,7 @@ uv run python scripts/live-tui-smoke.py
 - [OpenCode 源码阅读与基础能力补齐](docs/research/opencode-source-reading-20261020.md)：固定源码版本、实现与测试体、Sprig 对照及分批验收顺序
 - [执行阶段与运行结果](docs/runtime-status.md)：CLI/TUI 共用的步骤、工具批准、检查及取消状态；区分模型结束和独立验收
 - [TUI 补全与文件选择](docs/tui-completion.md)：Tab 补全本地命令和文件参数，模糊选择快照或实时引用；主输入保持 Enter 发送
+- [消息中的本轮文件](docs/tui-mentions.md)：`@关键词` + Tab 明确选取，发送时读取，编辑标记撤销选择；正文不作为附件跨轮次保存
 - [产品能力与达标差距](docs/development-readiness.md)：完整基础能力盘点、未完成项和验收条件，区分功能交付与模型性能证据
 - [差异化调研与产品提案](docs/sprig-differentiation.md)：现有先例、需求变更工作台与分阶段验收标准；提案功能尚未实现
 - [其他产品方向调研](docs/sprig-alternative-directions.md)：首次跑通项目、失败复现卡、编程陪练等较小范围的产品方案
