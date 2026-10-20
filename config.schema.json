@@ -186,6 +186,9 @@
         },
         "file_action": {
           "type": "boolean"
+        },
+        "read_history": {
+          "type": "boolean"
         }
       },
       "additionalProperties": false
@@ -950,6 +953,9 @@
                 "type": "boolean"
               },
               "file_action": {
+                "type": "boolean"
+              },
+              "read_history": {
                 "type": "boolean"
               }
             },

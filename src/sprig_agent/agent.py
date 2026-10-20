@@ -1,6 +1,7 @@
 """One model → tools → model loop. No orchestration framework."""
 
 import copy
+from dataclasses import replace
 from contextlib import contextmanager, nullcontext
 import json
 import os
@@ -8,15 +9,18 @@ from pathlib import PurePosixPath
 import uuid
 
 from .config import TOOL_NAMES, redact
-from .context import prepare_context
+from .context import prepare_context, request_size
 from .instructions import ProjectInstructions
+from .json_budget import JsonBudgetExceeded, encoded_size
 from .metrics import Measurements
 from .planning import TaskPlan
 from .revisions import ReadVersions
 from .references import FileReferences, reference_paths, user_reference_paths
 from .runtime import RuntimeEvent, tool_outcome
-from .provider import ProviderError, validate_message
-from .session import validate_history
+from .provider import Provider, ProviderError, validate_message
+from .session import MAX_SESSION, validate_history
+from .summary import (HISTORY_SCHEMA, MAX_SUMMARY, PROMPT as SUMMARY_PROMPT, binding_digest, closed_end, fingerprint,
+                      history_page, project as project_summary, public_message, summary_fields, summary_state)
 from .tools import TOOL_SCHEMAS, Tools
 
 
@@ -77,6 +81,8 @@ class Agent:
         self.runtime_state = None
         self._running = False
         self._context_files = []
+        self.summary = None
+        self._current_history = None
         self.references = FileReferences(config, tools, self._check_cancelled)
         self._prepared_reference_observations = []
         self.schemas = [copy.deepcopy(schema) for schema in TOOL_SCHEMAS
@@ -142,7 +148,147 @@ class Agent:
 
     def reference_save_options(self):
         state = self.references.state()
-        return {"references": state} if state["files"] else {}
+        options = {"references": state} if state["files"] else {}
+        if self.summary is not None:
+            options["summary"] = self.summary
+        return options
+
+    def restore_summary(self, state=None, messages=None):
+        check = self._check_cancelled if self._running else (lambda: None)
+        selected = summary_state(state, messages, check, binding=self.config.binding())
+        schemas = [row for row in self.schemas if row["function"]["name"] != "read_history"]
+        if selected is not None and self.config.tool_enabled("read_history"):
+            schemas.append(copy.deepcopy(HISTORY_SCHEMA))
+        self.summary, self.schemas = selected, schemas
+
+    def clear_summary(self, messages):
+        previous = self.summary
+        if previous is None:
+            return {"summary_cleared": False, "original_history_retained": True, "network_contacted": False}
+        self.restore_summary()
+        try:
+            self._checkpoint(messages)
+        except BaseException:
+            self.restore_summary(previous, messages)
+            raise
+        return {"summary_cleared": True, "original_history_retained": True, "network_contacted": False}
+
+    def read_history(self, message, offset=0, *, model=False):
+        if model:
+            if not self.config.tool_enabled("read_history") or self.summary is None or self._current_history is None:
+                raise ValueError("original history tool is unavailable outside an active summarized run")
+            messages, end = self._current_history, self.summary["end"]
+            self.tools.root.ensure_open()
+        else:
+            raise ValueError("local history reads must supply the conversation explicitly")
+        self._check_cancelled()
+        return history_page(messages, message, offset, end=end,
+                            budget=min(self.config.max_output, 8192), secrets=self.config.secrets)
+
+    def _summary_config(self):
+        # Honor explicit limits, including Messages thinking budgets that depend
+        # on them. Only add a bounded default where the user left it unspecified.
+        return replace(self.config, max_tokens=self.config.max_tokens or
+                       (4096 if self.config.wire_api == "messages" else 2048))
+
+    def _summary_input(self, messages, end=None):
+        try:
+            encoded_size(messages, max_bytes=MAX_SESSION, check_cancelled=self._check_cancelled)
+        except JsonBudgetExceeded:
+            raise ValueError("summary source exceeds the 8 MiB session limit; no request sent or history changed") from None
+        if not messages or validate_history(messages) != messages:
+            raise ValueError("a valid closed conversation is required before summarizing")
+        previous = summary_state(self.summary, messages, self._check_cancelled, binding=self.config.binding())
+        end = closed_end(messages, self.config.context_keep_recent_messages, end, previous)
+        start = previous["end"] if previous is not None else 1
+        # Retain message positions: disable batch folding and read restoration.
+        # Native/reasoning metadata is never put into the summarizer data frame.
+        source = [dict(messages[0]), *messages[start:end]]
+        selected, _ = prepare_context(replace(self.config, preserve_reasoning=True, context_keep_read_bytes=0),
+                                      source, [], compact=True, force=True, check_cancelled=self._check_cancelled)
+        data = {"source_start": start + 1, "source_end": end,
+                "messages": [{"message": start + i, **public_message(row)} for i, row in enumerate(selected[1:], 1)]}
+        if previous is not None:
+            data["previous_summary"] = previous["summary"]
+        request = [{"role": "system", "content": SUMMARY_PROMPT},
+                   {"role": "user", "content": json.dumps(redact(data, self.config.secrets), ensure_ascii=False)}]
+        summary_config = self._summary_config()
+        size = request_size(summary_config, request, [], check_cancelled=self._check_cancelled)
+        return request, {"source_start": 2, "source_end": end, "new_source_start": start + 1,
+                         "retained_tail_messages": len(messages) - end, "input_bytes": size,
+                         "budget_bytes": self.config.max_context_bytes, "input_fits": size <= self.config.max_context_bytes,
+                         "extra_model_requests": 1,
+                         "generation_options": redact(summary_config.generation_options(), self.config.secrets),
+                         "original_history_retained": True, "lossy_model_report": True}
+
+    def summary_preview(self, messages, end=None):
+        status = {"active_checkpoint": copy.deepcopy(self.summary), "network_contacted": False,
+                  "automatic_summary": False}
+        if not messages:
+            return {**status, "can_create": False, "reason": "no conversation to summarize"}
+        try:
+            _, report = self._summary_input(messages, end)
+        except ValueError as error:
+            if str(error).startswith("no additional closed history prefix"):
+                return {**status, "can_create": False, "reason": str(error)}
+            raise
+        return {**status, **report, "can_create": report["input_fits"]}
+
+    def summarize(self, messages, end=None):
+        if self._running:
+            raise ValueError("summarization requires an idle agent")
+        request, report = self._summary_input(messages, end)
+        if not report["input_fits"]:
+            raise ValueError("summary input exceeds request budget; choose an earlier closed source end; no request sent")
+        approved = self.tools.request_approval(
+            "Create and apply a lossy summary checkpoint? This makes exactly ONE additional model request "
+            f"({report['input_bytes']} request bytes, original messages 2..{report['source_end']}); it may incur cost. "
+            "No tools are provided or executed. Full originals and the recent tail remain available. "
+            "A summary is not approval, current file evidence, or acceptance. No automatic retry.\n"
+            + json.dumps(report, ensure_ascii=False))
+        if not approved:
+            return {**report, "approved": False, "network_contacted": False}
+        self._check_cancelled()
+        source_digest = fingerprint(messages, report["source_end"], self._check_cancelled)
+        provider = self.provider
+        if isinstance(provider, Provider):
+            provider = copy.copy(provider)  # Keep the same opener and shared measurements.
+            provider.config = self._summary_config()
+        response = validate_message(provider.complete(request, []), wire_api=self.config.wire_api,
+                                    preserve_reasoning=self.config.preserve_reasoning)
+        if response.get("tool_calls") or not isinstance(response.get("content"), str):
+            raise ValueError("summary response must be JSON text with no tool calls; checkpoint unchanged")
+        content = response["content"]
+        if len(content) > MAX_SUMMARY or len(content.encode("utf-8")) > MAX_SUMMARY:
+            raise ValueError("summary response exceeds 16 KiB; checkpoint unchanged")
+        try:
+            fields = summary_fields(json.loads(content))
+        except (ValueError, TypeError, RecursionError):
+            raise ValueError("invalid structured summary; checkpoint unchanged") from None
+        candidate = {"version": 1, "end": report["source_end"], "sha256": source_digest,
+                     "binding": binding_digest(self.config.binding()),
+                     "summary": redact(fields, self.config.secrets)}
+        summary_state(candidate, messages, self._check_cancelled, binding=self.config.binding())
+        previous, old_schemas = self.summary, self.schemas
+        # Include the actual old/new schema sets and deterministic compaction
+        # in both sizes; the added history tool counts against the saving.
+        _, old_budget = prepare_context(self.config, self._request_messages(messages, 1), self.schemas,
+                                        self.compact_context, check_cancelled=self._check_cancelled)
+        before = old_budget["after_bytes"]
+        try:
+            self.restore_summary(candidate, messages)
+            projected, budget = prepare_context(self.config, self._request_messages(messages, 1), self.schemas,
+                                               self.compact_context, check_cancelled=self._check_cancelled)
+            if budget["after_bytes"] >= before:
+                raise ValueError("summary does not reduce the request; checkpoint unchanged")
+            self._check_cancelled()
+            self._checkpoint(messages)
+        except BaseException:
+            self.summary, self.schemas = previous, old_schemas
+            raise
+        return {**report, "approved": True, "network_contacted": True, "checkpoint": copy.deepcopy(candidate),
+                "request_before_bytes": before, "request_after_bytes": budget["after_bytes"],
+                "within_budget": budget["within_budget"], "task_executed": False}
 
     def restore_references(self, state=None):
         self.references.restore(state)
@@ -221,8 +367,14 @@ class Agent:
     def context_preview(self, messages):
         selected = list(messages or [{"role": "system", "content": self._prompt()}])
         self._refresh_instructions(selected)
-        return prepare_context(self.config, self._request_messages(selected, 1), self.schemas, compact=True, force=True,
-                               check_cancelled=self._check_cancelled)[1]
+        request = self._request_messages(selected, 1)
+        report = prepare_context(self.config, request, self.schemas, compact=True, force=True,
+                                 check_cancelled=self._check_cancelled)[1]
+        if self.summary is not None:
+            report["summary_checkpoint"] = {"source_end": self.summary["end"], "source_sha256": self.summary["sha256"],
+                                            "original_messages": len(selected), "projected_messages": len(request),
+                                            "original_history_retained": True, "lossy_model_report": True}
+        return report
 
     def _prompt(self):
         prompt = SYSTEM_PROMPT
@@ -305,6 +457,13 @@ class Agent:
             raise KeyboardInterrupt
 
     def _execute_model_tool(self, name, arguments):
+        if name == "read_history":
+            try:
+                if not isinstance(arguments, dict):
+                    raise ValueError("history arguments must be an object")
+                return self.read_history(**arguments, model=True)
+            except (ValueError, TypeError, OSError) as error:
+                return {"error": redact(str(error), self.config.secrets)}
         if name == "file_action":
             try:
                 self._references_after_file_action(arguments)
@@ -337,6 +496,7 @@ class Agent:
         self._check_cancelled()
         # Runtime budget belongs to this invocation, not resumable history.
         # Include it before sizing/compaction so it cannot bypass the byte cap.
+        messages = project_summary(messages, self.summary, self._check_cancelled, binding=self.config.binding())
         messages = [dict(messages[0]), *messages[1:]]
         messages[0]["content"] += (
             f"\nCurrent run: model request {step} of {self.config.max_steps}; "
@@ -505,6 +665,7 @@ class Agent:
             raise
         finally:
             self._context_files = []
+            self._current_history = None
             self._running = False
 
     def _run(self, task=None, messages=None):
@@ -519,6 +680,7 @@ class Agent:
         messages[0] = {"role": "system", "content": prompt}
         if task:
             messages.append({"role": "user", "content": redact(task, self.config.secrets)})
+        self._current_history = messages
         self._steer(messages)
         if len(messages) < 2:
             raise ValueError("a task is required for a new session")

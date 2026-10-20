@@ -1,0 +1,383 @@
+"""Source-bound checkpoints preserve originals, privacy and fresh action gates."""
+
+import copy
+from contextlib import closing
+from dataclasses import replace
+import json
+from pathlib import Path
+import sys
+import tempfile
+import threading
+import unittest
+from unittest.mock import Mock, patch
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
+from sprig_agent import cli
+from sprig_agent.agent import Agent
+from sprig_agent.config import Config
+from sprig_agent.provider import Provider, ProviderError
+from sprig_agent.session import SessionError, SessionStore, validate_history
+from sprig_agent.summary import (FIELDS, binding_digest, closed_end, fingerprint, history_page,
+                                 project, summary_fields, summary_state)
+from sprig_agent.tools import Tools
+from sprig_agent.tui import ApprovalScreen, TaskInput
+from tests import test_tui as fixture
+from tests.test_generation_options import envelope
+from tests.test_native_protocols import backend, native
+
+
+def fields():
+    return {"objective": "Finish the requested implementation", **{key: [] for key in FIELDS},
+            "requirements": ["Keep tests intact"], "active": ["Verify the remaining behavior"],
+            "next": ["Read original message 3 if details are needed"]}
+
+
+def history():
+    return [{"role": "system", "content": "system"}, {"role": "user", "content": "Keep tests intact 中文🙂"},
+            *[{"role": "assistant", "content": f"OLD_DETAIL_{i}: " + "x" * 1000} for i in range(12)],
+            *[{"role": "assistant", "content": "recent " + "r" * 100} for _ in range(6)]]
+
+
+class SummaryTests(unittest.TestCase):
+    def setUp(self):
+        temporary = tempfile.TemporaryDirectory()
+        self.addCleanup(temporary.cleanup)
+        self.parent = Path(temporary.name)
+        self.root = self.parent / "workspace"
+        self.root.mkdir()
+        self.config = Config(self.root, "fixture", base_url="http://localhost/v1", max_context_bytes=16000)
+        self.approve = Mock(return_value=True)
+        self.tools = Tools(self.config, self.approve)
+        self.addCleanup(self.tools.close)
+        self.saved = []
+
+    def agent(self, replies=None, **kwargs):
+        provider = fixture.ScriptedProvider(replies or [fixture.response(json.dumps(fields()))])
+        agent = Agent(self.config, provider, self.tools, lambda _: None,
+                      lambda rows: self.saved.append(copy.deepcopy(rows)), **kwargs)
+        return agent, provider
+
+    def test_summary_unblocks_over_budget_history_then_recovers_original_with_readonly_tool(self):
+        rows, before = history(), history()
+        agent, provider = self.agent([fixture.response(json.dumps(fields())),
+                                     fixture.call("recover", "read_history", {"message": 3}), fixture.response()])
+        self.assertFalse(agent.context_preview(rows)["within_budget"])
+        preview = agent.summary_preview(rows)
+        self.assertTrue(preview["input_fits"])
+        self.assertEqual(provider.calls, [])
+        result = agent.summarize(rows)
+        self.assertTrue(result["within_budget"])
+        self.assertLess(result["request_after_bytes"], result["request_before_bytes"])
+        self.assertEqual(rows, before)
+        self.assertEqual(self.saved, [before])
+        self.assertEqual(len(provider.calls), 1)
+        self.assertIn("ONE additional model request", self.approve.call_args.args[0])
+        self.assertTrue(any(row["function"]["name"] == "read_history" for row in agent.schemas))
+        self.assertTrue(agent.context_preview(rows)["within_budget"])
+        _, complete = agent.run(None, rows)
+        self.assertTrue(complete)
+        self.assertNotIn("OLD_DETAIL_0", json.dumps(provider.calls[1]))
+        self.assertIn("OLD_DETAIL_0", json.dumps(provider.calls[2]))
+        self.assertEqual(agent._current_history, None)
+        self.assertIn("unavailable", agent._execute_model_tool("read_history", {"message": 3})["error"])
+
+    def test_reject_cancel_and_malformed_or_tool_response_never_apply_or_execute(self):
+        rows = history()
+        agent, provider = self.agent()
+        self.approve.return_value = False
+        self.assertFalse(agent.summarize(rows)["approved"])
+        self.assertEqual(provider.calls, [])
+        self.approve.return_value = True
+        for response in (fixture.response("not JSON"), fixture.response('{"objective":"missing fields"}'),
+                         fixture.response(json.dumps({**fields(), "unknown": []})),
+                         fixture.call("danger", "run", {"argv": [sys.executable, "-c", "raise RuntimeError"]})):
+            agent, provider = self.agent([response])
+            with self.subTest(response=response), self.assertRaises(ValueError):
+                agent.summarize(rows)
+            self.assertEqual(len(provider.calls), 1)
+            self.assertIsNone(agent.summary)
+            self.assertEqual(self.saved, [])
+        cancelled = threading.Event()
+        cancelled.set()
+        agent, provider = self.agent(cancel_event=cancelled)
+        with self.assertRaises(KeyboardInterrupt):
+            agent.summarize(rows)
+        self.assertEqual(provider.calls, [])
+
+    def test_checkpoint_failure_and_source_mutation_preserve_previous_projection(self):
+        rows = history()
+        agent, _ = self.agent()
+        agent.checkpoint = Mock(side_effect=OSError("fixture save failed"))
+        with self.assertRaises(OSError):
+            agent.summarize(rows)
+        self.assertIsNone(agent.summary)
+        self.assertNotIn("read_history", [row["function"]["name"] for row in agent.schemas])
+        agent, provider = self.agent()
+        def mutate(messages, tools):
+            rows[2]["content"] = "externally changed"
+            return fixture.response(json.dumps(fields()))
+        provider.complete = mutate
+        with self.assertRaisesRegex(ValueError, "source changed"):
+            agent.summarize(rows)
+        self.assertIsNone(agent.summary)
+        self.assertEqual(self.saved, [])
+
+    def test_invalid_summary_source_and_binding_fail_closed_before_task_provider(self):
+        rows = history()
+        agent, provider = self.agent()
+        agent.summarize(rows)
+        checkpoint = copy.deepcopy(agent.summary)
+        rows[2]["content"] += "changed"
+        with self.assertRaisesRegex(ValueError, "source changed"):
+            agent.run(None, rows)
+        self.assertEqual(len(provider.calls), 1)
+        rows = history()
+        for config in (replace(self.config, model="other"), replace(self.config, wire_api="messages"),
+                       replace(self.config, base_url="http://localhost/elsewhere")):
+            other = Agent(config, provider, self.tools, lambda _: None)
+            with self.subTest(config=config.wire_api), self.assertRaisesRegex(ValueError, "changed"):
+                other.restore_summary(checkpoint, rows)
+
+    def test_input_budget_limits_and_closed_tail_prevent_hidden_extra_requests(self):
+        agent, provider = self.agent()
+        rows = history()
+        rows[1]["content"] = "x" * 18000
+        self.assertFalse(agent.summary_preview(rows)["input_fits"])
+        with self.assertRaisesRegex(ValueError, "no request sent"):
+            agent.summarize(rows)
+        self.approve.assert_not_called()
+        self.assertEqual(provider.calls, [])
+        for end in (True, 1, len(rows), -1):
+            with self.assertRaises(ValueError):
+                closed_end(rows, 6, end)
+        unfinished = history()
+        unfinished.extend([fixture.call("pending", "run", {"argv": ["unused"]})])
+        with self.assertRaisesRegex(ValueError, "closed conversation"):
+            agent.summarize(unfinished)
+        self.assertEqual(provider.calls, [])
+
+    def test_summary_fields_bytes_and_privacy_safe_page_boundaries(self):
+        for invalid in ({**fields(), "files": ["a"] * 16}, {**fields(), "objective": ""},
+                        {**fields(), "notes": ["中" * 512] * 16}):
+            with self.assertRaises(ValueError):
+                summary_fields(invalid)
+        secret = "fixture-credential-value-123456"
+        rows = [{"role": "system", "content": "PRIVATE_SYSTEM"},
+                {"role": "assistant", "content": "中文🙂\\\" " * 100 + secret,
+                 "reasoning_content": "PRIVATE_REASONING"}]
+        text, offset = "", 0
+        for _ in range(100):
+            page = history_page(rows, 2, offset, budget=256, secrets=(secret,))
+            self.assertLessEqual(len(json.dumps(page, ensure_ascii=False).encode()), 256)
+            text += page["text"]
+            if page["complete"]:
+                break
+            self.assertGreater(page["next_offset"], offset)
+            offset = page["next_offset"]
+        self.assertNotIn(secret, text)
+        self.assertNotIn("PRIVATE_REASONING", text)
+        self.assertNotIn("PRIVATE_SYSTEM", text)
+        self.assertIn("[REDACTED]", text)
+        self.assertEqual(json.loads(text)["role"], "assistant")
+        for message in (1, 0, 3, True, "2"):
+            with self.assertRaises(ValueError):
+                history_page(rows, message)
+
+    def test_latest_negative_batch_current_task_and_recent_tail_are_retained_verbatim(self):
+        rows = history()
+        failed = fixture.call("failed", "run", {"argv": ["test"]})
+        result = {"role": "tool", "tool_call_id": "failed", "content": json.dumps({"approved": False, "error": "EXACT_REJECTION"})}
+        rows[5:5] = [failed, result]
+        agent, _ = self.agent()
+        agent.summarize(rows)
+        selected = project(rows, agent.summary)
+        self.assertIn("EXACT_REJECTION", json.dumps(selected))
+        self.assertIn("Keep tests intact 中文🙂", [row["content"] for row in selected if row["role"] == "user"])
+        self.assertEqual(selected[-6:], rows[-6:])
+        self.assertFalse(any(row.get("tool_calls") for row in selected))
+        self.assertEqual(validate_history(selected), selected)
+
+    def test_save_restore_listing_clear_and_tamper_never_replay(self):
+        rows = history()
+        agent, provider = self.agent()
+        with closing(SessionStore(self.parent / "sessions", self.config)) as store:
+            agent.checkpoint = lambda messages: store.save("one", messages, **agent.reference_save_options())
+            agent.summarize(rows)
+            loaded = store.load("one")
+            self.assertEqual(loaded, rows)
+            self.assertEqual(store.loaded_summary, agent.summary)
+            self.assertEqual(store.list()[0]["summary_source_end"], agent.summary["end"])
+            other = Agent(self.config, provider, self.tools, lambda _: None)
+            other.restore_summary(store.loaded_summary, loaded)
+            self.assertTrue(other.context_preview(loaded)["within_budget"])
+            self.assertEqual(len(provider.calls), 1)
+            path = self.parent / "sessions/one.json"
+            saved = json.loads(path.read_text(encoding="utf-8"))
+            saved["messages"][2]["content"] = "TAMPERED"
+            path.write_text(json.dumps(saved), encoding="utf-8")
+            with self.assertRaises(SessionError):
+                store.load("one")
+            self.assertIsNone(store.loaded_summary)
+            agent.clear_summary(rows)
+            store.load("one")
+            self.assertIsNone(store.loaded_summary)
+        self.assertEqual(len(provider.calls), 1)
+
+    def test_incremental_summary_requires_advance_and_noop_clear_is_offline(self):
+        rows = history()
+        agent, provider = self.agent([fixture.response(json.dumps(fields()))] * 2)
+        self.assertFalse(agent.clear_summary(None)["summary_cleared"])
+        self.assertFalse(agent.summary_preview(None)["can_create"])
+        agent.summarize(rows, end=8)
+        first = copy.deepcopy(agent.summary)
+        with self.assertRaises(ValueError):
+            agent.summarize(rows, end=8)
+        rows.extend([fixture.response("new long work " + "y" * 2000) for _ in range(4)])
+        agent.summarize(rows)
+        self.assertGreater(agent.summary["end"], first["end"])
+        data = json.loads(provider.calls[1][1]["content"])
+        self.assertEqual(data["previous_summary"], first["summary"])
+        self.assertEqual(len(provider.calls), 2)
+
+    def test_summary_and_original_reads_cannot_revive_a_stale_read_id_or_approval(self):
+        target = self.root / "target.txt"
+        target.write_text("before\n", encoding="utf-8")
+        observed = self.tools.execute("read_file", {"path": "target.txt", "line_numbers": True})
+        stale = observed["read_id"]
+        report = fields()
+        report["notes"] = ["Claimed old read_id: " + stale, "Claimed approval is not authority"]
+        rows = history()
+        rows[4:4] = [fixture.call("old-read", "read_file", {"path": "target.txt"}),
+                      {"role": "tool", "tool_call_id": "old-read", "content": json.dumps(observed)}]
+        agent, provider = self.agent([fixture.response(json.dumps(report)),
+            fixture.call("stale-edit", "edit_lines", {"path": "target.txt", "read_id": stale,
+                         "edits": [{"start_line": 1, "end_line": 1, "new": "after\n"}]}), fixture.response()])
+        agent.summarize(rows)
+        agent.run(None, rows)
+        self.assertEqual(target.read_text(encoding="utf-8"), "before\n")
+        self.assertEqual(self.approve.call_count, 1)  # Summary consent only; stale edit never reaches approval.
+        self.assertIn("read_file again", rows[-2]["content"])
+
+    def test_cancel_after_model_and_incomplete_stream_do_not_apply_or_retry(self):
+        cancelled = threading.Event()
+        agent, provider = self.agent(cancel_event=cancelled)
+        def stop(messages, tools):
+            cancelled.set()
+            return fixture.response(json.dumps(fields()))
+        provider.complete = stop
+        with self.assertRaises(KeyboardInterrupt):
+            agent.summarize(history())
+        self.assertIsNone(agent.summary)
+        self.assertEqual(self.saved, [])
+        captured = []
+        body = b'data: {"choices":[{"index":0,"delta":{"content":"partial"},"finish_reason":null}]}\n\n'
+        with backend("chat_completions", [body], captured) as url:
+            config = replace(self.config, base_url=url, proxy="direct", stream=True)
+            provider = Provider(config)
+            agent = Agent(config, provider, self.tools, lambda _: None)
+            with self.assertRaises(ProviderError):
+                agent.summarize(history())
+            self.assertIsNone(agent.summary)
+            self.assertEqual(len(captured), 1)
+            self.assertEqual(provider.measurements.report()["attempts"], 1)
+
+    def test_disabled_model_history_tool_does_not_prevent_local_source_view(self):
+        self.config = replace(self.config, disabled_tools=("read_history",))
+        agent, _ = self.agent()
+        rows = history()
+        agent.summarize(rows)
+        self.assertNotIn("read_history", [row["function"]["name"] for row in agent.schemas])
+        self.assertIn("unavailable", agent._execute_model_tool("read_history", {"message": 3})["error"])
+        self.assertIn("OLD_DETAIL_0", history_page(rows, 3)["text"])
+
+    def test_cli_controls_preview_read_create_clear_do_not_execute_task(self):
+        rows = history()
+        agent, provider = self.agent()
+        output = []
+        with patch("builtins.input", side_effect=["/summary", "/history 3", "/summary create", "/summary clear", "/exit"]):
+            status = cli.chat(agent, None, rows, output.append, autostart=False)
+        self.assertEqual(status, 0)
+        self.assertEqual(len(provider.calls), 1)
+        self.assertIsNone(agent.summary)
+        self.assertIn("OLD_DETAIL_0", "\n".join(output))
+
+    def test_three_protocols_http_and_sse_have_no_summary_tools_and_share_measurements(self):
+        for protocol in ("chat_completions", "messages", "responses"):
+            for stream in (False, True):
+                captured = []
+                reply = envelope(fixture.response(json.dumps(fields()))) if protocol == "chat_completions" else native(protocol, json.dumps(fields()))
+                # Chat fixture SSE requires its own encoding; native fixture supports both.
+                if protocol == "chat_completions" and stream:
+                    text = json.dumps(fields())
+                    reply = ("data: " + json.dumps({"choices": [{"index": 0, "delta": {"content": text}, "finish_reason": "stop"}]})
+                             + "\n\ndata: [DONE]\n\n").encode()
+                with self.subTest(protocol=protocol, stream=stream), backend(protocol, [reply], captured, stream=stream) as url:
+                    config = replace(self.config, base_url=url, wire_api=protocol, proxy="direct", stream=stream)
+                    provider = Provider(config)
+                    agent = Agent(config, provider, self.tools, lambda _: None)
+                    agent.summarize(history())
+                    body = captured[0]["body"]
+                    self.assertNotIn("tools", body)
+                    self.assertNotIn("tool_choice", body)
+                    self.assertEqual(body["max_output_tokens" if protocol == "responses" else "max_tokens"],
+                                     4096 if protocol == "messages" else 2048)
+                    self.assertEqual(provider.measurements.report()["attempts"], 1)
+
+    def test_explicit_output_and_messages_thinking_budget_are_not_silently_reduced(self):
+        captured = []
+        extra = {"thinking": {"type": "enabled", "budget_tokens": 4096}}
+        with backend("messages", [native("messages", json.dumps(fields()))], captured) as url:
+            config = replace(self.config, base_url=url, wire_api="messages", proxy="direct", max_tokens=8192,
+                             extra_body=json.dumps(extra))
+            agent = Agent(config, Provider(config), self.tools, lambda _: None)
+            preview = agent.summary_preview(history())
+            agent.summarize(history())
+            self.assertEqual(preview["generation_options"]["max_tokens"], 8192)
+            self.assertEqual(captured[0]["body"]["max_tokens"], 8192)
+            self.assertEqual(captured[0]["body"]["thinking"], extra["thinking"])
+
+
+class SummaryTuiTests(unittest.IsolatedAsyncioTestCase):
+    asyncSetUp = fixture.TuiTests.asyncSetUp
+    setUp = fixture.TuiTests.setUp
+    app = fixture.TuiTests.app
+    until = fixture.TuiTests.until
+    click = fixture.TuiTests.click
+
+    async def test_tui_summary_requires_fresh_approval_preserves_draft_and_resumes_privately(self):
+        provider = fixture.ScriptedProvider([fixture.response(json.dumps(fields()))])
+        app = self.app(provider, save_session="summary")
+        async with app.run_test(size=(110, 36)) as pilot:
+            app.messages = history()
+            editor = app.query_one("#task", TaskInput)
+            editor.load_text("UNSENT_DRAFT")
+            app.slash_command("/summary")
+            self.assertEqual(provider.calls, [])
+            app.slash_command("/summary create")
+            await self.until(pilot, lambda: isinstance(app.screen, ApprovalScreen))
+            await self.click(pilot, "#reject")
+            await self.until(pilot, lambda: not app.busy)
+            self.assertEqual(provider.calls, [])
+            self.assertIsNone(app.agent.summary)
+            app.slash_command("/summary create")
+            await self.until(pilot, lambda: isinstance(app.screen, ApprovalScreen))
+            await self.click(pilot, "#approve")
+            await self.until(pilot, lambda: not app.busy)
+            self.assertEqual(len(provider.calls), 1)
+            self.assertIsNotNone(app.agent.summary)
+            self.assertEqual(editor.text, "UNSENT_DRAFT")
+            app.slash_command("/history 3")
+            self.assertIn("OLD_DETAIL_0", app.transcript)
+        app.close()
+        restored = self.app(fixture.ScriptedProvider([]), resume="summary")
+        self.assertIsNotNone(restored.agent.summary)
+        async with restored.run_test(size=(110, 36)) as pilot:
+            self.assertFalse(restored.busy)
+            self.assertEqual(restored.messages, history())
+            restored.slash_command("/summary clear")
+            await self.until(pilot, lambda: not restored.busy)
+            self.assertIsNone(restored.agent.summary)
+
+
+if __name__ == "__main__":
+    unittest.main()

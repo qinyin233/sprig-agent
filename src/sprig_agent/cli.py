@@ -101,6 +101,7 @@ def chat(agent, task, messages, emit, *, autostart=True):
             return status
         try:
             if task == "/help":
+                emit("/summary previews an optional lossy checkpoint; /summary create [END] makes one extra model request after approval; /summary clear restores the full request view. /history MESSAGE [OFFSET] locally pages original data.")
                 emit("/ref PATH adds a live file reference; /unref PATH removes it; /refs lists metadata; /refs clear removes all. No model request is sent. Small complete files refresh before requests; larger files provide path/size only.")
                 emit("/worktrees lists local checkouts; /worktree PATH creates a detached checkout after fresh approvals. All remaining text is the path; the current conversation stays in this workspace.")
                 emit("Enter a task to continue the same conversation. /continue explicitly continues retained history without adding a duplicate request; /status shows local context; /plan shows model-reported progress, never approval or acceptance; /context previews the request budget; /usage shows local numeric request measurements and unknown token counts; /compact confirms request-only elision; /changes lists exact edit backups; /undo and /redo require diff approval; /discard-history confirms removal of backups; /diff and /git show Git changes with approval; /exit closes chat.")
@@ -136,6 +137,24 @@ def chat(agent, task, messages, emit, *, autostart=True):
                 emit("Runtime (current process only): " + json.dumps(agent.runtime_snapshot(), ensure_ascii=False))
             elif task == "/context":
                 emit(json.dumps(agent.context_preview(messages), ensure_ascii=False, indent=2))
+            elif task == "/summary" or task.startswith("/summary "):
+                parts = task.split()
+                if len(parts) == 1:
+                    result = agent.summary_preview(messages)
+                elif parts == ["/summary", "clear"]:
+                    result = agent.clear_summary(messages)
+                elif len(parts) in {2, 3} and parts[1] == "create":
+                    result = agent.summarize(messages, int(parts[2]) if len(parts) == 3 else None)
+                else:
+                    raise ValueError("Use /summary, /summary create [END], or /summary clear")
+                emit(json.dumps(redact(result, agent.config.secrets), ensure_ascii=False, indent=2))
+            elif task.startswith("/history "):
+                from .summary import history_page
+                parts = task.split()
+                if len(parts) not in {2, 3}:
+                    raise ValueError("Use /history MESSAGE [OFFSET]")
+                emit(json.dumps(history_page(messages or [], int(parts[1]), int(parts[2]) if len(parts) == 3 else 0,
+                                             budget=min(agent.config.max_output, 8192), secrets=agent.config.secrets), ensure_ascii=False))
             elif task == "/plan":
                 emit("Task plan (model-reported; not approval or acceptance): " + json.dumps(agent.plan_snapshot(), ensure_ascii=False))
             elif task == "/usage":
@@ -388,6 +407,7 @@ def main(argv=None):
         if args.resume:
             state = getattr(store, "loaded_references", None)
             agent.restore_references(state if isinstance(state, dict) else None)
+            agent.restore_summary(store.loaded_summary, messages)
             if args.reference_files:
                 messages, _ = agent.update_references(config.reference_files, messages=messages)
         if args.file:

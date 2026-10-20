@@ -188,7 +188,9 @@ def payload(config, messages, tools):
                 history.append({"role": role, "content": message["content"]})
             for call in message.get("tool_calls", []):
                 history.append({"type": "function_call", "call_id": call["id"], **call["function"]})
-    body = {"model": config.model, "tools": definitions, "tool_choice": {"type": "auto"} if protocol == "messages" else "auto"}
+    body = {"model": config.model}
+    if definitions:
+        body.update(tools=definitions, tool_choice={"type": "auto"} if protocol == "messages" else "auto")
     if protocol == "messages":
         body.update(messages=history, system=system)
     else:

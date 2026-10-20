@@ -20,7 +20,7 @@ from sprig_agent.config import Config
 from sprig_agent.context import prepare_context, request_body
 from sprig_agent.provider import NoRedirect, Provider, ProviderError
 from sprig_agent.session import SessionError, SessionStore
-from sprig_agent.tools import Tools
+from sprig_agent.tools import TOOL_SCHEMAS, Tools
 
 
 @contextmanager
@@ -69,10 +69,14 @@ class GenerationOptionsTests(unittest.TestCase):
         self.root.mkdir()
         self.config = Config(self.root, "fixture")
 
-    def test_default_options_leave_payload_and_old_session_binding_unchanged(self):
+    def test_default_options_keep_binding_and_omit_tool_fields_when_no_tools_are_supplied(self):
         self.assertEqual(self.config.generation_options(), {})
         payload = json.loads(request_body(self.config, [], []))
-        self.assertEqual(set(payload), {"model", "messages", "tools", "tool_choice"})
+        self.assertEqual(set(payload), {"model", "messages"})
+        with_tools = json.loads(request_body(self.config, [], TOOL_SCHEMAS))
+        self.assertEqual(set(with_tools), {"model", "messages", "tools", "tool_choice"})
+        self.assertEqual(with_tools["tools"], TOOL_SCHEMAS)
+        self.assertEqual(with_tools["tool_choice"], "auto")
         self.assertEqual(self.config.binding(), {"model": "fixture", "base_url": "https://api.openai.com/v1",
                                                 "workdir": str(self.root.resolve())})
         for value in (1, 65536):

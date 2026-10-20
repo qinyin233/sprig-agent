@@ -16,6 +16,7 @@ from .filesystem import Directory
 from .json_budget import JsonBudgetExceeded, encoded_size
 from .provider import ProviderError, validate_message
 from .references import reference_state
+from .summary import summary_state
 
 MAX_SESSION = 8 * 1024 * 1024
 MAX_LIST_ENTRIES = 4096
@@ -108,6 +109,7 @@ class SessionStore:
                     break
         self.config = config
         self.loaded_references = reference_state()
+        self.loaded_summary = None
         # A nested workdir must not allow storing transcripts elsewhere in the same repo.
         forbidden = [config.workdir]
         for parent in (config.workdir, *config.workdir.parents):
@@ -204,16 +206,16 @@ class SessionStore:
                 return
             raise SessionError("session already exists; use --resume or choose a new name")
 
-    def save_new(self, name, messages, *, references=None):
+    def save_new(self, name, messages, *, references=None, summary=None):
         """Reserve and save a fresh name together, retaining ownership only on success."""
         with self._reservation(name):
             self.ensure_new(name)
-            if references is None:
-                self.save(name, messages)
-            else:
-                self.save(name, messages, references=references)
+            options = {"references": references} if references is not None else {}
+            if summary is not None:
+                options["summary"] = summary
+            self.save(name, messages, **options)
 
-    def save(self, name, messages, *, references=None):
+    def save(self, name, messages, *, references=None, summary=None):
         filename = self._filename(name)
         payload = {"version": 1, "binding": self.config.binding(), "messages": messages}
         if references is not None:
@@ -226,6 +228,12 @@ class SessionStore:
                     raise SessionError("configured credentials cannot appear in saved file reference paths")
                 payload["file_references"] = selected
         payload = redact(payload, self.config.secrets)
+        if summary is not None:
+            try:
+                payload["summary_checkpoint"] = summary_state(redact(summary, self.config.secrets), payload["messages"],
+                                                               binding=self.config.binding())
+            except ValueError:
+                raise SessionError("invalid summary checkpoint; no data was overwritten") from None
         try:
             encoded_size(payload, max_bytes=MAX_SESSION, indent=2)
         except JsonBudgetExceeded:
@@ -251,6 +259,7 @@ class SessionStore:
 
     def load(self, name):
         self.loaded_references = reference_state()
+        self.loaded_summary = None
         filename = self._filename(name)
         with self._reservation(name):
             return self._load(filename)
@@ -274,9 +283,11 @@ class SessionStore:
         history = redact(validate_history(saved.get("messages")), self.config.secrets)
         try:
             selected = reference_state(saved.get("file_references"))
+            checkpoint = summary_state(saved.get("summary_checkpoint"), history, binding=self.config.binding())
         except ValueError:
-            raise SessionError("invalid saved file reference state; no files were read") from None
+            raise SessionError("invalid saved file reference or summary state; no files were read") from None
         self.loaded_references = selected
+        self.loaded_summary = checkpoint
         return history
 
     def list(self):
@@ -332,6 +343,7 @@ class SessionStore:
                             raise ValueError
                         history = validate_history(saved.get("messages"))
                         selected = reference_state(saved.get("file_references"))
+                        checkpoint = summary_state(saved.get("summary_checkpoint"), history, binding=saved["binding"])
                         if self._stamp(self._check_file(entry.name)) != self._stamp(info):
                             raise ValueError("session changed during scan")
                         binding = {key: saved["binding"][key][:4096] for key in ("model", "base_url", "workdir")
@@ -341,6 +353,8 @@ class SessionStore:
                                       _digest=hashlib.sha256(raw).digest(), _active=owned)
                         if selected["files"]:
                             record["reference_files"] = len(selected["files"])
+                        if checkpoint is not None:
+                            record["summary_source_end"] = checkpoint["end"]
                 except SessionError as error:
                     if "busy" in str(error):
                         record["busy"] = True

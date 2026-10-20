@@ -17,6 +17,7 @@ COMMANDS = {
     "continue": "继续对话", "new": "新建对话", "cancel": "取消任务", "exit": "退出",
     "git": "查看 Git 状态", "diff": "查看 Git diff", "compact": "压缩旧工具记录",
     "changes": "查看修改记录", "undo": "撤销文件编辑", "redo": "重做文件编辑",
+    "summary": "预览摘要；create 会逐次确认一次额外模型请求", "history": "本地分页回查原对话",
     "discard-history": "清除修改备份", "sessions": "列出会话", "save": "保存会话",
     "restore": "恢复会话", "delete": "删除会话", "prune": "清理旧会话",
     "worktrees": "列出工作树", "worktree": "创建工作树",

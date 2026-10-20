@@ -1,0 +1,112 @@
+{
+  "schema_version": 1,
+  "date": "2026-10-20",
+  "feature": "explicit bounded summary checkpoints with current-session original history readback",
+  "base_commit": "ea5614fd4046c24ed05e0d7f886a939a1db4d288",
+  "source_digest": {"files": 43, "sha256": "e6072e0a48206450928f184f5444cc77bd55b885714d28cb9fb47c68735d17de"},
+  "tests_digest": {"files": 65, "sha256": "0a9bab32c839a4be6442dc2950734833d13aafc0c97ff611b97d0ee1b00cf756"},
+  "digest_method": "SHA256 of compact ASCII JSON arrays of [POSIX relative path, SHA256 of bytes with CRLF normalized to LF], sorted by path; src/sprig_agent/*.py and tests/*.py separately",
+  "local_suites": [
+    {"platform": "Windows 11", "python": "3.13.0", "command": "uv run --locked python -m unittest discover -s tests -q", "total": 958, "passed": 940, "skipped": 18, "failures": 0, "errors": 0, "seconds": 208.489},
+    {"platform": "WSL Ubuntu-26.04", "python": "3.13.14", "command": "UV_PROJECT_ENVIRONMENT=.venv-wsl uv run --locked python -m unittest discover -s tests -q", "total": 958, "passed": 936, "skipped": 22, "failures": 0, "errors": 0, "seconds": 164.903}
+  ],
+  "client_suites": [
+    {"platform": "Windows 11", "command": "uv run --locked --project benchmarks/clients/mini python -m unittest discover -s benchmarks/clients/tests -q", "total": 25, "passed": 25, "skipped": 0, "seconds": 22.294},
+    {"platform": "WSL Ubuntu-26.04", "command": "UV_PROJECT_ENVIRONMENT=.venv-wsl uv run --locked --project benchmarks/clients/mini python -m unittest discover -s benchmarks/clients/tests -q", "total": 25, "passed": 25, "skipped": 0, "seconds": 161.538}
+  ],
+  "focused_summary_suite": {"total": 16, "passed": 16, "skipped": 0, "seconds": 7.240},
+  "corrected_validation_attempts": [
+    {"scope": "initial targeted selection", "total": 14, "errors": 1, "cause": "incorrect tests.test_session module name; actual module is tests.test_tools_sessions", "production_failure": false},
+    {"scope": "initial new summary module", "total": 12, "errors": 8, "seconds": 5.049, "cause": "fixture used SessionStore as a context manager, wrong metrics field, and Chat SSE choices without index; Windows cleanup added secondary errors", "correction": "use closing, attempts metric, and complete indexed SSE choices", "followup": {"total": 12, "passed": 12, "seconds": 5.052}},
+    {"scope": "first full suites before final source freeze", "total_each": 957, "windows": {"failures": 2, "skipped": 18, "seconds": 214.117}, "wsl": {"failures": 2, "skipped": 22, "seconds": 162.367}, "cause": "existing expectations omitted conditional read_history enum and required empty tools fields", "correction": "update intentional integration expectations while retaining ordinary tool payload assertions", "focused_followup": {"total": 45, "passed": 45, "seconds": 13.748}},
+    {"scope": "generation compatibility review", "cause": "lowering an explicit Messages max_tokens could conflict with a configured manual thinking budget", "correction": "honor explicit output limits; add bounded defaults only when unspecified and test 8192 max_tokens with 4096 thinking budget", "final_full_suites_after_correction": true}
+  ],
+  "fixed_workflow_fixture": {
+    "kind": "fixed_response_workflow_fixture",
+    "before_request_bytes": 21544,
+    "before_fits": false,
+    "after_request_bytes": 10066,
+    "after_fits": true,
+    "budget_bytes": 16000,
+    "summary_input_bytes": 13934,
+    "source_end": 14,
+    "tail_messages": 6,
+    "recovered_original_in_followup": true,
+    "fixture_provider_calls": 3,
+    "external_model_requests": 0,
+    "establishes_model_quality_or_general_performance": false
+  },
+  "packaging": {
+    "uv_lock_check": "passed",
+    "configuration_schema_matches": true,
+    "compileall": "passed",
+    "cli_help": "passed",
+    "sdist_and_wheel_build": "passed",
+    "wheel_source_modules_match": 43,
+    "isolated_installed_wheel_tui_smoke": "passed: fresh approval, no tool definitions on summary request, over-budget context unblocked, draft retained, private save/resume without model call, explicit continuation reads original history",
+    "isolated_smoke_fixture_provider_calls": 3,
+    "isolated_smoke_external_model_requests": 0
+  },
+  "coverage": {
+    "actual_loopback_http_and_sse_protocols": ["chat_completions", "messages", "responses"],
+    "summary_request_omits_tools_and_tool_choice": true,
+    "explicit_generation_limits_honored": true,
+    "shared_provider_measurements": true,
+    "input_budget_checked_before_approval_or_network": true,
+    "fresh_approval_for_one_extra_request": true,
+    "automatic_summary_or_retry": false,
+    "complete_response_and_strict_fields_required": true,
+    "source_and_binding_hashes_validated": true,
+    "original_history_saved_without_replacement": true,
+    "recent_closed_tail_and_current_user_text_retained": true,
+    "latest_negative_tool_batch_retained_as_inert_data": true,
+    "net_request_reduction_includes_history_tool_overhead": true,
+    "stale_read_id_cannot_edit_after_summary": true,
+    "summary_is_approval_or_acceptance": false,
+    "cancel_malformed_incomplete_or_mutated_source_does_not_apply": true,
+    "checkpoint_failure_rolls_back_memory": true,
+    "private_save_load_tamper_and_incremental_coverage": true,
+    "model_history_tool_current_run_and_source_range_only": true,
+    "full_record_redacted_before_exact_utf8_json_paging": true,
+    "system_and_native_reasoning_not_returned_by_history_tool": true,
+    "disabled_model_history_tool_preserves_local_history_command": true,
+    "cli_and_actual_textual_workflows": true,
+    "native_process_or_filesystem_implementation_changed": false
+  },
+  "limits": {
+    "structured_summary_utf8_bytes": 16384,
+    "source_and_session_utf8_bytes": 8388608,
+    "history_page_utf8_json_bytes": "min(config.max_output, 8192)",
+    "small_page_test_utf8_json_bytes": 256,
+    "ordinary_tool_definitions": 9,
+    "active_summary_tool_definitions": 10,
+    "default_summary_max_tokens": {"chat_completions": 2048, "messages": 4096, "responses": 2048},
+    "explicit_max_tokens_replaced": false,
+    "source_range_fixed_when_checkpoint_is_created": true
+  },
+  "ci": {
+    "status": "pending_after_push",
+    "workflow": "native-regression.yml",
+    "runners": ["ubuntu-latest", "windows-latest"],
+    "python": "3.13",
+    "full_matrix": false,
+    "reason": "Substantial accumulated long-conversation, session, TUI and three-protocol integration; verify with two native jobs",
+    "functional_commit_skip_marker": "[skip ci]",
+    "later_evidence_docs_skip_ci": true,
+    "prior_commit_green_is_not_attributed_to_this_batch": true
+  },
+  "external_model_requests_this_batch": 0,
+  "billing_not_used_as_acceptance_gate": true,
+  "model_acceptance_basis": "Three supported wire protocols, existing actual channel-model calls and workflow evidence; channel access being free does not make those models synthetic or require an extra commercial account",
+  "limitations": [
+    "Structured fields and source hashes do not prove summary semantic truth or long-task success",
+    "No automatic compaction, provider-native compaction or exact token-window estimation",
+    "Existing 8 MiB session limit is unchanged",
+    "Changing the recent-message setting does not undo an existing checkpoint; clear before choosing a new source range",
+    "A disk replacement may already have occurred when a later sync reports failure; reload to inspect persisted state",
+    "History paging exposes only the current session and does not expand session storage capacity",
+    "WSL is local POSIX coverage; platform skips are not passes",
+    "No macOS or full Python/client CI matrix in this batch",
+    "Fixed-response fixtures establish protocol and state handling, not general model capability or agent parity"
+  ]
+}

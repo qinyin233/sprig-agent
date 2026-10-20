@@ -84,6 +84,7 @@ edit_lines = true # also disabled when edit_file=false
 file_action = true # mkdir/delete/move; also disabled when edit_file=false
 run = true
 update_plan = true # bounded task checklist, not approval or acceptance
+read_history = true # only exposed with an active summary; original conversation data, not current file evidence
 
 [files]
 exclude = ["private/", "*.local.json"] # additive with .sprigignore

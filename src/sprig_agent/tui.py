@@ -368,6 +368,7 @@ class SprigApp(App[int]):
             if resume and self.store:
                 selected = getattr(self.store, "loaded_references", None)
                 self.agent.restore_references(selected if isinstance(selected, dict) else None)
+                self.agent.restore_summary(self.store.loaded_summary, self.messages)
                 if dict(config.setting_sources).get("reference_files") == "CLI" and config.reference_files:
                     self.messages, _ = self.agent.update_references(config.reference_files, messages=self.messages)
             if files:
@@ -733,12 +734,17 @@ class SprigApp(App[int]):
                     self.messages, result = self.agent.attach_files(arguments["paths"], self.messages)
                 elif name == "references":
                     self.messages, result = self.agent.update_references(messages=self.messages, **arguments)
+                elif name == "summary":
+                    result = self.agent.summarize(self.messages, **arguments)
+                elif name == "clear-summary":
+                    result = self.agent.clear_summary(self.messages)
                 elif name in {"worktree-create", "worktree-list"}:
                     from .worktrees import worktree_action
                     result = worktree_action(self.config, self.confirm, cancel_event=self.cancel_event, **arguments)
                 else:
                     result = self.tools.execute(name, arguments)
-                self.emit("[本地查看，不自动上传]\n" + json.dumps(result, ensure_ascii=False, indent=2))
+                self.emit(("[显式摘要；不执行任务]\n" if name == "summary" else "[本地查看，不自动上传]\n")
+                          + json.dumps(result, ensure_ascii=False, indent=2))
                 if "error" in result or result.get("approved") is False or result.get("returncode", 0) != 0:
                     status, message = 2, "本地操作未完成"
             else:
@@ -1012,6 +1018,7 @@ class SprigApp(App[int]):
                 self.agent.restore_plan(history)
                 selected = getattr(self.store, "loaded_references", None)
                 self.agent.restore_references(selected if isinstance(selected, dict) else None)
+                self.agent.restore_summary(self.store.loaded_summary, history)
                 self._draft_submission = None
                 self.refresh_plan()
                 self.pending_tasks = []
@@ -1043,6 +1050,7 @@ class SprigApp(App[int]):
             self.agent.reset_runtime()
             self.agent.restore_plan(None)
             self.agent.restore_references()
+            self.agent.restore_summary()
             self._draft_submission = None
             self.refresh_plan()
             self.pending_tasks = []
@@ -1086,6 +1094,8 @@ class SprigApp(App[int]):
                         "/help /keys /plan /status /config /models /context /usage /cancel /exit\n"
                         "/continue /new /files /add 文件路径 /ref 文件路径 /unref 文件路径 /refs [clear]\n"
                         "/map [名称或路径查询] /git /diff /compact\n"
+                        "/summary（本地预览） /summary create [END]（逐次确认额外请求） /summary clear\n"
+                        "/history 消息编号 [字符偏移]（本地分页原文，系统提示与推理元数据不展示）\n"
                         "/changes /undo /redo /discard-history /sessions /prune [--dry-run]\n"
                         "/save [名称] /restore [名称] /delete [名称]\n"
                         "/worktrees /worktree 新目录路径（完整剩余文本作为路径；不会切换当前对话）\n"
@@ -1122,6 +1132,33 @@ class SprigApp(App[int]):
             return
         if command == "/models":
             self.append("\n[配置中的模型；未联网]\n" + json.dumps(self.config.model_catalog, ensure_ascii=False, indent=2) + "\n")
+            return
+        if command in {"/summary", "/history"}:
+            if self.busy:
+                self.append("\n摘要与原文查看需等待当前任务结束；可发送普通引导或 /cancel。\n")
+                return
+            self.cancel_event.clear()  # A completed cancellation cannot cancel a new local intent.
+            try:
+                parts = argument.split()
+                if command == "/history":
+                    from .summary import history_page
+                    if len(parts) not in {1, 2}:
+                        raise ValueError("用法：/history 消息编号 [字符偏移]")
+                    result = history_page(self.messages or [], int(parts[0]), int(parts[1]) if len(parts) == 2 else 0,
+                                          budget=min(self.config.max_output, 8192), secrets=self.config.secrets)
+                elif not parts:
+                    result = self.agent.summary_preview(self.messages)
+                elif parts == ["clear"]:
+                    self.start(local=("clear-summary", {}))
+                    return
+                elif parts[0] == "create" and len(parts) <= 2:
+                    self.start(local=("summary", {"end": int(parts[1]) if len(parts) == 2 else None}))
+                    return
+                else:
+                    raise ValueError("用法：/summary、/summary create [END]、/summary clear")
+                self.append("\n[本地预览，不发送请求]\n" + json.dumps(result, ensure_ascii=False, indent=2) + "\n")
+            except (ValueError, OSError, SessionError) as error:
+                self.notify(self.safe(error), severity="error")
             return
         if command in {"/cancel", "/exit"}:
             (self.action_cancel if command == "/cancel" else self.action_quit)()

@@ -51,7 +51,9 @@ def request_payload(config, messages, tools, *, check_cancelled=None):
         return redact(payload(config, selected, tools), config.secrets)
     if any("native_state" in message for message in selected):
         raise ValueError("native protocol history cannot be sent through Chat Completions")
-    payload = {"model": config.model, "messages": redact(selected, config.secrets), "tools": tools, "tool_choice": "auto"}
+    payload = {"model": config.model, "messages": redact(selected, config.secrets)}
+    if tools:
+        payload.update(tools=tools, tool_choice="auto")
     payload.update(config.generation_options())
     if config.stream:
         payload["stream"] = True
