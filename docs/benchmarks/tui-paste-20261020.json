@@ -62,13 +62,24 @@
     "request_byte_budget_unchanged": true
   },
   "ci": {
-    "status": "pending_dispatch_after_push",
+    "status": "completed",
+    "conclusion": "success",
+    "functional_commit": "f2b4250f9f379b227c1c4a02c5b09b29004ab706",
+    "verified_head_sha": "f2b4250f9f379b227c1c4a02c5b09b29004ab706",
+    "event": "workflow_dispatch",
+    "run_id": 39391988801,
+    "url": "https://github.com/qinyin233/sprig-agent/actions/runs/39391988801",
+    "jobs": [
+      {"id": 118525475091, "name": "core (windows-latest)", "status": "completed", "conclusion": "success"},
+      {"id": 118525475202, "name": "core (ubuntu-latest)", "status": "completed", "conclusion": "success"}
+    ],
     "workflow": "native-regression.yml",
     "runners": ["ubuntu-latest", "windows-latest"],
     "python": "3.13",
     "full_matrix": false,
     "reason": "Accumulated inline files plus reversible multiline terminal input; verify Windows/POSIX integration with two native jobs",
     "functional_commit_skip_marker": "[skip ci]",
+    "later_evidence_docs_skip_ci": true,
     "prior_commit_green_is_not_attributed_to_this_batch": true
   },
   "paid_model_requests": 0,

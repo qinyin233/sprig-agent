@@ -30,4 +30,6 @@
 
 具体本地测试、构建和原生 CI 状态见[验证记录](benchmarks/tui-paste-20261020.json)。固定回复与界面回放不代表真实模型编码成绩，也不能证明已追平主流 agent。
 
-2026-10-20：最终源码 Windows / WSL 主测试各 942 项，分别 924/920 通过、18/22 平台跳过，两端 mini SDK 各 25 项通过。锁文件、Schema、编译、CLI help 与 sdist/wheel 构建通过，独立安装核对 42 个模块并执行真实 Textual 的粘贴、展开、撤销/重做及文件选择冒烟。累计本批与上一批输入功能后，计划只运行 Windows/Linux 的两作业原生 CI；此处不预先声明结果，不运行完整矩阵。没有付费模型调用，也没有物理终端剪贴板或 ConPTY 的端到端探测。
+2026-10-20：最终源码 Windows / WSL 主测试各 942 项，分别 924/920 通过、18/22 平台跳过，两端 mini SDK 各 25 项通过。锁文件、Schema、编译、CLI help 与 sdist/wheel 构建通过，独立安装核对 42 个模块并执行真实 Textual 的粘贴、展开、撤销/重做及文件选择冒烟。
+
+功能提交 `f2b4250f9f379b227c1c4a02c5b09b29004ab706` 的 [Windows/Linux 精简原生 CI](https://github.com/qinyin233/sprig-agent/actions/runs/39391988801)两个作业均成功，包含上一批内联文件选择。只运行 Python 3.13 的两个原生作业，没有完整矩阵或 macOS 结论；后续证据文档 `[skip ci]`，不把绿色结果归给不同 SHA。没有付费模型调用，也没有物理终端剪贴板或 ConPTY 的端到端探测。
