@@ -9,6 +9,7 @@
 - 分层 `config.toml`、命名提供商/模型别名/profile、生成/代理/鉴权参数、配置 Schema 与离线诊断
 - 工具禁用、文件排除、命令环境白名单、会话存储和 TUI 偏好设置
 - CLI `--file` / TUI `/add` 附加有界快照；`--ref-file` / `/ref` 维护请求前刷新的文件引用
+- TUI Tab 补全本地命令和文件参数，`/files` 模糊选择快照或实时引用；主输入框保持 Enter 发送
 - 全屏终端 TUI、连续对话、项目代码地图、分目录 `AGENTS.md` 规则与本地 Git 查看
 - 九种语言按声明名读取源码，保留真实行号与版本绑定；见[命名读取](docs/named-reads.md)
 - 同一地图按名称查询语法调用位置及所属声明；见[调用线索与边界](docs/call-sites.md)
@@ -438,6 +439,7 @@ uv run python scripts/live-tui-smoke.py
 - [同类项目对照与开发路线](docs/agent-comparison.md)：参考实现、当前覆盖和后续差距
 - [OpenCode 源码阅读与基础能力补齐](docs/research/opencode-source-reading-20261020.md)：固定源码版本、实现与测试体、Sprig 对照及分批验收顺序
 - [执行阶段与运行结果](docs/runtime-status.md)：CLI/TUI 共用的步骤、工具批准、检查及取消状态；区分模型结束和独立验收
+- [TUI 补全与文件选择](docs/tui-completion.md)：Tab 补全本地命令和文件参数，模糊选择快照或实时引用；主输入保持 Enter 发送
 - [产品能力与达标差距](docs/development-readiness.md)：完整基础能力盘点、未完成项和验收条件，区分功能交付与模型性能证据
 - [差异化调研与产品提案](docs/sprig-differentiation.md)：现有先例、需求变更工作台与分阶段验收标准；提案功能尚未实现
 - [其他产品方向调研](docs/sprig-alternative-directions.md)：首次跑通项目、失败复现卡、编程陪练等较小范围的产品方案

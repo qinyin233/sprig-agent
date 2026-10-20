@@ -1,0 +1,98 @@
+{
+  "schema_version": 1,
+  "date": "2026-10-20",
+  "feature": "local TUI command completion and bounded fuzzy file selection",
+  "base_commit": "8ec874f46338fc2989536a04a303fdd8aed485c3",
+  "source_digest": {
+    "files": 40,
+    "sha256": "e1b167c0ef2d932bd3398e17e6c6b2d755ca40d86892095a03e5f03e62f249f2"
+  },
+  "tests_digest": {
+    "files": 62,
+    "sha256": "fce86b3e215af79b8f532b595ec39f5ab517c7d830ffa55379af3fc54435ec52"
+  },
+  "digest_method": "SHA256 of compact ASCII JSON arrays of [POSIX relative path, SHA256 of bytes with CRLF normalized to LF], sorted by path; src/sprig_agent/*.py and tests/*.py separately",
+  "local_suites": [
+    {
+      "platform": "Windows 11",
+      "python": "3.13.0",
+      "total": 912,
+      "passed": 894,
+      "skipped": 18,
+      "failures": 0,
+      "errors": 0,
+      "seconds": 190.058
+    },
+    {
+      "platform": "WSL Ubuntu-26.04",
+      "python": "3.13.14",
+      "total": 912,
+      "passed": 890,
+      "skipped": 22,
+      "failures": 0,
+      "errors": 0,
+      "seconds": 132.738
+    }
+  ],
+  "corrected_validation_attempt": {
+    "scope": "initial Windows completion plus TUI focused suite",
+    "total": 69,
+    "failures": 1,
+    "skipped": 1,
+    "cause": "Misplaced cleanup assertion in the new busy-state test expected empty history after an intentional completed model turn",
+    "correction": "Remove the misplaced cleanup lines before the final frozen full-suite runs; preserve assertions that the picker does not open, scan or change guidance"
+  },
+  "packaging": {
+    "uv_lock_check": "passed",
+    "sdist_and_wheel_build": "passed",
+    "wheel_source_modules_match": 40,
+    "isolated_installed_wheel_tui_smoke": "command completion then file reference selection uses zero model calls; explicit Enter on the next task uses one fixture Provider call"
+  },
+  "privacy_and_limits": {
+    "source_bodies_read_for_discovery": false,
+    "max_entries": 5000,
+    "max_depth": 32,
+    "scan_seconds_checked_between_entries": 0.25,
+    "max_candidates": 20,
+    "max_query_characters": 256,
+    "query_debounce_seconds": 0.15,
+    "workspace_lifetime_lock": true,
+    "stale_query_results_selectable": false,
+    "selection_rechecks_privacy": true
+  },
+  "paid_model_requests": 0,
+  "agent_and_model_tool_definitions_changed": false,
+  "remote_ci": {
+    "status": "pending_manual_dispatch",
+    "workflow": "native-regression.yml",
+    "expected_jobs": [
+      "core (windows-latest)",
+      "core (ubuntu-latest)"
+    ],
+    "automatic_push_ci": "[skip ci]"
+  },
+  "limitations": [
+    "Platform skips are not passes; WSL is not native Ubuntu CI",
+    "One file per selection; no inline @ metadata or large-paste folding",
+    "Deadline is checked between entries, not a hard bound on individual OS I/O",
+    "No real model capability, coding-performance or competitor-parity result"
+  ],
+  "focused_suites": [
+    {
+      "platform": "Windows 11",
+      "module": "tests.test_completion",
+      "total": 12,
+      "passed": 11,
+      "skipped": 1,
+      "seconds": 9.37
+    },
+    {
+      "platform": "WSL Ubuntu-26.04",
+      "module": "tests.test_completion",
+      "total": 12,
+      "passed": 12,
+      "skipped": 0,
+      "seconds": 6.821
+    }
+  ]
+}

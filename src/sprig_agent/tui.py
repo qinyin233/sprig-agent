@@ -20,6 +20,7 @@ from .agent import Agent
 from .changes import ChangeHistory
 from .config import SHORTCUT_ACTIONS, redact, terminal_text
 from .provider import Provider
+from .picker import PickerScreen
 from .runtime import runtime_label
 from .session import SessionError, SessionStore, validate_history
 from .settings import public_config
@@ -42,6 +43,7 @@ class TaskInput(TextArea):
     BINDINGS = [
         Binding("enter", "send", "发送", priority=True),
         Binding("shift+enter,ctrl+j", "newline", "换行", priority=True),
+        Binding("tab", "complete", "补全", priority=True),
     ]
 
     class Submitted(Message):
@@ -49,6 +51,14 @@ class TaskInput(TextArea):
             super().__init__()
             self.editor, self.text = editor, text
             self.draft = editor.text if draft is None else draft
+
+    class Complete(Message):
+        def __init__(self, editor):
+            super().__init__()
+            self.editor = editor
+
+    def action_complete(self):
+        self.post_message(self.Complete(self))
 
     def action_send(self):
         text = self.text.strip()
@@ -129,7 +139,7 @@ class SprigApp(App[int]):
     #transcript { height: 1fr; border: round $primary; }
     #task { height: 5; border: round $accent; }
     #task-buttons { height: 3; }
-    #task-buttons Button { width: 1fr; margin-right: 1; }
+    #task-buttons Button { width: 1fr; min-width: 8; margin-right: 1; }
     #sidebar { width: 30; border-left: solid $primary; padding: 0 1; }
     #state { height: auto; min-height: 2; color: $success; }
     #task-state { height: auto; min-height: 2; color: $text-muted; }
@@ -240,6 +250,7 @@ class SprigApp(App[int]):
                 yield TaskInput(placeholder="输入消息；Enter 发送，Shift+Enter / Ctrl+J 换行；执行中可追加要求", id="task")
                 with Horizontal(id="task-buttons"):
                     yield Button("发送 / Enter", id="send", variant="primary")
+                    yield Button("选择文件", id="files")
                     yield Button("取消 / Ctrl+C", id="cancel", disabled=True)
             with Vertical(id="sidebar"):
                 yield Static("就绪", id="state", markup=False)
@@ -392,7 +403,7 @@ class SprigApp(App[int]):
 
     def set_busy(self, busy):
         self.busy = busy
-        for identity in ("continue", "new", "diff", "git", "map", "context-budget", "usage", "compact", "changes", "undo", "redo", "discard-history", "save", "restore", "sessions", "delete", "session-name"):
+        for identity in ("files", "continue", "new", "diff", "git", "map", "context-budget", "usage", "compact", "changes", "undo", "redo", "discard-history", "save", "restore", "sessions", "delete", "session-name"):
             self.query_one("#" + identity).disabled = busy or (self.config.read_only and identity in {"diff", "git", "undo", "redo"})
         self.query_one("#cancel", Button).disabled = not busy
         if not busy:
@@ -661,6 +672,45 @@ class SprigApp(App[int]):
         elif not isinstance(self.screen, ModalScreen):
             self.query_one("#task", TaskInput).action_send()
 
+    def open_picker(self, *, commands=False, query="", editor=None, command=None):
+        if self.busy or isinstance(self.screen, ModalScreen):
+            self.notify("请等待当前任务结束后选择文件或命令", severity="warning")
+            return
+
+        def selected(result):
+            if result is None or self.busy:
+                return
+            kind, value = result
+            if editor is not None:
+                if kind != "command" and value != value.strip():
+                    self.notify("路径含首尾空白，请用“选择文件”直接添加；输入未修改", severity="warning")
+                    return
+                editor.load_text((value if kind == "command" else command + " " + value) + (" " if kind == "command" else ""))
+                editor.move_cursor(editor.document.end)
+                editor.focus()
+            elif kind == "attach":
+                self.start(local=("attach", {"paths": [value]}))
+            else:
+                self.start(local=("references", {"paths": [value], "operation": "add"}))
+
+        self.push_screen(PickerScreen(commands=commands, query=query, complete_only=editor is not None), selected)
+
+    @on(TaskInput.Complete)
+    def complete_input(self, event):
+        event.stop()
+        text = event.editor.text
+        if (event.editor.id != "task" or isinstance(self.screen, ModalScreen) or self.busy
+                or "\n" in text or not text.startswith("/") or text.startswith("//")):
+            self.screen.focus_next()
+            return
+        command, separator, query = text.partition(" ")
+        if separator and command in {"/add", "/ref"}:
+            self.open_picker(query=query, editor=event.editor, command=command)
+        elif not separator:
+            self.open_picker(commands=True, query=text, editor=event.editor)
+        else:
+            self.screen.focus_next()
+
     @on(TaskInput.Submitted)
     def submitted(self, event):
         event.stop()
@@ -855,17 +905,21 @@ class SprigApp(App[int]):
         if command == "/help":
             self.append("\n本地命令（不发送给模型）：\n"
                         "/help /keys /plan /status /config /models /context /usage /cancel /exit\n"
-                        "/continue /new /add 文件路径 /ref 文件路径 /unref 文件路径 /refs [clear]\n"
+                        "/continue /new /files /add 文件路径 /ref 文件路径 /unref 文件路径 /refs [clear]\n"
                         "/map [名称或路径查询] /git /diff /compact\n"
                         "/changes /undo /redo /discard-history /sessions /prune [--dry-run]\n"
                         "/save [名称] /restore [名称] /delete [名称]\n"
                         "/worktrees /worktree 新目录路径（完整剩余文本作为路径；不会切换当前对话）\n"
                         "执行中可输入普通消息调整引导。// 开头发送以 / 开头的普通消息。\n"
+                        "Tab 补全本地命令或 /add、/ref 的文件参数；选择不会发送任务。\n"
                         "提供商和模型通过 config.toml 或启动参数选择；恢复时仍校验绑定。\n")
             return
         if command == "/keys":
             self.append("\n[快捷键] Enter 发送；Shift+Enter / Ctrl+J 换行；Ctrl+C 取消；Ctrl+Q 退出；Ctrl+L 输入。审批默认拒绝。\n"
                         + json.dumps(dict(self.config.tui_keybindings), ensure_ascii=False, indent=2) + "\n")
+            return
+        if command == "/files":
+            self.open_picker()
             return
         if command == "/plan":
             self.append("\n[任务计划；模型报告，不代表审批或验收]\n"
@@ -947,6 +1001,8 @@ class SprigApp(App[int]):
             return
         if identity == "send":
             self.action_submit()
+        elif identity == "files":
+            self.open_picker()
         elif identity == "cancel":
             self.action_cancel()
         elif not self.busy:
