@@ -4,6 +4,8 @@
 
 本页记录已有实现与早期补齐清单。扩展到八个现行项目和一个归档项目的最新调研、差异化提案及建议实施顺序见[Sprig 差异化调研与产品提案](sprig-differentiation.md)。
 
+2026-10-20 按“先读实现、先完善已有功能”的顺序完成 [OpenCode 固定版本源码阅读](research/opencode-source-reading-20261020.md)：当前 `dev@9d90d89` 已拆为 Core/AI/Server/Client/TUI，旧 `packages/opencode` 路径已不存在。新文档沿输入、执行、协议、工具、上下文和恢复追踪调用及测试体，给出 Sprig 的具体缺口和验收批次；本页下表保留早期历史，不作为当前 OpenCode 路径或功能完备性的依据。
+
 下表主要记录 2026-10-05 的实现。2026-10-15 的完整产品盘点、配置/TUI 补齐与未完成项见[产品能力与达标差距](development-readiness.md)；每批实际本地与 CI 证据见[性能验证进度](performance.md)和[历史验证记录](validation.md)。跳过 CI 的新增提交不能借用历史快照的绿色结果。
 
 ## 参考实现
@@ -11,7 +13,7 @@
 | 项目 | 直接查看的材料 | 对 Sprig 有用的设计 |
 | --- | --- | --- |
 | Aider | [README](https://github.com/Aider-AI/aider)、[base_coder.py](https://github.com/Aider-AI/aider/blob/main/aider/coders/base_coder.py) | 代码地图、Git 操作、流式回复、编辑后的 lint/test，以及把错误交回模型修复 |
-| OpenCode | [README](https://github.com/anomalyco/opencode)、[session/processor.ts](https://github.com/anomalyco/opencode/blob/dev/packages/opencode/src/session/processor.ts) | 以事件区分文本、工具意图、结果、失败与取消；流式会话状态和修改快照 |
+| OpenCode | [固定版本研究](research/opencode-source-reading-20261020.md)、[SessionStep](https://github.com/anomalyco/opencode/blob/9d90d892dcbfc52b47e95b2ea31b8aba877128fd/packages/core/src/session/runner/step.ts#L77-L153) | 输入递送与执行分离、工具与会话事件结算、上下文压缩、修改快照；具体边界见源码研究 |
 | OpenHands | [OpenHands README](https://github.com/OpenHands/OpenHands)、[Software Agent SDK](https://github.com/OpenHands/software-agent-sdk) | 模型、工具、会话与工作空间分离；本地与容器工作空间；服务器和客户端边界 |
 
 Sprig 借鉴这些接口边界和交互流程。模型传输、会话和命令核心使用 Python 标准库，终端 TUI 使用 Textual，代码解析与正则检索使用本地 Tree-sitter / RE2，所有依赖由 uv 管理。本轮实现没有复制这些项目的源码，没有引入它们的依赖或框架。

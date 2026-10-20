@@ -2,6 +2,8 @@
 
 核对日期：2026-10-15；2026-10-16 补充 Gemini CLI，2026-10-17 重新核对 OpenCode/Aider/Gemini CLI/Pi 的官方资料，见[日期调研记录](configuration-research-20261016.md)。选择有代表性的开源编程 agent 作为样本；这不是排行榜，也不是完整性能对照。以下接口不代表本地已经运行了样本的每个选项。功能配置与模型编码成绩分别验收。
 
+2026-10-20 的 [OpenCode 固定版本源码阅读](research/opencode-source-reading-20261020.md)进一步追踪当前开发分支的配置发现、权威策略、领域插件和运行时；下表保留此前官方文档口径，不将其中每个配置名称视为当前分支已连接的后端。后续实现按源码对照及验收顺序推进。
+
 | 样本 | 文件与加载方式 | 文档中的主要设置范围 |
 | --- | --- | --- |
 | [Codex 官方配置参考](https://developers.openai.com/codex/config-reference/) / [配置层级](https://developers.openai.com/codex/config-basic/) | 用户/受信项目 `config.toml`；当前 profile 为 `~/.codex/NAME.config.toml`；组织要求单独约束 | 提供商/模型、推理、上下文、项目指令、审批/沙箱、命令环境、MCP/skills/多代理、TUI keymap/主题/通知 |
