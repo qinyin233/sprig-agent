@@ -85,7 +85,17 @@
     "source_range_fixed_when_checkpoint_is_created": true
   },
   "ci": {
-    "status": "pending_after_push",
+    "status": "completed",
+    "conclusion": "success",
+    "functional_commit": "73ea8b7b4d2f377bc94314e4318d626ef94e59e7",
+    "verified_head_sha": "73ea8b7b4d2f377bc94314e4318d626ef94e59e7",
+    "event": "workflow_dispatch",
+    "run_id": 39399356968,
+    "url": "https://github.com/qinyin233/sprig-agent/actions/runs/39399356968",
+    "jobs": [
+      {"id": 118549909177, "name": "core (ubuntu-latest)", "status": "completed", "conclusion": "success"},
+      {"id": 118549909635, "name": "core (windows-latest)", "status": "completed", "conclusion": "success"}
+    ],
     "workflow": "native-regression.yml",
     "runners": ["ubuntu-latest", "windows-latest"],
     "python": "3.13",
