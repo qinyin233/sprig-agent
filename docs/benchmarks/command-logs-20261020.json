@@ -91,7 +91,17 @@
     "all_optional_history_tools_enabled_schemas": 11
   },
   "ci": {
-    "status": "pending_after_push",
+    "status": "completed",
+    "conclusion": "success",
+    "functional_commit": "9bf46eefb51cd9515604580499eff987605ed524",
+    "verified_head_sha": "9bf46eefb51cd9515604580499eff987605ed524",
+    "event": "workflow_dispatch",
+    "run_id": 39424966161,
+    "url": "https://github.com/qinyin233/sprig-agent/actions/runs/39424966161",
+    "jobs": [
+      {"id": 118635104485, "name": "core (ubuntu-latest)", "status": "completed", "conclusion": "success"},
+      {"id": 118635104972, "name": "core (windows-latest)", "status": "completed", "conclusion": "success"}
+    ],
     "workflow": "native-regression.yml",
     "runners": ["ubuntu-latest", "windows-latest"],
     "python": "3.13",
