@@ -1,0 +1,83 @@
+{
+  "schema_version": 1,
+  "date": "2026-10-20",
+  "feature": "bounded reversible TUI paste folding with complete request admission",
+  "base_commit": "179626f2708ceda66335560e88b98b0f7fa8a5f9",
+  "source_digest": {"files": 42, "sha256": "b8a8307131676d8a897acbde0f6ab6d7c67da369c219873f7b6f3aa7f5e5499e"},
+  "tests_digest": {"files": 64, "sha256": "4dce0f65f3c709fc61424527b04cf7e860f71444b5a8f27ac821618b9b412d06"},
+  "digest_method": "SHA256 of compact ASCII JSON arrays of [POSIX relative path, SHA256 of bytes with CRLF normalized to LF], sorted by path; src/sprig_agent/*.py and tests/*.py separately",
+  "local_suites": [
+    {"platform": "Windows 11", "python": "3.13.0", "total": 942, "passed": 924, "skipped": 18, "failures": 0, "errors": 0, "seconds": 227.375},
+    {"platform": "WSL Ubuntu-26.04", "python": "3.13.14", "total": 942, "passed": 920, "skipped": 22, "failures": 0, "errors": 0, "seconds": 162.405}
+  ],
+  "client_suites": [
+    {"platform": "Windows 11", "total": 25, "passed": 25, "skipped": 0, "seconds": 26.307},
+    {"platform": "WSL Ubuntu-26.04", "total": 25, "passed": 25, "skipped": 0, "seconds": 179.190}
+  ],
+  "corrected_validation_attempt": {
+    "scope": "initial Windows paste module",
+    "total": 12,
+    "errors": 1,
+    "failures": 0,
+    "seconds": 4.732,
+    "cause": "Textual refreshes scrollbars before restoring the caret on undo, allowing a multiline expansion undo to address a deleted row",
+    "correction": "Stage the caret at a valid origin before undo/redo and restore the edit's recorded redo selection; retain per-edit paste state",
+    "focused_followups": [
+      {"total": 28, "passed": 28, "skipped": 0, "seconds": 14.449},
+      {"total": 70, "passed": 68, "skipped": 2, "seconds": 33.658},
+      {"total": 14, "passed": 14, "skipped": 0, "seconds": 7.306}
+    ],
+    "final_full_suites_after_correction": true
+  },
+  "packaging": {
+    "uv_lock_check": "passed",
+    "configuration_schema_matches": true,
+    "compileall": "passed",
+    "cli_help": "passed",
+    "sdist_and_wheel_build": "passed",
+    "wheel_source_modules_match": 42,
+    "isolated_installed_wheel_tui_smoke": "passed: actual paste event, fold, expand, undo/redo and Enter preserve whitespace; inline file selection remains request-only",
+    "isolated_smoke_fixture_provider_calls": 3
+  },
+  "coverage": {
+    "new_test_methods": 14,
+    "actual_loopback_http_protocols": ["chat_completions", "messages", "responses"],
+    "paste_event_inserts_without_provider_call": true,
+    "crlf_and_cr_normalized_to_lf": true,
+    "indentation_tabs_outer_spaces_and_final_lines_preserved": true,
+    "forged_placeholder_expansion": false,
+    "explicit_edit_undo_redo_restores_pasted_body": true,
+    "file_selection_undo_never_reauthorizes_read": true,
+    "folded_slash_input_executes_local_command": false,
+    "complete_task_preflight_before_history_checkpoint_or_baseline": true,
+    "approval_guidance_rejects_old_write": true,
+    "native_process_or_filesystem_implementation_changed": false
+  },
+  "limits": {
+    "fold_above_characters": 200,
+    "fold_from_lines": 3,
+    "current_draft_paste_utf8_bytes": 2097152,
+    "folded_blocks": 16,
+    "undo_history_has_separate_retention": true,
+    "request_byte_budget_unchanged": true
+  },
+  "ci": {
+    "status": "pending_dispatch_after_push",
+    "workflow": "native-regression.yml",
+    "runners": ["ubuntu-latest", "windows-latest"],
+    "python": "3.13",
+    "full_matrix": false,
+    "reason": "Accumulated inline files plus reversible multiline terminal input; verify Windows/POSIX integration with two native jobs",
+    "functional_commit_skip_marker": "[skip ci]",
+    "prior_commit_green_is_not_attributed_to_this_batch": true
+  },
+  "paid_model_requests": 0,
+  "limitations": [
+    "WSL is local POSIX coverage, not a native CI runner",
+    "Platform skips are not passes",
+    "No real terminal clipboard or ConPTY end-to-end probe; events are replayed in the actual Textual app",
+    "No multi-select modal or image/PDF input",
+    "Paste folding changes display only and does not reduce model context cost",
+    "Fixtures do not establish real model coding ability or near-top-agent parity"
+  ]
+}

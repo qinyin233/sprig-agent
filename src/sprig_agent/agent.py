@@ -466,7 +466,7 @@ class Agent:
         self._event("check", "failed", check=phase, check_index=len(self.config.checks), check_total=len(self.config.checks))
         return "failed"
 
-    def run(self, task=None, messages=None, *, context_files=()):
+    def run(self, task=None, messages=None, *, context_files=(), preflight=False):
         self._run_id, self._sequence, self._step, self._action = uuid.uuid4().hex, 0, 0, 0
         self._stop_reason = None
         self._running = True
@@ -474,6 +474,7 @@ class Agent:
             self._event("starting")
             if context_files:
                 self._context_files, _ = self._file_snapshots(context_files)
+            if context_files or preflight:
                 # Fail before changing history, checkpointing or running baseline
                 # commands. Retrying the draft rereads files and repeats policy.
                 candidate = validate_history(messages) if messages else [{"role": "system", "content": self._prompt()}]
@@ -483,7 +484,8 @@ class Agent:
                 _, budget = prepare_context(self.config, self._request_messages(candidate, 1), self.schemas,
                                             self.compact_context, check_cancelled=self._check_cancelled)
                 if not budget["within_budget"]:
-                    raise ProviderError("selected files exceed the request context budget; no request sent")
+                    raise ProviderError(("selected files exceed" if context_files else "task exceeds")
+                                        + " the request context budget; no request sent")
             history, complete = self._run(task, messages)
             outcome = "passed" if complete and self.config.checks else "unverified" if complete else "incomplete"
             self._event("finished", outcome, reason=self._stop_reason)

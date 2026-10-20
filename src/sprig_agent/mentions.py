@@ -2,35 +2,10 @@
 
 import json
 
+from .composer import TrackedDraft
 
-class DraftFiles:
-    def __init__(self, text=""):
-        self.text = text
-        self.spans = []
 
-    def sync(self, text, start=None, end=None):
-        if start is None:
-            if text == self.text:
-                return
-            start = 0
-            while start < min(len(text), len(self.text)) and text[start] == self.text[start]:
-                start += 1
-            suffix = 0
-            while (suffix < min(len(text), len(self.text)) - start
-                   and text[len(text) - suffix - 1] == self.text[len(self.text) - suffix - 1]):
-                suffix += 1
-            end = len(self.text) - suffix
-        shift = len(text) - len(self.text)
-        selected = []
-        for left, right, path, token in self.spans:
-            if end <= left:
-                left, right = left + shift, right + shift
-            elif start < right:
-                continue  # An edit touching a token revokes its selection.
-            if text[left:right] == token:
-                selected.append((left, right, path, token))
-        self.text, self.spans = text, selected
-
+class DraftFiles(TrackedDraft):
     def select(self, start, end, path):
         """Return a new draft with bounded metadata; caller installs both atomically."""
         if not 0 <= start <= end <= len(self.text):

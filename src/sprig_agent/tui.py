@@ -11,6 +11,7 @@ from textual.app import App, ComposeResult
 from textual.binding import Binding
 from textual.containers import Horizontal, Vertical, VerticalScroll
 from textual.css.query import NoMatches
+from textual.document._edit import Edit
 from textual.message import Message
 from textual.screen import ModalScreen
 from textual.widgets import Button, Footer, Header, Input, RichLog, Static, TabbedContent, TabPane, TextArea
@@ -19,6 +20,7 @@ from textual.worker import get_current_worker
 from .agent import Agent
 from .changes import ChangeHistory
 from .config import SHORTCUT_ACTIONS, redact, terminal_text
+from .composer import DraftPastes, MAX_PASTE_BYTES, paste_text
 from .mentions import DraftFiles, mention_query
 from .provider import Provider
 from .picker import PickerScreen
@@ -38,6 +40,22 @@ class UiRequest(Message):
         self.result, self.error = None, None
 
 
+class ComposerEdit(Edit):
+    """Keep user-pasted text with its own undo entry, never with typed labels."""
+
+    def do(self, editor, record_selection=True):
+        result = super().do(editor, record_selection)
+        if not record_selection:
+            editor.restore_paste_state(self.paste_after)
+            self._updated_selection = self.redo_selection
+        return result
+
+    def undo(self, editor):
+        result = super().undo(editor)
+        editor.restore_paste_state(self.paste_before)
+        return result
+
+
 class TaskInput(TextArea):
     """Chat composer: Enter sends; modified Enter inserts a newline."""
 
@@ -45,32 +63,121 @@ class TaskInput(TextArea):
         Binding("enter", "send", "发送", priority=True),
         Binding("shift+enter,ctrl+j", "newline", "换行", priority=True),
         Binding("tab", "complete", "补全", priority=True),
+        Binding("f4", "expand_pastes", "展开粘贴", priority=True),
     ]
 
     def __init__(self, *args, **kwargs):
         self.files = DraftFiles()
+        self.pastes = DraftPastes()
+        self.verbatim_paste = self.literal_paste = False
+        self._paste_identity = 0
+        self._expanding_paste = False
+        self._last_composer_edit = None
         super().__init__(*args, **kwargs)
         self.files.sync(self.text)
+        self.pastes.sync(self.text)
 
     def load_text(self, text):
         super().load_text(text)
         self.files = DraftFiles(self.text)
+        self.pastes = DraftPastes(self.text)
+        self.verbatim_paste = self.literal_paste = False
+        self._last_composer_edit = None
+
+    def paste_state(self):
+        return tuple(self.pastes.spans), self.verbatim_paste, self.literal_paste
+
+    def restore_paste_state(self, state):
+        spans, self.verbatim_paste, self.literal_paste = state
+        self.pastes = DraftPastes(self.text)
+        self.pastes.spans = [row for row in spans if self.text[row[0]:row[1]] == row[3]]
 
     def edit(self, edit):
         self.files.sync(self.text)
+        self.pastes.sync(self.text)
+        edit = ComposerEdit(edit.text, edit.from_location, edit.to_location, edit.maintain_selection_offset)
+        edit.paste_before = self.paste_state()
         start = self.document.get_index_from_location(edit.top)
         end = self.document.get_index_from_location(edit.bottom)
+        previous = len(self.pastes.spans)
         result = super().edit(edit)
         self.files.sync(self.text, start, end)
+        self.pastes.sync(self.text, start, end)
+        if previous > len(self.pastes.spans) and not self._expanding_paste and self.is_mounted:
+            self.notify("已删除或修改粘贴标记，对应正文已移除；编辑正文前请先 F4 展开", severity="warning")
+        if not self.text:
+            self.verbatim_paste = self.literal_paste = False
+        edit.paste_after = self.paste_state()
+        edit.redo_selection = self.selection
+        self._last_composer_edit = edit
         return result
 
-    def action_undo(self):
-        super().action_undo()
+    def undo(self):
+        if self.history.undo_stack:
+            # Textual refreshes scrollbars before restoring the saved caret.
+            # A multiline replacement may already have removed its old row.
+            self.move_cursor((0, 0))
+        super().undo()
         self.files.sync(self.text)
+        self.pastes.sync(self.text)
 
-    def action_redo(self):
-        super().action_redo()
+    def redo(self):
+        if self.history.redo_stack:
+            self.move_cursor((0, 0))
+        super().redo()
         self.files.sync(self.text)
+        self.pastes.sync(self.text)
+
+    async def _on_paste(self, event):
+        event.stop()
+        event.prevent_default()
+        if self.read_only:
+            return
+        try:
+            body = paste_text(event.text)
+            if not body:
+                return
+            self.pastes.sync(self.text)
+            start, end = sorted(self.selection)
+            left, right = (self.document.get_index_from_location(point) for point in (start, end))
+            folded = len(body) > 200 or body.count("\n") >= 2
+            if folded:
+                candidate, inserted = self.pastes.fold(left, right, body, self._paste_identity + 1)
+            else:
+                inserted = body
+                candidate = DraftPastes(self.text)
+                candidate.spans = list(self.pastes.spans)
+                candidate.sync(self.text[:left] + body + self.text[right:], left, right)
+                expanded = candidate.expanded()
+                if len(expanded) > MAX_PASTE_BYTES or len(expanded.encode("utf-8")) > MAX_PASTE_BYTES:
+                    raise ValueError("展开后的草稿超过 2 MiB，粘贴未插入")
+        except ValueError as error:
+            self.notify(str(error), title="粘贴未插入，原草稿保留", severity="warning")
+            return
+        self.history.checkpoint()
+        self.replace(inserted, start, end, maintain_selection_offset=False)
+        self.pastes = candidate
+        self.verbatim_paste = True
+        self.literal_paste = self.literal_paste or folded
+        self._paste_identity += 1
+        self._last_composer_edit.paste_after = self.paste_state()
+        self.history.checkpoint()
+        self.focus()
+
+    def action_expand_pastes(self):
+        self.pastes.sync(self.text)
+        if not self.pastes.spans:
+            return
+        self.history.checkpoint()
+        self._expanding_paste = True
+        try:
+            for left, right, body, _ in reversed(self.pastes.spans):
+                self.replace(body, self.document.get_location_from_index(left),
+                             self.document.get_location_from_index(right))
+        finally:
+            self._expanding_paste = False
+        self.history.checkpoint()
+        self.focus()
 
     class Submitted(Message):
         def __init__(self, editor, text, draft=None):
@@ -79,6 +186,8 @@ class TaskInput(TextArea):
             self.draft = editor.text if draft is None else draft
             editor.files.sync(self.draft)
             self.files = editor.files.paths()
+            self.preflight = editor.verbatim_paste
+            self.literal = editor.literal_paste
 
     class Complete(Message):
         def __init__(self, editor):
@@ -89,8 +198,9 @@ class TaskInput(TextArea):
         self.post_message(self.Complete(self))
 
     def action_send(self):
-        text = self.text.strip()
-        if text and not getattr(self, "_sending", False):
+        self.pastes.sync(self.text)
+        text = self.pastes.expanded() if self.verbatim_paste else self.text.strip()
+        if text.strip() and not getattr(self, "_sending", False):
             self._sending = True
             self.post_message(self.Submitted(self, text, self.text))
 
@@ -279,6 +389,7 @@ class SprigApp(App[int]):
                 with Horizontal(id="task-buttons"):
                     yield Button("发送 / Enter", id="send", variant="primary")
                     yield Button("选择文件", id="files")
+                    yield Button("展开粘贴 / F4", id="expand-paste")
                     yield Button("取消 / Ctrl+C", id="cancel", disabled=True)
             with Vertical(id="sidebar"):
                 yield Static("就绪", id="state", markup=False)
@@ -554,7 +665,7 @@ class SprigApp(App[int]):
         self.check_cancelled()
         return answer[0]
 
-    def start(self, task=None, local=None, *, context_files=()):
+    def start(self, task=None, local=None, *, context_files=(), preflight=False):
         if self.busy:
             return
         if not local and not task and not self.messages and not self.pending_tasks:
@@ -573,10 +684,10 @@ class SprigApp(App[int]):
             if self.pending_tasks:
                 self.pending_tasks.append(task)
                 task = None
-        self.execute(task, local, context_files)
+        self.execute(task, local, context_files, preflight)
 
     @work(thread=True, group="agent", exclusive=True, exit_on_error=False)
-    def execute(self, task, local, context_files=()):
+    def execute(self, task, local, context_files=(), preflight=False):
         # Finishing and submission are serialized on the UI thread. A late
         # request keeps this worker alive instead of racing a second worker.
         with self._lifecycle_lock:
@@ -584,6 +695,8 @@ class SprigApp(App[int]):
                 return
             while True:
                 options = {"context_files": context_files} if context_files else {}
+                if preflight:
+                    options["preflight"] = True
                 status, message = self.execute_turn(task, local, **options)
                 try:
                     again = self.ui_call(self.finished, status, message)
@@ -593,8 +706,9 @@ class SprigApp(App[int]):
                     return
                 task, local = None, None
                 context_files = ()
+                preflight = False
 
-    def execute_turn(self, task, local, context_files=()):
+    def execute_turn(self, task, local, context_files=(), preflight=False):
         status, message = 0, "完成"
         try:
             if local:
@@ -629,6 +743,8 @@ class SprigApp(App[int]):
                     status, message = 2, "本地操作未完成"
             else:
                 options = {"context_files": context_files} if context_files else {}
+                if preflight:
+                    options["preflight"] = True
                 self.messages, complete = self.agent.run(task, self.messages, **options)
                 status = 0 if complete else 2
                 message = "验收通过" if complete and self.config.checks else ("本轮结束" if complete else "未完成 / 未验收")
@@ -797,12 +913,13 @@ class SprigApp(App[int]):
         except ValueError as error:
             self.reject_input(str(error))
             return
-        if task.startswith("//"):
-            task = task[1:]  # A literal task starting with a slash.
-        elif task.startswith("/"):
+        command = task.strip()
+        if not event.literal and command.startswith("//"):
+            task = command[1:]  # A literal task starting with a slash.
+        elif not event.literal and command.startswith("/"):
             if event.editor.text == event.draft:
                 event.editor.load_text("")
-            self.slash_command(task)
+            self.slash_command(command)
             return
         if event.files and (self.busy or self.pending_tasks):
             self.reject_input("文件选择只能随空闲时的新消息发送；执行中可发送普通文本引导。")
@@ -832,7 +949,7 @@ class SprigApp(App[int]):
             latest_user = next((message for message in reversed(self.messages or []) if message.get("role") == "user"), {})
             retry = previous is not None and previous[2] == task and latest_user.get("content") == redact(task, self.config.secrets)
             self._draft_submission = (event.editor.id, event.draft, task)
-            self.start(None if retry else task, context_files=event.files)
+            self.start(None if retry else task, context_files=event.files, preflight=event.preflight)
 
     def action_cancel(self):
         if not self.busy:
@@ -975,10 +1092,11 @@ class SprigApp(App[int]):
                         "执行中可输入普通消息调整引导。// 开头发送以 / 开头的普通消息。\n"
                         "Tab 补全本地命令或 /add、/ref 的文件参数；普通消息 @关键词 + Tab 选择本轮文件。\n"
                         "选择不会发送任务；Enter 发送时读取文件，修改/删除标记撤销选择；/ref 用于后续轮次实时引用。\n"
+                        "长粘贴只折叠显示；F4 或“展开粘贴”查看编辑，完整正文仍计入请求预算。\n"
                         "提供商和模型通过 config.toml 或启动参数选择；恢复时仍校验绑定。\n")
             return
         if command == "/keys":
-            self.append("\n[快捷键] Enter 发送；Shift+Enter / Ctrl+J 换行；Ctrl+C 取消；Ctrl+Q 退出；Ctrl+L 输入。审批默认拒绝。\n"
+            self.append("\n[快捷键] Enter 发送；Shift+Enter / Ctrl+J 换行；F4 展开粘贴；Ctrl+C 取消；Ctrl+Q 退出；Ctrl+L 输入。审批默认拒绝。\n"
                         + json.dumps(dict(self.config.tui_keybindings), ensure_ascii=False, indent=2) + "\n")
             return
         if command == "/files":
@@ -1066,6 +1184,8 @@ class SprigApp(App[int]):
             self.action_submit()
         elif identity == "files":
             self.open_picker()
+        elif identity == "expand-paste":
+            self.query_one("#task", TaskInput).action_expand_pastes()
         elif identity == "cancel":
             self.action_cancel()
         elif not self.busy:
