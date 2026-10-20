@@ -19,10 +19,14 @@
     {"scope": "new transport plus runtime", "total": 26, "passed": 26, "skipped": 0, "seconds": 16.818},
     {"scope": "final transport, configuration profiles, generation options and summary", "total": 62, "passed": 62, "skipped": 0, "seconds": 24.430}
   ],
+  "compatibility_suites": [
+    {"platform": "Windows 11", "python": "3.11.14", "scope": "transport, existing provider, metrics, streaming, native protocols and recovery", "command": "UV_PROJECT_ENVIRONMENT=<temporary-env> uv run --locked --no-editable --python 3.11 python -m unittest tests.test_transport tests.test_agent_provider tests.test_metrics tests.test_streaming tests.test_native_protocols tests.test_provider_recovery -q", "total": 133, "passed": 133, "skipped": 0, "seconds": 26.849, "full_suite": false}
+  ],
   "corrected_validation_attempts": [
     {"scope": "initial new test import", "total": 1, "errors": 1, "cause": "imported a nonexistent unused wait_until helper", "correction": "remove import; use existing Textual fixture utilities"},
     {"scope": "first new transport suite", "total": 9, "failures": 1, "seconds": 7.590, "cause": "Chat SSE fixture emitted function deltas without their required index", "correction": "add index to each streamed fixture function call", "followup": {"total": 9, "passed": 9, "seconds": 8.336}},
-    {"scope": "targeted selection", "total": 47, "errors": 1, "seconds": 13.455, "cause": "selected tests.test_runtime_status instead of actual tests.test_runtime", "correction": "correct module selection; final focused and full suites use real modules"}
+    {"scope": "targeted selection", "total": 47, "errors": 1, "seconds": 13.455, "cause": "selected tests.test_runtime_status instead of actual tests.test_runtime", "correction": "correct module selection; final focused and full suites use real modules"},
+    {"scope": "additional Python 3.11 environment startup", "tests_run": 0, "attempts": 2, "cause": "editable .pth with a Chinese checkout path is decoded as GBK by Python 3.11; adding -X utf8 after uv cannot repair uv's earlier interpreter query", "correction": "use a fresh uv temporary environment with --no-editable as already documented in README; 133 focused tests then pass"}
   ],
   "observed_fixture_diagnostic": "Windows native-protocol fixture printed ConnectionAbortedError when cancellation closed its client before the fixture finished writing; retain diagnostic rather than suppressing unrelated server errors. Suite result is recorded separately.",
   "packaging": {
@@ -73,7 +77,17 @@
     "runtime_wire_generation_fields_added": []
   },
   "ci": {
-    "status": "pending_after_push",
+    "status": "completed",
+    "conclusion": "success",
+    "functional_commit": "c7aa5fc149c7039acfe512f3ecc286a6f37d3b3f",
+    "verified_head_sha": "c7aa5fc149c7039acfe512f3ecc286a6f37d3b3f",
+    "event": "workflow_dispatch",
+    "run_id": 39419940483,
+    "url": "https://github.com/qinyin233/sprig-agent/actions/runs/39419940483",
+    "jobs": [
+      {"id": 118618087299, "name": "core (windows-latest)", "status": "completed", "conclusion": "success"},
+      {"id": 118618087304, "name": "core (ubuntu-latest)", "status": "completed", "conclusion": "success"}
+    ],
     "workflow": "native-regression.yml",
     "runners": ["ubuntu-latest", "windows-latest"],
     "python": "3.13",
