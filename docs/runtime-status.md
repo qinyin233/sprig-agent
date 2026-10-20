@@ -38,3 +38,5 @@ TUI 侧栏现在显示准备上下文、等待模型响应、工具处理、等�
 已有 TUI 中途引导与网络/批准取消测试补充运行状态断言。运行证据按批次记录；测试跳过不计为通过，当前修改没有付费模型性能结论。
 
 2026-10-20：Windows 11 / Python 3.13.0 主测试 900 项，883 通过、17 跳过；WSL Ubuntu-26.04 / Python 3.13.14 主测试 900 项，878 通过、22 跳过。新增运行状态测试 Windows 10/10、WSL 与 TUI 合计 67/67，均无跳过；独立 mini SDK 锁定环境两端各 25/25。锁文件、Schema、CLI help、wheel/sdist、38 个模块一致性和独立安装 wheel 冒烟检查通过。[机器记录](benchmarks/runtime-status-20261020.json)保留初次 CLI 测试夹具失败及修正后的重跑结果。本批使用 `[skip ci]`，没有本提交的远程 CI，也没有真实模型调用。
+
+后续文件选择功能提交 `bfd054ac6ccf0a3da6a0ad8b1c1b803e85f5467b` 累计包含本实现，通过了 [Windows/Ubuntu 精简原生 CI](https://github.com/qinyin233/sprig-agent/actions/runs/39387127937)。绿色结果对应这个后续功能 SHA；原始 `8ec874f` 仍没有自己的远程 CI。详情见[文件选择验证记录](benchmarks/tui-completion-20261020.json)。

@@ -63,13 +63,31 @@
   "paid_model_requests": 0,
   "agent_and_model_tool_definitions_changed": false,
   "remote_ci": {
-    "status": "pending_manual_dispatch",
+    "id": 39387127937,
+    "head_sha": "bfd054ac6ccf0a3da6a0ad8b1c1b803e85f5467b",
+    "status": "completed",
+    "conclusion": "success",
+    "html_url": "https://github.com/qinyin233/sprig-agent/actions/runs/39387127937",
     "workflow": "native-regression.yml",
-    "expected_jobs": [
-      "core (windows-latest)",
-      "core (ubuntu-latest)"
+    "jobs": [
+      {
+        "id": 118509532351,
+        "name": "core (ubuntu-latest)",
+        "status": "completed",
+        "conclusion": "success",
+        "active_steps": []
+      },
+      {
+        "id": 118509532714,
+        "name": "core (windows-latest)",
+        "status": "completed",
+        "conclusion": "success",
+        "active_steps": []
+      }
     ],
-    "automatic_push_ci": "[skip ci]"
+    "automatic_push_ci": "[skip ci]",
+    "full_matrix_run": false,
+    "later_documentation_commits": "skip CI; green result belongs to functional_commit only"
   },
   "limitations": [
     "Platform skips are not passes; WSL is not native Ubuntu CI",
@@ -94,5 +112,6 @@
       "skipped": 0,
       "seconds": 6.821
     }
-  ]
+  ],
+  "functional_commit": "bfd054ac6ccf0a3da6a0ad8b1c1b803e85f5467b"
 }

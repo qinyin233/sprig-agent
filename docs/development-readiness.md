@@ -8,7 +8,9 @@
 
 该批 Windows/WSL 主测试各 900 项，分别 883/878 通过、17/22 平台跳过；两端 mini SDK 各 25 项通过。新增运行状态与现有 TUI 路径经真实回环、子进程和界面回放；打包及独立 wheel 检查覆盖 38 个源码模块。采用 `[skip ci]`，无本批远程 CI，详见[运行状态验证记录](benchmarks/runtime-status-20261020.json)。
 
-下一批补齐 [TUI 命令与文件选择](tui-completion.md)：Tab 打开本地命令菜单或 `/add`、`/ref` 文件参数补全，`/files` 和按钮提供有界模糊文件选择，明确区分快照与实时引用。查询去抖、过期结果失效、原句柄生命周期、选择后的隐私复查和草稿保留均接入现有后端，模型请求与工具 schema 未增加。内联 `@`、多选、图像/PDF 等仍未实现。
+随后一批实现 [TUI 命令与文件选择](tui-completion.md)：Tab 打开本地命令菜单或 `/add`、`/ref` 文件参数补全，`/files` 和按钮提供有界模糊文件选择，明确区分快照与实时引用。查询去抖、过期结果失效、原句柄生命周期、选择后的隐私复查和草稿保留均接入现有后端，模型请求与工具 schema 未增加。内联 `@`、多选、图像/PDF 等仍未实现。
+
+功能提交 `bfd054ac6ccf0a3da6a0ad8b1c1b803e85f5467b` 已通过 [Windows/Ubuntu 精简原生 CI](https://github.com/qinyin233/sprig-agent/actions/runs/39387127937)，包含上一批运行阶段观察；两个作业均成功。该批本地 Windows/WSL 各 912 项，分别 894/890 通过、18/22 跳过，打包及独立 wheel 检查覆盖 40 个模块。后续仅文档提交 `[skip ci]`，没有完整平台/Python 矩阵结论。[机器证据](benchmarks/tui-completion-20261020.json)保存功能 SHA 与作业 ID，不能借给不同代码状态。
 
 本表区分代码已经提供的行为、尚未实现的功能和仍缺实测的性能目标。一次基础功能更新不等于追平 Aider、OpenCode 或 OpenHands。
 
