@@ -122,6 +122,7 @@ class Config:
     token_limit_field: str = "max_tokens"
     extra_body: dict | str = field(default="{}", repr=False)
     request_timeout: float | None = None
+    request_deadline: float = 300
     proxy: str = "system"
     api_key_header: str = "auto"
     api_key_scheme: str = "auto"
@@ -313,6 +314,9 @@ class Config:
         if self.request_timeout is not None and (type(self.request_timeout) not in (int, float)
                 or not math.isfinite(self.request_timeout) or not 0 < self.request_timeout <= 120):
             raise ValueError("request-timeout must be greater than 0 and at most 120 seconds")
+        if (type(self.request_deadline) not in (int, float) or not math.isfinite(self.request_deadline)
+                or not 0 < self.request_deadline <= 3600):
+            raise ValueError("request-deadline must be greater than 0 and at most 3600 seconds")
         if not isinstance(self.proxy, str):
             raise ValueError("proxy must be a string")
         if self.proxy not in {"system", "direct"}:

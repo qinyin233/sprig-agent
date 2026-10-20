@@ -1,0 +1,97 @@
+{
+  "schema_version": 1,
+  "date": "2026-10-20",
+  "feature": "shared HTTP request deadline and cancellable TCP/TLS/header/body waits without detached workers or POST retries",
+  "base_commit": "53477ad37402d1cc89b4b6c23d9317e7a8977c7b",
+  "source_digest": {"files": 44, "sha256": "052d874f092dfc11a7f0c4516ddb1cb3d67fb7efbf5eba4a5c7aa5f92b7c80fe"},
+  "tests_digest": {"files": 66, "sha256": "9929ffe17d032af3848d5506609eaf5fc50973d26741aa805257409e1df852a5"},
+  "digest_method": "SHA256 of compact ASCII JSON arrays of [POSIX relative path, SHA256 of bytes with CRLF normalized to LF], sorted by path; src/sprig_agent/*.py and tests/*.py separately",
+  "local_suites": [
+    {"platform": "Windows 11", "python": "3.13.0", "command": "uv run --locked python -m unittest discover -s tests -q", "total": 974, "passed": 956, "skipped": 18, "failures": 0, "errors": 0, "seconds": 257.045},
+    {"platform": "WSL Ubuntu-26.04", "python": "3.13.14", "command": "UV_PROJECT_ENVIRONMENT=.venv-wsl uv run --locked python -m unittest discover -s tests -q", "total": 974, "passed": 952, "skipped": 22, "failures": 0, "errors": 0, "seconds": 178.528}
+  ],
+  "client_suites": [
+    {"platform": "Windows 11", "total": 25, "passed": 25, "skipped": 0, "seconds": 22.598},
+    {"platform": "WSL Ubuntu-26.04", "total": 25, "passed": 25, "skipped": 0, "seconds": 186.006}
+  ],
+  "focused_suites": [
+    {"scope": "existing provider, metrics, streaming, native protocols and recovery", "total": 117, "passed": 117, "skipped": 0, "seconds": 20.771},
+    {"scope": "new transport plus runtime", "total": 26, "passed": 26, "skipped": 0, "seconds": 16.818},
+    {"scope": "final transport, configuration profiles, generation options and summary", "total": 62, "passed": 62, "skipped": 0, "seconds": 24.430}
+  ],
+  "corrected_validation_attempts": [
+    {"scope": "initial new test import", "total": 1, "errors": 1, "cause": "imported a nonexistent unused wait_until helper", "correction": "remove import; use existing Textual fixture utilities"},
+    {"scope": "first new transport suite", "total": 9, "failures": 1, "seconds": 7.590, "cause": "Chat SSE fixture emitted function deltas without their required index", "correction": "add index to each streamed fixture function call", "followup": {"total": 9, "passed": 9, "seconds": 8.336}},
+    {"scope": "targeted selection", "total": 47, "errors": 1, "seconds": 13.455, "cause": "selected tests.test_runtime_status instead of actual tests.test_runtime", "correction": "correct module selection; final focused and full suites use real modules"}
+  ],
+  "observed_fixture_diagnostic": "Windows native-protocol fixture printed ConnectionAbortedError when cancellation closed its client before the fixture finished writing; retain diagnostic rather than suppressing unrelated server errors. Suite result is recorded separately.",
+  "packaging": {
+    "uv_lock_check": "passed",
+    "configuration_schema_matches": true,
+    "compileall": "passed",
+    "cli_help": "passed",
+    "cli_deadline_override_and_public_source": "passed offline",
+    "sdist_and_wheel_build": "passed",
+    "wheel_source_modules_match": 44,
+    "isolated_installed_wheel_tui_smoke": "passed: real silent loopback HTTP cancellation, retained draft, explicit Enter continuation, private save",
+    "isolated_smoke_loopback_requests": 2,
+    "isolated_smoke_external_model_requests": 0,
+    "runtime_dependencies_added": [],
+    "dev_dependency_added": "trustme>=1.2.1; resolved 1.2.1 with disposable in-process CA/certificate generation",
+    "test_ca_added_to_system_trust_store": false,
+    "certificates_or_private_keys_committed": false
+  },
+  "coverage": {
+    "new_test_methods": 16,
+    "actual_http_and_verified_tls_json_and_sse_protocols": ["chat_completions", "messages", "responses"],
+    "chunked_sse_protocols": ["chat_completions", "messages", "responses"],
+    "dripping_headers_and_json_stop_at_total_deadline": true,
+    "sse_heartbeats_do_not_extend_deadline": true,
+    "incomplete_tool_intents_executed": false,
+    "idle_limit_independent_from_total_limit": true,
+    "cancel_during_headers_and_body_without_text_http_and_tls": true,
+    "silent_tls_handshake_cancel_and_deadline": true,
+    "silent_proxy_connect_deadline": true,
+    "actual_verified_tls_through_connect_proxy": true,
+    "untrusted_certificate_rejected_before_origin_post": true,
+    "pre_cancel_does_not_attempt_network": true,
+    "cancel_or_expiry_during_resolver_does_not_connect_after_return": true,
+    "metadata_deadline_and_explicit_subsequent_success": true,
+    "summary_cancel_does_not_apply_checkpoint": true,
+    "actual_tui_cancel_draft_next_enter_private_save_and_unmount": true,
+    "automatic_retry": false,
+    "detached_network_worker": false,
+    "cancelled_or_failed_response_authorizes_tools": false
+  },
+  "limits": {
+    "default_request_deadline_seconds": 300,
+    "maximum_request_deadline_seconds": 3600,
+    "maximum_idle_seconds": 120,
+    "poll_seconds": 0.1,
+    "request_and_response_byte_limits_unchanged": true,
+    "command_timeout_and_session_binding_unchanged": true,
+    "runtime_wire_generation_fields_added": []
+  },
+  "ci": {
+    "status": "pending_after_push",
+    "workflow": "native-regression.yml",
+    "runners": ["ubuntu-latest", "windows-latest"],
+    "python": "3.13",
+    "full_matrix": false,
+    "reason": "New native socket/selector/TLS lifecycle must run on Windows and POSIX; use two jobs to conserve Actions minutes",
+    "functional_commit_skip_marker": "[skip ci]",
+    "later_evidence_docs_skip_ci": true,
+    "prior_commit_green_is_not_attributed_to_this_batch": true
+  },
+  "external_model_requests_this_batch": 0,
+  "billing_not_used_as_acceptance_gate": true,
+  "limitations": [
+    "Synchronous system DNS cannot be forcibly interrupted; elapsed time counts and expiry/cancellation is checked before any later connection/send",
+    "A blocked sendall is bounded by remaining idle/total limits; cancellation is checked on return rather than guaranteed within one poll interval",
+    "Closing a local connection cannot prove remote cancellation or zero billing after ambiguous delivery",
+    "Connection/handshake phases are bounded independently of application receive progress",
+    "Platform skips are not passes; WSL is local POSIX coverage, not native CI",
+    "No macOS or full Python/client CI matrix in this batch",
+    "Transport fixtures do not establish model coding performance or near-top-agent parity"
+  ]
+}

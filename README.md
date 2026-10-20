@@ -154,7 +154,9 @@ sprig [TASK] [--workdir PATH] [--file RELATIVE_PATH ...] [--model MODEL] [--base
 | `--base-url` | `SPRIG_BASE_URL`、选定提供商，最后为 `https://api.openai.com/v1`；覆盖地址不自动转发配置密钥 |
 | `--cli` | 单次执行，覆盖配置里的 TUI/chat 界面偏好 |
 | `--max-steps` | `20`，限制本次代理循环的模型调用次数 |
-| `--timeout` | `30` 秒；网络 socket 的等待超时（非整个请求的总时限），命令的墙钟时限 |
+| `--timeout` | `30` 秒；命令的墙钟时限，同时作为未设 `--request-timeout` 时的网络等待上限 |
+| `--request-timeout` | 网络空闲/连接阶段上限，最多 120 秒；不延长命令超时 |
+| `--request-deadline` | 默认 300 秒，最多 3600 秒；三协议共用的请求总时限，持续心跳也不会延长；取消和 DNS 边界见[请求生命周期](docs/request-lifecycle.md) |
 | `--max-output` | `16000` 字节，工具输出上限；读取 / 搜索结果可截断，命令超出上限会被终止 |
 | `--stream` | 可选；逐步显示模型文本，工具调用仍在完整响应校验通过后执行 |
 | `--request-usage` | 显式请求流末尾的 token 用量，须搭配 `--stream` 或 `--tui`；服务不支持时不自动重试 |

@@ -13,6 +13,7 @@ import urllib.request
 from .config import redact
 from .json_budget import JsonBudgetExceeded
 from .metrics import FAILURE_CODES, MeasuredResponse, Measurements, RequestMeasurement
+from .transport import HTTPHandler, HTTPSHandler, IOBudget, RequestDeadline
 
 MAX_RESPONSE = 2 * 1024 * 1024
 MAX_TOOL_CALLS = 16
@@ -144,7 +145,7 @@ def validate_message(message, *, preserve_reasoning=False, wire_api="chat_comple
 class Provider:
     def __init__(self, config):
         self.config = config
-        handlers = [NoRedirect()]
+        handlers = [NoRedirect(), HTTPHandler(), HTTPSHandler()]
         if config.proxy == "direct":
             handlers.append(urllib.request.ProxyHandler({}))
         elif config.proxy != "system":
@@ -163,12 +164,16 @@ class Provider:
             headers[config.api_key_header] = ("Bearer " if config.api_key_scheme == "bearer" else "") + config.api_key
         return headers
 
-    def list_models(self):
+    def list_models(self, *, check_cancelled=None):
         """Explicit metadata request, separate from measured model completions."""
         request = urllib.request.Request(self.config.base_url + "/models", headers=self._headers())
+        budget = request._sprig_io_budget = IOBudget(self.config.request_timeout or self.config.timeout,
+                                                   self.config.request_deadline, check_cancelled)
+        budget.check()
         try:
             with self.opener.open(request, timeout=self.config.request_timeout or self.config.timeout) as response:
                 raw = response.read(MAX_RESPONSE + 1)
+                budget.check()
             if len(raw) > MAX_RESPONSE:
                 raise ValueError
             data = json.loads(raw)
@@ -188,15 +193,20 @@ class Provider:
             finally:
                 error.close()
             raise failure from None
-        except (urllib.error.URLError, TimeoutError, OSError, HTTPException):
-            raise ProviderError("model metadata connection failed; no automatic retry") from None
+        except (urllib.error.URLError, TimeoutError, OSError, HTTPException) as error:
+            reason = error.reason if isinstance(error, urllib.error.URLError) else error
+            if isinstance(reason, RequestDeadline):
+                raise ProviderError("model metadata request deadline exceeded; no automatic retry", code="request_deadline") from None
+            raise ProviderError("model metadata connection failed; no automatic retry", code="connection_error") from None
         except (ValueError, TypeError, RecursionError):
             raise ProviderError("invalid or oversized model metadata response") from None
 
-    def complete(self, messages, tools, on_text=None):
+    def complete(self, messages, tools, on_text=None, *, check_cancelled=None):
         measurement = RequestMeasurement(self.config.stream)
         try:
-            result = self._complete(messages, tools, on_text, measurement)
+            if check_cancelled:
+                check_cancelled()
+            result = self._complete(messages, tools, on_text, measurement, check_cancelled)
             measurement.outcome = "success"
             return result
         except KeyboardInterrupt:
@@ -208,7 +218,7 @@ class Provider:
         finally:
             self.measurements.add(measurement.finish())
 
-    def _complete(self, messages, tools, on_text, measurement):
+    def _complete(self, messages, tools, on_text, measurement, check_cancelled):
         config = self.config
         from .context import request_body
         try:
@@ -222,6 +232,9 @@ class Provider:
         headers = self._headers(stream=config.stream)
         from .native_protocols import PATHS
         request = urllib.request.Request(config.base_url + PATHS[config.wire_api], body, headers)
+        budget = request._sprig_io_budget = IOBudget(config.request_timeout or config.timeout,
+                                                   config.request_deadline, check_cancelled)
+        budget.check()
         measurement.begin(len(body))
         try:
             with self.opener.open(request, timeout=config.request_timeout or config.timeout) as response:
@@ -232,12 +245,16 @@ class Provider:
                 if config.stream:
                     if config.wire_api != "chat_completions":
                         from .native_protocols import complete_stream as native_stream
-                        return native_stream(config.wire_api, reader, on_text, config.secrets, measurement)
-                    from .streaming import complete_stream
-                    return complete_stream(reader, on_text, config.secrets,
-                                           on_usage=measurement.observe_usage, on_delta=measurement.text_received,
-                                           on_finish=measurement.observe_finish, preserve_reasoning=config.preserve_reasoning)
+                        result = native_stream(config.wire_api, reader, on_text, config.secrets, measurement)
+                    else:
+                        from .streaming import complete_stream
+                        result = complete_stream(reader, on_text, config.secrets,
+                                                 on_usage=measurement.observe_usage, on_delta=measurement.text_received,
+                                                 on_finish=measurement.observe_finish, preserve_reasoning=config.preserve_reasoning)
+                    budget.check()
+                    return result
                 raw = reader.read(MAX_RESPONSE + 1)
+                budget.check()
             if len(raw) > MAX_RESPONSE:
                 raise ProviderError("provider response exceeds 2 MiB", code="response_limit")
             data = json.loads(raw)
@@ -272,8 +289,11 @@ class Provider:
             if isinstance(reason, ssl.SSLCertVerificationError):
                 hint = "TLS certificate verification failed; check the trusted endpoint and local certificates"
                 code = "tls_error"
+            elif isinstance(reason, RequestDeadline):
+                hint = "request deadline exceeded; check provider latency or explicitly raise --request-deadline"
+                code = "request_deadline"
             elif isinstance(reason, TimeoutError):
-                hint = "socket timed out; check connectivity or --timeout"
+                hint = "socket timed out; check connectivity or --request-timeout (falls back to --timeout)"
                 code = "timeout"
             else:
                 hint = "connection or HTTP response failed; check endpoint, network, or proxy"

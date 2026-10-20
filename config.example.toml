@@ -12,7 +12,8 @@ check_history_format = "tool_calls" # observations for APIs rejecting client-ins
 model = "fast"
 base_url = "https://apihub.agnes-ai.com/v1"
 api_key_env = "AGNES_API_KEY"
-request_timeout = 60
+request_timeout = 60 # network idle/connection phase limit; separate from command timeout
+request_deadline = 300 # total HTTP I/O limit; 0 < seconds <= 3600
 proxy = "system" # system / direct / http://localhost:7890 (no proxy credentials)
 api_key_header = "auto" # Authorization for Chat/Responses; x-api-key for Messages
 api_key_scheme = "auto" # bearer for Chat/Responses; raw for Messages; explicit overrides allowed

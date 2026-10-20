@@ -498,6 +498,11 @@
             "exclusiveMinimum": 0,
             "maximum": 120
           },
+          "request_deadline": {
+            "type": "number",
+            "exclusiveMinimum": 0,
+            "maximum": 3600
+          },
           "proxy": {
             "type": "string",
             "minLength": 1,

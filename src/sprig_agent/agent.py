@@ -254,7 +254,8 @@ class Agent:
         if isinstance(provider, Provider):
             provider = copy.copy(provider)  # Keep the same opener and shared measurements.
             provider.config = self._summary_config()
-        response = validate_message(provider.complete(request, []), wire_api=self.config.wire_api,
+        options = {"check_cancelled": self._check_cancelled} if isinstance(provider, Provider) else {}
+        response = validate_message(provider.complete(request, [], **options), wire_api=self.config.wire_api,
                                     preserve_reasoning=self.config.preserve_reasoning)
         if response.get("tool_calls") or not isinstance(response.get("content"), str):
             raise ValueError("summary response must be JSON text with no tool calls; checkpoint unchanged")
@@ -549,8 +550,9 @@ class Agent:
             self.on_request_ready()
         self._event("model")
         self._check_cancelled()
+        options = {"check_cancelled": self._check_cancelled} if isinstance(self.provider, Provider) else {}
         if not self.config.stream or self.emit_delta is None:
-            return self.provider.complete(messages, self.schemas)
+            return self.provider.complete(messages, self.schemas, **options)
         displayed = False
 
         def on_text(text):
@@ -559,7 +561,7 @@ class Agent:
             self.emit_delta(text)
 
         try:
-            return self.provider.complete(messages, self.schemas, on_text=on_text)
+            return self.provider.complete(messages, self.schemas, on_text=on_text, **options)
         finally:
             if displayed:
                 self.emit_delta("\n")

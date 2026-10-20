@@ -41,3 +41,8 @@ sprig = "sprig_agent.cli:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]
+
+[dependency-groups]
+dev = [
+    "trustme>=1.2.1",
+]
