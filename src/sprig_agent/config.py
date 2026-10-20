@@ -9,7 +9,7 @@ import re
 import unicodedata
 from urllib.parse import urlsplit, urlunsplit
 
-TOOL_NAMES = ("list_files", "read_file", "search", "project_map", "edit_file", "run", "update_plan", "edit_lines", "file_action", "read_history")
+TOOL_NAMES = ("list_files", "read_file", "search", "project_map", "edit_file", "run", "update_plan", "edit_lines", "file_action", "read_history", "read_log")
 SHORTCUT_ACTIONS = ("cancel", "quit", "focus_input", "toggle_sidebar", "help", "new_conversation")
 GENERATION_FIELDS = ("max_tokens", "thinking", "temperature", "top_p", "reasoning_effort", "seed", "token_limit_field", "extra_body")
 RESERVED_BODY_FIELDS = {"model", "messages", "tools", "tool_choice", "stream", "stream_options", "n",
@@ -135,6 +135,7 @@ class Config:
     command_env: tuple = field(default=(), repr=False)
     session_dir: Path | None = None
     change_history_dir: Path | None = None
+    command_log_dir: Path | None = None
     auto_save_session: bool = False
     session_max_age_days: int | None = None
     session_max_count: int | None = None
@@ -376,11 +377,13 @@ class Config:
             raise ValueError("steering-mode must be all or one-at-a-time")
         if any(type(value) is not bool for value in (self.tui_sidebar, self.auto_save_session, self.show_metrics)):
             raise ValueError("sidebar, auto-save-session and metrics must be booleans")
-        for name in ("session_dir", "change_history_dir"):
+        for name in ("session_dir", "change_history_dir", "command_log_dir"):
             value = getattr(self, name)
             if value is not None:
                 if not isinstance(value, (str, os.PathLike)) or len(str(value)) > 4096 or "\0" in str(value):
                     raise ValueError("storage directories must be paths")
+                if name == "command_log_dir" and any(secret in str(value) for secret in self.credential_secrets):
+                    raise ValueError("configured credentials cannot appear in command log storage paths")
                 object.__setattr__(self, name, Path(value).expanduser().absolute())
         from .references import reference_paths
         selected = reference_paths(self.reference_files)
@@ -434,6 +437,8 @@ class Config:
             binding["wire_api"] = self.wire_api
         if self.command_output_limit is not None:
             binding["command_output_limit"] = self.command_output_limit
+        if self.command_log_dir is not None:
+            binding["command_log_dir"] = str(self.command_log_dir)
         if self.checks:
             binding["checks"] = [list(argv) for argv in self.checks]
         if self.check_before_task:

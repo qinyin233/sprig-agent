@@ -86,6 +86,7 @@ file_action = true # mkdir/delete/move; also disabled when edit_file=false
 run = true
 update_plan = true # bounded task checklist, not approval or acceptance
 read_history = true # only exposed with an active summary; original conversation data, not current file evidence
+read_log = true # only exposed with command_log_dir; opaque current-conversation history, never file read_id
 
 [files]
 exclude = ["private/", "*.local.json"] # additive with .sprigignore
@@ -107,6 +108,7 @@ keep_recent_messages = 6 # 6..1000; failures, refusals and user requirements als
 keep_read_bytes = 8192 # 0..262144; historical complete reads, only within max_bytes; 0 disables
 
 [storage]
+# command_log_dir = "~/.sprig/command-logs" # opt-in dedicated private directory outside every repository; see docs/command-logs.md
 auto_save_session = false # opt in to private, unencrypted transcripts
 # Retention only runs on /prune or --prune-sessions; never auto-delete on startup.
 # session_max_age_days = 30

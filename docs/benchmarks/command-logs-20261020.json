@@ -1,0 +1,117 @@
+{
+  "schema_version": 1,
+  "date": "2026-10-20",
+  "feature": "opt-in private bounded command logs with conversation-scoped opaque readback and explicit retention approval",
+  "base_commit": "9bef0fea2b37846213babb04e182964020dffee7",
+  "source_digest": {"files": 45, "sha256": "a1de18ae0cb7213928e82fc906d684228f286c6dfe3e9d0b8a6b12ecab4d6977"},
+  "tests_digest": {"files": 67, "sha256": "361396710a997ff217b1ee159c85451c61b0c1e20b945a462376c82aa8b5da2f"},
+  "digest_method": "SHA256 of compact ASCII JSON arrays of [POSIX relative path, SHA256 of bytes with CRLF normalized to LF], sorted by path; src/sprig_agent/*.py and tests/*.py separately",
+  "local_suites": [
+    {"platform": "Windows 11", "python": "3.13.0", "command": "uv run --locked python -m unittest discover -s tests -q", "total": 995, "passed": 977, "skipped": 18, "failures": 0, "errors": 0, "seconds": 234.896},
+    {"platform": "WSL Ubuntu-26.04", "python": "3.13.14", "command": "UV_PROJECT_ENVIRONMENT=.venv-wsl uv run --locked python -m unittest discover -s tests -q", "total": 995, "passed": 973, "skipped": 22, "failures": 0, "errors": 0, "seconds": 170.068}
+  ],
+  "client_suite_scope": "Default client behavior, before the final log-only re-redaction capacity guard; no client/protocol changes in that guard",
+  "client_suites": [
+    {"platform": "Windows 11", "total": 25, "passed": 25, "skipped": 0, "seconds": 24.284},
+    {"platform": "WSL Ubuntu-26.04", "total": 25, "passed": 25, "skipped": 0, "seconds": 147.161}
+  ],
+  "pre_freeze_focused_suites": [
+    {"scope": "first command logs and capture integration", "platform": "Windows", "total": 35, "passed": 35, "skipped": 0, "seconds": 4.727},
+    {"scope": "logs, configuration, summary, context and runtime", "platform": "Windows", "total": 86, "passed": 86, "skipped": 0, "seconds": 25.102},
+    {"scope": "expanded logs and related integrations", "platform": "Windows", "total": 103, "passed": 103, "skipped": 0, "seconds": 22.093},
+    {"scope": "final expanded log module before restore-stub compatibility guard", "platform": "Windows", "total": 21, "passed": 21, "skipped": 0, "seconds": 6.376},
+    {"scope": "expanded log module before last file-capability and new-dialog assertions", "platform": "WSL", "total": 20, "passed": 20, "skipped": 0, "seconds": 4.068}
+  ],
+  "corrected_validation_attempts": [
+    {"scope": "first real Windows storage smoke", "cause": "reopening the stable lock to check permissions while holding its exclusive handle raises WinError 32", "correction": "validate lock type/privacy when acquiring it; do not reopen the owned lock during payload scans", "full_suites_after_correction": true},
+    {"scope": "initial existing capture/session/summary selection", "total": 71, "failures": 1, "skipped": 13, "seconds": 10.634, "cause": "configuration schema snapshot had not yet been regenerated when the command started", "correction": "regenerate schema and update conditional read_log tool enum expectation"},
+    {"scope": "first expanded log module", "total": 20, "errors": 1, "seconds": 5.821, "cause": "CLI fixture called chat with the wrong positional argument layout", "correction": "pass task=None and explicit messages with autostart=False; final expanded module passes"},
+    {"scope": "post-redaction capacity review", "prior_full_suites": [{"platform": "Windows", "total": 995, "passed": 977, "skipped": 18, "seconds": 233.580}, {"platform": "WSL", "total": 995, "passed": 973, "skipped": 22, "seconds": 172.972}], "cause": "a newly configured short credential can expand retained text through redaction markers", "correction": "stream the full re-redaction through a bounded capture before page selection, retaining the capture_limited flag", "fixture_correction": "use an isolated small retained record rather than applying a lowered test cap to earlier large records", "initial_fixture_suite": {"total": 21, "errors": 1, "seconds": 6.530}, "focused_followup": {"total": 21, "passed": 21, "seconds": 6.412}, "full_suites_rerun_after_correction": true}
+  ],
+  "workflow_fixture": {
+    "kind": "fixed_response_model_with_real_http_and_real_command",
+    "protocols": ["chat_completions", "messages", "responses"],
+    "requests_each": 3,
+    "command_approvals_each": 1,
+    "request_budget_bytes": 16000,
+    "middle_marker_in_displayed_command_output": false,
+    "middle_marker_recovered_by_read_log": true,
+    "model_quality_or_general_performance_claim": false
+  },
+  "observed_fixture_diagnostic": "Windows native-protocol fixture printed ConnectionAbortedError when cancellation closed its client before the fixture finished writing; final full suite has zero failures/errors. The server diagnostic was not suppressed.",
+  "packaging": {
+    "uv_lock_check": "passed",
+    "configuration_schema_matches": true,
+    "compileall": "passed",
+    "cli_help": "passed",
+    "sdist_and_wheel_build": "passed after final re-redaction guard",
+    "wheel_source_modules_match": 45,
+    "isolated_installed_wheel_tui_smoke": "passed: real command missing-middle readback, unchanged draft/history, private resume with no replay, fresh clear approval",
+    "isolated_smoke_fixture_model_calls": 2,
+    "isolated_smoke_external_model_requests": 0,
+    "runtime_dependencies_added": []
+  },
+  "coverage": {
+    "new_test_methods": 21,
+    "default_no_log_directory_or_extra_tool_schema": true,
+    "fresh_command_approval_includes_storage_and_retention_candidates": true,
+    "read_only_reject_and_cancel_do_not_create_storage": true,
+    "real_subprocess_missing_middle_recovery": true,
+    "whole_record_redacted_before_exact_utf8_json_paging": true,
+    "cross_pipe_block_secrets_and_long_trailing_prefix_redacted": true,
+    "current_secret_rotation_redaction_before_page_selection": true,
+    "re_redaction_expansion_capped_before_page_selection": true,
+    "native_owner_private_permissions_and_unsafe_acl_or_mode_rejection": true,
+    "hardlinked_payload_and_unrelated_files_rejected_without_removal": true,
+    "global_store_quota_count_expiry_and_fixed_crash_pending_cleanup": true,
+    "concurrent_change_rejected_under_stable_lease": true,
+    "optional_log_failure_does_not_overwrite_command_exit_status": true,
+    "current_owner_and_workdir_required_for_readback": true,
+    "session_metadata_restores_scope_without_copying_full_logs": true,
+    "new_dialog_detaches_previous_log_scope": true,
+    "crash_after_command_does_not_replay_intent": true,
+    "historical_read_id_never_revived": true,
+    "success_only_old_log_excerpt_compaction": true,
+    "actual_cli_and_textual_local_read_and_fresh_clear_approval": true,
+    "platform_skips_are_passes": false
+  },
+  "limits": {
+    "default_enabled": false,
+    "one_log_utf8_bytes": 8388608,
+    "journal_serialized_utf8_bytes": 16777216,
+    "journal_records": 16,
+    "maximum_pending_utf8_bytes": 16777216,
+    "maximum_log_payload_bytes_including_pending": 33554432,
+    "readback_expiry_seconds": 604800,
+    "automatic_background_deletion": false,
+    "page_utf8_json_bytes": "min(config.max_output, 8192)",
+    "minimum_page_budget_tested": 256,
+    "original_command_output_and_timeout_caps_unchanged": true,
+    "ordinary_default_tool_schemas": 9,
+    "all_optional_history_tools_enabled_schemas": 11
+  },
+  "ci": {
+    "status": "pending_after_push",
+    "workflow": "native-regression.yml",
+    "runners": ["ubuntu-latest", "windows-latest"],
+    "python": "3.13",
+    "full_matrix": false,
+    "reason": "Private persistent output storage, native leases, command capture and frontend resume integration require both native runners",
+    "functional_commit_skip_marker": "[skip ci]",
+    "later_evidence_docs_skip_ci": true,
+    "prior_commit_green_is_not_attributed_to_this_batch": true
+  },
+  "external_model_requests_this_batch": 0,
+  "billing_not_used_as_acceptance_gate": true,
+  "limitations": [
+    "Unknown credentials and personal data are not automatically guaranteed absent; retained logs are private plaintext",
+    "Expiry prevents readback; physical pruning waits for an explicitly approved save or clear",
+    "A lost unsaved owner namespace cannot be recovered by guessing opaque log IDs",
+    "Concurrent storage changes can prevent retention; commands are never rerun automatically",
+    "Atomic replace/sync failure can leave an uncertain persisted result; inspect local logs",
+    "Cancellation does not commit the current partial capture; old retained logs remain",
+    "No background jobs, interactive stdin, arbitrary-path artifact reads or binary uploads",
+    "No full Python/client/macOS CI matrix in this batch; WSL is local POSIX coverage",
+    "Fixed model replies establish workflow behavior, not coding success rate or agent parity"
+  ]
+}

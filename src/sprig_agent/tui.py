@@ -369,6 +369,7 @@ class SprigApp(App[int]):
                 selected = getattr(self.store, "loaded_references", None)
                 self.agent.restore_references(selected if isinstance(selected, dict) else None)
                 self.agent.restore_summary(self.store.loaded_summary, self.messages)
+                self.agent.restore_logs(getattr(self.store, "loaded_logs", None))
                 if dict(config.setting_sources).get("reference_files") == "CLI" and config.reference_files:
                     self.messages, _ = self.agent.update_references(config.reference_files, messages=self.messages)
             if files:
@@ -738,6 +739,8 @@ class SprigApp(App[int]):
                     result = self.agent.summarize(self.messages, **arguments)
                 elif name == "clear-summary":
                     result = self.agent.clear_summary(self.messages)
+                elif name == "logs":
+                    result = self.tools.log_control(**arguments)
                 elif name in {"worktree-create", "worktree-list"}:
                     from .worktrees import worktree_action
                     result = worktree_action(self.config, self.confirm, cancel_event=self.cancel_event, **arguments)
@@ -1019,6 +1022,7 @@ class SprigApp(App[int]):
                 selected = getattr(self.store, "loaded_references", None)
                 self.agent.restore_references(selected if isinstance(selected, dict) else None)
                 self.agent.restore_summary(self.store.loaded_summary, history)
+                self.agent.restore_logs(getattr(self.store, "loaded_logs", None))
                 self._draft_submission = None
                 self.refresh_plan()
                 self.pending_tasks = []
@@ -1051,6 +1055,7 @@ class SprigApp(App[int]):
             self.agent.restore_plan(None)
             self.agent.restore_references()
             self.agent.restore_summary()
+            self.agent.restore_logs()
             self._draft_submission = None
             self.refresh_plan()
             self.pending_tasks = []
@@ -1095,6 +1100,7 @@ class SprigApp(App[int]):
                         "/continue /new /files /add 文件路径 /ref 文件路径 /unref 文件路径 /refs [clear]\n"
                         "/map [名称或路径查询] /git /diff /compact\n"
                         "/summary（本地预览） /summary create [END]（逐次确认额外请求） /summary clear\n"
+                        "/logs（当前会话日志） /log ID [OFFSET]（本地回查） /logs clear（逐次确认清理）\n"
                         "/history 消息编号 [字符偏移]（本地分页原文，系统提示与推理元数据不展示）\n"
                         "/changes /undo /redo /discard-history /sessions /prune [--dry-run]\n"
                         "/save [名称] /restore [名称] /delete [名称]\n"
@@ -1132,6 +1138,24 @@ class SprigApp(App[int]):
             return
         if command == "/models":
             self.append("\n[配置中的模型；未联网]\n" + json.dumps(self.config.model_catalog, ensure_ascii=False, indent=2) + "\n")
+            return
+        if command in {"/logs", "/log"}:
+            if self.busy:
+                self.notify("请先等待当前操作结束或取消，再回查命令日志", severity="warning")
+                return
+            try:
+                parts = argument.split()
+                if command == "/logs" and not parts:
+                    self.start(local=("logs", {}))
+                elif command == "/logs" and parts == ["clear"]:
+                    self.start(local=("logs", {"action": "clear"}))
+                elif command == "/log" and len(parts) in (1, 2):
+                    self.start(local=("logs", {"action": "read", "log_id": parts[0],
+                                               "offset": int(parts[1]) if len(parts) == 2 else 0}))
+                else:
+                    raise ValueError("用法：/logs、/logs clear、/log ID [OFFSET]")
+            except (ValueError, OSError) as error:
+                self.notify(self.safe(error), severity="error")
             return
         if command in {"/summary", "/history"}:
             if self.busy:

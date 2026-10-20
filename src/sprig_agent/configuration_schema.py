@@ -41,7 +41,7 @@ def configuration_schema():
                           "env_allowlist": {"type": "array", "maxItems": 128, "items": environment},
                           "env": {"type": "object", "maxProperties": 32, "propertyNames": environment,
                                   "additionalProperties": {"type": "string", "maxLength": 8192}}}),
-        "storage": obj({"session_dir": text, "change_history_dir": text, "auto_save_session": boolean,
+        "storage": obj({"session_dir": text, "change_history_dir": text, "command_log_dir": text, "auto_save_session": boolean,
                         "session_max_age_days": integer(1, 36500), "session_max_count": integer(1, 256)}),
         "context": obj({"max_bytes": integer(4096, 2097152), "compact": boolean,
                         "trigger_ratio": number(0, 1), "keep_recent_messages": integer(6, 1000),

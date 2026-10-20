@@ -113,7 +113,7 @@ def initialize_config(path, approve):
 GROUP_FIELDS = {
     "agent": set(AGENT_DEFAULTS), "generation": set(GENERATION_FIELDS), "tools": set(TOOL_NAMES),
     "files": {"exclude"}, "execution": {"inherit_env", "timeout", "max_output", "output_limit", "env_allowlist", "env"},
-    "storage": {"session_dir", "change_history_dir", "auto_save_session", "session_max_age_days", "session_max_count"},
+    "storage": {"session_dir", "change_history_dir", "command_log_dir", "auto_save_session", "session_max_age_days", "session_max_count"},
     "context": {"max_bytes", "compact", "trigger_ratio", "keep_recent_messages", "keep_read_bytes", "files"},
     "tui": {"theme", "sidebar", "editor_height", "steering_mode", "metrics", "keybindings"},
     "instructions": {"files", "response_language"},
@@ -417,7 +417,7 @@ class Settings:
         values = dict(AGENT_DEFAULTS)
         sources = {name: "default" for name in {*AGENT_DEFAULTS, *GENERATION_FIELDS, *TRANSPORT_FIELDS,
                     *TUI_FIELDS.values(), "instruction_files", "response_language", "excluded_paths",
-                    "session_dir", "change_history_dir", "auto_save_session", "env_allowlist", "command_env",
+                    "session_dir", "change_history_dir", "command_log_dir", "auto_save_session", "env_allowlist", "command_env",
                     "session_max_age_days", "session_max_count", "command_output_limit", *CONTEXT_FIELDS.values()}}
         def apply(entries, label):
             if "tui_keybindings" in entries:
@@ -456,7 +456,7 @@ class Settings:
             tool_policy.update(self.project_data.get("tools", {}))
         apply({name: selected[name] for name in TRANSPORT_FIELDS if name in selected}, "provider")
         configurable = {*AGENT_DEFAULTS, *GENERATION_FIELDS, *TRANSPORT_FIELDS, *CONTEXT_FIELDS.values(),
-                        "session_dir", "change_history_dir", "show_metrics", "instruction_files", "response_language",
+                        "session_dir", "change_history_dir", "command_log_dir", "show_metrics", "instruction_files", "response_language",
                         "session_max_age_days", "session_max_count", "command_output_limit"}
         overrides = {name: value for name, value in options.items() if name in configurable and value is not None}
         if "reference_files" in overrides:
@@ -542,6 +542,7 @@ def public_config(config, metadata):
                           "max_output": config.max_output, "output_limit": config.command_output_limit or config.max_output},
             "storage": {"session_dir": str(config.session_dir) if config.session_dir else None,
                         "change_history_dir": str(config.change_history_dir) if config.change_history_dir else None,
+                        "command_log_dir": str(config.command_log_dir) if config.command_log_dir else None,
                         "auto_save_session": config.auto_save_session,
                         "session_max_age_days": config.session_max_age_days, "session_max_count": config.session_max_count},
             "tui": {name: (dict(config.tui_keybindings) if name == "keybindings" else getattr(config, field)) for name, field in TUI_FIELDS.items()},

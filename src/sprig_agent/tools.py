@@ -25,6 +25,7 @@ from .revisions import READ_ID_PATTERN, ReadVersions, valid_read_id
 from .map_selection import MapSelection, encoded_size
 from .policy import FilePolicy, command_environment
 from .output import CommandOutput, SampledCommandOutput
+from .command_logs import CommandLogs, LogCapture
 from .edit_match import failure_details
 from .edit_batch import EditPreview, digest, preflight
 from .line_edits import replace_lines, validate_edits
@@ -112,6 +113,7 @@ class Tools:
         self.index = SymbolIndex()
         self.plan = TaskPlan()
         self.read_versions = ReadVersions()
+        self.logs = CommandLogs(config, self._check_cancelled)
         self._edit_preview = False
         self._edit_batch = None
         self._action_observer = None
@@ -172,6 +174,7 @@ class Tools:
         self.history.close()
         self.index.clear()
         self.read_versions.clear()
+        self.logs.close()
 
     def _parts(self, path):
         if not isinstance(path, str) or not path or len(path) > 4096 or "\0" in path or "\\" in path:
@@ -245,7 +248,8 @@ class Tools:
             method = {"list_files": self.list_files, "read_file": self.read_file,
                       "search": self.search, "project_map": self.project_map,
                       "edit_file": self.edit_file, "edit_lines": self.edit_lines,
-                      "run": self.run, "update_plan": self.update_plan, "file_action": self.file_action}.get(name)
+                      "run": self.run, "update_plan": self.update_plan, "file_action": self.file_action,
+                      "read_log": self.read_log}.get(name)
             if method is None:
                 raise ToolError("unknown tool")
             result = method(**arguments)
@@ -941,6 +945,39 @@ class Tools:
             result["sha256"] = hashlib.sha256(data).hexdigest()
         return result
 
+    def read_log(self, log_id, offset=0):
+        self._require_tool("read_log")
+        return self.logs.read(log_id, offset)
+
+    def log_control(self, action="list", **arguments):
+        self.root.ensure_open()
+        self._check_cancelled()
+        if action == "list":
+            return self.logs.list()
+        if action == "read":
+            return self.logs.read(**arguments)
+        if action == "clear":
+            return self.logs.clear(self.request_approval)
+        raise ToolError("unknown command log operation")
+
+    def _retain_log(self, preview, capture, result):
+        if capture is None:
+            return result
+        self._check_cancelled()
+        text, limited = capture.finish()
+        if "unavailable" in preview or type(result.get("returncode")) is not int:
+            result["log"] = {"saved": False, "reason": "log storage unavailable or command did not produce an exit status"}
+            return result
+        try:
+            result["log"] = self.logs.save(preview, text, limited, result)
+        except ValueError as error:
+            result["log"] = {"saved": False, "reason": str(error)}
+        except (OSError, ChangeError):
+            # Command outcome remains authoritative even if optional logging
+            # fails, including an uncertain replace/sync outcome.
+            result["log"] = {"saved": False, "outcome": "unknown", "reason": "command log save failed; inspect /logs before relying on retention"}
+        return result
+
     def run(self, argv, cwd=".", timeout=None):
         self._require_tool("run")
         if self.config.read_only:
@@ -971,6 +1008,20 @@ class Tools:
             description += ("\nenvironment: " + ("expanded inheritance" if self.config.inherit_env else "minimal inheritance")
                             + "; additional inherited names: " + json.dumps(self.config.env_allowlist)
                             + "; override names: " + json.dumps([name for name, _ in self.config.command_env]))
+        preview = None
+        if self.config.command_log_dir is not None:
+            try:
+                preview = self.logs.preview()
+            except (OSError, ValueError):
+                preview = {"unavailable": True}
+            description += ("\nRETAIN redacted command output in private storage: " + str(self.config.command_log_dir)
+                            + "; up to 8 MiB per log / 16 records / 16 MiB journal; readback expires in 7 days, "
+                            "payload remains until approved save/clear; temporary payload up to 16 MiB. "
+                            "Expired/old records may be removed as needed, plus the fixed stale pending file. "
+                            "No command is replayed. Retention candidates (IDs only): "
+                            + json.dumps(preview.get("retention_candidates", [])))
+            if "unavailable" in preview:
+                description += "\nLogging is unavailable; this command will run without a retained log."
         if not self.request_approval(description):
             return {"approved": False}
         self._check_cancelled()
@@ -983,11 +1034,16 @@ class Tools:
         sampled = output_limit > self.config.max_output
         stream = (SampledCommandOutput(self.emit_output, self.config.secrets, self.config.max_output) if sampled
                   else CommandOutput(self.emit_output, self.config.secrets))
+        capture = LogCapture(self.config.secrets) if preview is not None and "unavailable" not in preview else None
+        def emit_chunk(data):
+            stream.write(data)
+            if capture is not None:
+                capture.write(data)
         self.read_versions.clear()
         if os.name == "nt":
             from .windows import run_command
             try:
-                result = run_command(argv, directory, env, seconds, output_limit, self.cancel_event, stream.write)
+                result = run_command(argv, directory, env, seconds, output_limit, self.cancel_event, emit_chunk)
             finally:
                 self.read_versions.clear()
             summary = stream.finish()
@@ -995,7 +1051,9 @@ class Tools:
                 result.update(summary)
             if self.emit_output:
                 result["streamed"] = True
-            return result
+            if preview is not None and capture is None:
+                result["log"] = {"saved": False, "reason": "command log storage unavailable before approval"}
+            return self._retain_log(preview, capture, result)
         process = subprocess.Popen(argv, cwd=directory, env=env, stdin=subprocess.DEVNULL,
                                    stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
                                    start_new_session=True, shell=False)
@@ -1018,7 +1076,7 @@ class Tools:
                         else:
                             space = output_limit - len(output)
                             output.extend(chunk[:space])
-                            stream.write(chunk[:space])
+                            emit_chunk(chunk[:space])
                             if len(chunk) > space:
                                 reason = "output_limit"
                                 break
@@ -1051,4 +1109,6 @@ class Tools:
                 "timed_out": reason == "timeout", "output_limited": reason == "output_limit"}
         if sampled:
             result.update(summary)
-        return result
+        if preview is not None and capture is None:
+            result["log"] = {"saved": False, "reason": "command log storage unavailable before approval"}
+        return self._retain_log(preview, capture, result)

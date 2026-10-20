@@ -17,6 +17,7 @@ from .json_budget import JsonBudgetExceeded, encoded_size
 from .provider import ProviderError, validate_message
 from .references import reference_state
 from .summary import summary_state
+from .command_logs import log_state
 
 MAX_SESSION = 8 * 1024 * 1024
 MAX_LIST_ENTRIES = 4096
@@ -95,7 +96,7 @@ def validate_history(messages):
 
 
 class SessionStore:
-    def __init__(self, directory, config):
+    def __init__(self, directory, config, *, create=True):
         self.directory = Path(directory).expanduser().absolute()
         # macOS exposes these root-owned system paths as aliases into /private.
         # Normalize only these known aliases; user-created symlinks anywhere
@@ -110,6 +111,7 @@ class SessionStore:
         self.config = config
         self.loaded_references = reference_state()
         self.loaded_summary = None
+        self.loaded_logs = None
         # A nested workdir must not allow storing transcripts elsewhere in the same repo.
         forbidden = [config.workdir]
         for parent in (config.workdir, *config.workdir.parents):
@@ -134,6 +136,8 @@ class SessionStore:
                 try:
                     child = directory_handle.child(part)
                 except FileNotFoundError:
+                    if not create:
+                        raise
                     try:
                         directory_handle.mkdir(part)
                     except FileExistsError:
@@ -206,16 +210,18 @@ class SessionStore:
                 return
             raise SessionError("session already exists; use --resume or choose a new name")
 
-    def save_new(self, name, messages, *, references=None, summary=None):
+    def save_new(self, name, messages, *, references=None, summary=None, logs=None):
         """Reserve and save a fresh name together, retaining ownership only on success."""
         with self._reservation(name):
             self.ensure_new(name)
             options = {"references": references} if references is not None else {}
             if summary is not None:
                 options["summary"] = summary
+            if logs is not None:
+                options["logs"] = logs
             self.save(name, messages, **options)
 
-    def save(self, name, messages, *, references=None, summary=None):
+    def save(self, name, messages, *, references=None, summary=None, logs=None):
         filename = self._filename(name)
         payload = {"version": 1, "binding": self.config.binding(), "messages": messages}
         if references is not None:
@@ -228,6 +234,11 @@ class SessionStore:
                     raise SessionError("configured credentials cannot appear in saved file reference paths")
                 payload["file_references"] = selected
         payload = redact(payload, self.config.secrets)
+        if logs is not None:
+            try:
+                payload["command_logs"] = log_state(redact(logs, self.config.secrets))
+            except ValueError:
+                raise SessionError("invalid command log ownership; no data was overwritten") from None
         if summary is not None:
             try:
                 payload["summary_checkpoint"] = summary_state(redact(summary, self.config.secrets), payload["messages"],
@@ -260,6 +271,7 @@ class SessionStore:
     def load(self, name):
         self.loaded_references = reference_state()
         self.loaded_summary = None
+        self.loaded_logs = None
         filename = self._filename(name)
         with self._reservation(name):
             return self._load(filename)
@@ -284,10 +296,12 @@ class SessionStore:
         try:
             selected = reference_state(saved.get("file_references"))
             checkpoint = summary_state(saved.get("summary_checkpoint"), history, binding=self.config.binding())
+            logs = log_state(saved.get("command_logs"))
         except ValueError:
-            raise SessionError("invalid saved file reference or summary state; no files were read") from None
+            raise SessionError("invalid saved file reference, summary or command log state; no referenced files were read") from None
         self.loaded_references = selected
         self.loaded_summary = checkpoint
+        self.loaded_logs = logs
         return history
 
     def list(self):
@@ -344,6 +358,7 @@ class SessionStore:
                         history = validate_history(saved.get("messages"))
                         selected = reference_state(saved.get("file_references"))
                         checkpoint = summary_state(saved.get("summary_checkpoint"), history, binding=saved["binding"])
+                        log_state(saved.get("command_logs"))
                         if self._stamp(self._check_file(entry.name)) != self._stamp(info):
                             raise ValueError("session changed during scan")
                         binding = {key: saved["binding"][key][:4096] for key in ("model", "base_url", "workdir")

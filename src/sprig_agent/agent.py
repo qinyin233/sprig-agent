@@ -21,6 +21,7 @@ from .provider import Provider, ProviderError, validate_message
 from .session import MAX_SESSION, validate_history
 from .summary import (HISTORY_SCHEMA, MAX_SUMMARY, PROMPT as SUMMARY_PROMPT, binding_digest, closed_end, fingerprint,
                       history_page, project as project_summary, public_message, summary_fields, summary_state)
+from .command_logs import READ_LOG_SCHEMA
 from .tools import TOOL_SCHEMAS, Tools
 
 
@@ -91,6 +92,8 @@ class Agent:
         for schema in self.schemas:
             if schema["function"]["name"] == "run":
                 schema["function"]["parameters"]["properties"]["timeout"]["maximum"] = config.timeout
+        if config.command_log_dir is not None and config.tool_enabled("read_log"):
+            self.schemas.append(copy.deepcopy(READ_LOG_SCHEMA))
         self.compact_context = config.compact_context
         self.baseline_status = "not_run"
         self.edit_check_status = "not_run"
@@ -151,7 +154,13 @@ class Agent:
         options = {"references": state} if state["files"] else {}
         if self.summary is not None:
             options["summary"] = self.summary
+        if isinstance(self.tools, Tools) and self.tools.logs.state() is not None:
+            options["logs"] = self.tools.logs.state()
         return options
+
+    def restore_logs(self, state=None):
+        if isinstance(self.tools, Tools):
+            self.tools.logs.restore(state if self.config.command_log_dir is not None else None)
 
     def restore_summary(self, state=None, messages=None):
         check = self._check_cancelled if self._running else (lambda: None)

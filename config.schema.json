@@ -189,6 +189,9 @@
         },
         "read_history": {
           "type": "boolean"
+        },
+        "read_log": {
+          "type": "boolean"
         }
       },
       "additionalProperties": false
@@ -265,6 +268,12 @@
           "pattern": "^[^\\x00-\\x1f]+$"
         },
         "change_history_dir": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 4096,
+          "pattern": "^[^\\x00-\\x1f]+$"
+        },
+        "command_log_dir": {
           "type": "string",
           "minLength": 1,
           "maxLength": 4096,
@@ -962,6 +971,9 @@
               },
               "read_history": {
                 "type": "boolean"
+              },
+              "read_log": {
+                "type": "boolean"
               }
             },
             "additionalProperties": false
@@ -1038,6 +1050,12 @@
                 "pattern": "^[^\\x00-\\x1f]+$"
               },
               "change_history_dir": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 4096,
+                "pattern": "^[^\\x00-\\x1f]+$"
+              },
+              "command_log_dir": {
                 "type": "string",
                 "minLength": 1,
                 "maxLength": 4096,

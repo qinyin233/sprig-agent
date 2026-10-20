@@ -102,6 +102,7 @@ def chat(agent, task, messages, emit, *, autostart=True):
         try:
             if task == "/help":
                 emit("/summary previews an optional lossy checkpoint; /summary create [END] makes one extra model request after approval; /summary clear restores the full request view. /history MESSAGE [OFFSET] locally pages original data.")
+                emit("/logs lists this conversation's retained command output; /log ID [OFFSET] pages historical text; /logs clear requires fresh deletion approval. Retention is opt-in via --command-log-dir or storage.command_log_dir.")
                 emit("/ref PATH adds a live file reference; /unref PATH removes it; /refs lists metadata; /refs clear removes all. No model request is sent. Small complete files refresh before requests; larger files provide path/size only.")
                 emit("/worktrees lists local checkouts; /worktree PATH creates a detached checkout after fresh approvals. All remaining text is the path; the current conversation stays in this workspace.")
                 emit("Enter a task to continue the same conversation. /continue explicitly continues retained history without adding a duplicate request; /status shows local context; /plan shows model-reported progress, never approval or acceptance; /context previews the request budget; /usage shows local numeric request measurements and unknown token counts; /compact confirms request-only elision; /changes lists exact edit backups; /undo and /redo require diff approval; /discard-history confirms removal of backups; /diff and /git show Git changes with approval; /exit closes chat.")
@@ -173,6 +174,17 @@ def chat(agent, task, messages, emit, *, autostart=True):
                 if history_ready:
                     agent.record_workspace_change(messages, result)
                 emit(json.dumps(result, ensure_ascii=False, indent=2))
+            elif task == "/logs" or task.startswith("/logs ") or task.startswith("/log "):
+                parts = task.split()
+                if parts == ["/logs"]:
+                    result = agent.tools.log_control()
+                elif parts == ["/logs", "clear"]:
+                    result = agent.tools.log_control("clear")
+                elif parts[0] == "/log" and len(parts) in (2, 3):
+                    result = agent.tools.log_control("read", log_id=parts[1], offset=int(parts[2]) if len(parts) == 3 else 0)
+                else:
+                    raise ValueError("Use /logs, /logs clear or /log ID [OFFSET]")
+                emit(json.dumps(result, ensure_ascii=False, indent=2))
             elif task in {"/diff", "/git"}:
                 argv = ["git", "diff", "--", "."] if task == "/diff" else ["git", "status", "--short", "--", "."]
                 result = agent.tools.execute("run", {"argv": argv})
@@ -227,6 +239,7 @@ def main(argv=None):
     parser.add_argument("--token-limit-field", choices=("max_tokens", "max_completion_tokens"))
     parser.add_argument("--request-timeout", type=float, help="HTTP idle timeout; separate from approved command timeout")
     parser.add_argument("--request-deadline", type=float, help="total HTTP request limit in seconds (default: 300; maximum: 3600)")
+    parser.add_argument("--command-log-dir", type=Path, help="opt in to private bounded command log retention outside all repositories")
     parser.add_argument("--proxy", help="system, direct, or credential-free HTTP(S) proxy URL")
     parser.add_argument("--disable-tool", action="append", choices=TOOL_NAMES, help="disable a tool in schemas and execution; repeatable")
     parser.add_argument("--thinking", action=argparse.BooleanOptionalAction, default=None, help="request chat_template_kwargs.enable_thinking; provider support required, off unless selected")
@@ -409,6 +422,7 @@ def main(argv=None):
             state = getattr(store, "loaded_references", None)
             agent.restore_references(state if isinstance(state, dict) else None)
             agent.restore_summary(store.loaded_summary, messages)
+            agent.restore_logs(getattr(store, "loaded_logs", None))
             if args.reference_files:
                 messages, _ = agent.update_references(config.reference_files, messages=messages)
         if args.file:

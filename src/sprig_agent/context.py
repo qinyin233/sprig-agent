@@ -328,6 +328,9 @@ def prepare_context(config, messages, tools, compact=False, *, force=False, chec
             note = "Older successful output elided; reread files if needed. Full result remains in saved history."
             identity = message["tool_call_id"]
             read = calls.get(identity, (len(selected), {}))
+            if read[1].get("function", {}).get("name") == "read_log" and "text" in result:
+                fields.append("text")
+                note = "Older historical command log excerpt omitted; use read_log to page the retained log again. This is not current evidence or approval."
             read_arguments = _result(read[1].get("function", {}).get("arguments"))
             if ("content" in fields and identity not in ambiguous and read[0] < index
                     and read[1].get("function", {}).get("name") == "read_file"
