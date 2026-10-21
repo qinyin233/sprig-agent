@@ -27,7 +27,7 @@ def diagnose(config, details):
     except (OSError, ValueError):
         checks.append({"check": "development guidance", "ok": False,
                        "detail": "cannot safely load configured guidance; check paths, privacy, UTF-8 and size limits"})
-    for package in ("textual", "tree-sitter", "google-re2", "pyyaml"):
+    for package in ("textual", "tree-sitter", "google-re2", "pyyaml", "jsonschema"):
         try:
             version = metadata.version(package)
             checks.append({"check": package, "ok": True, "version": version})

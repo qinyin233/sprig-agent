@@ -315,3 +315,5 @@ P2 的交互澄清阶段继续阅读同一固定提交的 [`tool/plugin/question
 未运行 upstream 程序、测试或 CI；未测首 token 延迟、真实仓库成功率、token/费用、长会话信息保真度；没有把兼容适配数量转换成“性能领先”结论。Native Windows/POSIX 的具体执行行为必须由真实 runner 验证，静态阅读和平台分支存在均不等于测试通过。
 
 本轮没有复制上游实现或引入其依赖。建议与已实现项明确分开，后续按第 13 节逐批落实，并在实际交付后回填提交和验证结果。
+
+2026-10-21 后续 MCP 阶段继续追读固定源码 `mcp/index.ts` 和 `mcp/client.ts` 的状态、现代/旧版协议、目录及过期会话分支，并核对 [2026-07-28 规范](https://modelcontextprotocol.io/specification/2026-07-28/basic/transports/streamable-http) 与旧版 HTTP 绑定。Sprig 实现[明确端点的 HTTP 网关](../mcp.md)，按需发现和逐次批准，Schema 不联网解析或执行不受控正则，工具/资源/提示词全部是外部数据。未复制自动重连、版本回退或持久授权；stdio/OAuth/订阅/采样等仍未实现，原固定快照缺项表保持历史状态。

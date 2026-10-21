@@ -766,6 +766,8 @@ class SprigApp(App[int]):
                     result = self.tools.log_control(**arguments)
                 elif name == "skills":
                     result = self.tools.skills.catalog()
+                elif name == "mcp-status":
+                    result = self.tools.mcp_manager.status()
                 elif name in {"worktree-create", "worktree-list"}:
                     from .worktrees import worktree_action
                     result = worktree_action(self.config, self.confirm, cancel_event=self.cancel_event, **arguments)
@@ -1146,6 +1148,7 @@ class SprigApp(App[int]):
             self.append("\n本地命令（不发送给模型）：\n"
                         "/help /keys /plan /status /config /models /context /usage /cancel /exit\n"
                         "/skills（已配置技能摘要） /skill NAME [PATH [OFFSET PAGE_SHA256]]（本地预览，不运行脚本）\n"
+                        "/mcp（本地状态） /mcp connect|disconnect|tools|resources|templates|prompts SERVER（逐次确认请求）\n"
                         "/continue /new /files /add 文件路径 /ref 文件路径 /unref 文件路径 /refs [clear]\n"
                         "/map [名称或路径查询] /git /diff /compact\n"
                         "/summary（本地预览） /summary create [END]（逐次确认额外请求） /summary clear\n"
@@ -1187,6 +1190,17 @@ class SprigApp(App[int]):
             return
         if command == "/models":
             self.append("\n[配置中的模型；未联网]\n" + json.dumps(self.config.model_catalog, ensure_ascii=False, indent=2) + "\n")
+            return
+        if command == "/mcp":
+            if self.busy:
+                self.notify("请等待任务结束或取消后操作 MCP；可正常发送任务引导", severity="warning")
+                return
+            try:
+                from .mcp import local_arguments
+                arguments = local_arguments(argument)
+                self.start(local=("mcp-status", {}) if arguments["action"] == "status" else ("mcp", arguments))
+            except (ValueError, OSError) as error:
+                self.notify(self.safe(error), severity="error")
             return
         if command in {"/skills", "/skill"}:
             if self.busy:

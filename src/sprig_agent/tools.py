@@ -28,6 +28,7 @@ from .output import CommandOutput, SampledCommandOutput
 from .command_logs import CommandLogs, LogCapture
 from .questions import answer_result, validate_questions
 from .skills import Skills
+from .mcp import McpManager
 from .edit_match import failure_details
 from .edit_batch import EditPreview, digest, preflight
 from .line_edits import replace_lines, validate_edits
@@ -124,6 +125,11 @@ class Tools:
         self.instructions = ProjectInstructions(self._read_instruction, self._check_cancelled,
                                                 config.project_instructions, config.instruction_files)
         self.skills = Skills(config, self.root.ensure_open, self._check_cancelled, self.policy)
+        self.mcp_manager = McpManager(config, self._check_mcp, self.request_approval)
+
+    def _check_mcp(self):
+        self.root.ensure_open()
+        self._check_cancelled()
 
     def _read_instruction(self, path, limit):
         self.policy.reload()
@@ -174,6 +180,7 @@ class Tools:
             raise ToolError("tool is disabled by configuration")
 
     def close(self):
+        self.mcp_manager.reset()
         self.root.close()
         self.history.close()
         self.index.clear()
@@ -253,7 +260,7 @@ class Tools:
                       "search": self.search, "project_map": self.project_map,
                       "edit_file": self.edit_file, "edit_lines": self.edit_lines,
                       "run": self.run, "update_plan": self.update_plan, "file_action": self.file_action,
-                      "read_log": self.read_log, "question": self.question, "skill": self.skill}.get(name)
+                      "read_log": self.read_log, "question": self.question, "skill": self.skill, "mcp": self.mcp}.get(name)
             if method is None:
                 raise ToolError("unknown tool")
             result = method(**arguments)
@@ -948,6 +955,10 @@ class Tools:
         if by_line:
             result["sha256"] = hashlib.sha256(data).hexdigest()
         return result
+
+    def mcp(self, action="status", **arguments):
+        self._require_tool("mcp")
+        return self.mcp_manager.control(action, **arguments)
 
     def skill(self, name, path="SKILL.md", offset=0, page_sha256=None):
         self._require_tool("skill")

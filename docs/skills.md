@@ -50,4 +50,4 @@ YAML 使用锁定的 PyYAML SafeLoader，拒绝重复键、别名/锚点、自�
 
 重读固定 OpenCode `dev@9d90d89` 的 [`skill.ts`](https://github.com/anomalyco/opencode/blob/9d90d892dcbfc52b47e95b2ea31b8aba877128fd/packages/core/src/skill.ts)、[`tool/plugin/skill.ts`](https://github.com/anomalyco/opencode/blob/9d90d892dcbfc52b47e95b2ea31b8aba877128fd/packages/core/src/tool/plugin/skill.ts) 和 [`skill-scan.ts`](https://github.com/anomalyco/opencode/blob/9d90d892dcbfc52b47e95b2ea31b8aba877128fd/packages/core/src/config/plugin/skill-scan.ts)。采用摘要发现与按需加载思路，保持 Sprig 的明确目录和审批边界；没有复制上游的链接跟随、权限持久授予或插件安装。
 
-测试包含三协议实际 HTTP/SSE、元数据与正文分离、资料分页、Unicode/换行保真、秘密跨页、无效 YAML、变化后的续读拒绝、目录隐私和原生链接拒绝、只读/取消/关闭资源、CLI/TUI 本地预览及新操作批准。固定回复验证程序和协议流程，不证明模型编码成功率；具体平台与精确 CI 结果见[机器记录](benchmarks/skills-20261021.json)。当前没有技能市场、安装器、hooks、自动脚本或 MCP。
+测试包含三协议实际 HTTP/SSE、元数据与正文分离、资料分页、Unicode/换行保真、秘密跨页、无效 YAML、变化后的续读拒绝、目录隐私和原生链接拒绝、只读/取消/关闭资源、CLI/TUI 本地预览及新操作批准。固定回复验证程序和协议流程，不证明模型编码成功率；具体平台与精确 CI 结果见[机器记录](benchmarks/skills-20261021.json)。技能自身没有市场、安装器、hooks 或自动脚本；后续外部服务能力见 [MCP Streamable HTTP](mcp.md)。

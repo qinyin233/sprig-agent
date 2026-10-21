@@ -121,6 +121,7 @@ GROUP_FIELDS = {
     "tui": {"theme", "sidebar", "editor_height", "steering_mode", "metrics", "keybindings"},
     "instructions": {"files", "response_language"},
     "skills": {"dirs"},
+    "mcp": {"servers"},
 }
 TUI_FIELDS = {"theme": "tui_theme", "sidebar": "tui_sidebar", "editor_height": "tui_editor_height",
               "steering_mode": "steering_mode", "metrics": "show_metrics", "keybindings": "tui_keybindings"}
@@ -170,6 +171,9 @@ def _flatten(layer, directory):
         values["response_language"] = instructions["response_language"]
     if "dirs" in layer.get("skills", {}):
         values["skill_dirs"] = tuple(Path(os.path.abspath(directory / Path(path).expanduser())) for path in layer["skills"]["dirs"])
+    if "servers" in layer.get("mcp", {}):
+        from .mcp_config import parse_servers
+        values["mcp_servers"] = parse_servers(layer["mcp"]["servers"])
     for name, value in layer.get("storage", {}).items():
         if name.endswith("_dir"):
             value = Path(value).expanduser()
@@ -252,8 +256,8 @@ def _validate(data, directory, *, project=False):
     if project:
         # An explicit repository file may tune requests and tighten tool policy.
         # It cannot route credentials, inject environment, or persist transcripts.
-        if set(data) & {"execution", "storage", "skills"}:
-            raise ValueError("project configuration cannot change execution environment, storage or trusted skill roots")
+        if set(data) & {"execution", "storage", "skills", "mcp"}:
+            raise ValueError("project configuration cannot change execution environment, storage, skill roots or MCP servers")
         if "keybindings" in data.get("tui", {}):
             raise ValueError("project configuration cannot change trusted keyboard shortcuts")
         if any(data.get("agent", {}).get(name) for name in ("inherit_env", "checks")):
@@ -411,7 +415,15 @@ class Settings:
             if entry.get("api_key"):
                 secrets.add(entry["api_key"])
         secrets.update(env[name] for name in names if env.get(name))
+        # Protect even inactive MCP credentials from model output and child processes.
+        for layer in (self.data, *self.data.get("profiles", {}).values()):
+            for entry in layer.get("mcp", {}).get("servers", {}).values():
+                names.update(entry.get("headers_env", {}).values())
+                secrets.update(entry.get("headers", {}).values())
+        secrets.update(env[name] for name in names if env.get(name))
         headers = dict(selected.get("headers", {}))
+        from .mcp_config import credential_parts
+        secrets = {part for value in secrets for part in credential_parts(value)}
         if headers or selected.get("headers_env"):
             if url != configured_url:
                 raise ValueError("configured headers cannot follow an overridden base URL")
@@ -444,6 +456,11 @@ class Settings:
         if "max_context_bytes" in model_settings:
             apply({"max_context_bytes": model_settings["max_context_bytes"]}, "model")
         apply(_flatten(profile, directory), "profile")
+        # A trusted profile replaces a complete per-server definition by name.
+        if "mcp_servers" in values:
+            from .mcp_config import parse_servers
+            combined = {**self.data.get("mcp", {}).get("servers", {}), **profile.get("mcp", {}).get("servers", {})}
+            values["mcp_servers"] = tuple(server.resolve(env) for server in parse_servers(combined))
         tool_policy = {**self.data.get("tools", {}), **profile.get("tools", {})}
         if self.project_path:
             project_values = _flatten(self.project_data, self.project_path.parent)
@@ -550,6 +567,7 @@ def public_config(config, metadata):
             "files": {"exclude": config.excluded_paths},
             "instructions": {"files": config.instruction_files, "response_language": config.response_language},
             "skills": {"dirs": [str(path) for path in config.skill_dirs]},
+            "mcp": {"servers": [server.public() for server in config.mcp_servers]},
             "execution": {"env_allowlist": config.env_allowlist, "env_names": [name for name, _ in config.command_env],
                           "max_output": config.max_output, "output_limit": config.command_output_limit or config.max_output},
             "storage": {"session_dir": str(config.session_dir) if config.session_dir else None,

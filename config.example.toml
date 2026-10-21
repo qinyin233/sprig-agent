@@ -74,6 +74,14 @@ check_after_edit = false # fixed checks once after each successful file-edit bat
 [skills]
 dirs = [] # explicit skill collections, e.g. ["~/.agents/skills"]; user/profile only
 
+# [mcp.servers.docs]
+# transport = "streamable_http"
+# url = "https://example.com/mcp"
+# protocol_version = "2026-07-28" # older services: 2025-11-25 or 2025-06-18
+# headers_env = { Authorization = "MCP_AUTHORIZATION" } # full header, e.g. Bearer ...
+# timeout = 30
+# deadline = 120
+
 [instructions]
 files = [] # e.g. ["CONTRIBUTING.md", "docs/coding-style.md"]; required if listed
 response_language = "简体中文" # explanations only; direct user requests take precedence
@@ -90,6 +98,7 @@ run = true
 update_plan = true # bounded task checklist, not approval or acceptance
 question = true # exposed only with an interactive callback; human answers never approve actions
 skill = true # exposed only with explicit skills.dirs; loading never executes scripts
+mcp = true # explicit endpoints; connect and every RPC ask approval; blocked in read-only
 read_history = true # only exposed with an active summary; original conversation data, not current file evidence
 read_log = true # only exposed with command_log_dir; opaque current-conversation history, never file read_id
 

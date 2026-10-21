@@ -191,7 +191,7 @@ uv run --locked sprig --config-schema
 
 `[tools].file_action=false` 禁用目录创建、读取标识删除和复制后删除的移动；`edit_file=false` 也同时禁用 `file_action` 与 `edit_lines`，显式项目层不能重新打开。CLI 为 `--disable-tool file_action`；只读模式在 schema 和实际执行层阻止这些写入。移动的两个阶段分别取得新批准，不提供原子 rename，见[专用文件操作](file-actions.md)。
 
-`[tools]` 对十三种工具设置 true/false：`list_files`、`read_file`、`search`、`project_map`、`edit_file`、`edit_lines`、`file_action`、`run`、`update_plan`、`question`、`skill`、`read_history`、`read_log`。false 同时移除对应模型 schema，并由实际执行层检查；CLI `--disable-tool NAME` 可重复。`question` 仅在交互式 TUI/终端 CLI 或显式嵌入回调中提供，支持需求选项与自填；答案不能批准操作，同批其他提案跳过后重新规划，见[澄清流程](questions.md)。`skill` 仅在显式配置 `[skills].dirs` 时提供，按需加载技能说明和资料；不是执行或授权入口，见[技能配置](skills.md)。`read_history` 仅在有显式摘要检查点时提供，按消息编号回查当前对话被概括的原文；`read_log` 仅在配置 `command_log_dir` 时提供，按不透明句柄回查当前会话的历史命令输出。两者都不接受任意文件或其他会话路径，本地 `/history`、`/log` 是用户查看控制。无可选配置的非交互任务仍为九种工具，交互式任务增加 `question` 后为十种；摘要、日志和技能都启用时最多十三种。关闭 `read_file` 也阻止 `/add` 附件；关闭 `edit_file` 同时禁止 `edit_lines` 与 `file_action`，项目不能重新启用。整行编辑的短版本标识仍关联完整摘要并要求新批准，见[读取绑定编辑](read-bound-edits.md)。`run=false` 或 `read_only=true` 不能配置非空 `checks`。`update_plan` 只维护模型报告的进度，不授权执行或替代验收，详见[任务计划](task-plans.md)。
+`[tools]` 对十四种工具设置 true/false：`list_files`、`read_file`、`search`、`project_map`、`edit_file`、`edit_lines`、`file_action`、`run`、`update_plan`、`question`、`skill`、`mcp`、`read_history`、`read_log`。false 同时移除对应模型 schema，并由实际执行层检查；CLI `--disable-tool NAME` 可重复。`question` 仅在交互式 TUI/终端 CLI 或显式嵌入回调中提供，支持需求选项与自填；答案不能批准操作，同批其他提案跳过后重新规划，见[澄清流程](questions.md)。`skill` 仅在显式配置 `[skills].dirs` 时提供，按需加载技能说明和资料；不是执行或授权入口，见[技能配置](skills.md)。`read_history` 仅在有显式摘要检查点时提供，按消息编号回查当前对话被概括的原文；`read_log` 仅在配置 `command_log_dir` 时提供，按不透明句柄回查当前会话的历史命令输出。两者都不接受任意文件或其他会话路径，本地 `/history`、`/log` 是用户查看控制。无可选配置的非交互任务仍为九种工具，交互式任务增加 `question` 后为十种；摘要、日志、技能和 MCP 都启用时最多十四种。关闭 `read_file` 也阻止 `/add` 附件；关闭 `edit_file` 同时禁止 `edit_lines` 与 `file_action`，项目不能重新启用。整行编辑的短版本标识仍关联完整摘要并要求新批准，见[读取绑定编辑](read-bound-edits.md)。`run=false` 或 `read_only=true` 不能配置非空 `checks`。`update_plan` 只维护模型报告的进度，不授权执行或替代验收，详见[任务计划](task-plans.md)。
 
 禁用单个工具只控制该工具接口，例如 `search` 仍会读取匹配内容。要禁止某些路径通过所有文件工具访问，使用 `[files].exclude`；要禁用全部命令，使用 `run=false` 或只读模式。任意获批命令仍无 OS 沙箱，不能把文件排除当作命令隔离。
 
@@ -202,6 +202,10 @@ uv run --locked sprig --config-schema
 `[storage].command_log_dir` 或 `--command-log-dir PATH` 显式启用专用私有命令日志目录，绑定会话，默认不保留。每次命令批准包含存储与候选淘汰；每份最多 8 MiB、专用 journal 最多 16 MiB/16 条，七天后不可读，磁盘清理仍需获批操作。模型 `read_log` 和本地 `/logs`、`/log ID [OFFSET]` 支持回查，`/logs clear` 新批准后只清理当前会话；不提高原始输出上限，不替代验收，详见[日志回查与隔离边界](command-logs.md)。
 
 长测试日志可显式设置 `[execution].output_limit`，将原始总输出上限与 `max_output` 展示预算分开：例如 `output_limit=1048576` 允许至多 1 MiB 输出，展示仍保留有界首尾。范围 256–8388608，默认沿用 `max_output`，CLI 为 `--command-output-limit`，显式值绑定会话。首尾展示的 `output_truncated` 与进程被停止的 `output_limited` 含义不同，见[命令输出与验收边界](command-output.md)。
+
+## MCP 外部服务
+
+`[mcp.servers.NAME]` 支持明确的 `streamable_http` 端点、协议版本、超时/总期限、代理、字面 headers 或 headers_env。用户/profile 可配置，项目配置禁止改变；profile 按服务名替换完整定义，最多八个服务。配置不会启动连接或调用工具；`--list-mcp` 只做离线检查，TUI/chat `/mcp` 管理本地状态，连接及每次 RPC 单独批准。只读模式移除模型 MCP schema 并在执行层阻止外部请求。新旧 HTTP 版本、Schema 子集、凭据过滤、结果分页及未实现的 stdio/OAuth 等范围见 [MCP](mcp.md)。
 
 ## 存储与终端
 
@@ -274,6 +278,6 @@ uv run --locked sprig --project-config /trusted/private/project.toml
 
 `[skills].dirs` 最多八个明确的技能集合目录，相对路径以声明配置文件为基准，CLI 重复 `--skill-dir` 以工作区为基准并覆盖整个数组。用户和 profile 可以设置，项目层禁止改变目录；目录绑定会话。`--list-skills` 无须模型凭据即可离线检查，TUI/chat `/skills` 和 `/skill NAME [PATH [OFFSET PAGE_SHA256]]` 提供本地预览。详见[按需技能、分页与权限边界](skills.md)。
 
-MCP、插件、hooks、沙箱、自动批准等没有对应执行后端的字段都会报错。技能加载不会运行脚本或授予权限；后续扩展需要同时实现后端与安全测试，不能只添加一个可解析开关。
+stdio、MCP OAuth/订阅、插件、hooks、沙箱、自动批准等未提供后端的字段仍会报错。技能加载不会运行脚本或授予权限；后续扩展需要同时实现后端与安全测试，不能只添加一个可解析开关。
 
 模型协议由供应商表的 wire_api 选择，支持 chat_completions（默认）、messages、responses；CLI 对应 --wire-api。认证、生成参数映射、原生推理状态、会话绑定与限制见 [模型协议](provider-protocols.md)。

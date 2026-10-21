@@ -8,8 +8,9 @@ from pathlib import Path
 import re
 import unicodedata
 from urllib.parse import urlsplit, urlunsplit
+from .credentials import RuntimeCredentials
 
-TOOL_NAMES = ("list_files", "read_file", "search", "project_map", "edit_file", "run", "update_plan", "edit_lines", "file_action", "read_history", "read_log", "question", "skill")
+TOOL_NAMES = ("list_files", "read_file", "search", "project_map", "edit_file", "run", "update_plan", "edit_lines", "file_action", "read_history", "read_log", "question", "skill", "mcp")
 SHORTCUT_ACTIONS = ("cancel", "quit", "focus_input", "toggle_sidebar", "help", "new_conversation")
 GENERATION_FIELDS = ("max_tokens", "thinking", "temperature", "top_p", "reasoning_effort", "seed", "token_limit_field", "extra_body")
 RESERVED_BODY_FIELDS = {"model", "messages", "tools", "tool_choice", "stream", "stream_options", "n",
@@ -160,6 +161,8 @@ class Config:
     check_history_format: str = "tool_calls"
     wire_api: str = "chat_completions"
     skill_dirs: tuple = ()
+    mcp_servers: tuple = field(default=(), repr=False)
+    _runtime_credentials: RuntimeCredentials = field(default_factory=RuntimeCredentials, init=False, repr=False, compare=False)
 
     def __post_init__(self):
         if self.wire_api not in ("chat_completions", "messages", "responses"):
@@ -173,6 +176,11 @@ class Config:
             raise ValueError("workdir must be a directory")
         object.__setattr__(self, "workdir", root)
         object.__setattr__(self, "base_url", endpoint(self.base_url))
+        from .mcp_config import McpServer
+        if (not isinstance(self.mcp_servers, tuple) or len(self.mcp_servers) > 8
+                or any(not isinstance(server, McpServer) for server in self.mcp_servers)
+                or len({server.name for server in self.mcp_servers}) != len(self.mcp_servers)):
+            raise ValueError("MCP requires at most eight unique validated servers")
         if (not isinstance(self.skill_dirs, tuple) or len(self.skill_dirs) > 8
                 or any(not isinstance(p, (str, Path)) or not str(p) or len(str(p)) > 4096
                        or any(ord(c) < 32 for c in str(p)) for p in self.skill_dirs)):
@@ -365,6 +373,8 @@ class Config:
             raise ValueError("invalid credential redaction values")
         if not isinstance(self.command_env, tuple) or len(self.command_env) > 32:
             raise ValueError("at most 32 command environment overrides are supported")
+        object.__setattr__(self, "credential_env_vars", tuple(dict.fromkeys((*self.credential_env_vars,
+                           *(variable for server in self.mcp_servers for _, variable in server.headers_env)))))
         protected = {"SPRIG_API_KEY", "OPENAI_API_KEY", "AGNES_API_KEY", *(name.upper() for name in self.credential_env_vars)}
         for pair in self.command_env:
             if not isinstance(pair, tuple) or len(pair) != 2:
@@ -400,7 +410,9 @@ class Config:
 
     @property
     def credential_secrets(self):
-        return tuple(dict.fromkeys(value for value in (self.api_key, *self.secret_values, *(value for _, value in self.headers)) if value))
+        return tuple(dict.fromkeys(value for value in (self.api_key, *self.secret_values, *(value for _, value in self.headers),
+                    *(value for server in self.mcp_servers for value in server.credential_values()),
+                    *self._runtime_credentials.snapshot()) if value))
 
     @property
     def secrets(self):
@@ -462,6 +474,8 @@ class Config:
             binding["instruction_files"] = list(self.instruction_files)
         if self.skill_dirs:
             binding["skill_dirs"] = [str(path) for path in self.skill_dirs]
+        if self.mcp_servers:
+            binding["mcp_servers"] = [{k: v for k, v in server.public().items() if k != "missing_environment"} for server in self.mcp_servers]
         if self.response_language is not None:
             binding["response_language"] = self.response_language
         if self.max_tokens is not None:

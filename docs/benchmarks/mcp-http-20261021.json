@@ -1,0 +1,163 @@
+{
+  "schema_version": 1,
+  "date": "2026-10-21",
+  "feature": "explicit MCP Streamable HTTP with progressive discovery, bounded schemas and fresh per-RPC approval",
+  "base_commit": "02b914ca66fd289fe630179d2e8d30505366579b",
+  "source_digest": {
+    "files": 54,
+    "sha256": "77c9627fb4e526b41a5d807ff10efd5c9a43dc74c521595e2018b62de2f7885b"
+  },
+  "tests_digest": {
+    "files": 70,
+    "sha256": "a7d1527e15bbd8db71c7fd966bd4fcf4ba5c68935a0ec1eda89dc3ddfc7a1723"
+  },
+  "digest_method": "SHA256 of compact ASCII JSON arrays of [POSIX relative path, SHA256 of bytes with CRLF normalized to LF], sorted by path; src/sprig_agent/*.py and tests/*.py separately",
+  "local_suites": [
+    {
+      "platform": "Windows 11",
+      "python": "3.13.0",
+      "command": "uv run --locked python -m unittest discover -s tests -q",
+      "total": 1062,
+      "passed": 1043,
+      "skipped": 19,
+      "failures": 0,
+      "errors": 0,
+      "seconds": 373.737
+    },
+    {
+      "platform": "WSL Ubuntu-26.04",
+      "python": "3.13.14",
+      "command": "UV_PROJECT_ENVIRONMENT=.venv-wsl uv run --locked python -m unittest discover -s tests -q",
+      "total": 1062,
+      "passed": 1039,
+      "skipped": 23,
+      "failures": 0,
+      "errors": 0,
+      "seconds": 262.212
+    }
+  ],
+  "compatibility_suites": [
+    {
+      "platform": "Windows 11",
+      "python": "3.11.14",
+      "command": "UV_PROJECT_ENVIRONMENT=.venv-py311 uv run --locked --python 3.11 --no-editable python -m unittest tests.test_mcp tests.test_configuration_profiles -q",
+      "total": 46,
+      "passed": 46,
+      "skipped": 0,
+      "seconds": 39.001,
+      "full_suite": false
+    }
+  ],
+  "client_suite_command": "uv run --project benchmarks/clients/mini --locked python -I -B -m unittest discover -s benchmarks/clients/tests -q",
+  "client_suites": [
+    {
+      "platform": "Windows 11",
+      "total": 25,
+      "passed": 25,
+      "skipped": 0,
+      "seconds": 46.617
+    },
+    {
+      "platform": "WSL Ubuntu-26.04",
+      "environment": "UV_PROJECT_ENVIRONMENT=.venv-mini-wsl",
+      "total": 25,
+      "passed": 25,
+      "skipped": 0,
+      "seconds": 203.639
+    }
+  ],
+  "workflow_fixture": {
+    "kind": "fixed_response_models_with_real_loopback_model_HTTP_and_MCP_HTTP_SSE",
+    "model_protocols": [
+      "chat_completions",
+      "messages",
+      "responses"
+    ],
+    "model_stream_modes": [
+      false,
+      true
+    ],
+    "completed_pipeline": "connect -> discover tools and catalog_id -> validated RPC -> actual result in next model request",
+    "incomplete_model_streams": "no MCP connection, RPC or approval prompt",
+    "mcp_versions": [
+      "2026-07-28",
+      "2025-11-25",
+      "2025-06-18"
+    ],
+    "mcp_response_types": [
+      "application/json",
+      "text/event-stream"
+    ],
+    "model_quality_or_general_performance_claim": false,
+    "external_model_requests": 0
+  },
+  "packaging": {
+    "uv_lock_check": "passed",
+    "configuration_schema_matches": true,
+    "compileall": "passed",
+    "cli_help": "passed",
+    "offline_list_mcp_without_model_or_credentials": "passed: no servers, no network",
+    "sdist_and_wheel_build": "passed",
+    "wheel_source_modules_match": 54,
+    "isolated_installed_wheel_tui_smoke": "passed: three independently approved actual RPCs, disposable remote marker written only on call, local middle-result readback, unchanged draft/history, private resume without connection or replay",
+    "isolated_smoke_actual_rpc_count": 3,
+    "isolated_smoke_fixture_model_calls": 4,
+    "isolated_smoke_external_model_requests": 0,
+    "runtime_dependencies_added": [
+      "jsonschema 4.26.0 locked; imported on actual MCP schema use only"
+    ]
+  },
+  "coverage": {
+    "new_test_methods": 22,
+    "default_no_connection_or_extra_schema": true,
+    "read_only_disabled_cancelled_closed_and_declined_prevent_rpc": true,
+    "each_network_operation_needs_fresh_approval": true,
+    "all_three_model_wires_complete_and_incomplete_streams": true,
+    "modern_per_request_metadata_and_legacy_initialize_session": true,
+    "catalog_hash_validation_stale_and_duplicate_tools": true,
+    "local_only_acyclic_schema_references_and_bounded_re2_validation": true,
+    "schema_work_budget_and_redaction_expansion_bounds": true,
+    "unicode_sentinel_and_primitive_mirrored_headers": true,
+    "invalid_envelope_duplicate_keys_wrong_id_oversize_and_incomplete_sse_rejected": true,
+    "redirect_responses_closed_without_following": true,
+    "cancel_singleflight_and_best_effort_legacy_notification_no_resend": true,
+    "resource_uri_not_fetched_prompt_roles_remain_inert": true,
+    "large_result_whole_redaction_then_utf8_pages_without_rpc": true,
+    "model_auth_not_automatically_forwarded_to_mcp": true,
+    "inactive_profile_credentials_and_dynamic_session_ids_protected_globally": true,
+    "short_session_ids_rejected_without_redaction_poisoning": true,
+    "user_profile_only_endpoints_no_project_override": true,
+    "tui_approval_guidance_draft_private_save_cancel_unmount_and_no_replay": true
+  },
+  "development_corrections": [
+    "Actual rejected redirects exposed an unclosed HTTP response. Both model and MCP handlers now close non-null responses before raising; existing None-response compatibility retained. Final full suites run after correction.",
+    "Minimal client environments lack re2/jsonschema. MCP schema imports are now lazy; both minimal SDK suites pass without adding those dependencies.",
+    "Legacy runtime session credentials now join application-wide redaction and environment filtering; unsafe short IDs are rejected before registration. Final full suites run after these changes."
+  ],
+  "remote_ci": {
+    "run": false,
+    "status": "pending_exact_functional_commit",
+    "workflow": "native-regression.yml"
+  },
+  "research": {
+    "opencode_commit": "9d90d892dcbfc52b47e95b2ea31b8aba877128fd",
+    "files_read": [
+      "packages/core/src/mcp/index.ts",
+      "packages/core/src/mcp/client.ts"
+    ],
+    "scope": "targeted connection, version eras, catalog and expired-session branches; no upstream execution or performance measurement",
+    "specifications": [
+      "https://modelcontextprotocol.io/specification/2026-07-28/basic/transports/streamable-http",
+      "https://modelcontextprotocol.io/specification/2025-11-25/basic/transports"
+    ]
+  },
+  "limits": [
+    "No stdio, legacy dual-endpoint HTTP+SSE, OAuth login, subscriptions, sampling, elicitation, Apps or durable background tasks.",
+    "Explicitly configured versions only; no automatic negotiation fallback, reconnect, retry, replay or SSE resume.",
+    "JSON Schema is a bounded 2020-12 subset; unsupported unsafe schemas fail closed.",
+    "Session IDs require 16-1024 visible ASCII characters; runtime credential registry is bounded to 1024 values per Config.",
+    "Cancellation closes local response and may notify legacy servers; it cannot establish rollback or remote termination.",
+    "WSL results do not replace native runner checks. Skips are not passes. No full Python/macOS/client CI matrix claim.",
+    "No new model performance benchmark or extra paid-provider account test is required or claimed."
+  ]
+}

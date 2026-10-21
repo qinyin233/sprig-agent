@@ -86,6 +86,8 @@ def http_failure(status, headers, secret=""):
 
 class NoRedirect(urllib.request.HTTPRedirectHandler):
     def redirect_request(self, req, fp, code, msg, headers, newurl):
+        if fp is not None:
+            fp.close()
         raise ProviderError("HTTP redirects are disabled; use the final trusted base URL", code="redirect")
 
 

@@ -53,6 +53,12 @@ def configuration_schema():
                              "response_language": {**text, "maxLength": 80}}),
         "skills": obj({"dirs": {"type": "array", "maxItems": 8, "items": text,
                                 "description": "Explicit skill collection directories, relative to the declaring user/profile config. Project settings cannot add roots. No automatic home/workspace scan."}}),
+        "mcp": obj({"servers": {"type": "object", "maxProperties": 8, "propertyNames": {"pattern": identifier}, "additionalProperties": obj({
+            "transport": {"const": "streamable_http"}, "url": text, "enabled": boolean,
+            "protocol_version": {"enum": ["2026-07-28", "2025-11-25", "2025-06-18"]},
+            "timeout": number(0, 120, True), "deadline": number(0, 3600, True), "proxy": text,
+            "headers": {"type": "object", "maxProperties": 16, "additionalProperties": {**text, "writeOnly": True}},
+            "headers_env": {"type": "object", "maxProperties": 16, "additionalProperties": environment}}, required=["url"])}}),
         "tui": obj({"theme": {"enum": ["textual-dark", "textual-light", "nord", "gruvbox", "dracula", "monokai", "tokyo-night", "solarized-dark", "solarized-light"]},
                     "sidebar": boolean, "editor_height": integer(3, 12), "steering_mode": {"enum": ["all", "one-at-a-time"]}, "metrics": boolean,
                     "keybindings": obj({action: {"type": "array", "maxItems": 4, "items": {"type": "string",
