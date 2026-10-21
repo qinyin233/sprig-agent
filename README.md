@@ -9,7 +9,7 @@
 - 分层 `config.toml`、命名提供商/模型别名/profile、生成/代理/鉴权参数、配置 Schema 与离线诊断
 - 工具禁用、文件排除、命令环境白名单、会话存储和 TUI 偏好设置
 - CLI `--file` / TUI `/add` 附加有界快照；`--ref-file` / `/ref` 维护请求前刷新的文件引用
-- TUI Tab 补全本地命令和文件参数，`/files` 模糊选择快照或实时引用；主输入框保持 Enter 发送
+- TUI Tab 补全本地命令和文件参数，`/files` 跨搜索勾选多个文件，批量附加快照或实时引用；主输入框保持 Enter 发送
 - 全屏终端 TUI、连续对话、项目代码地图、分目录 `AGENTS.md` 规则与本地 Git 查看
 - 交互式需求澄清：选项、多选和自填，Enter 确认、中途引导；答案不批准操作，见[提问流程](docs/questions.md)
 - 显式配置的 [Agent Skills](docs/skills.md)：先发现摘要，按需加载说明和资料；脚本仍需另行批准命令

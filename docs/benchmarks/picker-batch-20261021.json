@@ -1,0 +1,126 @@
+{
+  "schema_version": 1,
+  "date": "2026-10-21",
+  "feature": "TUI cross-query explicit file batches with existing snapshot/reference admission and rollback",
+  "base_commit": "a348b89a9ca1d4569f7b2ff85c09b2a5a44875a4",
+  "source_digest": {
+    "files": 54,
+    "sha256": "78048c833f92b892445e5acd5ea83f185cd9c42581d1946e9cc70f902a670860"
+  },
+  "tests_digest": {
+    "files": 71,
+    "sha256": "e9877f293eb3205390b8ea385fd6cdcc14e7fbec1d1056f5bd4dd077c8f0c652"
+  },
+  "digest_method": "SHA256 of compact ASCII JSON arrays of [POSIX relative path, SHA256 of bytes with CRLF normalized to LF], sorted by path; src/sprig_agent/*.py and tests/*.py separately",
+  "local_suites": [
+    {
+      "platform": "Windows 11",
+      "python": "3.13.0",
+      "command": "uv run --locked python -m unittest discover -s tests -q",
+      "total": 1069,
+      "passed": 1050,
+      "skipped": 19,
+      "failures": 0,
+      "errors": 0,
+      "seconds": 396.645
+    },
+    {
+      "platform": "WSL Ubuntu-26.04",
+      "python": "3.13.14",
+      "command": "UV_PROJECT_ENVIRONMENT=.venv-wsl uv run --locked python -m unittest discover -s tests -q",
+      "total": 1069,
+      "passed": 1046,
+      "skipped": 23,
+      "failures": 0,
+      "errors": 0,
+      "seconds": 278.926
+    }
+  ],
+  "compatibility_suites": [
+    {
+      "platform": "Windows 11",
+      "python": "3.11.14",
+      "command": "UV_PROJECT_ENVIRONMENT=.venv-py311 uv run --locked --python 3.11 --no-editable python -m unittest tests.test_picker_batch tests.test_completion -q",
+      "total": 19,
+      "passed": 18,
+      "skipped": 1,
+      "failures": 0,
+      "errors": 0,
+      "seconds": 47.945,
+      "full_suite": false
+    }
+  ],
+  "workflow_fixture": {
+    "kind": "actual Textual with loopback HTTP/SSE fixed replies",
+    "model_protocols": [
+      "chat_completions",
+      "messages",
+      "responses"
+    ],
+    "selection_modes": [
+      "snapshot",
+      "live_reference"
+    ],
+    "cases": 6,
+    "model_requests_before_explicit_send": 0,
+    "external_model_requests": 0,
+    "model_quality_or_general_performance_claim": false
+  },
+  "packaging": {
+    "uv_lock_check": "passed",
+    "configuration_schema_matches": true,
+    "compileall": "passed",
+    "cli_help": "passed",
+    "sdist_and_wheel_build": "passed",
+    "wheel_source_modules_match": 54,
+    "isolated_installed_wheel_tui": "passed for snapshot and live reference at 80x24; cross-query Unicode and leading spaces, draft preservation, Enter, private save and resume without replay",
+    "isolated_smoke_fixture_model_calls": 2,
+    "isolated_smoke_external_model_requests": 0,
+    "dependencies_added": []
+  },
+  "coverage": {
+    "new_test_methods": 7,
+    "explicit_toggle_and_remove_across_queries": true,
+    "clear_and_escape": true,
+    "literal_query_spaces_preserved": true,
+    "only_checked_paths_not_extra_highlight_submitted": true,
+    "explicit_checked_paths_commit_with_empty_current_query": true,
+    "limit_16_paths_and_8192_utf8_bytes": true,
+    "command_parameter_completion_remains_single": true,
+    "zero_scan_budget_shows_limit_and_cannot_select_or_submit": true,
+    "candidate_scans_do_not_read_selected_bodies": true,
+    "snapshots_keep_original_and_live_references_refresh": true,
+    "privacy_and_binary_failure_leave_existing_history_references_and_private_checkpoint_unchanged": true,
+    "combined_request_budget_rejects_whole_batch": true,
+    "mid_batch_cancellation_no_partial_commit": true,
+    "draft_retained_for_success_failure_cancel": true,
+    "read_only_context_selection_remains_available": true,
+    "committed_reference_metadata_restores_without_reading_selected_bodies_or_replay": true,
+    "real_mouse_toggle_deselect_then_enter": "passed in a separate actual Textual replay; no model request"
+  },
+  "development_corrections": [
+    "The new restore fixture initially mocked every Directory.read and also blocked required private session JSON loading. It now guards the selected workspace body filenames while allowing session storage reads. No production safety check was weakened.",
+    "One pre-final Windows full suite timed out waiting for positive file candidates under concurrent load before reaching the batch-budget assertion. New positive UI fixtures now use the actual scanner with a controlled five-second budget, separately verifying zero-budget limit feedback and rejection in the real UI. Production retains its existing 250 ms scanner budget. Final full suites run after these fixture changes."
+  ],
+  "research": {
+    "opencode_commit": "9d90d892dcbfc52b47e95b2ea31b8aba877128fd",
+    "file_read": "packages/tui/src/component/prompt/autocomplete.tsx",
+    "scope": "select() invokes one option callback and hides the selector; no claim that upstream provides this cross-query basket"
+  },
+  "remote_ci": {
+    "run": false,
+    "commit_policy": "[skip ci]",
+    "reason": "small TUI-only update; native filesystem/process behavior unchanged; conserve Actions minutes",
+    "previous_mcp_run_id": 39556289305,
+    "previous_mcp_functional_commit": "106b60ed11de6fdfa7756495bf3f17b74d9c7812",
+    "previous_mcp_result": "failure before runners started due account payment/spending restriction; no tests ran",
+    "green_ci_claim": false
+  },
+  "limits": [
+    "This is local batch admission, not cross-file atomic filesystem reading or an OS sandbox.",
+    "Only the direct file selector supports batches; commands, slash parameters and inline @ remain single selection.",
+    "Uncommitted baskets are discarded on close; all selected paths are revalidated by existing backends before admission.",
+    "No binary transfer, full repository index or new model schema/configuration setting.",
+    "Platform skips are not passes. No remote native CI or full Python/client/macOS matrix claim."
+  ]
+}

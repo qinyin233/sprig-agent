@@ -11,18 +11,22 @@ from textual.screen import ModalScreen
 from textual.widgets import Button, Input, OptionList, Static
 
 from .completion import COMMANDS, file_candidates
+from .references import MAX_FILES, reference_paths
 
 
-class PickerScreen(ModalScreen[tuple[str, str] | None]):
+class PickerScreen(ModalScreen[tuple[str, str | tuple[str, ...]] | None]):
     BINDINGS = [Binding("escape", "dismiss_picker", "关闭", priority=True),
                 Binding("up", "previous", "上一个", priority=True),
-                Binding("down", "next", "下一个", priority=True)]
+                Binding("down", "next", "下一个", priority=True),
+                Binding("ctrl+space", "toggle_selection", "勾选文件", priority=True),
+                Binding("ctrl+r", "clear_selection", "清空勾选", priority=True)]
     AUTO_FOCUS = "#picker-query"
     CSS = """
     PickerScreen { align: center middle; background: $background 70%; }
     #picker { width: 90%; height: 80%; border: thick $accent; padding: 1 2; }
     #picker-title { height: 2; }
     #picker-options { height: 1fr; }
+    #picker-selection { height: auto; max-height: 3; overflow-y: auto; }
     #picker-status { height: auto; min-height: 2; }
     #picker-buttons { height: 3; }
     #picker-buttons Button { width: 1fr; }
@@ -37,6 +41,7 @@ class PickerScreen(ModalScreen[tuple[str, str] | None]):
         super().__init__()
         self.commands, self.initial_query, self.complete_only = commands, query, complete_only
         self.values = []
+        self.chosen = {}
         self.generation = 0
         self.cancel_scan = threading.Event()
         self.query_timer = None
@@ -44,16 +49,61 @@ class PickerScreen(ModalScreen[tuple[str, str] | None]):
     def compose(self) -> ComposeResult:
         with Vertical(id="picker"):
             yield Static("补全本地命令；选择后再按 Enter 执行" if self.commands else
-                         "选择文件；候选不读取正文，不请求模型", id="picker-title", markup=False)
+                         "选择文件（可多选）；候选不读取正文，不请求模型" if self.multiple else
+                         "选择文件补全输入；不会发送任务", id="picker-title", markup=False)
             yield Input(value=self.initial_query[:256], max_length=256,
-                        placeholder="输入关键词；↑↓选择，Enter 选取，Esc 关闭", id="picker-query")
+                        placeholder="↑↓浏览，Ctrl+Space 勾选，Enter 添加，Esc 关闭" if self.multiple else
+                                    "输入关键词；↑↓选择，Enter 选取，Esc 关闭", id="picker-query")
             yield OptionList(id="picker-options", markup=False, compact=True)
+            if self.multiple:
+                yield Static("未勾选；Enter 添加当前文件，Ctrl+Space 勾选，Ctrl+R 清空", id="picker-selection", markup=False)
             yield Static("", id="picker-status", markup=False)
             with Horizontal(id="picker-buttons"):
                 if not self.commands and not self.complete_only:
+                    yield Button("勾选/取消", id="picker-toggle")
                     yield Button("添加实时引用", id="picker-ref", variant="primary")
                     yield Button("附加快照", id="picker-add")
                 yield Button("关闭 / Esc", id="picker-close")
+
+    @property
+    def multiple(self):
+        return not self.commands and not self.complete_only
+
+    def render_choices(self):
+        options = self.query_one("#picker-options", OptionList)
+        index = options.highlighted
+        labels = [("[x] " if value in self.chosen else "[ ] ") + value for value in self.values] if self.multiple else self.values
+        options.clear_options().add_options(labels)
+        options.highlighted = min(index or 0, len(self.values) - 1) if self.values else None
+        if self.multiple:
+            text = (f"已勾选 {len(self.chosen)}/{MAX_FILES}；Enter 只添加这些文件；Ctrl+R 清空\n"
+                    + "\n".join(self.chosen)) if self.chosen else "未勾选；Enter 添加当前文件，Ctrl+Space 勾选，Ctrl+R 清空"
+            self.query_one("#picker-selection", Static).update(text)
+
+    def action_toggle_selection(self):
+        if not self.multiple:
+            return
+        index = self.query_one("#picker-options", OptionList).highlighted
+        if index is None or not 0 <= index < len(self.values):
+            return
+        path = self.values[index]
+        if path in self.chosen:
+            del self.chosen[path]
+        else:
+            try:
+                reference_paths([*self.chosen, path])
+            except ValueError as error:
+                self.app.notify(str(error), severity="warning")
+                return
+            self.chosen[path] = None
+        self.render_choices()
+        self.query_one("#picker-query", Input).focus()
+
+    def action_clear_selection(self):
+        if self.multiple:
+            self.chosen.clear()
+            self.render_choices()
+            self.query_one("#picker-query", Input).focus()
 
     def on_mount(self):
         self.query_one("#picker-options", OptionList).can_focus = False
@@ -109,9 +159,7 @@ class PickerScreen(ModalScreen[tuple[str, str] | None]):
         if event.generation != self.generation or not self.is_mounted or self.cancel_scan.is_set():
             return
         self.values = event.result["files"]
-        options = self.query_one("#picker-options", OptionList)
-        options.clear_options().add_options(self.values)
-        options.highlighted = 0 if self.values else None
+        self.render_choices()
         text = event.result.get("error") or (
             f"{len(self.values)} 个候选；已检查 {event.result['entries_scanned']} 个条目"
             + ("；扫描或显示已达上限，请细化查询" if event.result["limited"] else ""))
@@ -124,6 +172,10 @@ class PickerScreen(ModalScreen[tuple[str, str] | None]):
         self.query_one("#picker-options", OptionList).action_cursor_down()
 
     def select(self, mode=None):
+        if self.multiple and self.chosen:
+            self.cancel_scan.set()
+            self.dismiss((mode or "references", tuple(self.chosen)))
+            return
         index = self.query_one("#picker-options", OptionList).highlighted
         if index is not None and 0 <= index < len(self.values):
             self.cancel_scan.set()
@@ -138,13 +190,18 @@ class PickerScreen(ModalScreen[tuple[str, str] | None]):
     @on(OptionList.OptionSelected, "#picker-options")
     def selected(self, event):
         event.stop()
-        self.select()
+        if self.multiple:
+            self.action_toggle_selection()
+        else:
+            self.select()
 
     @on(Button.Pressed)
     def clicked(self, event):
         event.stop()
         if event.button.id == "picker-close":
             self.action_dismiss_picker()
+        elif event.button.id == "picker-toggle":
+            self.action_toggle_selection()
         else:
             self.select("attach" if event.button.id == "picker-add" else "references")
 

@@ -317,3 +317,5 @@ P2 的交互澄清阶段继续阅读同一固定提交的 [`tool/plugin/question
 本轮没有复制上游实现或引入其依赖。建议与已实现项明确分开，后续按第 13 节逐批落实，并在实际交付后回填提交和验证结果。
 
 2026-10-21 后续 MCP 阶段继续追读固定源码 `mcp/index.ts` 和 `mcp/client.ts` 的状态、现代/旧版协议、目录及过期会话分支，并核对 [2026-07-28 规范](https://modelcontextprotocol.io/specification/2026-07-28/basic/transports/streamable-http) 与旧版 HTTP 绑定。Sprig 实现[明确端点的 HTTP 网关](../mcp.md)，按需发现和逐次批准，Schema 不联网解析或执行不受控正则，工具/资源/提示词全部是外部数据。未复制自动重连、版本回退或持久授权；stdio/OAuth/订阅/采样等仍未实现，原固定快照缺项表保持历史状态。
+
+2026-10-21 多选小批次重读固定源码 `prompt/autocomplete.tsx` 的 `select()`：上游选择一个 option 后调用回调并隐藏列表；不据此声称其提供本批篮子功能。Sprig 在已有有界候选与批量上下文后端之上补充[跨查询勾选](../tui-completion.md)，以一次批次复用预算/失败回滚和私有保存；不改变原生 OS 行为，按小更新 `[skip ci]` 验证。命令/内联参数的原单选流程保留，不重写历史基线表。

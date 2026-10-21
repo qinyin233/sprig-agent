@@ -899,9 +899,9 @@ class SprigApp(App[int]):
                 editor.move_cursor(editor.document.end)
                 editor.focus()
             elif kind == "attach":
-                self.start(local=("attach", {"paths": [value]}))
+                self.start(local=("attach", {"paths": list(value) if isinstance(value, tuple) else [value]}))
             else:
-                self.start(local=("references", {"paths": [value], "operation": "add"}))
+                self.start(local=("references", {"paths": list(value) if isinstance(value, tuple) else [value], "operation": "add"}))
 
         self.push_screen(PickerScreen(commands=commands, query=query, complete_only=editor is not None), selected)
 
