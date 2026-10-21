@@ -16,6 +16,15 @@ MAX_CONTENT = 131072
 def reference_paths(paths):
     if not isinstance(paths, (list, tuple)) or len(paths) > MAX_FILES:
         raise ValueError("file references must contain at most 16 paths")
+    return _normalized_paths(paths)
+
+
+def merge_reference_paths(current, additional):
+    """Each input is bounded; enforce capacity on the normalized union."""
+    return _normalized_paths((*reference_paths(current), *reference_paths(additional)))
+
+
+def _normalized_paths(paths):
     selected, seen, total = [], set(), 0
     for value in paths:
         if (not isinstance(value, str) or not value or len(value) > 4096 or "\\" in value
@@ -31,6 +40,8 @@ def reference_paths(paths):
             seen.add(key)
             selected.append(value)
             total += len(value.encode("utf-8"))
+    if len(selected) > MAX_FILES:
+        raise ValueError("file references must contain at most 16 paths")
     if total > MAX_PATH_BYTES:
         raise ValueError("file reference paths exceed 8192 UTF-8 bytes")
     return tuple(selected)

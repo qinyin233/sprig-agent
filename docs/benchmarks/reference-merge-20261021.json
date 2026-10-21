@@ -1,0 +1,119 @@
+{
+  "schema_version": 1,
+  "date": "2026-10-21",
+  "feature": "reference union capacity applied after normalized deduplication while refreshing unchanged selections",
+  "base_commit": "88784ca1e7065df1afc33aee872c4555b2c83e16",
+  "source_digest": {
+    "files": 54,
+    "sha256": "d6d77894236734eb070f2a6c8b5ebba8db0083c19e9fad7059233fb15891b47b"
+  },
+  "tests_digest": {
+    "files": 72,
+    "sha256": "859dba7aea569f00bfd97547caeeb4f5cd2eda5a4bbe3c3af5d8d6519fabde5a"
+  },
+  "digest_method": "SHA256 of compact ASCII JSON arrays of [POSIX relative path, SHA256 of bytes with CRLF normalized to LF], sorted by path; src/sprig_agent/*.py and tests/*.py separately",
+  "before_fix": {
+    "actual_reproduction": "Re-adding an existing reference to a 16-file set raises ValueError: file references must contain at most 16 paths; zero model calls.",
+    "regression_test": "test_full_capacity_overlap_refreshes_and_keeps_first_path_spelling failed before production changes with that ValueError."
+  },
+  "local_suites": [
+    {
+      "platform": "Windows 11",
+      "python": "3.13.0",
+      "command": "uv run --locked python -m unittest discover -s tests -q",
+      "total": 1075,
+      "passed": 1056,
+      "skipped": 19,
+      "seconds": 410.714,
+      "failures": 0,
+      "errors": 0,
+      "diagnostic": "Existing test_reasoning_protocol loopback server emitted a ConnectionAbortedError traceback; unittest still completed successfully. The diagnostic was retained, not suppressed."
+    },
+    {
+      "platform": "WSL Ubuntu-26.04",
+      "python": "3.13.14",
+      "command": "UV_PROJECT_ENVIRONMENT=.venv-wsl uv run --locked python -m unittest discover -s tests -q",
+      "total": 1075,
+      "passed": 1052,
+      "skipped": 23,
+      "seconds": 284.341,
+      "failures": 0,
+      "errors": 0
+    }
+  ],
+  "compatibility_suites": [
+    {
+      "platform": "Windows 11",
+      "python": "3.11.14",
+      "command": "UV_PROJECT_ENVIRONMENT=.venv-py311 uv run --locked --python 3.11 --no-editable python -m unittest tests.test_reference_merge tests.test_references -q",
+      "total": 34,
+      "passed": 33,
+      "skipped": 1,
+      "seconds": 9.904,
+      "failures": 0,
+      "errors": 0,
+      "full_suite": false
+    }
+  ],
+  "focused_new_suite": {
+    "command": "uv run --locked python -m unittest tests.test_reference_merge -q",
+    "total": 6,
+    "passed": 6,
+    "skipped": 0,
+    "seconds": 3.583
+  },
+  "protocol_fixture": {
+    "kind": "actual CLI save and explicit overlapping-file resume with loopback HTTP fixed replies",
+    "protocols": [
+      "chat_completions",
+      "messages",
+      "responses"
+    ],
+    "cases": 3,
+    "requests_per_case": 2,
+    "references_in_resumed_request": 16,
+    "fresh_content_after_resume": true,
+    "external_model_requests": 0,
+    "model_quality_or_performance_claim": false
+  },
+  "coverage": {
+    "new_test_methods": 6,
+    "full_capacity_existing_batch_accepted": true,
+    "first_spelling_and_order_retained_using_existing_platform_rules": true,
+    "overlapping_9_plus_9_inputs_form_16_unique_paths": true,
+    "true_17th_unique_path_rejected_without_history_or_reference_commit": true,
+    "each_raw_input_remains_limited_to_16": true,
+    "combined_8192_utf8_byte_limit_enforced": true,
+    "unchanged_union_refreshes_hashes_and_rechecks_all_privacy": true,
+    "cancellation_rolls_back_state": true,
+    "control_operations_never_call_provider_or_approve_commands": true,
+    "tui_picker_reselect_at_capacity": true,
+    "private_cli_marked_tui_resume_with_16_duplicate_flags": true
+  },
+  "packaging": {
+    "uv_lock_check": "passed",
+    "configuration_schema_matches": true,
+    "compileall": "passed",
+    "cli_help": "passed",
+    "sdist_and_wheel_build": "passed",
+    "wheel_source_modules_match": 54,
+    "isolated_installed_wheel_tui": "passed at 80x24: 16-file picker reselect, full duplicate batch refresh, 17th file rejection without state change, private explicit-reference resume",
+    "isolated_model_requests": 0,
+    "dependencies_added": []
+  },
+  "development_correction": "The new protocol test initially reused the exclusive-create config fixture filename across protocols. Each protocol now has its own private TOML file; production exclusive-write behavior was preserved. Final full suites run after correction.",
+  "remote_ci": {
+    "run": false,
+    "commit_policy": "[skip ci]",
+    "reason": "small bounded collection fix; no native filesystem/process backend changes; conserve Actions minutes",
+    "previous_mcp_run_id": 39556289305,
+    "previous_mcp_result_rechecked": "completed/failure; both jobs have no executed required steps",
+    "green_ci_claim": false
+  },
+  "limits": [
+    "The existing Windows/POSIX path identity rules are reused, not replaced.",
+    "Each input has at most 16 entries; the validated internal union considers at most 32 entries and outputs at most 16 unique paths.",
+    "No implicit provider requests, new approval policy, larger context budget or new model-switching capability.",
+    "Platform skips are not passes; local WSL is not native Ubuntu CI. No remote or full Python/client/macOS matrix claim."
+  ]
+}

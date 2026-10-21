@@ -15,7 +15,7 @@ from .json_budget import JsonBudgetExceeded, encoded_size
 from .metrics import Measurements
 from .planning import TaskPlan
 from .revisions import ReadVersions
-from .references import FileReferences, reference_paths, user_reference_paths
+from .references import FileReferences, merge_reference_paths, reference_paths, user_reference_paths
 from .runtime import RuntimeEvent, tool_outcome
 from .provider import Provider, ProviderError, validate_message
 from .session import MAX_SESSION, validate_history
@@ -323,7 +323,7 @@ class Agent:
         elif operation in {"add", "remove"}:
             paths = user_reference_paths(self.config.workdir, paths)
             if operation == "add":
-                selected = reference_paths([*self.references.files, *paths])
+                selected = merge_reference_paths(self.references.files, paths)
             else:
                 keys = {path.casefold() if os.name == "nt" else path for path in paths}
                 selected = tuple(path for path in self.references.files
