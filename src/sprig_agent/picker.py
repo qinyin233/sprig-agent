@@ -37,9 +37,10 @@ class PickerScreen(ModalScreen[tuple[str, str | tuple[str, ...]] | None]):
             super().__init__()
             self.generation, self.result = generation, result
 
-    def __init__(self, *, commands=False, query="", complete_only=False):
+    def __init__(self, *, commands=False, query="", complete_only=False, choices=None, title=None):
         super().__init__()
         self.commands, self.initial_query, self.complete_only = commands, query, complete_only
+        self.local_choices, self.picker_title = choices, title
         self.values = []
         self.chosen = {}
         self.generation = 0
@@ -48,9 +49,9 @@ class PickerScreen(ModalScreen[tuple[str, str | tuple[str, ...]] | None]):
 
     def compose(self) -> ComposeResult:
         with Vertical(id="picker"):
-            yield Static("补全本地命令；选择后再按 Enter 执行" if self.commands else
+            yield Static(self.picker_title or ("补全本地命令；选择后再按 Enter 执行" if self.commands else
                          "选择文件（可多选）；候选不读取正文，不请求模型" if self.multiple else
-                         "选择文件补全输入；不会发送任务", id="picker-title", markup=False)
+                         "选择文件补全输入；不会发送任务"), id="picker-title", markup=False)
             yield Input(value=self.initial_query[:256], max_length=256,
                         placeholder="↑↓浏览，Ctrl+Space 勾选，Enter 添加，Esc 关闭" if self.multiple else
                                     "输入关键词；↑↓选择，Enter 选取，Esc 关闭", id="picker-query")
@@ -132,10 +133,15 @@ class PickerScreen(ModalScreen[tuple[str, str | tuple[str, ...]] | None]):
         self.query_one("#picker-options", OptionList).clear_options()
         if self.commands:
             query = query.removeprefix("/").strip().casefold()
-            self.values = ["/" + name for name in COMMANDS if query in name][:20]
+            choices = [("/" + name, "/" + name + "  " + text) for name, text in COMMANDS.items() if query in name] if self.local_choices is None else [
+                (key, label) for key, label in self.local_choices if query in label.casefold()]
+            limited = len(choices) > 20
+            choices = choices[:20]
+            self.values = [key for key, _ in choices]
             self.query_one("#picker-options", OptionList).add_options(
-                [name + "  " + COMMANDS[name[1:]] for name in self.values])
-            self.query_one("#picker-status", Static).update("只补全输入；选择不会执行命令")
+                [label for _, label in choices])
+            self.query_one("#picker-status", Static).update(("选择后进入明确确认；不请求模型" + ("；最多显示 20 条，请细化查询" if limited else "")) if self.local_choices is not None else
+                                                          "只补全输入；选择不会执行命令")
             self.query_one("#picker-options", OptionList).highlighted = 0 if self.values else None
         else:
             self.query_one("#picker-status", Static).update("正在扫描文件名；正文会在明确选择后按隐私和预算规则检查")

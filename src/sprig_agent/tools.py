@@ -131,6 +131,25 @@ class Tools:
         self.root.ensure_open()
         self._check_cancelled()
 
+    def rebind_model(self, config):
+        """Idle model changes cannot change tool policy or drop known secrets."""
+        from .config import validate_model_change
+        self.root.ensure_open()
+        self._check_cancelled()
+        try:
+            validate_model_change(self.config, config)
+        except ValueError as error:
+            raise ToolError(str(error)) from None
+        self.mcp_manager.reset()
+        self.read_versions.clear()
+        self.index.clear()
+        self.config = config
+        self.skills.config = config
+        self.logs.config = config
+        self.mcp_manager.config = config
+        if self.history.store is not None:
+            self.history.store.config = config
+
     def _read_instruction(self, path, limit):
         self.policy.reload()
         if self.policy.excluded(PurePosixPath(path).parts):

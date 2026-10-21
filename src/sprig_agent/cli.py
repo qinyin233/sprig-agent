@@ -43,7 +43,7 @@ def check_argv(text):
         raise argparse.ArgumentTypeError("--check expects a JSON argv array, e.g. '[\"python\",\"-m\",\"unittest\"]'") from None
 
 
-def chat(agent, task, messages, emit, *, autostart=True):
+def chat(agent, task, messages, emit, *, autostart=True, model_selection=None, switch_model=None):
     """Keep context across turns; only a new task or /continue calls the model."""
     status = 0
     history_ready = True
@@ -104,6 +104,7 @@ def chat(agent, task, messages, emit, *, autostart=True):
             return status
         try:
             if task == "/help":
+                emit("/models lists the configured snapshot; /model KEY explicitly confirms a local model change. @startup restores startup model settings. It retains conversation text, removes old reasoning metadata and forks enabled private saves; no request is sent until the next task.")
                 emit("/mcp shows local server state; /mcp connect|disconnect|tools|resources|templates|prompts SERVER asks fresh approval for remote requests; /mcp result ID [OFFSET] reads retained local data without replay.")
                 emit("/skills lists configured skill metadata; /skill NAME [PATH [OFFSET PAGE_SHA256]] previews local UTF-8 guidance without a model call or script execution. Quote resource paths containing spaces.")
                 emit("/summary previews an optional lossy checkpoint; /summary create [END] makes one extra model request after approval; /summary clear restores the full request view. /history MESSAGE [OFFSET] locally pages original data.")
@@ -111,6 +112,17 @@ def chat(agent, task, messages, emit, *, autostart=True):
                 emit("/ref PATH adds a live file reference; /unref PATH removes it; /refs lists metadata; /refs clear removes all. No model request is sent. Small complete files refresh before requests; larger files provide path/size only.")
                 emit("/worktrees lists local checkouts; /worktree PATH creates a detached checkout after fresh approvals. All remaining text is the path; the current conversation stays in this workspace.")
                 emit("Enter a task to continue the same conversation. /continue explicitly continues retained history without adding a duplicate request; /status shows local context; /plan shows model-reported progress, never approval or acceptance; /context previews the request budget; /usage shows local numeric request measurements and unknown token counts; /compact confirms request-only elision; /changes lists exact edit backups; /undo and /redo require diff approval; /discard-history confirms removal of backups; /diff and /git show Git changes with approval; /exit closes chat.")
+            elif task == "/models" or task == "/model":
+                emit(json.dumps({"models": model_selection.catalog() if model_selection else agent.config.model_catalog,
+                                 "network_contacted": False}, ensure_ascii=False))
+            elif task.startswith("/model "):
+                if switch_model is None:
+                    emit("Model selection is unavailable for this startup; no model request sent.")
+                else:
+                    agent, messages, result = switch_model(task[7:].strip(), messages)
+                    if result.get("model_changed"):
+                        history_ready, status = True, 2
+                    emit(json.dumps(result, ensure_ascii=False))
             elif task == "/mcp":
                 emit(json.dumps(agent.tools.mcp_manager.status(), ensure_ascii=False))
             elif task.startswith("/mcp "):
@@ -415,9 +427,11 @@ def main(argv=None):
             raise ValueError("set SPRIG_API_KEY or OPENAI_API_KEY (AGNES_API_KEY also works at the Agnes HTTPS origin)")
         if args.tui:
             from .tui import run_tui
+            from .model_selection import ModelSelection
+            model_selection = ModelSelection(settings, options, os.environ, config)
             save_name = args.save_session or ("auto-" + uuid.uuid4().hex if config.auto_save_session and not args.resume else None)
             return run_tui(config, args.task, session_dir, save_name, args.resume,
-                           change_dir=change_dir, show_metrics=show_metrics, files=args.file)
+                           change_dir=change_dir, show_metrics=show_metrics, files=args.file, model_selection=model_selection)
         emit = lambda text: print(terminal_text(redact(text, key)), flush=True)
         confirm = lambda text: approve(redact(text, key))
         emit_delta = lambda text: print(terminal_text(text), end="", flush=True)
@@ -458,7 +472,31 @@ def main(argv=None):
             messages, attached = agent.attach_files(args.file, messages)
             emit("[attached snapshots] " + json.dumps(attached, ensure_ascii=False))
         if args.chat:
-            return chat(agent, args.task, messages, emit, autostart=bool(args.task or args.resume))
+            from .model_selection import ModelSelection, ModelSwitch
+            model_selection = ModelSelection(settings, options, os.environ, config)
+            def switch_model(target, messages):
+                nonlocal agent, provider, config, key, store, session_name
+                candidate = ModelSwitch(model_selection, agent, messages, target,
+                                        saving=bool(session_name) or config.auto_save_session)
+                if not candidate.changed:
+                    return agent, messages, {"model_changed": False, "network_contacted": False}
+                if not candidate.preflight(confirm, session_dir):
+                    return agent, messages, {"approved": False, "model_changed": False, "network_contacted": False}
+                old_store, previous_usage = store, agent.usage_report()
+                agent, messages, store, session_name = candidate.commit(session_dir)
+                provider, config = agent.provider, agent.config
+                key = config.secrets
+                result = {"model_changed": True, "model": config.model, "provider": config.provider_name,
+                          "wire_api": config.wire_api, "session": session_name, "network_contacted": False,
+                          "old_runtime_metadata_removed": candidate.dropped, "previous_usage": previous_usage}
+                if old_store is not None:
+                    try:
+                        old_store.close()
+                    except OSError:
+                        result["warning"] = "model changed, but old session lock cleanup failed; exit before resuming that file elsewhere"
+                return agent, messages, result
+            return chat(agent, args.task, messages, emit, autostart=bool(args.task or args.resume),
+                        model_selection=model_selection, switch_model=switch_model)
         _, complete = agent.run(args.task, messages)
         return 0 if complete else 2
     except KeyboardInterrupt:

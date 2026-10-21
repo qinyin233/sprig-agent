@@ -358,7 +358,7 @@ class Settings:
                      for name, entry in self.data.get("providers", {}).items()
                      for alias, model in entry.get("models", {}).items())
 
-    def resolve(self, options, environ=None):
+    def resolve(self, options, environ=None, *, configured_auth_only=False):
         """CLI > project > profile > model > provider > user > built-ins.
 
         Provider/model/profile environment selectors sit immediately below CLI.
@@ -388,7 +388,7 @@ class Settings:
         key_env = selected.get("api_key_env")
         key, source = "", "none"
         if not managing:
-            if env.get("SPRIG_API_KEY"):
+            if not configured_auth_only and env.get("SPRIG_API_KEY"):
                 key, source = env["SPRIG_API_KEY"], "SPRIG_API_KEY"
             elif key_env or "api_key" in selected:
                 if url != configured_url:
@@ -402,7 +402,7 @@ class Settings:
                 else:
                     key, source = selected["api_key"], "private config file"
             else:
-                key = environment_api_key(url, env)
+                key = "" if configured_auth_only else environment_api_key(url, env)
                 source = "AGNES_API_KEY" if key and environment_api_key(url, {"AGNES_API_KEY": env.get("AGNES_API_KEY", "")}) else ("OPENAI_API_KEY" if key else "none")
         # All configured credentials are protected, including unused providers.
         names = set()

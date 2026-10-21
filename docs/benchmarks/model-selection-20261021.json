@@ -1,0 +1,168 @@
+{
+  "schema_version": 1,
+  "date": "2026-10-21",
+  "feature": "Configured provider/model switching in idle TUI and continuous chat with explicit confirmation, protocol projection and private saved-session fork",
+  "base_commit": "41136ea60347a08a20c86add0d0953b21b28b49d",
+  "source_digest": {
+    "files": 55,
+    "sha256": "5703560d8ff7bddf1bf9018e1e33e0c3f56c4b2fa495fba8aff134a9b380b8c3"
+  },
+  "tests_digest": {
+    "files": 73,
+    "sha256": "3f1187d6248b3ee3e863501741008a3fc8474221072bc9f343ecd413dd97994c"
+  },
+  "digest_method": "SHA256 of compact ASCII JSON arrays of [POSIX relative path, SHA256 of bytes with CRLF normalized to LF], sorted by path; src/sprig_agent/*.py and tests/*.py separately",
+  "source_reference": {
+    "repository": "https://github.com/anomalyco/opencode",
+    "commit": "9d90d892dcbfc52b47e95b2ea31b8aba877128fd",
+    "file": "packages/tui/src/component/dialog-model.tsx",
+    "scope": "Read pinned model selection source; no upstream runtime or performance comparison"
+  },
+  "local_suites": [
+    {
+      "platform": "Windows 11",
+      "command": "uv run --locked python -m unittest discover -s tests -q",
+      "total": 1091,
+      "passed": 1072,
+      "skipped": 19,
+      "seconds": 402.977,
+      "failures": 0,
+      "errors": 0,
+      "full_suite": true,
+      "python": "3.13.0"
+    },
+    {
+      "platform": "WSL Ubuntu-26.04",
+      "command": "UV_PROJECT_ENVIRONMENT=.venv-wsl uv run --locked python -m unittest discover -s tests -q",
+      "total": 1091,
+      "passed": 1068,
+      "skipped": 23,
+      "seconds": 291.09,
+      "failures": 0,
+      "errors": 0,
+      "full_suite": true,
+      "python": "3.13.14"
+    }
+  ],
+  "compatibility_suites": [
+    {
+      "platform": "Windows 11",
+      "command": "UV_PROJECT_ENVIRONMENT=.venv-py311 uv run --locked --python 3.11 --no-editable python -m unittest tests.test_model_selection tests.test_configuration_profiles -q",
+      "total": 40,
+      "passed": 40,
+      "skipped": 0,
+      "seconds": 24.38,
+      "failures": 0,
+      "errors": 0,
+      "full_suite": false,
+      "python": "3.11.14"
+    }
+  ],
+  "client_suites": [
+    {
+      "platform": "Windows 11",
+      "command": "uv run --project benchmarks/clients/mini --locked python -I -B -m unittest discover -s benchmarks/clients/tests -q",
+      "total": 25,
+      "passed": 25,
+      "skipped": 0,
+      "seconds": 35.064,
+      "failures": 0,
+      "errors": 0,
+      "full_suite": false
+    },
+    {
+      "platform": "WSL Ubuntu-26.04",
+      "command": "UV_PROJECT_ENVIRONMENT=.venv-mini-wsl uv run --project benchmarks/clients/mini --locked python -I -B -m unittest discover -s benchmarks/clients/tests -q",
+      "total": 25,
+      "passed": 25,
+      "skipped": 0,
+      "seconds": 174.835,
+      "failures": 0,
+      "errors": 0,
+      "full_suite": false
+    }
+  ],
+  "workflow_fixtures": {
+    "kind": "Actual Textual and CLI chat with fixed replies over loopback HTTP/SSE",
+    "target_protocols": [
+      "chat_completions",
+      "messages",
+      "responses"
+    ],
+    "tui_target_cases": 3,
+    "target_requests_per_tui_case": 1,
+    "chat_target_cases": 3,
+    "old_then_target_requests_per_chat_case": [
+      1,
+      1
+    ],
+    "rejected_command_requests": 2,
+    "rejected_command_followup": "Second response explains the freshly rejected tool result; the command marker is never created",
+    "external_model_requests": 0,
+    "new_test_methods": 16,
+    "coverage": [
+      "startup snapshot and aliases",
+      "other-provider endpoint/generation/transport isolation",
+      "explicit target authentication without ambient fallback",
+      "old and dynamic credentials remain protected",
+      "stable redaction masks and credential-prefix boundary",
+      "shared tool policy cannot be relaxed",
+      "fresh one-shot explicit approval including after save failure",
+      "stale proposal rejected",
+      "no provider call during menu, confirmation or local preflight",
+      "target request budget",
+      "visible history retained and opaque native/reasoning metadata removed",
+      "malformed reasoning-only history remains rejected",
+      "new binding and unchanged original private file",
+      "draft/file selection retained and failed-admission draft retries once",
+      "cancel/refuse/budget/save failure retains original model",
+      "guidance in approval returns to original model",
+      "busy model control is not queued as a task",
+      "old approvals do not authorize new commands",
+      "old read IDs, summaries, syntax and local MCP state invalidated",
+      "new usage/validation state; no replay on resume"
+    ]
+  },
+  "packaging": {
+    "uv_lock_check": "passed",
+    "configuration_schema_matches": true,
+    "compileall": "passed",
+    "cli_help": "passed",
+    "sdist_and_wheel_build": "passed",
+    "wheel_source_modules_match": 55,
+    "isolated_installed_wheel_tui": "passed at 80x24: pending inline file and draft retained across button/menu/approval, original private file unchanged, new bound private branch resumes without replay",
+    "installed_fixture_model_calls": 1,
+    "installed_external_model_requests": 0,
+    "dependencies_added": []
+  },
+  "development_corrections": [
+    "An early test fixture used reasoning-only native output. Existing production validation rejected it; fixtures now contain valid visible text and a separate malformed-history rejection assertion.",
+    "A rejected command legitimately needs a model follow-up explanation. The fixture supplies that response and checks that no command executes.",
+    "A reproduced credential prefix ending in the neutral redaction marker expanded masks. The suffix guard and regression assertions were added before the final frozen full suites, Python 3.11 suite, client suites and installed wheel check.",
+    "Initial final-client test invocations used a nonexistent mini/tests directory and failed test discovery with zero tests. Correct locked mini environment and benchmarks/clients/tests command were then used; only those terminal results are counted."
+  ],
+  "remote_ci": {
+    "run": false,
+    "status": "pending_external_account_gate",
+    "commit_policy": "[skip ci]",
+    "reason": "Substantial feature batch is ready for review, but previous required native gate is still blocked by GitHub account payment/spending restrictions. No new CI-enabled feature batch or repeated dispatch while that gate is unresolved.",
+    "previous_mcp_commit": "106b60ed11de6fdfa7756495bf3f17b74d9c7812",
+    "previous_mcp_run_id": 39556289305,
+    "previous_mcp_job_ids": [
+      119076713756,
+      119076713930
+    ],
+    "previous_mcp_result_rechecked": "completed/failure; both jobs have empty required steps and no runner execution",
+    "green_ci_claim": false
+  },
+  "limits": [
+    "Protocol fixtures validate program/protocol behavior; channel-provided real models remain valid model evidence. No extra paid account is required.",
+    "No new model quality, coding success rate, benchmark ranking or OpenCode parity claim.",
+    "No native filesystem/process backend changes. Platform skips are not passes; local WSL is not native Ubuntu CI.",
+    "No remote CI or full Python/client/macOS matrix claim. Repair the prior exact-SHA gate before dispatching the next CI-enabled batch.",
+    "Configured startup snapshot only; no arbitrary URL, remote discovery, OAuth, favorites/recent model preferences, variants or config hot reload.",
+    "Switch only when idle; confirmation and successful local preparation precede one-shot commit. A completed switch is not rolled back by later cancellation.",
+    "Private session files are not encrypted; old branch is retained and may contain prior provider metadata. Credential values are not persisted in binding.",
+    "Per-provider usage begins with a new Provider instance; prior usage is reported separately."
+  ]
+}

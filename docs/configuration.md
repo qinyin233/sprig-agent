@@ -281,3 +281,5 @@ uv run --locked sprig --project-config /trusted/private/project.toml
 stdio、MCP OAuth/订阅、插件、hooks、沙箱、自动批准等未提供后端的字段仍会报错。技能加载不会运行脚本或授予权限；后续扩展需要同时实现后端与安全测试，不能只添加一个可解析开关。
 
 模型协议由供应商表的 wire_api 选择，支持 chat_completions（默认）、messages、responses；CLI 对应 --wire-api。认证、生成参数映射、原生推理状态、会话绑定与限制见 [模型协议](provider-protocols.md)。
+
+运行中可用 TUI“切换模型”或 `/model PROVIDER/ALIAS` 选择启动配置中的模型；`/model @startup` 恢复启动模型。切换需要明确确认，不自动请求，已保存会话分支重新绑定；凭据、CLI 覆盖和历史投影规则见[模型选择](model-selection.md)。配置文件和环境修改仍需重启。

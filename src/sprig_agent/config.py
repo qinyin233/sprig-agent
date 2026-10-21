@@ -1,6 +1,6 @@
 """Validated runtime configuration and shared safety helpers."""
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, fields
 import json
 import math
 import os
@@ -13,6 +13,17 @@ from .credentials import RuntimeCredentials
 TOOL_NAMES = ("list_files", "read_file", "search", "project_map", "edit_file", "run", "update_plan", "edit_lines", "file_action", "read_history", "read_log", "question", "skill", "mcp")
 SHORTCUT_ACTIONS = ("cancel", "quit", "focus_input", "toggle_sidebar", "help", "new_conversation")
 GENERATION_FIELDS = ("max_tokens", "thinking", "temperature", "top_p", "reasoning_effort", "seed", "token_limit_field", "extra_body")
+MODEL_CONFIG_FIELDS = frozenset((*GENERATION_FIELDS, "model", "base_url", "api_key", "provider_name", "headers",
+    "request_timeout", "request_deadline", "proxy", "api_key_header", "api_key_scheme", "preserve_reasoning",
+    "check_history_format", "wire_api", "max_context_bytes", "secret_values", "credential_env_vars", "setting_sources"))
+
+
+def validate_model_change(current, selected):
+    if (not isinstance(selected, Config) or selected._runtime_credentials is not current._runtime_credentials
+            or any(getattr(selected, row.name) != getattr(current, row.name) for row in fields(Config)
+                   if row.name not in MODEL_CONFIG_FIELDS and row.name != "_runtime_credentials")
+            or not set(current.credential_secrets).issubset(selected.credential_secrets)):
+        raise ValueError("model selection cannot change workspace/tool policy or discard credential protection")
 RESERVED_BODY_FIELDS = {"model", "messages", "tools", "tool_choice", "stream", "stream_options", "n",
                         "max_tokens", "max_completion_tokens", "temperature", "top_p", "reasoning_effort", "seed",
                         "prompt", "system", "input", "instructions", "api_key", "headers", "base_url",
@@ -57,10 +68,16 @@ def redact(value, secret):
     if isinstance(value, str):
         if not secret:
             return value
-        value = value.replace(secret, "[REDACTED]")
+        # A later provider/header secret must not repeatedly expand masks from
+        # earlier passes. Still match full credentials that contain the marker.
+        if "[REDACTED]" in secret:
+            value = value.replace(secret, "[REDACTED]")
+        value = "[REDACTED]".join(part.replace(secret, "[REDACTED]") for part in value.split("[REDACTED]"))
         # A tool cap or completed stream can cut the key in the middle. Long
         # trailing prefixes are withheld too; short ordinary words stay intact.
         for length in range(min(len(secret) - 1, len(value)), 7, -1):
+            if value.endswith("[REDACTED]") and "[REDACTED]".endswith(secret[:length]):
+                continue
             if value.endswith(secret[:length]):
                 return value[:-length] + "[REDACTED]"
         return value

@@ -22,6 +22,7 @@ from .changes import ChangeHistory
 from .config import SHORTCUT_ACTIONS, redact, terminal_text
 from .composer import DraftPastes, MAX_PASTE_BYTES, paste_text
 from .mentions import DraftFiles, mention_query
+from .model_selection import ModelSwitch
 from .provider import Provider
 from .picker import PickerScreen
 from .question_ui import QuestionScreen
@@ -290,9 +291,12 @@ class SprigApp(App[int]):
     #events { height: 1fr; }
     """
 
-    def __init__(self, config, task=None, session_dir=None, save_session=None, resume=None, provider=None, change_dir=None, files=()):
+    def __init__(self, config, task=None, session_dir=None, save_session=None, resume=None, provider=None, change_dir=None, files=(),
+                 model_selection=None, provider_factory=None):
         super().__init__()
         self.config = config
+        self.model_selection = model_selection
+        self.provider_factory = provider_factory or Provider
         self.set_keymap({"sprig." + action: ",".join(keys) for action, keys in config.tui_keybindings if keys})
         self.initial_task = task
         self.session_dir = Path(session_dir or Path.home() / ".local/state/sprig-agent/sessions")
@@ -363,7 +367,7 @@ class SprigApp(App[int]):
                 self.store.close()
             raise
         try:
-            self.agent = Agent(config, provider or Provider(config), self.tools, self.emit,
+            self.agent = Agent(config, provider or self.provider_factory(config), self.tools, self.emit,
                                checkpoint=self.checkpoint, emit_delta=self.emit_delta, cancel_event=self.cancel_event,
                                receive_input=self.receive_input, on_request_ready=self.request_ready, on_event=self.runtime_event)
             self.agent.restore_plan(self.messages)
@@ -403,6 +407,7 @@ class SprigApp(App[int]):
                         with VerticalScroll(id="operations"):
                             yield Button("继续当前对话", id="continue")
                             yield Button("新建对话", id="new")
+                            yield Button("切换模型", id="model", disabled=self.model_selection is None)
                             yield Button("查看 Git diff", id="diff", disabled=self.config.read_only)
                             yield Button("查看 Git 状态", id="git", disabled=self.config.read_only)
                             yield Button("查看项目地图", id="map")
@@ -549,6 +554,7 @@ class SprigApp(App[int]):
         for identity in ("files", "continue", "new", "diff", "git", "map", "context-budget", "usage", "compact", "changes", "undo", "redo", "discard-history", "save", "restore", "sessions", "delete", "session-name"):
             self.query_one("#" + identity).disabled = busy or (self.config.read_only and identity in {"diff", "git", "undo", "redo"})
         self.query_one("#cancel", Button).disabled = not busy
+        self.query_one("#model", Button).disabled = busy or self.model_selection is None
         if not busy:
             self.action_focus_task()
 
@@ -768,6 +774,16 @@ class SprigApp(App[int]):
                     result = self.tools.skills.catalog()
                 elif name == "mcp-status":
                     result = self.tools.mcp_manager.status()
+                elif name == "model-switch":
+                    candidate = ModelSwitch(self.model_selection, self.agent, self.messages, arguments["target"],
+                                            saving=bool(self.session_name) or self.config.auto_save_session,
+                                            provider_factory=self.provider_factory)
+                    if not candidate.changed:
+                        result = {"model_changed": False, "network_contacted": False}
+                    elif candidate.preflight(self.confirm, self.session_dir):
+                        result = self.ui_call(self.commit_model, candidate)
+                    else:
+                        result = {"approved": False, "model_changed": False, "network_contacted": False}
                 elif name in {"worktree-create", "worktree-list"}:
                     from .worktrees import worktree_action
                     result = worktree_action(self.config, self.confirm, cancel_event=self.cancel_event, **arguments)
@@ -904,6 +920,50 @@ class SprigApp(App[int]):
                 self.start(local=("references", {"paths": list(value) if isinstance(value, tuple) else [value], "operation": "add"}))
 
         self.push_screen(PickerScreen(commands=commands, query=query, complete_only=editor is not None), selected)
+
+    def choose_model(self, target=""):
+        if self.busy or isinstance(self.screen, ModalScreen):
+            self.notify("请等待当前任务结束后切换模型", severity="warning")
+            return
+        if self.model_selection is None:
+            self.notify("当前启动没有模型选择快照；请从配置启动 Sprig", severity="warning")
+            return
+        if target:
+            self.start(local=("model-switch", {"target": target}))
+            return
+        choices = [(row["key"], ("当前  " if row["provider"] == self.config.provider_name and row["id"] == self.config.model else "")
+                    + row["key"] + "  " + row["id"]) for row in self.model_selection.catalog()]
+        def selected(result):
+            if result and not self.busy:
+                self.choose_model(result[1])
+        self.push_screen(PickerScreen(commands=True, choices=choices,
+                                     title="选择配置中的模型；Enter 后确认，Esc 保留当前模型和草稿"), selected)
+
+    def commit_model(self, candidate):
+        if (self._unmounted or self._closed or self.cancel_event.is_set() or self.pending_tasks
+                or self.agent is not candidate.original):
+            raise ValueError("模型切换已取消或被新要求取代；原模型与草稿保留")
+        old_store = self.store
+        pending_draft = self._draft_submission
+        self.agent, self.messages, self.store, self.session_name = candidate.commit(self.session_dir)
+        self.config = self.agent.config
+        latest_user = next((row for row in reversed(self.messages or []) if row.get("role") == "user"), {})
+        self._draft_submission = pending_draft if pending_draft is not None and latest_user.get("content") == redact(pending_draft[2], self.config.secrets) else None
+        self.query_one("#session-name", Input).value = self.session_name or ""
+        self.query_one("#context", Static).update(self.safe(
+            f"{self.config.model} | {self.config.base_url}\n{self.config.workdir} | {'只读模式' if self.config.read_only else '编辑模式'} | 验收命令: {len(self.config.checks)}"))
+        self.refresh_plan()
+        self.set_task_result(2, "模型已切换，尚未重新验收")
+        self.event("模型已切换；下一次任务才请求目标模型，旧操作不重放")
+        result = {"model_changed": True, "provider": self.config.provider_name, "model": self.config.model,
+                  "wire_api": self.config.wire_api, "session": self.session_name, "network_contacted": False,
+                  "old_runtime_metadata_removed": candidate.dropped, "previous_usage": candidate.original.usage_report()}
+        if old_store is not None:
+            try:
+                old_store.close()
+            except OSError:
+                result["warning"] = "model changed, but old session lock cleanup failed; exit before resuming that file elsewhere"
+        return result
 
     @on(TaskInput.Complete)
     def complete_input(self, event):
@@ -1161,7 +1221,7 @@ class SprigApp(App[int]):
                         "Tab 补全本地命令或 /add、/ref 的文件参数；普通消息 @关键词 + Tab 选择本轮文件。\n"
                         "选择不会发送任务；Enter 发送时读取文件，修改/删除标记撤销选择；/ref 用于后续轮次实时引用。\n"
                         "长粘贴只折叠显示；F4 或“展开粘贴”查看编辑，完整正文仍计入请求预算。\n"
-                        "提供商和模型通过 config.toml 或启动参数选择；恢复时仍校验绑定。\n")
+                        "/model 打开配置模型选择；/model 提供商/别名 或 @startup 明确切换，需确认且不发送请求。恢复仍校验绑定。\n")
             return
         if command == "/keys":
             self.append("\n[快捷键] Enter 发送；Shift+Enter / Ctrl+J 换行；F4 展开粘贴；Ctrl+C 取消；Ctrl+Q 退出；Ctrl+L 输入。审批默认拒绝。\n"
@@ -1189,7 +1249,11 @@ class SprigApp(App[int]):
             self.append("\n[生效配置；密钥值不显示]\n" + json.dumps(public_config(self.config, details), ensure_ascii=False, indent=2) + "\n")
             return
         if command == "/models":
-            self.append("\n[配置中的模型；未联网]\n" + json.dumps(self.config.model_catalog, ensure_ascii=False, indent=2) + "\n")
+            catalog = self.model_selection.catalog() if self.model_selection is not None else self.config.model_catalog
+            self.append("\n[配置中的模型；未联网]\n" + json.dumps(catalog, ensure_ascii=False, indent=2) + "\n")
+            return
+        if command == "/model":
+            self.choose_model(argument)
             return
         if command == "/mcp":
             if self.busy:
@@ -1332,6 +1396,8 @@ class SprigApp(App[int]):
                 self.start()
             elif identity == "new":
                 self.new_conversation()
+            elif identity == "model":
+                self.choose_model()
             elif identity in {"diff", "git"}:
                 argv = ["git", "diff", "--", "."] if identity == "diff" else ["git", "status", "--short", "--", "."]
                 self.start(local=("run", {"argv": argv}))
@@ -1392,8 +1458,8 @@ class SprigApp(App[int]):
             self._lifecycle_lock.release()
 
 
-def run_tui(config, task=None, session_dir=None, save_session=None, resume=None, change_dir=None, show_metrics=False, files=()):
-    app = SprigApp(config, task, session_dir, save_session, resume, change_dir=change_dir, files=files)
+def run_tui(config, task=None, session_dir=None, save_session=None, resume=None, change_dir=None, show_metrics=False, files=(), model_selection=None):
+    app = SprigApp(config, task, session_dir, save_session, resume, change_dir=change_dir, files=files, model_selection=model_selection)
     try:
         return app.run() or 0
     finally:
