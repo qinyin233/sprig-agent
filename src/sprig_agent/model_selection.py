@@ -67,6 +67,7 @@ class ModelSwitch:
         original.tools.root.ensure_open()
         original._check_cancelled()
         self.original = original
+        self.version = original.tools._conversation_version
         self.config = selection.resolve(original.config, key)
         changing = MODEL_CONFIG_FIELDS - {"secret_values", "credential_env_vars", "setting_sources"}
         self.changed = any(getattr(original.config, name) != getattr(self.config, name) for name in changing)
@@ -110,7 +111,8 @@ class ModelSwitch:
         if not self.changed:
             return False
         self.ready = False
-        if self.original.tools.config is not self.original.config or self.original._running:
+        if (self.original.tools.config is not self.original.config or self.original._running
+                or self.original.tools._conversation_version != self.version):
             raise ValueError("model selection proposal is stale; select again")
         if not approve(self.description(directory)):
             return False
@@ -128,6 +130,7 @@ class ModelSwitch:
     def commit(self, directory):
         ready, self.ready = self.ready, False
         if (not self.changed or not ready or self.original._running
+                or self.original.tools._conversation_version != self.version
                 or self.original.tools.config is not self.original.config):
             raise ValueError("model change must pass explicit confirmation and local preflight first")
         self.original._check_cancelled()

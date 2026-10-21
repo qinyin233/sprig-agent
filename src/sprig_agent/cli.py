@@ -43,7 +43,7 @@ def check_argv(text):
         raise argparse.ArgumentTypeError("--check expects a JSON argv array, e.g. '[\"python\",\"-m\",\"unittest\"]'") from None
 
 
-def chat(agent, task, messages, emit, *, autostart=True, model_selection=None, switch_model=None):
+def chat(agent, task, messages, emit, *, autostart=True, model_selection=None, switch_model=None, fork_conversation=None):
     """Keep context across turns; only a new task or /continue calls the model."""
     status = 0
     history_ready = True
@@ -104,6 +104,7 @@ def chat(agent, task, messages, emit, *, autostart=True, model_selection=None, s
             return status
         try:
             if task == "/help":
+                emit("/timeline [OFFSET] lists local user turns; /fork current or /fork MESSAGE confirms a new branch through that whole turn. Workspace files are not rolled back and actions are not replayed. Only the next task or /continue requests the model.")
                 emit("/models lists the configured snapshot; /model KEY explicitly confirms a local model change. @startup restores startup model settings. It retains conversation text, removes old reasoning metadata and forks enabled private saves; no request is sent until the next task.")
                 emit("/mcp shows local server state; /mcp connect|disconnect|tools|resources|templates|prompts SERVER asks fresh approval for remote requests; /mcp result ID [OFFSET] reads retained local data without replay.")
                 emit("/skills lists configured skill metadata; /skill NAME [PATH [OFFSET PAGE_SHA256]] previews local UTF-8 guidance without a model call or script execution. Quote resource paths containing spaces.")
@@ -121,6 +122,19 @@ def chat(agent, task, messages, emit, *, autostart=True, model_selection=None, s
                 else:
                     agent, messages, result = switch_model(task[7:].strip(), messages)
                     if result.get("model_changed"):
+                        history_ready, status = True, 2
+                    emit(json.dumps(result, ensure_ascii=False))
+            elif task == "/timeline" or task.startswith("/timeline ") or task == "/fork":
+                from .conversation_fork import timeline_page
+                offset = int(task[10:].strip()) if task.startswith("/timeline ") else 0
+                emit(json.dumps(timeline_page(messages, offset, secrets=agent.config.secrets,
+                                             budget=min(agent.config.max_output, 8192)), ensure_ascii=False))
+            elif task.startswith("/fork "):
+                if fork_conversation is None:
+                    emit("Conversation branching is unavailable for this startup; no model request sent.")
+                else:
+                    agent, messages, result = fork_conversation(task[6:].strip(), messages)
+                    if result.get("forked"):
                         history_ready, status = True, 2
                     emit(json.dumps(result, ensure_ascii=False))
             elif task == "/mcp":
@@ -474,6 +488,23 @@ def main(argv=None):
         if args.chat:
             from .model_selection import ModelSelection, ModelSwitch
             model_selection = ModelSelection(settings, options, os.environ, config)
+            def fork_conversation(target, messages):
+                from .conversation_fork import ConversationFork
+                nonlocal agent, store, session_name
+                candidate = ConversationFork(agent, messages, target,
+                                             saving=bool(session_name) or config.auto_save_session, source_name=session_name)
+                if not candidate.preflight(confirm, session_dir):
+                    return agent, messages, {"forked": False, "approved": False, "network_contacted": False}
+                old_store = store
+                agent, messages, store, session_name = candidate.commit(session_dir)
+                result = {"forked": True, "session": session_name, "through_message": candidate.through,
+                          "workspace_rolled_back": False, "network_contacted": False}
+                if old_store is not None:
+                    try:
+                        old_store.close()
+                    except OSError:
+                        result["warning"] = "branch active, but old session lock cleanup failed; exit before resuming that file elsewhere"
+                return agent, messages, result
             def switch_model(target, messages):
                 nonlocal agent, provider, config, key, store, session_name
                 candidate = ModelSwitch(model_selection, agent, messages, target,
@@ -496,7 +527,7 @@ def main(argv=None):
                         result["warning"] = "model changed, but old session lock cleanup failed; exit before resuming that file elsewhere"
                 return agent, messages, result
             return chat(agent, args.task, messages, emit, autostart=bool(args.task or args.resume),
-                        model_selection=model_selection, switch_model=switch_model)
+                        model_selection=model_selection, switch_model=switch_model, fork_conversation=fork_conversation)
         _, complete = agent.run(args.task, messages)
         return 0 if complete else 2
     except KeyboardInterrupt:

@@ -109,6 +109,7 @@ def protected(name):
 class Tools:
     def __init__(self, config, approve, cancel_event=None, emit_output=None, history=None, *, ask=None):
         self.config, self.approve = config, approve
+        self._conversation_version = 0
         self.cancel_event = cancel_event
         self.ask = ask
         self.root = Directory(config.workdir)
@@ -140,6 +141,7 @@ class Tools:
             validate_model_change(self.config, config)
         except ValueError as error:
             raise ToolError(str(error)) from None
+        self._conversation_version += 1
         self.mcp_manager.reset()
         self.read_versions.clear()
         self.index.clear()

@@ -114,6 +114,8 @@ class Agent:
     def reset_runtime(self):
         if self._running:
             raise ValueError("cannot reset runtime during a task")
+        if isinstance(self.tools, Tools):
+            self.tools._conversation_version += 1
         self.runtime_state = None
         manager = getattr(self.tools, "mcp_manager", None)
         if isinstance(manager, McpManager):

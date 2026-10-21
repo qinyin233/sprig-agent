@@ -23,6 +23,7 @@ from .config import SHORTCUT_ACTIONS, redact, terminal_text
 from .composer import DraftPastes, MAX_PASTE_BYTES, paste_text
 from .mentions import DraftFiles, mention_query
 from .model_selection import ModelSwitch
+from .conversation_fork import ConversationFork, timeline_page, turn_catalog
 from .provider import Provider
 from .picker import PickerScreen
 from .question_ui import QuestionScreen
@@ -424,6 +425,7 @@ class SprigApp(App[int]):
                                 yield Button("保存", id="save")
                                 yield Button("恢复", id="restore")
                             yield Button("列出本地会话", id="sessions")
+                            yield Button("从历史建立分支", id="fork")
                             yield Button("删除指定会话", id="delete")
                     with TabPane("计划", id="plan-tab"):
                         yield Static("模型报告的进度；不代表审批或验收", markup=False)
@@ -551,7 +553,7 @@ class SprigApp(App[int]):
 
     def set_busy(self, busy):
         self.busy = busy
-        for identity in ("files", "continue", "new", "diff", "git", "map", "context-budget", "usage", "compact", "changes", "undo", "redo", "discard-history", "save", "restore", "sessions", "delete", "session-name"):
+        for identity in ("files", "continue", "new", "diff", "git", "map", "context-budget", "usage", "compact", "changes", "undo", "redo", "discard-history", "save", "restore", "sessions", "fork", "delete", "session-name"):
             self.query_one("#" + identity).disabled = busy or (self.config.read_only and identity in {"diff", "git", "undo", "redo"})
         self.query_one("#cancel", Button).disabled = not busy
         self.query_one("#model", Button).disabled = busy or self.model_selection is None
@@ -784,6 +786,17 @@ class SprigApp(App[int]):
                         result = self.ui_call(self.commit_model, candidate)
                     else:
                         result = {"approved": False, "model_changed": False, "network_contacted": False}
+                elif name == "timeline":
+                    result = timeline_page(self.messages, arguments["offset"], secrets=self.config.secrets,
+                                           budget=min(self.config.max_output, 8192))
+                elif name == "conversation-fork":
+                    candidate = ConversationFork(self.agent, self.messages, arguments["target"],
+                                                 saving=bool(self.session_name) or self.config.auto_save_session,
+                                                 source_name=self.session_name)
+                    if candidate.preflight(self.confirm, self.session_dir):
+                        result = self.ui_call(self.commit_fork, candidate)
+                    else:
+                        result = {"forked": False, "approved": False, "network_contacted": False}
                 elif name in {"worktree-create", "worktree-list"}:
                     from .worktrees import worktree_action
                     result = worktree_action(self.config, self.confirm, cancel_event=self.cancel_event, **arguments)
@@ -938,6 +951,52 @@ class SprigApp(App[int]):
                 self.choose_model(result[1])
         self.push_screen(PickerScreen(commands=True, choices=choices,
                                      title="选择配置中的模型；Enter 后确认，Esc 保留当前模型和草稿"), selected)
+
+    def choose_fork(self, target=""):
+        if self.busy or isinstance(self.screen, ModalScreen):
+            self.notify("请等待当前任务结束后建立分支", severity="warning")
+            return
+        if target:
+            self.start(local=("conversation-fork", {"target": target}))
+            return
+        try:
+            self.tools.root.ensure_open()
+            choices = [("current", "current  保留整个当前对话，建立新分支")]
+            choices.extend((str(row["message"]), f"消息 {row['message']}–{row['through_message']}  {row['preview']}")
+                           for row in turn_catalog(self.messages, self.config.secrets))
+        except (OSError, ValueError, SessionError) as error:
+            self.notify(self.safe(error), severity="error")
+            return
+        def selected(result):
+            if result and not self.busy:
+                self.choose_fork(result[1])
+        self.push_screen(PickerScreen(commands=True, choices=choices,
+                                     title="历史分支：保留到该轮结束；搜索消息号/预览，Enter 后确认，Esc 关闭"), selected)
+
+    def commit_fork(self, candidate):
+        if (self._unmounted or self._closed or self.cancel_event.is_set() or self.pending_tasks
+                or self.agent is not candidate.original or self.messages is not candidate.source):
+            raise ValueError("分支已取消或被新要求取代；原对话和草稿保留")
+        old_store, pending_draft = self.store, self._draft_submission
+        self.agent, self.messages, self.store, self.session_name = candidate.commit(self.session_dir)
+        latest_user = next((row for row in reversed(self.messages) if row["role"] == "user"), {})
+        self._draft_submission = pending_draft if pending_draft is not None and latest_user.get("content") == redact(pending_draft[2], self.config.secrets) else None
+        self.query_one("#session-name", Input).value = self.session_name or ""
+        self.refresh_plan()
+        self.set_task_result(2, "已建立对话分支，工作区未回滚，尚未重新验收")
+        self.transcript = ""
+        self._transcript_trimmed = False
+        self.query_one("#transcript", TextArea).load_text("")
+        self.append("已建立历史分支。工作区文件保持现状，下一次 Enter 才请求模型。\n")
+        self.show_history()
+        result = {"forked": True, "session": self.session_name, "through_message": candidate.through,
+                  "workspace_rolled_back": False, "network_contacted": False}
+        if old_store is not None:
+            try:
+                old_store.close()
+            except OSError:
+                result["warning"] = "branch active, but old session lock cleanup failed; exit before resuming that file elsewhere"
+        return result
 
     def commit_model(self, candidate):
         if (self._unmounted or self._closed or self.cancel_event.is_set() or self.pending_tasks
@@ -1221,7 +1280,8 @@ class SprigApp(App[int]):
                         "Tab 补全本地命令或 /add、/ref 的文件参数；普通消息 @关键词 + Tab 选择本轮文件。\n"
                         "选择不会发送任务；Enter 发送时读取文件，修改/删除标记撤销选择；/ref 用于后续轮次实时引用。\n"
                         "长粘贴只折叠显示；F4 或“展开粘贴”查看编辑，完整正文仍计入请求预算。\n"
-                        "/model 打开配置模型选择；/model 提供商/别名 或 @startup 明确切换，需确认且不发送请求。恢复仍校验绑定。\n")
+                        "/model 打开配置模型选择；/model 提供商/别名 或 @startup 明确切换，需确认且不发送请求。恢复仍校验绑定。\n"
+                        "/timeline 或 /fork 选择历史轮次；/fork current 或 消息号 明确建立分支。文件不回滚，草稿保留，Enter 才请求模型。\n")
             return
         if command == "/keys":
             self.append("\n[快捷键] Enter 发送；Shift+Enter / Ctrl+J 换行；F4 展开粘贴；Ctrl+C 取消；Ctrl+Q 退出；Ctrl+L 输入。审批默认拒绝。\n"
@@ -1254,6 +1314,18 @@ class SprigApp(App[int]):
             return
         if command == "/model":
             self.choose_model(argument)
+            return
+        if command in {"/fork", "/timeline"}:
+            if command == "/timeline" and argument:
+                try:
+                    offset = int(argument)
+                    if self.busy:
+                        raise ValueError("请等待当前任务结束后查看时间线")
+                    self.start(local=("timeline", {"offset": offset}))
+                except ValueError as error:
+                    self.notify(self.safe(error), severity="warning")
+            else:
+                self.choose_fork(argument)
             return
         if command == "/mcp":
             if self.busy:
@@ -1398,6 +1470,8 @@ class SprigApp(App[int]):
                 self.new_conversation()
             elif identity == "model":
                 self.choose_model()
+            elif identity == "fork":
+                self.choose_fork()
             elif identity in {"diff", "git"}:
                 argv = ["git", "diff", "--", "."] if identity == "diff" else ["git", "status", "--short", "--", "."]
                 self.start(local=("run", {"argv": argv}))

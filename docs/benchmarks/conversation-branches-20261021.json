@@ -1,0 +1,181 @@
+{
+  "schema_version": 1,
+  "date": "2026-10-21",
+  "feature": "Whole-user-turn conversation branches with bounded local timeline, fresh confirmation and private saved-session fork; workspace files remain current",
+  "base_commit": "aab83bd90af202cbaf8adbb99222c989612f80b2",
+  "source_digest": {
+    "files": 56,
+    "sha256": "6b0c03a0fbcd5ec468e26e9953662bbb5f575cbdac04499b22bbbda2da0bd889"
+  },
+  "tests_digest": {
+    "files": 74,
+    "sha256": "7b846569882ecadc65ab027fa5831c26a51ceb6371f8c9d10919a9b0eda6f886"
+  },
+  "digest_method": "SHA256 of compact ASCII JSON arrays of [POSIX relative path, SHA256 of bytes with CRLF normalized to LF], sorted by path; src/sprig_agent/*.py and tests/*.py separately",
+  "source_reference": {
+    "repository": "https://github.com/anomalyco/opencode",
+    "commit": "9d90d892dcbfc52b47e95b2ea31b8aba877128fd",
+    "files": [
+      "packages/tui/src/routes/session/dialog-fork.tsx",
+      "packages/tui/src/routes/session/dialog-timeline.tsx"
+    ],
+    "scope": "Pinned source read, not an upstream runtime or performance comparison; upstream before-message branching/prompt reconstruction differs from this explicitly whole-turn boundary"
+  },
+  "local_suites": [
+    {
+      "platform": "Windows 11",
+      "command": "uv run --locked python -m unittest discover -s tests -q",
+      "total": 1104,
+      "passed": 1085,
+      "skipped": 19,
+      "seconds": 423.669,
+      "failures": 0,
+      "errors": 0,
+      "full_suite": true,
+      "python": "3.13.0"
+    },
+    {
+      "platform": "WSL Ubuntu-26.04",
+      "command": "UV_PROJECT_ENVIRONMENT=.venv-wsl uv run --locked python -m unittest discover -s tests -q",
+      "total": 1104,
+      "passed": 1081,
+      "skipped": 23,
+      "seconds": 304.093,
+      "failures": 0,
+      "errors": 0,
+      "full_suite": true,
+      "python": "3.13.14"
+    }
+  ],
+  "compatibility_suites": [
+    {
+      "platform": "Windows 11",
+      "command": "UV_PROJECT_ENVIRONMENT=.venv-py311 uv run --locked --python 3.11 --no-editable python -m unittest tests.test_conversation_fork tests.test_model_selection tests.test_configuration_profiles -q",
+      "total": 53,
+      "passed": 53,
+      "skipped": 0,
+      "seconds": 39.408,
+      "failures": 0,
+      "errors": 0,
+      "full_suite": false,
+      "python": "3.11.14"
+    }
+  ],
+  "focused_suite": {
+    "platform": "Windows 11",
+    "command": "uv run --locked python -m unittest tests.test_conversation_fork tests.test_model_selection -q",
+    "total": 29,
+    "passed": 29,
+    "skipped": 0,
+    "seconds": 33.551,
+    "failures": 0,
+    "errors": 0,
+    "full_suite": false,
+    "python": "3.13.0"
+  },
+  "client_suites": [
+    {
+      "platform": "Windows 11",
+      "command": "uv run --project benchmarks/clients/mini --locked python -I -B -m unittest discover -s benchmarks/clients/tests -q",
+      "total": 25,
+      "passed": 25,
+      "skipped": 0,
+      "seconds": 36.492,
+      "failures": 0,
+      "errors": 0,
+      "full_suite": false
+    },
+    {
+      "platform": "WSL Ubuntu-26.04",
+      "command": "UV_PROJECT_ENVIRONMENT=.venv-mini-wsl uv run --project benchmarks/clients/mini --locked python -I -B -m unittest discover -s benchmarks/clients/tests -q",
+      "total": 25,
+      "passed": 25,
+      "skipped": 0,
+      "seconds": 184.487,
+      "failures": 0,
+      "errors": 0,
+      "full_suite": false
+    }
+  ],
+  "workflow_fixtures": {
+    "kind": "Actual Textual TUI and CLI chat with fixed replies over real loopback HTTP/SSE",
+    "target_protocols": [
+      "chat_completions",
+      "messages",
+      "responses"
+    ],
+    "tui_protocol_cases": 3,
+    "requests_per_tui_case_after_explicit_enter": 1,
+    "chat_protocol_cases": 3,
+    "requests_per_chat_case": 3,
+    "chat_request_order": [
+      "source first turn",
+      "source later turn",
+      "new task in first-turn branch"
+    ],
+    "rejected_command_fixture_requests": 2,
+    "rejected_command_marker_created": false,
+    "new_test_methods": 13,
+    "external_model_requests": 0,
+    "coverage": [
+      "whole closed tool batches and user-turn boundary",
+      "bounded Unicode timeline pages and invalid branch points",
+      "known credential and hidden native/reasoning data excluded from previews/branch",
+      "fresh one-shot confirmation and stale source/version rejection including old model-change proposals",
+      "cancel, refuse, oversized retained request and private save failure retain source conversation",
+      "original private file byte-preserved and new binding/branch load",
+      "current workspace unchanged",
+      "old command log ownership unavailable in branch but original owner can still read",
+      "old read IDs, summaries, MCP/cache and check state invalidated",
+      "TUI 80x24 menu, draft and file metadata retained",
+      "failed-admission draft sends once",
+      "guidance during confirmation abandons fork and continues source",
+      "new command requires fresh approval despite old approved history",
+      "malformed history picker reports an error without crashing",
+      "private restore never replays actions"
+    ]
+  },
+  "packaging": {
+    "uv_lock_check": "passed",
+    "configuration_schema_matches": true,
+    "complete_toml_example_valid": true,
+    "compileall": "passed",
+    "cli_help": "passed",
+    "sdist_and_wheel_build": "passed",
+    "wheel_source_modules_match": 56,
+    "isolated_installed_wheel_tui": "passed at 80x24: actual file picker, history picker and approval; pending file/draft retained, source bytes unchanged, current workspace retained, later history removed, explicit Enter sends once, private branch restore idle",
+    "installed_fixture_model_calls": 1,
+    "installed_external_model_requests": 0,
+    "tool_schema_changes": false,
+    "dependencies_added": []
+  },
+  "development_corrections": [
+    "A regression failed because an older confirmed branch could still commit after another branch with the same config. A monotonic conversation version now invalidates branch/model proposals on rebind and runtime reset; the regression and existing model suite pass.",
+    "An initial command-log fixture tried to alter storage policy through model rebinding. The existing guard correctly rejected it. The test now constructs an independent configured Tools instance; no permission was relaxed.",
+    "A reproduced invalid tool-result history raised an unhandled SessionError in the idle TUI picker. The picker now reports that error. All final frozen suites, compatibility checks and installed wheel replay run after this fix.",
+    "Before-fix full suites and installed checks are not counted as final-source evidence; they were superseded by frozen runs."
+  ],
+  "remote_ci": {
+    "run": false,
+    "status": "user_requested_freeze",
+    "commit_policy": "[skip ci]",
+    "do_not_run_before": "2026-11-01",
+    "timezone": "Asia/Singapore",
+    "reason": "User explicitly confirmed the GitHub account restriction persists until November 1 and requested no CI during that interval. AGENTS.md records the freeze for every push, including substantial batches.",
+    "dispatches_or_reruns_this_batch": 0,
+    "previous_required_run_id": 39556289305,
+    "previous_required_commit": "106b60ed11de6fdfa7756495bf3f17b74d9c7812",
+    "green_ci_claim": false,
+    "after_freeze": "Verify the account restriction and repair the previous exact-SHA required gate before the next CI-enabled feature batch; the date does not prove account recovery."
+  },
+  "limits": [
+    "This branch keeps a whole user turn including its tools, rather than the upstream before-message/prompt-reconstruction behavior.",
+    "No workspace rollback, message editing/resend, original attachment reconstruction, command snapshot or multi-file atomic change.",
+    "Retained application notice identifies historical state as stale. Model-reported plan progress is not verification.",
+    "Current explicit live references are rechecked; old native state, summaries, read IDs and log ownership are not inherited.",
+    "Same model/provider instance retains numeric request measurements; branching is not a usage reset.",
+    "Session storage is private and unencrypted. If local saving is disabled, branch remains in memory.",
+    "No native filesystem/process backend changes. Platform skips are not passes; WSL local results are not native Ubuntu CI.",
+    "No remote or full Python/client/macOS matrix claim, extra paid-model account requirement, new coding quality result or top-agent parity claim."
+  ]
+}
