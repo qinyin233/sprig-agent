@@ -18,7 +18,9 @@
 
 扩展工作流补充 [Agent Skills 按需加载](skills.md)：显式用户/profile 目录、首轮元数据、模型 `skill` 和 UTF-8 资源分页、CLI/TUI 本地预览、离线目录检查与可用示例。PyYAML 安全解析并限制结构，重名拒绝覆盖；目录/文件/隐私重新检查，陈旧清单和跨版本续读拒绝。`allowed-tools` 不授予权限，加载不运行脚本，命令与写入仍逐次批准；会话绑定目录配置，恢复不重放。当前没有技能安装器、自动脚本或 hooks/MCP。最终平台、打包与精确 CI 记录见[机器证据](benchmarks/skills-20261021.json)。
 
-冻结本批源码后，Windows Python 3.13.0 共 1040 项，1021 通过、19 平台跳过；WSL Python 3.13.14 共 1040 项，1017 通过、23 平台跳过；两端 mini SDK 各 25 项通过。锁文件、配置 Schema、CLI、编译、打包与隔离 wheel 检查通过，核对 48 个源码模块，并实际运行经新批准的示例脚本；之前的元数据/正文加载没有执行脚本。包含上一批提问功能的大批状态将针对精确功能 SHA 手动运行 Windows/Ubuntu 精简原生 CI，结果完成后另记；不借用旧 CI 或把 WSL 当作原生 runner。
+冻结本批源码后，Windows Python 3.13.0 共 1040 项，1021 通过、19 平台跳过；WSL Python 3.13.14 共 1040 项，1017 通过、23 平台跳过；两端 mini SDK 各 25 项通过。锁文件、配置 Schema、CLI、编译、打包与隔离 wheel 检查通过，核对 48 个源码模块，并实际运行经新批准的示例脚本；之前的元数据/正文加载没有执行脚本。另在 Windows Python 3.11.14 运行技能和配置相关 47 项，46 通过、1 项平台跳过；不是完整版本矩阵。
+
+功能提交 `1c6b61216d5b4a58d0e246efbaa1ae447dc2d5d6` 的 [Windows/Ubuntu 精简原生 CI](https://github.com/qinyin233/sprig-agent/actions/runs/39548575715)两个作业均为 completed/success：Ubuntu job `119052282189`、Windows job `119052282470`，逐项核对两端精确 SHA、完整 unittest、CLI help 均 completed/success。只运行 Python 3.13 的这两个原生作业，覆盖本批与先前提问功能，没有完整 Python/client/macOS 矩阵结论。后续仅证据文档提交使用 `[skip ci]`；绿色状态只对应上述功能 SHA。
 
 交互澄清补充 [question 工具和实际表单](questions.md)：TUI/终端 CLI 支持单选、多选、自填、回退和中途引导；非交互默认不提供工具，避免 stdin 等待。回答不能批准操作，同批全部旧提案跳过，收到答案后重新规划；关闭或无效答案停止本轮，部分草稿不保存，恢复不重弹旧问题。只读、取消、私有历史、完整 SSE 和 UTF-8/JSON 预算由核心执行，表单粘贴不截断首行。问题阶段与操作审批分开。本批只补交互流程，没有持久 inbox、后台任务或 MCP，具体本地测试与无远程 CI 的范围见[机器记录](benchmarks/questions-20261020.json)。
 

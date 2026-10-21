@@ -2,7 +2,7 @@
 
 一个小而直接的 Python 命令行编程代理：把任务交给支持工具调用的模型，由模型读取项目、提出修改、请求执行命令。你逐次确认每次写入和命令执行。
 
-- Python 3.11+，模型与文件执行核心使用标准库，TUI 使用 Textual，跨语言声明索引使用 Tree-sitter
+- Python 3.11+，模型与文件执行核心使用标准库，TUI 使用 Textual，跨语言声明索引使用 Tree-sitter，技能元数据使用 PyYAML
 - Linux / macOS / Windows 10+ / Windows WSL
 - Chat Completions、Messages、Responses 三种协议，函数工具与 SSE 流式输出
 - 可选每次模型输出 token 上限与兼容服务的思考模式

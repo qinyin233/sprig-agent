@@ -11,6 +11,9 @@
     {"platform": "WSL Ubuntu-26.04", "python": "3.13.14", "command": "UV_PROJECT_ENVIRONMENT=.venv-wsl uv run --locked python -m unittest discover -s tests -q", "total": 1040, "passed": 1017, "skipped": 23, "failures": 0, "errors": 0, "seconds": 235.772}
   ],
   "client_suite_command": "uv run --project benchmarks/clients/mini --locked python -I -B -m unittest discover -s benchmarks/clients/tests -q",
+  "compatibility_suites": [
+    {"platform": "Windows 11", "python": "3.11.14", "command": "UV_PROJECT_ENVIRONMENT=.venv-py311 uv run --locked --python 3.11 --no-editable python -m unittest tests.test_skills tests.test_configuration_profiles -q", "total": 47, "passed": 46, "skipped": 1, "failures": 0, "errors": 0, "seconds": 12.198, "full_suite": false}
+  ],
   "client_suites": [
     {"platform": "Windows 11", "total": 25, "passed": 25, "skipped": 0, "seconds": 62.608},
     {"platform": "WSL Ubuntu-26.04", "environment": "UV_PROJECT_ENVIRONMENT=.venv-mini-wsl", "total": 25, "passed": 25, "skipped": 0, "seconds": 226.618}
@@ -25,10 +28,12 @@
   },
   "packaging": {
     "uv_lock_check": "passed",
+    "configuration_schema_matches": true,
     "compileall": "passed",
     "cli_help": "passed",
     "offline_example_catalog": "passed without model or credentials",
     "sdist_and_wheel_build": "passed",
+    "source_distribution_includes_skill_example_and_reference": true,
     "wheel_source_modules_match": 48,
     "isolated_installed_wheel_tui_smoke": "passed: metadata -> skill -> script text -> actual script only after fresh command approval; draft and private resume retained without replay; installed offline CLI without a provider",
     "isolated_smoke_fixture_model_calls": 4,
@@ -57,7 +62,66 @@
     "private_session_root_binding_and_no_replay": true
   },
   "development_correction": "Windows fixture write_text translated LF to CRLF, causing a large unittest string-diff recursion error. The byte-preservation case now writes explicit UTF-8 bytes and compares reassembled bytes; production reads preserve actual file bytes. Final full suites run after correction.",
-  "remote_ci": {"run": false, "planned": "manual native-regression.yml for exact functional SHA on windows-latest and ubuntu-latest; avoid full Python/client matrix"},
+  "remote_ci": {
+    "run": true,
+    "functional_commit": "1c6b61216d5b4a58d0e246efbaa1ae447dc2d5d6",
+    "run_id": 39548575715,
+    "url": "https://github.com/qinyin233/sprig-agent/actions/runs/39548575715",
+    "status": "completed",
+    "conclusion": "success",
+    "workflow": "native-regression.yml",
+    "python": "3.13",
+    "jobs": [
+      {
+        "id": 119052282189,
+        "name": "core (ubuntu-latest)",
+        "status": "completed",
+        "conclusion": "success",
+        "required_steps": [
+          {
+            "name": "Verify exact commit",
+            "status": "completed",
+            "conclusion": "success"
+          },
+          {
+            "name": "Run uv run --locked python -m unittest discover -s tests -q",
+            "status": "completed",
+            "conclusion": "success"
+          },
+          {
+            "name": "Run uv run --locked sprig --help",
+            "status": "completed",
+            "conclusion": "success"
+          }
+        ]
+      },
+      {
+        "id": 119052282470,
+        "name": "core (windows-latest)",
+        "status": "completed",
+        "conclusion": "success",
+        "required_steps": [
+          {
+            "name": "Verify exact commit",
+            "status": "completed",
+            "conclusion": "success"
+          },
+          {
+            "name": "Run uv run --locked python -m unittest discover -s tests -q",
+            "status": "completed",
+            "conclusion": "success"
+          },
+          {
+            "name": "Run uv run --locked sprig --help",
+            "status": "completed",
+            "conclusion": "success"
+          }
+        ]
+      }
+    ],
+    "full_python_client_macos_matrix": false,
+    "documentation_followup": "[skip ci]; no CI attributed to a later documentation SHA"
+  },
   "external_model_requests": 0,
   "acceptance_scope": "Protocol and interaction correctness; channel models are actual models regardless of billing; no requirement for extra paid-account tests",
   "limitations": [
