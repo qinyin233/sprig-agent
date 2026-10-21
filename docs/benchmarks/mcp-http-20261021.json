@@ -135,9 +135,39 @@
     "Legacy runtime session credentials now join application-wide redaction and environment filtering; unsafe short IDs are rejected before registration. Final full suites run after these changes."
   ],
   "remote_ci": {
-    "run": false,
-    "status": "pending_exact_functional_commit",
-    "workflow": "native-regression.yml"
+    "run": true,
+    "functional_commit": "106b60ed11de6fdfa7756495bf3f17b74d9c7812",
+    "run_id": 39556289305,
+    "url": "https://github.com/qinyin233/sprig-agent/actions/runs/39556289305",
+    "status": "completed",
+    "conclusion": "failure",
+    "workflow": "native-regression.yml",
+    "requested_python": "3.13",
+    "jobs": [
+      {
+        "id": 119076713756,
+        "name": "core (ubuntu-latest)",
+        "status": "completed",
+        "conclusion": "failure",
+        "steps": [],
+        "required_steps_executed": false,
+        "failure_annotation": "The job was not started because recent account payments have failed or your spending limit needs to be increased. Please check the 'Billing & plans' section in your settings"
+      },
+      {
+        "id": 119076713930,
+        "name": "core (windows-latest)",
+        "status": "completed",
+        "conclusion": "failure",
+        "steps": [],
+        "required_steps_executed": false,
+        "failure_annotation": "The job was not started because recent account payments have failed or your spending limit needs to be increased. Please check the 'Billing & plans' section in your settings"
+      }
+    ],
+    "blocked_before_runner_start": true,
+    "failure_source": "GitHub check-run failure annotations for each exact-SHA job",
+    "native_ci_validation": false,
+    "retry_dispatched": false,
+    "scope": "Account billing/spending restriction prevented both runners from starting. Local Windows/WSL checks remain separate evidence; this run provides no test or cross-platform CI pass. No code workaround or additional feature CI batch attempted."
   },
   "research": {
     "opencode_commit": "9d90d892dcbfc52b47e95b2ea31b8aba877128fd",

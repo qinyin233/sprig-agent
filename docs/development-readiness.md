@@ -16,11 +16,11 @@
 
 MCP 第一阶段补充 [Streamable HTTP 实际后端](mcp.md)：2026-07-28 与旧版初始化协议、JSON/SSE、工具目录/调用、资源/模板、提示词和本地结果回查。默认不连接，连接和每个 RPC 新批准；只读和硬禁用由执行层阻止，外部内容不能变为授权或新消息。目录摘要与有界 Schema 校验防止陈旧/无效提案，资源 URI 不自动访问；交付不明不重试，新对话/恢复不重放。当前仍缺 stdio、OAuth、订阅、Apps、采样/elicitation 和后台任务。最终平台与精确 CI 范围见[机器记录](benchmarks/mcp-http-20261021.json)。
 
-冻结 MCP 本批源码后，Windows Python 3.13.0 共 1062 项，1043 通过、19 平台跳过；WSL Python 3.13.14 共 1062 项，1039 通过、23 平台跳过；两端 mini SDK 各 25 项通过。Windows Python 3.11.14 的 MCP/配置相关 46 项通过。锁文件、Schema、CLI、编译和 wheel/sdist 通过，隔离安装核对 54 个源码模块，TUI 实际执行三次分别批准的 RPC，恢复无连接/重放。固定 HTTP/SSE 测试验证三模型协议适配，不新增模型质量结论。精确远程 CI 待功能提交后记录。
+冻结 MCP 本批源码后，Windows Python 3.13.0 共 1062 项，1043 通过、19 平台跳过；WSL Python 3.13.14 共 1062 项，1039 通过、23 平台跳过；两端 mini SDK 各 25 项通过。Windows Python 3.11.14 的 MCP/配置相关 46 项通过。锁文件、Schema、CLI、编译和 wheel/sdist 通过，隔离安装核对 54 个源码模块，TUI 实际执行三次分别批准的 RPC，恢复无连接/重放。固定 HTTP/SSE 测试验证三模型协议适配，不新增模型质量结论。功能提交 `106b60ed11de6fdfa7756495bf3f17b74d9c7812` 的[精简原生 CI](https://github.com/qinyin233/sprig-agent/actions/runs/39556289305)为 completed/failure：Ubuntu job `119076713756`、Windows job `119076713930` 均因 GitHub 账户付款/支出上限限制没有启动 runner，步骤列表为空；没有任何测试被执行。本批不宣称远程 CI 或跨平台 CI 验证通过，也不借用 Skills 的绿色状态。未重复触发或修改账户额度；待账户限制解除后再核对此功能 SHA，下一批需要 CI 的功能更新应等待该验证完成。
 
 本表区分代码已经提供的行为、尚未实现的功能和仍缺实测的性能目标。一次基础功能更新不等于追平 Aider、OpenCode 或 OpenHands。
 
-扩展工作流补充 [Agent Skills 按需加载](skills.md)：显式用户/profile 目录、首轮元数据、模型 `skill` 和 UTF-8 资源分页、CLI/TUI 本地预览、离线目录检查与可用示例。PyYAML 安全解析并限制结构，重名拒绝覆盖；目录/文件/隐私重新检查，陈旧清单和跨版本续读拒绝。`allowed-tools` 不授予权限，加载不运行脚本，命令与写入仍逐次批准；会话绑定目录配置，恢复不重放。当前没有技能安装器、自动脚本或 hooks/MCP。最终平台、打包与精确 CI 记录见[机器证据](benchmarks/skills-20261021.json)。
+扩展工作流补充 [Agent Skills 按需加载](skills.md)：显式用户/profile 目录、首轮元数据、模型 `skill` 和 UTF-8 资源分页、CLI/TUI 本地预览、离线目录检查与可用示例。PyYAML 安全解析并限制结构，重名拒绝覆盖；目录/文件/隐私重新检查，陈旧清单和跨版本续读拒绝。`allowed-tools` 不授予权限，加载不运行脚本，命令与写入仍逐次批准；会话绑定目录配置，恢复不重放。该技能批次没有技能安装器、自动脚本或 hooks/MCP；后续 MCP HTTP 进展见上文。最终平台、打包与精确 CI 记录见[机器证据](benchmarks/skills-20261021.json)。
 
 冻结本批源码后，Windows Python 3.13.0 共 1040 项，1021 通过、19 平台跳过；WSL Python 3.13.14 共 1040 项，1017 通过、23 平台跳过；两端 mini SDK 各 25 项通过。锁文件、配置 Schema、CLI、编译、打包与隔离 wheel 检查通过，核对 48 个源码模块，并实际运行经新批准的示例脚本；之前的元数据/正文加载没有执行脚本。另在 Windows Python 3.11.14 运行技能和配置相关 47 项，46 通过、1 项平台跳过；不是完整版本矩阵。
 
