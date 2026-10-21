@@ -140,7 +140,12 @@ def chat(agent, task, messages, emit, *, autostart=True, model_selection=None, s
             elif task == "/mcp":
                 emit(json.dumps(agent.tools.mcp_manager.status(), ensure_ascii=False))
             elif task.startswith("/mcp "):
-                emit(json.dumps(agent.tools.mcp(**mcp_arguments(task.partition(" ")[2])), ensure_ascii=False))
+                result = agent.tools.mcp(**mcp_arguments(task.partition(" ")[2]))
+                if result.get("approved") is True:
+                    status = 2
+                    if history_ready:
+                        agent.record_workspace_change(messages, {"action": "external MCP operation", "path": ".", "outcome": "uncertain"})
+                emit(json.dumps(result, ensure_ascii=False))
             elif task == "/skills":
                 emit(json.dumps(agent.tools.skills.catalog(), ensure_ascii=False))
             elif task.startswith("/skill "):

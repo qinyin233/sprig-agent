@@ -76,6 +76,7 @@ class HttpClient:
         self.ready = False
         self.capabilities = {}
         self.catalog_changed = False
+        self.catalog_version = 0
         handlers = [NoRedirect(), HTTPHandler(), HTTPSHandler()]
         if server.proxy == "direct":
             handlers.append(urllib.request.ProxyHandler({}))
@@ -124,6 +125,7 @@ class HttpClient:
                 raise McpError("server-initiated MCP requests are not enabled")
             if value["method"] == "notifications/tools/list_changed":
                 self.catalog_changed = True
+                self.catalog_version += 1
             return None
         if value.get("id") != identity or ("result" in value) == ("error" in value):
             raise McpError("MCP response ID or result/error envelope mismatch")

@@ -658,7 +658,7 @@ class SprigApp(App[int]):
             def decide(approved):
                 answer[0] = approved
                 self.approval = None
-                if approved and self.local_action in {"run", "worktree-create", "worktree-list"}:
+                if approved and self.local_action in {"run", "worktree-create", "worktree-list", "mcp"}:
                     # Even a viewing command can invoke Git helpers. Treat its
                     # workspace effects conservatively, including cancellation.
                     self.invalidate_task()

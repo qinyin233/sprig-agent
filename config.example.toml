@@ -168,3 +168,17 @@ interface = "tui"
 [profiles.coding.agent]
 max_steps = 30
 compact_context = true
+
+# Local MCP: configure an already installed executable; never starts on load.
+# Enable only after reviewing its code/permissions. The server is NOT sandboxed.
+# On Windows prefer node.exe/python.exe directly; .cmd/.bat needs explicit cmd.exe /c argv.
+[mcp.servers.local_example]
+transport = "stdio"
+enabled = false
+command = ["python", "-u", "tools/mcp_server.py"]
+cwd = "."
+protocol_version = "2025-11-25"
+timeout = 30
+deadline = 120
+env = { NODE_ENV = "production" } # nonsecret fixed values
+env_from = { API_TOKEN = "MCP_LOCAL_TOKEN" } # secret references to process environment

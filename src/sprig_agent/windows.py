@@ -323,6 +323,136 @@ def check_command_launcher(executable):
         break
 
 
+class StdioProcess:
+    """Launch into a kill-on-close job before any child instruction executes."""
+    def __init__(self, argv, directory, env):
+        self.job, self.process = None, None
+        self.stdin = self.stdout = self.stderr = None
+        program = argv[0]
+        if os.path.dirname(program) and not os.path.isabs(program):
+            program = str(Path(directory) / program)
+        executable = shutil.which(program, path=env.get("PATH"))
+        if executable is None:
+            raise FileNotFoundError("MCP executable was not found")
+        if Path(executable).suffix.lower() in {".bat", ".cmd"}:
+            raise ValueError("MCP batch launchers require explicit cmd.exe /c in the configured argv")
+        check_command_launcher(executable)
+        command = subprocess.list2cmdline(argv)
+        if len(command) >= 32767:
+            raise ValueError("Windows MCP command line exceeds 32766 characters")
+        create_job = api(kernel, "CreateJobObjectW", w.HANDLE, PTR, w.LPCWSTR)
+        set_job = api(kernel, "SetInformationJobObject", w.BOOL, w.HANDLE, c.c_int, PTR, w.DWORD)
+        init = api(kernel, "InitializeProcThreadAttributeList", w.BOOL, PTR, w.DWORD, w.DWORD, c.POINTER(SIZE))
+        update = api(kernel, "UpdateProcThreadAttribute", w.BOOL, PTR, w.DWORD, SIZE, PTR, SIZE, PTR, PTR)
+        delete = api(kernel, "DeleteProcThreadAttributeList", None, PTR)
+        duplicate = api(kernel, "DuplicateHandle", w.BOOL, w.HANDLE, w.HANDLE, w.HANDLE, c.POINTER(w.HANDLE), w.DWORD, w.BOOL, w.DWORD)
+        create = api(kernel, "CreateProcessW", w.BOOL, w.LPCWSTR, w.LPWSTR, PTR, PTR, w.BOOL, w.DWORD, PTR, w.LPCWSTR, PTR, c.POINTER(ProcessInfo))
+        set_mode = api(kernel, "SetNamedPipeHandleState", w.BOOL, w.HANDLE, c.POINTER(w.DWORD), PTR, PTR)
+        current = api(kernel, "GetCurrentProcess", w.HANDLE)()
+        inherited, child_fds, attributes, info = [], [], None, ProcessInfo()
+        attributes_initialized = False
+        try:
+            self.job = checked(create_job(None, None))
+            limits = ExtendedLimits()
+            limits.basic.flags = 0x2000
+            checked(set_job(self.job, 9, c.byref(limits), c.sizeof(limits)))
+            for name in ("stdin", "stdout", "stderr"):
+                read_fd, write_fd = os.pipe()
+                parent, child = (write_fd, read_fd) if name == "stdin" else (read_fd, write_fd)
+                setattr(self, name, parent)
+                child_fds.append(child)
+                handle = w.HANDLE()
+                checked(duplicate(current, msvcrt.get_osfhandle(child), current, c.byref(handle), 0, True, 2))
+                inherited.append(handle.value)
+                mode = w.DWORD(1)  # PIPE_NOWAIT, including Python 3.11.
+                checked(set_mode(msvcrt.get_osfhandle(parent), c.byref(mode), None, None))
+            size = SIZE()
+            init(None, 2, 0, c.byref(size))
+            attributes = c.create_string_buffer(size.value)
+            checked(init(attributes, 2, 0, c.byref(size)))
+            attributes_initialized = True
+            jobs, handles = (w.HANDLE * 1)(self.job), (w.HANDLE * 3)(*inherited)
+            checked(update(attributes, 0, 0x2000D, jobs, c.sizeof(jobs), None, None))
+            checked(update(attributes, 0, 0x20002, handles, c.sizeof(handles), None, None))
+            startup = StartupEx()
+            startup.info.size, startup.info.flags = c.sizeof(startup), 0x101
+            startup.info.stdin, startup.info.stdout, startup.info.stderr = inherited
+            startup.attributes = c.cast(attributes, PTR)
+            environment = c.create_unicode_buffer("\0".join(f"{key}={value}" for key, value in sorted(env.items(), key=lambda item: item[0].upper())) + "\0\0")
+            checked(create(executable, c.create_unicode_buffer(command), None, None, True,
+                           0x08000000 | 0x00080000 | 0x400, environment, str(directory), c.byref(startup), c.byref(info)))
+            self.process, info.process = info.process, None
+        except BaseException:
+            self.close()
+            raise
+        finally:
+            if info.thread:
+                close_handle(info.thread)
+            if attributes_initialized:
+                delete(attributes)
+            for handle in inherited:
+                close_handle(handle)
+            for fd in child_fds:
+                os.close(fd)
+
+    def poll(self):
+        if self.process is None:
+            return 0
+        wait = api(kernel, "WaitForSingleObject", w.DWORD, w.HANDLE, w.DWORD)
+        if wait(self.process, 0) == 0:
+            code = w.DWORD()
+            checked(api(kernel, "GetExitCodeProcess", w.BOOL, w.HANDLE, c.POINTER(w.DWORD))(self.process, c.byref(code)))
+            return code.value
+        return None
+
+    def read(self, channel):
+        data, count = c.create_string_buffer(4096), w.DWORD()
+        read = api(kernel, "ReadFile", w.BOOL, w.HANDLE, PTR, w.DWORD, c.POINTER(w.DWORD), PTR)
+        if not read(msvcrt.get_osfhandle(getattr(self, channel)), data, 4096, c.byref(count), None):
+            code = c.get_last_error()
+            if code == 232:  # PIPE_NOWAIT has no data; CRT errno differs on Python 3.11.
+                return None
+            if code in (109, 233):
+                return b""
+            raise c.WinError(code)
+        return data.raw[:count.value]
+
+    def write(self, raw):
+        count = w.DWORD()
+        data = c.create_string_buffer(raw)
+        write = api(kernel, "WriteFile", w.BOOL, w.HANDLE, PTR, w.DWORD, c.POINTER(w.DWORD), PTR)
+        if not write(msvcrt.get_osfhandle(self.stdin), data, len(raw), c.byref(count), None):
+            code = c.get_last_error()
+            if code == 232:
+                return 0
+            raise c.WinError(code)
+        return count.value
+
+    def close(self):
+        if self.stdin is not None:
+            os.close(self.stdin)
+            self.stdin = None
+        until = time.monotonic() + .2
+        while self.process is not None and self.poll() is None and time.monotonic() < until:
+            time.sleep(.01)
+        try:
+            if self.job:
+                stop_job(self.job)
+        finally:
+            if self.job:
+                close_handle(self.job)
+                self.job = None
+            if self.process:
+                api(kernel, "WaitForSingleObject", w.DWORD, w.HANDLE, w.DWORD)(self.process, 5000)
+                close_handle(self.process)
+                self.process = None
+            for name in ("stdout", "stderr"):
+                fd = getattr(self, name)
+                if fd is not None:
+                    os.close(fd)
+                    setattr(self, name, None)
+
+
 def run_command(argv, directory, env, seconds, cap, cancel_event=None, on_output=None):
     """Create directly in a kill-on-close Job Object; bound output without threads."""
     program = argv[0]

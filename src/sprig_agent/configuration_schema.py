@@ -26,6 +26,19 @@ def configuration_schema():
         "extra_body": {"type": "object", "maxProperties": 32, "propertyNames": {"not": {"enum": sorted(RESERVED_BODY_FIELDS)}},
                        "description": "Provider-specific JSON fields; <=16 KiB, depth <=12. Reserved request/security fields are rejected."},
     })
+    mcp_common = {"enabled": boolean, "protocol_version": {"enum": ["2026-07-28", "2025-11-25", "2025-06-18"]},
+                  "timeout": number(0, 120, True), "deadline": number(0, 3600, True)}
+    mcp_http = obj({**mcp_common, "transport": {"const": "streamable_http"}, "url": text, "proxy": text,
+                    "headers": {"type": "object", "maxProperties": 16, "additionalProperties": {**text, "writeOnly": True}},
+                    "headers_env": {"type": "object", "maxProperties": 16, "additionalProperties": environment}}, required=["url"])
+    mcp_stdio = obj({**mcp_common, "transport": {"const": "stdio"},
+                     "command": {"type": "array", "minItems": 1, "maxItems": 256,
+                                 "prefixItems": [{"type": "string", "minLength": 1, "maxLength": 65536, "pattern": r"^[^\x00]*$"}],
+                                 "items": {"type": "string", "maxLength": 65536, "pattern": r"^[^\x00]*$"}}, "cwd": text,
+                     "env": {"type": "object", "maxProperties": 32, "propertyNames": environment,
+                             "additionalProperties": {"type": "string", "maxLength": 4096, "pattern": r"^[^\x00]*$", "writeOnly": True}},
+                     "env_from": {"type": "object", "maxProperties": 32, "propertyNames": environment, "additionalProperties": environment}},
+                    required=["transport", "command"])
     agent = obj({
         "max_steps": integer(1, 100), "timeout": number(0, 120, True), "max_output": integer(256, 1000000),
         "max_context_bytes": integer(4096, 2097152), "max_tokens": integer(1, 65536), "checks": checks,
@@ -53,12 +66,7 @@ def configuration_schema():
                              "response_language": {**text, "maxLength": 80}}),
         "skills": obj({"dirs": {"type": "array", "maxItems": 8, "items": text,
                                 "description": "Explicit skill collection directories, relative to the declaring user/profile config. Project settings cannot add roots. No automatic home/workspace scan."}}),
-        "mcp": obj({"servers": {"type": "object", "maxProperties": 8, "propertyNames": {"pattern": identifier}, "additionalProperties": obj({
-            "transport": {"const": "streamable_http"}, "url": text, "enabled": boolean,
-            "protocol_version": {"enum": ["2026-07-28", "2025-11-25", "2025-06-18"]},
-            "timeout": number(0, 120, True), "deadline": number(0, 3600, True), "proxy": text,
-            "headers": {"type": "object", "maxProperties": 16, "additionalProperties": {**text, "writeOnly": True}},
-            "headers_env": {"type": "object", "maxProperties": 16, "additionalProperties": environment}}, required=["url"])}}),
+        "mcp": obj({"servers": {"type": "object", "maxProperties": 8, "propertyNames": {"pattern": identifier}, "additionalProperties": {"oneOf": [mcp_http, mcp_stdio]}}}),
         "tui": obj({"theme": {"enum": ["textual-dark", "textual-light", "nord", "gruvbox", "dracula", "monokai", "tokyo-night", "solarized-dark", "solarized-light"]},
                     "sidebar": boolean, "editor_height": integer(3, 12), "steering_mode": {"enum": ["all", "one-at-a-time"]}, "metrics": boolean,
                     "keybindings": obj({action: {"type": "array", "maxItems": 4, "items": {"type": "string",

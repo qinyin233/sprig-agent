@@ -205,7 +205,7 @@ uv run --locked sprig --config-schema
 
 ## MCP 外部服务
 
-`[mcp.servers.NAME]` 支持明确的 `streamable_http` 端点、协议版本、超时/总期限、代理、字面 headers 或 headers_env。用户/profile 可配置，项目配置禁止改变；profile 按服务名替换完整定义，最多八个服务。配置不会启动连接或调用工具；`--list-mcp` 只做离线检查，TUI/chat `/mcp` 管理本地状态，连接及每次 RPC 单独批准。只读模式移除模型 MCP schema 并在执行层阻止外部请求。新旧 HTTP 版本、Schema 子集、凭据过滤、结果分页及未实现的 stdio/OAuth 等范围见 [MCP](mcp.md)。
+`[mcp.servers.NAME]` 支持明确的 `streamable_http` 端点，或 `stdio` 的固定 argv / 相对 cwd / env / env_from；协议版本、超时/总期限共用。HTTP 可配置代理、headers / headers_env，stdio 禁止混入 HTTP 字段。用户/profile 可配置，项目层禁止改变，profile 按服务名替换完整定义，最多八个服务。配置和 `--list-mcp` 不连接或启动进程；TUI/chat `/mcp` 管理状态，连接和每次 RPC 单独批准。只读模式在执行层阻止两种后端。版本、Schema 子集、结果分页和未实现的 OAuth 等见 [HTTP MCP](mcp.md) 与 [stdio](mcp-stdio.md)。
 
 ## 存储与终端
 
@@ -278,7 +278,7 @@ uv run --locked sprig --project-config /trusted/private/project.toml
 
 `[skills].dirs` 最多八个明确的技能集合目录，相对路径以声明配置文件为基准，CLI 重复 `--skill-dir` 以工作区为基准并覆盖整个数组。用户和 profile 可以设置，项目层禁止改变目录；目录绑定会话。`--list-skills` 无须模型凭据即可离线检查，TUI/chat `/skills` 和 `/skill NAME [PATH [OFFSET PAGE_SHA256]]` 提供本地预览。详见[按需技能、分页与权限边界](skills.md)。
 
-stdio、MCP OAuth/订阅、插件、hooks、沙箱、自动批准等未提供后端的字段仍会报错。技能加载不会运行脚本或授予权限；后续扩展需要同时实现后端与安全测试，不能只添加一个可解析开关。
+MCP OAuth/订阅、插件、hooks、沙箱、自动批准等未提供后端的字段仍会报错。技能加载不会运行脚本或授予权限；后续扩展需要同时实现后端与安全测试，不能只添加一个可解析开关。
 
 模型协议由供应商表的 wire_api 选择，支持 chat_completions（默认）、messages、responses；CLI 对应 --wire-api。认证、生成参数映射、原生推理状态、会话绑定与限制见 [模型协议](provider-protocols.md)。
 

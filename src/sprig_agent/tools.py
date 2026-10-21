@@ -126,11 +126,35 @@ class Tools:
         self.instructions = ProjectInstructions(self._read_instruction, self._check_cancelled,
                                                 config.project_instructions, config.instruction_files)
         self.skills = Skills(config, self.root.ensure_open, self._check_cancelled, self.policy)
-        self.mcp_manager = McpManager(config, self._check_mcp, self.request_approval)
+        self.mcp_manager = McpManager(config, self._check_mcp, self.request_approval, self._prepare_mcp_process)
 
     def _check_mcp(self):
         self.root.ensure_open()
         self._check_cancelled()
+
+    def _prepare_mcp_process(self, server):
+        self._check_mcp()
+        parts = self._parts(server.cwd)
+        with self._directory(parts):
+            pass
+        rules = self.instructions.prepare_action(parts)
+        if any(secret in arg for secret in self.config.credential_secrets for arg in server.command):
+            raise ToolError("MCP argv cannot contain configured credentials; use declared environment references")
+        env = command_environment(self.config, minimal=True)
+        for name, value in server.env:
+            if os.name == "nt":
+                for previous in list(env):
+                    if previous.upper() == name.upper():
+                        del env[previous]
+            env[name] = value
+        def recheck():
+            self._check_mcp()
+            self._parts(server.cwd)
+            with self._directory(parts):
+                pass
+            self.instructions.recheck_action(parts, rules)
+            self.read_versions.clear()
+        return self.config.workdir.joinpath(*parts), env, recheck
 
     def rebind_model(self, config):
         """Idle model changes cannot change tool policy or drop known secrets."""
@@ -979,7 +1003,11 @@ class Tools:
 
     def mcp(self, action="status", **arguments):
         self._require_tool("mcp")
-        return self.mcp_manager.control(action, **arguments)
+        try:
+            return self.mcp_manager.control(action, **arguments)
+        finally:
+            if action not in {"status", "result"}:
+                self.read_versions.clear()  # Includes uncertain/cancelled external delivery.
 
     def skill(self, name, path="SKILL.md", offset=0, page_sha256=None):
         self._require_tool("skill")

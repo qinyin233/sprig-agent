@@ -11,15 +11,16 @@ ENVIRONMENT = {"PATH", "PATHEXT", "SYSTEMROOT", "WINDIR", "COMSPEC", "HOME", "US
                "LANG", "LANGUAGE", "TZ", "TERM", "COLORTERM", "PYTHONUTF8", "PYTHONIOENCODING", "VIRTUAL_ENV"}
 
 
-def command_environment(config):
-    allowed = {name.upper() if os.name == "nt" else name for name in config.env_allowlist}
+def command_environment(config, *, minimal=False):
+    allowed = {name.upper() if os.name == "nt" else name for name in (() if minimal else config.env_allowlist)}
     values = {key: value for key, value in os.environ.items()
-            if (config.inherit_env or key.upper() in ENVIRONMENT or key.upper().startswith("LC_")
+            if (config.inherit_env and not minimal or key.upper() in ENVIRONMENT or key.upper().startswith("LC_")
                 or (key.upper() if os.name == "nt" else key) in allowed)
             and key.upper() not in {"SPRIG_API_KEY", "OPENAI_API_KEY", "AGNES_API_KEY",
                                     *(name.upper() for name in config.credential_env_vars)}
             and not any(secret in value for secret in config.credential_secrets)}
-    values.update(config.command_env)
+    if not minimal:
+        values.update(config.command_env)
     return values
 
 

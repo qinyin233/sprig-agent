@@ -419,7 +419,10 @@ class Settings:
         for layer in (self.data, *self.data.get("profiles", {}).values()):
             for entry in layer.get("mcp", {}).get("servers", {}).values():
                 names.update(entry.get("headers_env", {}).values())
+                names.update(entry.get("env_from", {}).values())
                 secrets.update(entry.get("headers", {}).values())
+                from .mcp_config import environment_credentials
+                secrets.update(environment_credentials(entry.get("env", {}).items()))
         secrets.update(env[name] for name in names if env.get(name))
         headers = dict(selected.get("headers", {}))
         from .mcp_config import credential_parts

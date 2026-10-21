@@ -391,7 +391,7 @@ class Config:
         if not isinstance(self.command_env, tuple) or len(self.command_env) > 32:
             raise ValueError("at most 32 command environment overrides are supported")
         object.__setattr__(self, "credential_env_vars", tuple(dict.fromkeys((*self.credential_env_vars,
-                           *(variable for server in self.mcp_servers for _, variable in server.headers_env)))))
+                           *(variable for server in self.mcp_servers for _, variable in (*server.headers_env, *server.env_from))))))
         protected = {"SPRIG_API_KEY", "OPENAI_API_KEY", "AGNES_API_KEY", *(name.upper() for name in self.credential_env_vars)}
         for pair in self.command_env:
             if not isinstance(pair, tuple) or len(pair) != 2:

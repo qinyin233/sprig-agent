@@ -1,0 +1,186 @@
+{
+  "schema_version": 1,
+  "date": "2026-10-21",
+  "feature": "Explicitly approved MCP stdio processes on Windows/POSIX with bounded nonblocking pipes, owned process-tree shutdown and existing RPC gateway",
+  "base_commit": "893e5846f2627e31cbf494dda0197e46bf6462ee",
+  "source_digest": {
+    "files": 58,
+    "sha256": "1fc70f66db6eee9b6a397e5322f9fc6ceb286b79b383ba17d3b158566d7e7a2a"
+  },
+  "tests_digest": {
+    "files": 75,
+    "sha256": "a2fb79ea2cbba3b2c25cd14bdcaf92a761996a844c16240761562b1f64691dff"
+  },
+  "fixture_digest": {
+    "files": 1,
+    "sha256": "dc2a3a7cce3f248181a3bc50e74346a15deb0dda5a6ee0f94fa938ecc3e93eeb"
+  },
+  "digest_method": "SHA256 of compact ASCII JSON arrays of [POSIX relative path, SHA256 of CRLF-normalized-to-LF bytes], sorted by path; each directory uses its immediate *.py files",
+  "source_reference": {
+    "repository": "https://github.com/anomalyco/opencode",
+    "commit": "9d90d892dcbfc52b47e95b2ea31b8aba877128fd",
+    "files": [
+      "packages/core/src/mcp/stdio.ts",
+      "packages/core/src/mcp/client.ts"
+    ],
+    "scope": "Pinned source read: process scope, bounded queues/frames, environment and staged close. No upstream runtime/quality comparison."
+  },
+  "primary_protocol_references": [
+    "https://modelcontextprotocol.io/specification/2026-07-28/basic/transports/stdio",
+    "https://modelcontextprotocol.io/specification/2025-11-25/basic/transports",
+    "https://learn.microsoft.com/en-us/windows/win32/ipc/named-pipe-type-read-and-wait-modes"
+  ],
+  "local_suites": [
+    {
+      "platform": "Windows 11",
+      "command": "uv run --locked python -m unittest discover -s tests -q",
+      "total": 1123,
+      "passed": 1104,
+      "skipped": 19,
+      "seconds": 432.807,
+      "failures": 0,
+      "errors": 0,
+      "full_suite": true,
+      "python": "3.13.0"
+    },
+    {
+      "platform": "WSL Ubuntu-26.04",
+      "command": "UV_PROJECT_ENVIRONMENT=.venv-wsl uv run --locked python -m unittest discover -s tests -q",
+      "total": 1123,
+      "passed": 1100,
+      "skipped": 23,
+      "seconds": 317.541,
+      "failures": 0,
+      "errors": 0,
+      "full_suite": true,
+      "python": "3.13.14"
+    }
+  ],
+  "compatibility_suites": [
+    {
+      "platform": "Windows 11",
+      "command": "UV_PROJECT_ENVIRONMENT=.venv-py311 uv run --locked --python 3.11 --no-editable python -m unittest tests.test_mcp_stdio tests.test_configuration_profiles -q",
+      "total": 43,
+      "passed": 43,
+      "skipped": 0,
+      "seconds": 20.654,
+      "failures": 0,
+      "errors": 0,
+      "full_suite": false,
+      "python": "3.11.14"
+    }
+  ],
+  "client_suites": [
+    {
+      "platform": "Windows 11",
+      "command": "uv run --project benchmarks/clients/mini --locked python -I -B -m unittest discover -s benchmarks/clients/tests -q",
+      "total": 25,
+      "passed": 25,
+      "skipped": 0,
+      "seconds": 34.605,
+      "failures": 0,
+      "errors": 0,
+      "full_suite": false
+    },
+    {
+      "platform": "WSL Ubuntu-26.04",
+      "command": "UV_PROJECT_ENVIRONMENT=.venv-mini-wsl uv run --project benchmarks/clients/mini --locked python -I -B -m unittest discover -s benchmarks/clients/tests -q",
+      "total": 25,
+      "passed": 25,
+      "skipped": 0,
+      "seconds": 166.318,
+      "failures": 0,
+      "errors": 0,
+      "full_suite": false
+    }
+  ],
+  "workflow_fixtures": {
+    "kind": "Disposable stdlib-only child server plus real Textual/CLI, loopback model HTTP/SSE and fixed subprocess acceptance",
+    "model_protocols": [
+      "chat_completions",
+      "messages",
+      "responses"
+    ],
+    "model_workflow_cases": 3,
+    "model_requests_per_case": 4,
+    "fresh_approvals_per_case": 4,
+    "sequence": [
+      "connect and server discovery/initialization",
+      "tools/list and catalog_id",
+      "approved MCP write_marker creates real workspace file",
+      "application independently runs fixed Python assertion"
+    ],
+    "mcp_versions": [
+      "2026-07-28",
+      "2025-11-25",
+      "2025-06-18"
+    ],
+    "new_test_methods": 19,
+    "external_model_requests": 0,
+    "coverage": [
+      "three MCP eras and tools/resources/templates/prompts/result pages",
+      "private trusted startup config; no load/restore spawn",
+      "decline, read-only and disabled MCP never launch",
+      "argv/cwd scope and model-instruction snapshot recheck",
+      "secret env references isolated from ambient model keys and global command overrides",
+      "benign env flags/path values remain usable; nonsecret environment changes affect binding",
+      "quoted/multiline known credentials rejected as raw argument strings before new approval or RPC",
+      "separate nonblocking stdout/stderr with partial Unicode frames",
+      "frame, raw stderr and write-backpressure limits",
+      "request total deadline includes pending notification drain; no phase reset",
+      "invalid/partial/duplicate/unsolicited messages fail closed without retry",
+      "observed async catalog change invalidates approved stale calls",
+      "owned descendants stop after cancellation/close, including after leader exit and status observation",
+      "TUI refusal, guidance, cancellation and unmount; actual chat local controls without model calls",
+      "old reads and local verification invalidated after possible external effects",
+      "session restore never spawns or replays; runtime reset closes clients"
+    ]
+  },
+  "packaging": {
+    "uv_lock_check": "passed",
+    "configuration_schema_and_example": "passed",
+    "compileall": "passed",
+    "cli_help": "passed",
+    "sdist_and_wheel_build": "passed",
+    "wheel_source_modules_matched": 58,
+    "sdist_fixture_matched": true,
+    "isolated_installed_tui": "passed at 80x24 in a Unicode/space workspace: local connect, discovery, real MCP write, independent fixed check, four separate approvals, private save, close and idle restore",
+    "installed_fixture_model_calls": 2,
+    "installed_external_model_requests": 0,
+    "credentials_saved": false,
+    "model_tool_schema_changed": false,
+    "dependencies_added": []
+  },
+  "development_corrections": [
+    "Python 3.11 Windows CRT probe returned errno 22 for empty nonblocking reads and errno 28 for full writes, unlike Python 3.13. Initial compatibility tests failed and are not passes. Direct native ReadFile/WriteFile status handling fixed the path; all sealed suites and installed checks run after correction.",
+    "A new real-process regression showed pending stdout drain reset the configured total deadline. The pre-fix test accepted a delayed result; a shared absolute deadline now rejects it and closes the owned server without retry. All sealed evidence is after this correction.",
+    "Known credentials containing quotes/newlines bypassed the former JSON-encoded substring test. Raw bounded string/key traversal now blocks them before approval/RPC; a real stdio regression verifies no call was sent.",
+    "Instruction-change fixture now establishes a served model snapshot, preserving the existing distinction from explicitly approved local controls. A fixture mode transition was moved to request dispatch to avoid a stale test mode.",
+    "CLI fixture now explicitly selects its private config; local TUI cancellation asserts the operation status while keeping the prior task unverified. Production safety checks were not relaxed."
+  ],
+  "remote_ci": {
+    "run": false,
+    "status": "user_requested_freeze",
+    "commit_policy": "[skip ci]",
+    "do_not_run_before": "2026-11-01",
+    "timezone": "Asia/Singapore",
+    "dispatches_or_reruns_this_batch": 0,
+    "native_backend_changed": true,
+    "reason": "User explicitly requested no CI until November 1. New Windows/POSIX pipe/process behavior has local evidence only; required native CI remains pending.",
+    "previous_required_run_id": 39556289305,
+    "previous_required_commit": "106b60ed11de6fdfa7756495bf3f17b74d9c7812",
+    "green_ci_claim": false,
+    "after_freeze": "Verify account restriction and previous exact-SHA gate before the next CI-enabled feature batch; never borrow an old green run."
+  },
+  "limits": [
+    "MCP process startup is code execution with current-user authority, may act before RPC or while idle, and is not an OS sandbox.",
+    "MCP and built-in run are independent tool permissions. Read-only/disabled MCP block the transport; approved external services can perform effects outside file-tool restrictions.",
+    "Only fixed user/profile argv and startup snapshots; no automatic installation, connect, restart, protocol fallback, retry or history replay.",
+    "No OAuth, subscriptions, sampling, roots handling, elicitation, Apps, old dual-endpoint HTTP+SSE or general background-task/PTY backend.",
+    "env_from declares secrets. env is nonsecret fixed configuration; common credential-like names are additionally protected. Arbitrary custom secrets should not be placed in untyped env literals.",
+    "Connection budgets: 64 KiB requests, 1 MiB frames, 64 MiB stdout and 8 MiB discarded stderr. Idle backpressure is bounded by OS pipes; output is parsed on operations, without background IO threads.",
+    "Shutdown has a separate bounded grace/cleanup period. Process groups/Jobs do not contain effects delegated to external services.",
+    "Platform skips are not passes. Local Windows/WSL are not required native CI runners; no full Python/client/macOS matrix claim.",
+    "Protocol/process fixtures do not establish new model coding success, performance ranking or top-agent parity. Channel-provided real models remain valid evidence; no extra paid account is required."
+  ]
+}

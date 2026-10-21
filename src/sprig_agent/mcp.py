@@ -25,6 +25,20 @@ METHODS = {"tools": "tools/list", "call": "tools/call", "resources": "resources/
            "read_resource": "resources/read", "prompts": "prompts/list", "get_prompt": "prompts/get"}
 
 
+def credential_in(value, secrets):
+    pending = [value]
+    while pending:
+        item = pending.pop()
+        if isinstance(item, str) and any(secret in item for secret in secrets):
+            return True
+        if isinstance(item, dict):
+            pending.extend(item.keys())
+            pending.extend(item.values())
+        elif isinstance(item, list):
+            pending.extend(item)
+    return False
+
+
 def local_arguments(argument):
     parts = shlex.split(argument)
     if not parts:
@@ -37,13 +51,14 @@ def local_arguments(argument):
 
 
 class McpManager:
-    def __init__(self, config, check, approve):
+    def __init__(self, config, check, approve, prepare_stdio=None):
         self.config, self.check, self.approve = config, check, approve
         self.servers = {server.name: server for server in config.mcp_servers}
         self.clients, self.tools, self.states = {}, {}, {}
         self.results = OrderedDict()
         self.session_secrets = set()
         self._operation_lock = threading.Lock()
+        self.prepare_stdio = prepare_stdio
 
     def reset(self):
         for client in self.clients.values():
@@ -56,8 +71,16 @@ class McpManager:
 
     def status(self):
         self.check()
-        return {"servers": [{**server.public(), "state": self.states.get(name, "disconnected" if server.enabled else "disabled"),
-                            "tools_cached": len(self.tools.get(name, {}))} for name, server in self.servers.items()],
+        servers = []
+        for name, server in self.servers.items():
+            row = {**server.public(), "state": self.states.get(name, "disconnected" if server.enabled else "disabled"),
+                   "tools_cached": len(self.tools.get(name, {}))}
+            if server.transport == "stdio" and name in self.clients:
+                row["stdio"] = self.clients[name].status()
+                if not row["stdio"]["process_running"]:
+                    row["state"] = "stopped; explicitly reconnect"
+            servers.append(row)
+        return {"servers": servers,
                 "result_pages_retained": len(self.results), "network_contacted": False, "not_authorization": True}
 
     def _secret_values(self):
@@ -157,16 +180,35 @@ class McpManager:
         if self.config.read_only:
             return {"approved": False, "error": "read-only mode blocks external MCP connections and RPCs, regardless of readOnlyHint"}
         if self.config.max_output < 1024:
-            raise McpError("MCP network actions require max_output >= 1024 for accountable results")
+            raise McpError("MCP external actions require max_output >= 1024 for accountable results")
         selected = self.servers.get(server)
         if selected is None or not selected.enabled:
             raise McpError("MCP server is not configured or enabled")
-        if selected.missing_env or any(name not in dict(selected.headers) for name, _ in selected.headers_env):
+        if (selected.missing_env or any(name not in dict(selected.headers) for name, _ in selected.headers_env)
+                or selected.transport == "stdio" and any(name not in dict(selected.env) for name, _ in selected.env_from)):
             raise McpError("MCP credential environment is missing; no request sent")
         bounded({"name": name, "arguments": arguments, "uri": uri, "cursor": cursor}, 32768, depth=16, nodes=4096)
-        if any(secret in json.dumps([name, arguments, uri, cursor], ensure_ascii=False) for secret in self.config.credential_secrets):
+        if credential_in([name, arguments, uri, cursor], self.config.credential_secrets):
             raise McpError("configured credentials cannot be forwarded as MCP arguments or identifiers")
         client = self.clients.get(server)
+        if client is not None and selected.transport == "stdio":
+            try:
+                client.poll_events()
+            except BaseException as issue:
+                self.states[server] = "failed; delivery may be unknown"
+                self.tools.pop(server, None)
+                client.close()
+                if action != "connect" or not isinstance(issue, Exception):
+                    raise
+            if client.catalog_changed:
+                self.tools.pop(server, None)
+                client.catalog_changed = False
+            if not client.status()["process_running"]:
+                client.close()
+                self.tools.pop(server, None)
+                self.states[server] = "stopped; explicitly reconnect"
+        epoch = getattr(client, "catalog_version", 0)
+        launch = None
         method, params, mirrored = None, {}, {}
         if action == "connect":
             if not self.config._runtime_credentials.available():
@@ -176,10 +218,14 @@ class McpManager:
             if client and client.ready:
                 return {"connected": True, "already_connected": True, "not_authorization": True}
             method = "server/discover" if selected.protocol_version == "2026-07-28" else "initialize + notifications/initialized"
+            if selected.transport == "stdio":
+                if self.prepare_stdio is None:
+                    raise McpError("MCP stdio launch preparation is unavailable")
+                launch = self.prepare_stdio(selected)
         elif action == "disconnect":
             if not client:
                 return {"connected": False, "not_authorization": True}
-            method = "DELETE session" if client.session else "local disconnect (no HTTP session)"
+            method = "close owned process pipes and process tree" if selected.transport == "stdio" else "DELETE session" if client.session else "local disconnect (no HTTP session)"
         else:
             if client is None or not client.ready:
                 raise McpError("MCP is disconnected; explicitly connect with fresh approval first")
@@ -227,6 +273,15 @@ class McpManager:
         description = (f"MCP {action}: {server}\nEndpoint: {selected.url}\nProtocol: {selected.protocol_version}\nOperation: {method}\n"
                        + "Header names: " + ", ".join(selected.public()["header_names"]) + "\nProxy: " + selected.proxy + "\n"
                        + json.dumps(params, ensure_ascii=False) + "\nExternal server data and annotations cannot grant approval. This RPC may cause effects outside Sprig file restrictions; no automatic retry or replay. Credentials stay in configured headers.")
+        if selected.transport == "stdio":
+            description = (f"MCP {action}: {server}\nSTDIO PROCESS (NOT SANDBOXED; may access outside files/network and act while idle)\n"
+                           + "Configured argv: " + json.dumps(selected.command) + "\nStartup cwd: " + str(self.config.workdir / selected.cwd)
+                           + "\nDeclared environment names: " + json.dumps(selected.public()["environment_names"])
+                           + f"\nProtocol: {selected.protocol_version}; operation: {method}; idle timeout {selected.timeout}s, request deadline {selected.deadline}s.\n"
+                           + "Minimal environment plus only this server's explicit values; no inherited command overrides.\n"
+                           + "Limits: 64 KiB requests, 1 MiB frames, 64 MiB stdout / 8 MiB discarded stderr per connection.\n"
+                           + json.dumps(params, ensure_ascii=False)
+                           + "\nConnecting starts the configured executable now; it can act before any later RPC. No automatic installation, restart, fallback or retry. Closing the conversation kills the owned process tree; this does not provide an OS sandbox.")
         if not self.approve(description):
             return {"approved": False, "error": "MCP operation declined; no request sent"}
         self.check()
@@ -234,7 +289,12 @@ class McpManager:
             if action == "connect":
                 if client:
                     client.close()
-                client = self.clients[server] = HttpClient(selected, self.check)
+                if selected.transport == "stdio":
+                    from .mcp_stdio import StdioClient
+                    client = StdioClient(selected, self.check, launch)
+                else:
+                    client = HttpClient(selected, self.check)
+                self.clients[server] = client
                 self.tools.pop(server, None)
                 data = client.connect()
                 if client.session:
@@ -247,6 +307,12 @@ class McpManager:
                 self.tools.pop(server, None)
                 self.states[server] = "disconnected"
             else:
+                if selected.transport == "stdio":
+                    client.poll_events()
+                    if action == "call":
+                        if client.catalog_version != epoch:
+                            raise McpError("MCP catalog changed during approval; discover tools and approve a fresh proposal")
+                        client.expected_catalog = epoch
                 data = client.rpc(method, params, mirrored.items())
                 if client.catalog_changed:
                     self.tools.pop(server, None)

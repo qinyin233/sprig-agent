@@ -2,7 +2,7 @@
 
 本阶段提供实际远程 MCP 后端：明确配置的 HTTP 服务、连接/断开、工具目录和调用、资源/模板目录、资源读取、提示词目录和读取。CLI/chat/TUI 共用同一运行时。默认不连接服务器，不添加模型工具；配置后通过有界 `mcp` 网关渐进发现，避免把全部远端 Schema 放入每次模型请求。
 
-stdio、旧 HTTP+SSE 双端点、OAuth 登录、订阅、采样、elicitation、MCP Apps 和持久后台任务仍未接入；本阶段不代表完整 MCP 功能。
+本地 stdio 已另行接入，见 [stdio 运行与权限](mcp-stdio.md)。旧 HTTP+SSE 双端点、OAuth 登录、订阅、采样、elicitation、MCP Apps 和持久后台任务仍未接入；不代表完整 MCP 功能。
 
 ## 配置和操作
 

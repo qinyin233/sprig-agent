@@ -323,3 +323,5 @@ P2 的交互澄清阶段继续阅读同一固定提交的 [`tool/plugin/question
 2026-10-21 模型选择阶段继续阅读固定提交 `component/dialog-model.tsx` 的目录/过滤和 `onSelect`：上游更新本地 model preference，并可能进入 variant 选择。Sprig 补上[明确确认的运行中配置选择](../model-selection.md)，跨提供商不隐式转发启动备用凭据，协议元数据按新配置投影，保存另建私有绑定分支。此处没有复制自动远程发现、免费标签或 OAuth，不把菜单/协议回归转写为模型性能领先。
 
 2026-10-21 会话分支阶段继续阅读固定提交 `routes/session/dialog-fork.tsx` 与 `dialog-timeline.tsx`：上游按用户消息预览、fork before 并可带回输入；Sprig 接入[整轮历史分支](../conversation-branches.md)，明确保留到该轮结束，草稿保持、原私有文件不覆盖、工作区不回滚。切换/恢复后使旧确认失效，旧命令日志所有权、读取标识及原生私有状态不进入新分支。尚未实现上游输入重建或文件快照回滚，不将此扩展写成全部会话能力已补齐。用户要求 2026-11-01 前暂停 CI，本批只运行本地验证并标明远程待验证。
+
+2026-10-21 stdio 阶段继续读取固定上游 `mcp/stdio.ts` 与 `mcp/client.ts`：进程受 Scope 归属、有界队列/帧和分阶段关闭，host 环境由 spawner 合并。Sprig 补充[本地 stdio](../mcp-stdio.md)，保留自己的逐次批准和最小环境，采用非阻塞管道与受管进程树；不复制自动连接、重启、协议回退或 stderr 尾部展示。额外核对 2026-07-28 / 2025-11-25 的正式 stdio 规范。Windows Job Object 与 POSIX 未提前回收组长的清理逻辑须分别验证；本批按用户要求暂停 CI，不预写原生 runner 成功或开源 agent 整体达标。
