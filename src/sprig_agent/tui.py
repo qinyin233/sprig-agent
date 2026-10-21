@@ -764,6 +764,8 @@ class SprigApp(App[int]):
                     result = self.agent.clear_summary(self.messages)
                 elif name == "logs":
                     result = self.tools.log_control(**arguments)
+                elif name == "skills":
+                    result = self.tools.skills.catalog()
                 elif name in {"worktree-create", "worktree-list"}:
                     from .worktrees import worktree_action
                     result = worktree_action(self.config, self.confirm, cancel_event=self.cancel_event, **arguments)
@@ -1143,6 +1145,7 @@ class SprigApp(App[int]):
         if command == "/help":
             self.append("\n本地命令（不发送给模型）：\n"
                         "/help /keys /plan /status /config /models /context /usage /cancel /exit\n"
+                        "/skills（已配置技能摘要） /skill NAME [PATH [OFFSET PAGE_SHA256]]（本地预览，不运行脚本）\n"
                         "/continue /new /files /add 文件路径 /ref 文件路径 /unref 文件路径 /refs [clear]\n"
                         "/map [名称或路径查询] /git /diff /compact\n"
                         "/summary（本地预览） /summary create [END]（逐次确认额外请求） /summary clear\n"
@@ -1184,6 +1187,21 @@ class SprigApp(App[int]):
             return
         if command == "/models":
             self.append("\n[配置中的模型；未联网]\n" + json.dumps(self.config.model_catalog, ensure_ascii=False, indent=2) + "\n")
+            return
+        if command in {"/skills", "/skill"}:
+            if self.busy:
+                self.notify("请等待任务结束或取消后查看技能；当前引导仍可正常发送", severity="warning")
+                return
+            try:
+                if command == "/skills" and not argument:
+                    self.start(local=("skills", {}))
+                elif command == "/skill":
+                    from .skills import local_arguments
+                    self.start(local=("skill", local_arguments(argument)))
+                else:
+                    raise ValueError("用法：/skills 或 /skill NAME [PATH [OFFSET PAGE_SHA256]]")
+            except (ValueError, OSError) as error:
+                self.notify(self.safe(error), severity="error")
             return
         if command in {"/logs", "/log"}:
             if self.busy:

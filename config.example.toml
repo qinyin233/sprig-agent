@@ -71,6 +71,9 @@ checks = [] # arrays of argv; each command still asks for fresh approval
 check_before_task = false # opt in only with nonempty checks; final checks still run
 check_after_edit = false # fixed checks once after each successful file-edit batch
 
+[skills]
+dirs = [] # explicit skill collections, e.g. ["~/.agents/skills"]; user/profile only
+
 [instructions]
 files = [] # e.g. ["CONTRIBUTING.md", "docs/coding-style.md"]; required if listed
 response_language = "简体中文" # explanations only; direct user requests take precedence
@@ -86,6 +89,7 @@ file_action = true # mkdir/delete/move; also disabled when edit_file=false
 run = true
 update_plan = true # bounded task checklist, not approval or acceptance
 question = true # exposed only with an interactive callback; human answers never approve actions
+skill = true # exposed only with explicit skills.dirs; loading never executes scripts
 read_history = true # only exposed with an active summary; original conversation data, not current file evidence
 read_log = true # only exposed with command_log_dir; opaque current-conversation history, never file read_id
 

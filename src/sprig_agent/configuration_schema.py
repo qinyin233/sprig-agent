@@ -51,6 +51,8 @@ def configuration_schema():
         "instructions": obj({"files": {"type": "array", "maxItems": 16, "items": {**text, "maxLength": 256},
                                       "description": "Required workspace-relative UTF-8 files; no globs. Existing privacy and instruction limits apply."},
                              "response_language": {**text, "maxLength": 80}}),
+        "skills": obj({"dirs": {"type": "array", "maxItems": 8, "items": text,
+                                "description": "Explicit skill collection directories, relative to the declaring user/profile config. Project settings cannot add roots. No automatic home/workspace scan."}}),
         "tui": obj({"theme": {"enum": ["textual-dark", "textual-light", "nord", "gruvbox", "dracula", "monokai", "tokyo-night", "solarized-dark", "solarized-light"]},
                     "sidebar": boolean, "editor_height": integer(3, 12), "steering_mode": {"enum": ["all", "one-at-a-time"]}, "metrics": boolean,
                     "keybindings": obj({action: {"type": "array", "maxItems": 4, "items": {"type": "string",

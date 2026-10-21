@@ -50,6 +50,9 @@ files = [] # e.g. ["CONTRIBUTING.md"], relative to the selected workspace
 [context]
 files = [] # initial live references; small complete files refresh before requests
 
+[skills]
+dirs = [] # explicit collections, e.g. ["~/.agents/skills"]; loading never approves commands
+
 # Optional additional shortcuts; Enter and approval keys remain fixed.
 # [tui.keybindings]
 # help = ["f1"]
@@ -117,6 +120,7 @@ GROUP_FIELDS = {
     "context": {"max_bytes", "compact", "trigger_ratio", "keep_recent_messages", "keep_read_bytes", "files"},
     "tui": {"theme", "sidebar", "editor_height", "steering_mode", "metrics", "keybindings"},
     "instructions": {"files", "response_language"},
+    "skills": {"dirs"},
 }
 TUI_FIELDS = {"theme": "tui_theme", "sidebar": "tui_sidebar", "editor_height": "tui_editor_height",
               "steering_mode": "steering_mode", "metrics": "show_metrics", "keybindings": "tui_keybindings"}
@@ -164,6 +168,8 @@ def _flatten(layer, directory):
         values["instruction_files"] = tuple(instructions["files"])
     if "response_language" in instructions:
         values["response_language"] = instructions["response_language"]
+    if "dirs" in layer.get("skills", {}):
+        values["skill_dirs"] = tuple(Path(os.path.abspath(directory / Path(path).expanduser())) for path in layer["skills"]["dirs"])
     for name, value in layer.get("storage", {}).items():
         if name.endswith("_dir"):
             value = Path(value).expanduser()
@@ -196,6 +202,9 @@ def _validate_layer(layer, directory):
         raise ValueError("instruction files must be an array")
     if "files" in layer.get("context", {}) and not isinstance(layer["context"]["files"], list):
         raise ValueError("context files must be an array of workspace-relative POSIX paths")
+    if "dirs" in layer.get("skills", {}) and (not isinstance(layer["skills"]["dirs"], list)
+            or any(not _text(path) for path in layer["skills"]["dirs"])):
+        raise ValueError("skill directories must be an array of explicit paths")
     shortcuts = layer.get("tui", {}).get("keybindings", {})
     if not isinstance(shortcuts, dict) or any(not isinstance(keys, list) for keys in shortcuts.values()):
         raise ValueError("TUI keybindings must map actions to arrays of keys")
@@ -243,8 +252,8 @@ def _validate(data, directory, *, project=False):
     if project:
         # An explicit repository file may tune requests and tighten tool policy.
         # It cannot route credentials, inject environment, or persist transcripts.
-        if set(data) & {"execution", "storage"}:
-            raise ValueError("project configuration cannot change execution environment or storage")
+        if set(data) & {"execution", "storage", "skills"}:
+            raise ValueError("project configuration cannot change execution environment, storage or trusted skill roots")
         if "keybindings" in data.get("tui", {}):
             raise ValueError("project configuration cannot change trusted keyboard shortcuts")
         if any(data.get("agent", {}).get(name) for name in ("inherit_env", "checks")):
@@ -457,8 +466,10 @@ class Settings:
         apply({name: selected[name] for name in TRANSPORT_FIELDS if name in selected}, "provider")
         configurable = {*AGENT_DEFAULTS, *GENERATION_FIELDS, *TRANSPORT_FIELDS, *CONTEXT_FIELDS.values(),
                         "session_dir", "change_history_dir", "command_log_dir", "show_metrics", "instruction_files", "response_language",
-                        "session_max_age_days", "session_max_count", "command_output_limit"}
+                        "session_max_age_days", "session_max_count", "command_output_limit", "skill_dirs"}
         overrides = {name: value for name, value in options.items() if name in configurable and value is not None}
+        if "skill_dirs" in overrides:
+            overrides["skill_dirs"] = tuple(overrides["skill_dirs"])
         if "reference_files" in overrides:
             from .references import user_reference_paths
             overrides["reference_files"] = user_reference_paths(Path(options.get("workdir", ".")).expanduser().resolve(strict=True),
@@ -538,6 +549,7 @@ def public_config(config, metadata):
             "tools": {name: config.tool_enabled(name) for name in TOOL_NAMES},
             "files": {"exclude": config.excluded_paths},
             "instructions": {"files": config.instruction_files, "response_language": config.response_language},
+            "skills": {"dirs": [str(path) for path in config.skill_dirs]},
             "execution": {"env_allowlist": config.env_allowlist, "env_names": [name for name, _ in config.command_env],
                           "max_output": config.max_output, "output_limit": config.command_output_limit or config.max_output},
             "storage": {"session_dir": str(config.session_dir) if config.session_dir else None,

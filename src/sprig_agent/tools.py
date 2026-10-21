@@ -27,6 +27,7 @@ from .policy import FilePolicy, command_environment
 from .output import CommandOutput, SampledCommandOutput
 from .command_logs import CommandLogs, LogCapture
 from .questions import answer_result, validate_questions
+from .skills import Skills
 from .edit_match import failure_details
 from .edit_batch import EditPreview, digest, preflight
 from .line_edits import replace_lines, validate_edits
@@ -122,6 +123,7 @@ class Tools:
         self.emit_output = emit_output
         self.instructions = ProjectInstructions(self._read_instruction, self._check_cancelled,
                                                 config.project_instructions, config.instruction_files)
+        self.skills = Skills(config, self.root.ensure_open, self._check_cancelled, self.policy)
 
     def _read_instruction(self, path, limit):
         self.policy.reload()
@@ -251,7 +253,7 @@ class Tools:
                       "search": self.search, "project_map": self.project_map,
                       "edit_file": self.edit_file, "edit_lines": self.edit_lines,
                       "run": self.run, "update_plan": self.update_plan, "file_action": self.file_action,
-                      "read_log": self.read_log, "question": self.question}.get(name)
+                      "read_log": self.read_log, "question": self.question, "skill": self.skill}.get(name)
             if method is None:
                 raise ToolError("unknown tool")
             result = method(**arguments)
@@ -946,6 +948,11 @@ class Tools:
         if by_line:
             result["sha256"] = hashlib.sha256(data).hexdigest()
         return result
+
+    def skill(self, name, path="SKILL.md", offset=0, page_sha256=None):
+        self._require_tool("skill")
+        return self.skills.load(name, path, offset, page_sha256=page_sha256,
+                                model_action=self.instructions.model_action_active)
 
     def question(self, questions):
         self._require_tool("question")

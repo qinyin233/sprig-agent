@@ -9,7 +9,7 @@ import re
 import unicodedata
 from urllib.parse import urlsplit, urlunsplit
 
-TOOL_NAMES = ("list_files", "read_file", "search", "project_map", "edit_file", "run", "update_plan", "edit_lines", "file_action", "read_history", "read_log", "question")
+TOOL_NAMES = ("list_files", "read_file", "search", "project_map", "edit_file", "run", "update_plan", "edit_lines", "file_action", "read_history", "read_log", "question", "skill")
 SHORTCUT_ACTIONS = ("cancel", "quit", "focus_input", "toggle_sidebar", "help", "new_conversation")
 GENERATION_FIELDS = ("max_tokens", "thinking", "temperature", "top_p", "reasoning_effort", "seed", "token_limit_field", "extra_body")
 RESERVED_BODY_FIELDS = {"model", "messages", "tools", "tool_choice", "stream", "stream_options", "n",
@@ -159,6 +159,7 @@ class Config:
     preserve_reasoning: bool = False
     check_history_format: str = "tool_calls"
     wire_api: str = "chat_completions"
+    skill_dirs: tuple = ()
 
     def __post_init__(self):
         if self.wire_api not in ("chat_completions", "messages", "responses"):
@@ -172,6 +173,12 @@ class Config:
             raise ValueError("workdir must be a directory")
         object.__setattr__(self, "workdir", root)
         object.__setattr__(self, "base_url", endpoint(self.base_url))
+        if (not isinstance(self.skill_dirs, tuple) or len(self.skill_dirs) > 8
+                or any(not isinstance(p, (str, Path)) or not str(p) or len(str(p)) > 4096
+                       or any(ord(c) < 32 for c in str(p)) for p in self.skill_dirs)):
+            raise ValueError("skill-dirs accepts at most eight explicit directory paths")
+        skill_dirs = tuple(Path(os.path.abspath(root / Path(p).expanduser())) for p in self.skill_dirs)
+        object.__setattr__(self, "skill_dirs", tuple(dict.fromkeys(skill_dirs)))
         if not isinstance(self.model, str) or not self.model or len(self.model) > 200 or any(ord(c) < 32 for c in self.model):
             raise ValueError("a valid model is required (--model, SPRIG_MODEL or config.toml); use --init-config for a template")
         if not isinstance(self.max_steps, int) or isinstance(self.max_steps, bool) or not 1 <= self.max_steps <= 100:
@@ -453,6 +460,8 @@ class Config:
             binding["project_instructions"] = False
         if self.instruction_files:
             binding["instruction_files"] = list(self.instruction_files)
+        if self.skill_dirs:
+            binding["skill_dirs"] = [str(path) for path in self.skill_dirs]
         if self.response_language is not None:
             binding["response_language"] = self.response_language
         if self.max_tokens is not None:

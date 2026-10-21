@@ -297,6 +297,8 @@ P2 的交互澄清阶段继续阅读同一固定提交的 [`tool/plugin/question
 
 ## 14. 阅读清单与尚未验证的事项
 
+2026-10-21 的后续 P2 技能阶段重读同一固定提交的 `skill.ts`、`tool/plugin/skill.ts` 和 `config/plugin/skill-scan.ts`。上游将描述和完整说明分开，按技能 ID 加载，另提供采样资源列表；扫描可以跟随符号链接。Sprig 依据 [Agent Skills 格式](https://agentskills.io/specification)接入[明确目录的渐进加载](../skills.md)，保留链接拒绝与逐次批准，资源使用绑定整份脱敏文本摘要的有界分页。`allowed-tools` 仅为描述，不能转成持久权限；无安装或自动执行。此记录补充后续实现，不修改最初固定 Sprig 快照的缺项结论；也不代表已经实现 MCP 或完整插件系统。
+
 本次沿调用关系阅读的实现文件（部分为目标行段，不表示逐行审计全部代码）：
 
 - 根 `AGENTS.md`、`package.json`、`LICENSE`。

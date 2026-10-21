@@ -19,6 +19,7 @@ COMMANDS = {
     "changes": "查看修改记录", "undo": "撤销文件编辑", "redo": "重做文件编辑",
     "summary": "预览摘要；create 会逐次确认一次额外模型请求", "history": "本地分页回查原对话",
     "logs": "查看或逐次确认清理当前会话的命令日志", "log": "按日志句柄分页回查命令输出",
+    "skills": "列出已配置技能；本地查看不请求模型", "skill": "本地预览技能或资料；不会执行脚本",
     "discard-history": "清除修改备份", "sessions": "列出会话", "save": "保存会话",
     "restore": "恢复会话", "delete": "删除会话", "prune": "清理旧会话",
     "worktrees": "列出工作树", "worktree": "创建工作树",

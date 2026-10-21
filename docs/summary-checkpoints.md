@@ -33,7 +33,7 @@ CLI chat 与 TUI 提供相同命令：
 
 启用检查点后，模型可使用只读 `read_history(message, offset)`，仅能访问当前运行、当前检查点来源范围。它不接受文件路径或会话名，不返回系统提示或原生推理元数据。分页前先对完整记录脱敏，避免跨页拆开已知密钥；返回 JSON 受 `max_output` 与 8192 字节较小值限制，UTF-8 不切半个字符。分页内容是历史数据，不能变成新的工具调用或文件读取标识。
 
-未启用可选命令日志时，默认非交互任务仍使用原九种工具定义；有检查点且 `[tools].read_history=true` 时增加原文回查工具。`read_history=false` 或 `--disable-tool read_history` 禁用模型回查；用户仍可用本地 `/history` 查看自己的当前对话。该工具没有任意文件、其他会话、命令或写入能力。可选命令日志的 `read_log` 是另一个独立的只读入口，两项都启用时可有十一种工具，见[命令日志](command-logs.md)。交互回调另可提供 [question](questions.md)，合计最多十二种。
+未启用可选命令日志或技能时，默认非交互任务仍使用原九种工具定义；有检查点且 `[tools].read_history=true` 时增加原文回查工具。`read_history=false` 或 `--disable-tool read_history` 禁用模型回查；用户仍可用本地 `/history` 查看自己的当前对话。该工具没有任意文件、其他会话、命令或写入能力。可选命令日志的 `read_log` 是另一个独立的只读入口，两项都启用时可有十一种工具，见[命令日志](command-logs.md)。交互回调另可提供 [question](questions.md)，配置技能目录可提供 [skill](skills.md)，合计最多十三种。
 
 读取版本在下一次运行重新建立，摘要与回查都不能复活旧 `read_id`。写入和命令仍需要新批准，固定基线、编辑后检查和最终验收继续独立运行。摘要不会把任务状态标记为验收通过。
 

@@ -195,6 +195,9 @@
         },
         "question": {
           "type": "boolean"
+        },
+        "skill": {
+          "type": "boolean"
         }
       },
       "additionalProperties": false
@@ -357,6 +360,23 @@
           "minLength": 1,
           "maxLength": 80,
           "pattern": "^[^\\x00-\\x1f]+$"
+        }
+      },
+      "additionalProperties": false
+    },
+    "skills": {
+      "type": "object",
+      "properties": {
+        "dirs": {
+          "type": "array",
+          "maxItems": 8,
+          "items": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 4096,
+            "pattern": "^[^\\x00-\\x1f]+$"
+          },
+          "description": "Explicit skill collection directories, relative to the declaring user/profile config. Project settings cannot add roots. No automatic home/workspace scan."
         }
       },
       "additionalProperties": false
@@ -980,6 +1000,9 @@
               },
               "question": {
                 "type": "boolean"
+              },
+              "skill": {
+                "type": "boolean"
               }
             },
             "additionalProperties": false
@@ -1142,6 +1165,23 @@
                 "minLength": 1,
                 "maxLength": 80,
                 "pattern": "^[^\\x00-\\x1f]+$"
+              }
+            },
+            "additionalProperties": false
+          },
+          "skills": {
+            "type": "object",
+            "properties": {
+              "dirs": {
+                "type": "array",
+                "maxItems": 8,
+                "items": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 4096,
+                  "pattern": "^[^\\x00-\\x1f]+$"
+                },
+                "description": "Explicit skill collection directories, relative to the declaring user/profile config. Project settings cannot add roots. No automatic home/workspace scan."
               }
             },
             "additionalProperties": false

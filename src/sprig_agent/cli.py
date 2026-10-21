@@ -18,6 +18,7 @@ from .session import SessionError, SessionStore, validate_history
 from .settings import Settings, default_config_path, initialize_config, load_settings, public_config
 from .tools import Tools
 from .questions import terminal_questions
+from .skills import local_arguments as skill_arguments
 
 
 def approve(description):
@@ -102,11 +103,16 @@ def chat(agent, task, messages, emit, *, autostart=True):
             return status
         try:
             if task == "/help":
+                emit("/skills lists configured skill metadata; /skill NAME [PATH [OFFSET PAGE_SHA256]] previews local UTF-8 guidance without a model call or script execution. Quote resource paths containing spaces.")
                 emit("/summary previews an optional lossy checkpoint; /summary create [END] makes one extra model request after approval; /summary clear restores the full request view. /history MESSAGE [OFFSET] locally pages original data.")
                 emit("/logs lists this conversation's retained command output; /log ID [OFFSET] pages historical text; /logs clear requires fresh deletion approval. Retention is opt-in via --command-log-dir or storage.command_log_dir.")
                 emit("/ref PATH adds a live file reference; /unref PATH removes it; /refs lists metadata; /refs clear removes all. No model request is sent. Small complete files refresh before requests; larger files provide path/size only.")
                 emit("/worktrees lists local checkouts; /worktree PATH creates a detached checkout after fresh approvals. All remaining text is the path; the current conversation stays in this workspace.")
                 emit("Enter a task to continue the same conversation. /continue explicitly continues retained history without adding a duplicate request; /status shows local context; /plan shows model-reported progress, never approval or acceptance; /context previews the request budget; /usage shows local numeric request measurements and unknown token counts; /compact confirms request-only elision; /changes lists exact edit backups; /undo and /redo require diff approval; /discard-history confirms removal of backups; /diff and /git show Git changes with approval; /exit closes chat.")
+            elif task == "/skills":
+                emit(json.dumps(agent.tools.skills.catalog(), ensure_ascii=False))
+            elif task.startswith("/skill "):
+                emit(json.dumps(agent.tools.skill(**skill_arguments(task.partition(" ")[2])), ensure_ascii=False))
             elif task == "/refs":
                 emit(json.dumps(redact(agent.reference_state(), agent.config.secrets), ensure_ascii=False, indent=2))
             elif task == "/refs clear" or task.startswith(("/ref ", "/unref ")):
@@ -260,6 +266,7 @@ def main(argv=None):
     parser.add_argument("--context-keep-read-bytes", type=int, help="retain up to 0..262144 encoded bytes of historical complete reads within the request cap; 0 disables retention")
     parser.add_argument("--project-instructions", action=argparse.BooleanOptionalAction, default=None, help="load workspace AGENTS.md guidance; never reads parent/home directories")
     parser.add_argument("--instruction-file", dest="instruction_files", action="append", help="additional workspace-relative guidance file; repeatable, replaces configured files")
+    parser.add_argument("--skill-dir", dest="skill_dirs", action="append", help="explicit skill collection directory; repeatable, replaces configured roots; no automatic execution")
     parser.add_argument("--response-language", help="preferred language for explanations; direct task requests take precedence")
     interface = parser.add_mutually_exclusive_group()
     interface.add_argument("--chat", dest="interface", action="store_const", const="chat", help="keep an interactive conversation open")
@@ -281,6 +288,7 @@ def main(argv=None):
     group.add_argument("--show-config", action="store_true", help="show effective settings with credential values withheld; no model request")
     group.add_argument("--doctor", action="store_true", help="check configuration, workspace privacy rules and dependencies offline")
     group.add_argument("--models", action="store_true", help="list configured model aliases offline; no provider request")
+    group.add_argument("--list-skills", action="store_true", help="inspect explicitly configured skill metadata offline; no model or script execution")
     group.add_argument("--list-models", action="store_true", help="explicit GET /models on the selected provider; no chat completion")
     group.add_argument("--config-schema", action="store_true", help="print the configuration JSON schema offline")
     group.add_argument("--list-worktrees", action="store_true", help="list local Git worktrees after command approval; no model request")
@@ -302,7 +310,7 @@ def main(argv=None):
             raise ValueError("--worktree-ref requires --create-worktree")
         if args.dry_run and not args.prune_sessions:
             raise ValueError("--dry-run requires --prune-sessions")
-        local_configuration = args.init_config or args.show_config or args.doctor or args.models or args.list_models or args.config_schema or manage_worktrees
+        local_configuration = args.init_config or args.show_config or args.doctor or args.models or args.list_models or args.config_schema or args.list_skills or manage_worktrees
         if os.name not in {"posix", "nt"}:
             raise ValueError("Sprig requires Linux/macOS or Windows 10+")
         if (manage_sessions or local_configuration) and (args.task or args.file or args.interface in {"chat", "tui"} or args.checks or args.resume):
@@ -339,7 +347,7 @@ def main(argv=None):
         if args.tui:
             options["stream"] = True
             options["_tui_stream"] = True
-        if manage_sessions or args.models or args.list_models or manage_worktrees:
+        if manage_sessions or args.models or args.list_models or args.list_skills or manage_worktrees:
             options["_manage_sessions"] = not args.list_models
             if args.list_models and not args.model:
                 options["model"] = "model-catalog"
@@ -358,6 +366,15 @@ def main(argv=None):
         if args.models:
             print(terminal_text(json.dumps(redact({"models": config.model_catalog, "network_contacted": False}, key), ensure_ascii=False, indent=2)))
             return 0
+        if args.list_skills:
+            from .filesystem import Directory
+            from .policy import FilePolicy
+            from .skills import Skills
+            with Directory(config.workdir) as root:
+                policy = FilePolicy(root, (config.config_path, *config.config_paths), config.excluded_paths)
+                result = Skills(config, root.ensure_open, lambda: None, policy).catalog()
+            print(terminal_text(json.dumps(redact({**result, "network_contacted": False}, key), ensure_ascii=False, indent=2)))
+            return 2 if result["issues"] or result["limited"] else 0
         if args.list_models:
             print(terminal_text(json.dumps(Provider(config).list_models(), ensure_ascii=False, indent=2)))
             return 0

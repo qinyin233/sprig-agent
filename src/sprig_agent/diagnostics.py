@@ -27,12 +27,20 @@ def diagnose(config, details):
     except (OSError, ValueError):
         checks.append({"check": "development guidance", "ok": False,
                        "detail": "cannot safely load configured guidance; check paths, privacy, UTF-8 and size limits"})
-    for package in ("textual", "tree-sitter", "google-re2"):
+    for package in ("textual", "tree-sitter", "google-re2", "pyyaml"):
         try:
             version = metadata.version(package)
             checks.append({"check": package, "ok": True, "version": version})
         except metadata.PackageNotFoundError:
             checks.append({"check": package, "ok": False, "detail": "run uv sync --locked"})
+    if config.skill_dirs:
+        try:
+            with closing(Tools(config, lambda _: False)) as tools:
+                catalog = tools.skills.catalog()
+            checks.append({"check": "configured skills", "ok": not catalog["issues"] and not catalog["limited"],
+                           "skills": len(catalog["skills"]), "issues": catalog["issues"], "limited": catalog["limited"]})
+        except (OSError, ValueError):
+            checks.append({"check": "configured skills", "ok": False, "detail": "cannot safely inspect configured skill roots"})
     if config.reference_files:
         from .references import FileReferences
         try:

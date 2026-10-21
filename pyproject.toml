@@ -12,6 +12,7 @@ license = { file = "LICENSE" }
 authors = [{ name = "Sprig contributors" }]
 dependencies = [
     "google-re2==1.1.20251105",
+    "pyyaml>=6.0.3",
     "textual>=8.2.8",
     "tree-sitter==0.25.2",
     "tree-sitter-c==0.24.2",

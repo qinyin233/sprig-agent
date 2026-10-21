@@ -1,0 +1,69 @@
+{
+  "schema_version": 1,
+  "date": "2026-10-21",
+  "feature": "explicit Agent Skills catalogs, on-demand guidance and version-bound UTF-8 resources with independent operation approval",
+  "base_commit": "60a40ba517590e5a67cb88ffac5d55c0e6d900db",
+  "source_digest": {"files": 48, "sha256": "c3d295b9c3ced41e6cd7a53398d72d8b325c909165fa543067e3046e902868d9"},
+  "tests_digest": {"files": 69, "sha256": "40989954efd6a82f56560ef04b56adb5f507356b7076a79f02811098160a4e37"},
+  "digest_method": "SHA256 of compact ASCII JSON arrays of [POSIX relative path, SHA256 of bytes with CRLF normalized to LF], sorted by path; src/sprig_agent/*.py and tests/*.py separately",
+  "local_suites": [
+    {"platform": "Windows 11", "python": "3.13.0", "command": "uv run --locked python -m unittest discover -s tests -q", "total": 1040, "passed": 1021, "skipped": 19, "failures": 0, "errors": 0, "seconds": 359.188},
+    {"platform": "WSL Ubuntu-26.04", "python": "3.13.14", "command": "UV_PROJECT_ENVIRONMENT=.venv-wsl uv run --locked python -m unittest discover -s tests -q", "total": 1040, "passed": 1017, "skipped": 23, "failures": 0, "errors": 0, "seconds": 235.772}
+  ],
+  "client_suite_command": "uv run --project benchmarks/clients/mini --locked python -I -B -m unittest discover -s benchmarks/clients/tests -q",
+  "client_suites": [
+    {"platform": "Windows 11", "total": 25, "passed": 25, "skipped": 0, "seconds": 62.608},
+    {"platform": "WSL Ubuntu-26.04", "environment": "UV_PROJECT_ENVIRONMENT=.venv-mini-wsl", "total": 25, "passed": 25, "skipped": 0, "seconds": 226.618}
+  ],
+  "focused_suite": {"platform": "Windows 11", "command": "uv run --locked python -m unittest tests.test_skills -q", "total": 23, "passed": 22, "skipped": 1, "seconds": 8.028},
+  "workflow_fixture": {
+    "kind": "fixed_response_model_with_real_loopback_http_and_sse",
+    "protocols": ["chat_completions", "messages", "responses"],
+    "completed_pipeline": "metadata only -> skill instruction load -> resource read -> actual resource in next provider request",
+    "incomplete_streams": "no skill load or operation execution",
+    "model_quality_or_general_performance_claim": false
+  },
+  "packaging": {
+    "uv_lock_check": "passed",
+    "compileall": "passed",
+    "cli_help": "passed",
+    "offline_example_catalog": "passed without model or credentials",
+    "sdist_and_wheel_build": "passed",
+    "wheel_source_modules_match": 48,
+    "isolated_installed_wheel_tui_smoke": "passed: metadata -> skill -> script text -> actual script only after fresh command approval; draft and private resume retained without replay; installed offline CLI without a provider",
+    "isolated_smoke_fixture_model_calls": 4,
+    "isolated_smoke_external_model_requests": 0,
+    "runtime_dependencies_added": ["PyYAML 6.0.3 locked; safe YAML, bounded structure and no aliases"]
+  },
+  "coverage": {
+    "new_test_methods": 23,
+    "default_no_skill_roots_or_extra_schema": true,
+    "user_profile_cli_precedence_and_relative_path_bases": true,
+    "project_config_cannot_add_roots_or_enable_disabled_tool": true,
+    "catalog_metadata_without_instruction_body": true,
+    "duplicate_names_unavailable_without_silent_override": true,
+    "invalid_yaml_duplicate_keys_aliases_tags_and_nested_metadata_rejected": true,
+    "catalog_entry_and_json_limits": true,
+    "whole_redaction_before_exact_json_utf8_paging": true,
+    "resource_versions_and_character_boundaries_enforced": true,
+    "resource_is_not_a_file_edit_read_id": true,
+    "fresh_workspace_and_collection_privacy_rules": true,
+    "hardlink_rejected_before_transfer": true,
+    "native_posix_symlink_and_windows_junction_fixtures": true,
+    "manifest_changes_after_request_or_during_resource_loading_rejected": true,
+    "read_only_and_allowed_tools_do_not_authorize_commands": true,
+    "cancelled_closed_or_disabled_entry_rejected": true,
+    "local_cli_and_tui_preview_without_model_call": true,
+    "private_session_root_binding_and_no_replay": true
+  },
+  "development_correction": "Windows fixture write_text translated LF to CRLF, causing a large unittest string-diff recursion error. The byte-preservation case now writes explicit UTF-8 bytes and compares reassembled bytes; production reads preserve actual file bytes. Final full suites run after correction.",
+  "remote_ci": {"run": false, "planned": "manual native-regression.yml for exact functional SHA on windows-latest and ubuntu-latest; avoid full Python/client matrix"},
+  "external_model_requests": 0,
+  "acceptance_scope": "Protocol and interaction correctness; channel models are actual models regardless of billing; no requirement for extra paid-account tests",
+  "limitations": [
+    "Platform skips are not passes; WSL is not a native Ubuntu CI runner",
+    "Explicit collection roots only, direct child SKILL.md; no recursive arbitrary Markdown discovery or link following",
+    "No skill installer, marketplace, implicit preapproval, automatic script or hooks/MCP backend",
+    "No new model coding-success, latency, token-cost or competitor-parity claim"
+  ]
+}
