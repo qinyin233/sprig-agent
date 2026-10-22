@@ -31,6 +31,8 @@ from .skills import Skills
 from .mcp import McpManager
 from .web_fetch import WebFetcher
 from .jobs import Jobs
+from .lsp import LanguageServers
+from .lsp_client import LspError
 from .edit_match import failure_details
 from .edit_batch import EditPreview, digest, preflight
 from .line_edits import replace_lines, validate_edits
@@ -131,6 +133,7 @@ class Tools:
         self.mcp_manager = McpManager(config, self._check_mcp, self.request_approval, self._prepare_mcp_process)
         self.web = WebFetcher(config, self._check_mcp, self.request_approval)
         self.jobs = Jobs(config, self._check_mcp)
+        self.lsp_manager = LanguageServers(config, self._check_mcp, self.request_approval, self._prepare_mcp_process, self._lsp_document)
         self._jobs_revision = self.jobs.revision
 
     def _check_mcp(self):
@@ -172,6 +175,7 @@ class Tools:
             raise ToolError(str(error)) from None
         self._conversation_version += 1
         self.jobs.reset()
+        self.lsp_manager.reset()
         self.mcp_manager.reset()
         self.web.reset()
         self.read_versions.clear()
@@ -182,6 +186,7 @@ class Tools:
         self.mcp_manager.config = config
         self.web.config = config
         self.jobs.config = config
+        self.lsp_manager.config = config
         if self.history.store is not None:
             self.history.store.config = config
 
@@ -239,6 +244,7 @@ class Tools:
 
     def close(self):
         self.jobs.close()
+        self.lsp_manager.reset(closing=True)
         self.mcp_manager.reset()
         self.web.reset()
         self.root.close()
@@ -321,7 +327,7 @@ class Tools:
                       "edit_file": self.edit_file, "edit_lines": self.edit_lines,
                       "run": self.run, "update_plan": self.update_plan, "file_action": self.file_action,
                       "read_log": self.read_log, "question": self.question, "skill": self.skill, "mcp": self.mcp,
-                      "web_fetch": self.web_fetch, "job": self.job}.get(name)
+                      "web_fetch": self.web_fetch, "job": self.job, "lsp": self.lsp}.get(name)
             if method is None:
                 raise ToolError("unknown tool")
             result = method(**arguments)
@@ -358,6 +364,33 @@ class Tools:
         if action == "cancel":
             result["approved"] = True
         return result
+
+    def _lsp_document(self, path):
+        self._check_mcp()
+        if not self.config.tool_enabled("read_file"):
+            raise LspError("LSP source synchronization requires read_file")
+        try:
+            parts = self._parts(path)
+            with self._parent(path) as (directory, name):
+                raw = self._read(directory, name, MAX_FILE + 1)
+            if len(raw) > MAX_FILE:
+                raise LspError("LSP source exceeds 512 KiB")
+            text = self._decode(raw)
+            if any(secret in text for secret in self.config.credential_secrets):
+                raise LspError("LSP source contains configured credentials; synchronization is blocked")
+            return {"path": "/".join(parts), "uri": self.config.workdir.joinpath(*parts).as_uri(), "text": text,
+                    "sha256": hashlib.sha256(raw).hexdigest(), "bytes": len(raw)}
+        except (ToolError, OSError, UnicodeError) as error:
+            raise LspError("cannot safely synchronize LSP source; check workspace scope, privacy, UTF-8 and regular-file limits") from None
+
+    def lsp(self, action="status", **arguments):
+        self._require_tool("lsp")
+        try:
+            return self.lsp_manager.control(action, **arguments)
+        finally:
+            if action not in {"status", "result"}:
+                self.read_versions.clear()
+                self.index.clear()
 
     def file_action(self, action, path, read_id=None, destination=None):
         from .file_actions import execute

@@ -191,7 +191,7 @@ uv run --locked sprig --config-schema
 
 `[tools].file_action=false` 禁用目录创建、读取标识删除和复制后删除的移动；`edit_file=false` 也同时禁用 `file_action` 与 `edit_lines`，显式项目层不能重新打开。CLI 为 `--disable-tool file_action`；只读模式在 schema 和实际执行层阻止这些写入。移动的两个阶段分别取得新批准，不提供原子 rename，见[专用文件操作](file-actions.md)。
 
-`[tools]` 对十六种工具设置 true/false：`list_files`、`read_file`、`search`、`project_map`、`edit_file`、`edit_lines`、`file_action`、`run`、`update_plan`、`question`、`skill`、`mcp`、`web_fetch`、`job`、`read_history`、`read_log`。false 同时移除对应模型 schema，并由实际执行层检查；CLI `--disable-tool NAME` 可重复。`question` 仅在交互式 TUI/终端 CLI 或显式嵌入回调中提供，支持需求选项与自填；答案不能批准操作，同批其他提案跳过后重新规划，见[澄清流程](questions.md)。`skill` 仅在显式配置 `[skills].dirs` 时提供，按需加载技能说明和资料；不是执行或授权入口，见[技能配置](skills.md)。`read_history` 仅在有显式摘要检查点时提供，按消息编号回查当前对话被概括的原文；`read_log` 仅在配置 `command_log_dir` 时提供，按不透明句柄回查当前会话的历史命令输出。两者都不接受任意文件或其他会话路径，本地 `/history`、`/log` 是用户查看控制。无可选配置的非交互任务仍为九种工具，交互式任务增加 `question` 后为十种；摘要、日志、技能、MCP、网页和后台都启用时最多十六种。`job` 需用户/profile 的 `[execution] background=true` 或 CLI `--background` 明确开启，run/job 同时可用且不为只读；启动统一使用 run 的 background 参数，详见[后台命令](background-jobs.md)。`web_fetch` 需要用户/profile 的 `[web] enabled=true` 或 CLI `--web` 明确开启；逐次批准公开 HTTP(S) 请求，缓存分页不联网，见[网页读取](web-fetch.md)。关闭 `read_file` 也阻止 `/add` 附件；关闭 `edit_file` 同时禁止 `edit_lines` 与 `file_action`，项目不能重新启用。整行编辑的短版本标识仍关联完整摘要并要求新批准，见[读取绑定编辑](read-bound-edits.md)。`run=false` 或 `read_only=true` 不能配置非空 `checks`。`update_plan` 只维护模型报告的进度，不授权执行或替代验收，详见[任务计划](task-plans.md)。
+`[tools]` 对十七种工具设置 true/false：`list_files`、`read_file`、`search`、`project_map`、`edit_file`、`edit_lines`、`file_action`、`run`、`update_plan`、`question`、`skill`、`mcp`、`web_fetch`、`job`、`lsp`、`read_history`、`read_log`。false 同时移除对应模型 schema，并由实际执行层检查；CLI `--disable-tool NAME` 可重复。`question` 仅在交互式 TUI/终端 CLI 或显式嵌入回调中提供，支持需求选项与自填；答案不能批准操作，同批其他提案跳过后重新规划，见[澄清流程](questions.md)。`skill` 仅在显式配置 `[skills].dirs` 时提供，按需加载技能说明和资料；不是执行或授权入口，见[技能配置](skills.md)。`read_history` 仅在有显式摘要检查点时提供，按消息编号回查当前对话被概括的原文；`read_log` 仅在配置 `command_log_dir` 时提供，按不透明句柄回查当前会话的历史命令输出。两者都不接受任意文件或其他会话路径，本地 `/history`、`/log` 是用户查看控制。无可选配置的非交互任务仍为九种工具，交互式任务增加 `question` 后为十种；摘要、日志、技能、MCP、网页、后台和 LSP 都启用时最多十七种。`lsp` 需明确配置服务器并允许 read_file，非只读时向模型提供，详见[语义查询](lsp.md)。`job` 需用户/profile 的 `[execution] background=true` 或 CLI `--background` 明确开启，run/job 同时可用且不为只读；启动统一使用 run 的 background 参数，详见[后台命令](background-jobs.md)。`web_fetch` 需要用户/profile 的 `[web] enabled=true` 或 CLI `--web` 明确开启；逐次批准公开 HTTP(S) 请求，缓存分页不联网，见[网页读取](web-fetch.md)。关闭 `read_file` 也阻止 `/add` 附件；关闭 `edit_file` 同时禁止 `edit_lines` 与 `file_action`，项目不能重新启用。整行编辑的短版本标识仍关联完整摘要并要求新批准，见[读取绑定编辑](read-bound-edits.md)。`run=false` 或 `read_only=true` 不能配置非空 `checks`。`update_plan` 只维护模型报告的进度，不授权执行或替代验收，详见[任务计划](task-plans.md)。
 
 禁用单个工具只控制该工具接口，例如 `search` 仍会读取匹配内容。要禁止某些路径通过所有文件工具访问，使用 `[files].exclude`；要禁用全部命令，使用 `run=false` 或只读模式。任意获批命令仍无 OS 沙箱，不能把文件排除当作命令隔离。
 
@@ -214,6 +214,10 @@ uv run --locked sprig --config-schema
 ## MCP 外部服务
 
 `[mcp.servers.NAME]` 支持明确的 `streamable_http` 端点，或 `stdio` 的固定 argv / 相对 cwd / env / env_from；协议版本、超时/总期限共用。HTTP 可配置代理、headers / headers_env，stdio 禁止混入 HTTP 字段。用户/profile 可配置，项目层禁止改变，profile 按服务名替换完整定义，最多八个服务。配置和 `--list-mcp` 不连接或启动进程；TUI/chat `/mcp` 管理状态，连接和每次 RPC 单独批准。只读模式在执行层阻止两种后端。版本、Schema 子集、结果分页和未实现的 OAuth 等见 [HTTP MCP](mcp.md) 与 [stdio](mcp-stdio.md)。
+
+## LSP 语言服务器
+
+`[lsp.servers.NAME]` 只接受已安装服务器的明确 command argv 与 languages 后缀映射，另可设置 enabled、相对 cwd、env/env_from、timeout/deadline。最多八个；用户/profile 按名称替换完整定义，项目层不能注入。`--show-config` 和 TUI/chat `/lsp` 只读本地状态，启动和每次语义查询新批准。配置模型供应商不会自动选择语言服务器，模型切换仍不能改变其权限。服务器不是系统沙箱；只读模式、私有路径、已知密钥正文和关闭 read_file/lsp 都在执行层阻止同步/查询。详见[配置示例、协议范围和取消/恢复](lsp.md)。
 
 ## 存储与终端
 

@@ -68,6 +68,13 @@ def configuration_schema():
         "skills": obj({"dirs": {"type": "array", "maxItems": 8, "items": text,
                                 "description": "Explicit skill collection directories, relative to the declaring user/profile config. Project settings cannot add roots. No automatic home/workspace scan."}}),
         "mcp": obj({"servers": {"type": "object", "maxProperties": 8, "propertyNames": {"pattern": identifier}, "additionalProperties": {"oneOf": [mcp_http, mcp_stdio]}}}),
+        "lsp": obj({"servers": {"type": "object", "maxProperties": 8, "propertyNames": {"pattern": identifier}, "additionalProperties": obj({
+            "command": {"type": "array", "minItems": 1, "maxItems": 256, "items": {"type": "string"}},
+            "languages": {"type": "object", "minProperties": 1, "maxProperties": 32, "propertyNames": {"pattern": r"^\.[A-Za-z0-9_+-]{1,16}$"}, "additionalProperties": {"type": "string", "pattern": r"^[A-Za-z0-9_+-]{1,64}$"}},
+            "cwd": text, "enabled": boolean, "timeout": number(0,120,True), "deadline": number(0,3600,True),
+            "env": {"type": "object", "maxProperties": 32, "propertyNames": environment, "additionalProperties": {"type": "string", "maxLength":4096}},
+            "env_from": {"type": "object", "maxProperties":32, "propertyNames":environment, "additionalProperties":environment},
+        }, required=["command", "languages"])}}),
         "web": obj({"enabled": {**boolean, "description": "Opt-in public HTTP(S) documents. Each GET needs approval; no proxies, auth, redirects, retries or persistent cache. Project configuration cannot enable it."}}),
         "tui": obj({"theme": {"enum": ["textual-dark", "textual-light", "nord", "gruvbox", "dracula", "monokai", "tokyo-night", "solarized-dark", "solarized-light"]},
                     "sidebar": boolean, "editor_height": integer(3, 12), "steering_mode": {"enum": ["all", "one-at-a-time"]}, "metrics": boolean,

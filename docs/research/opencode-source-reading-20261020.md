@@ -329,3 +329,17 @@ P2 的交互澄清阶段继续阅读同一固定提交的 [`tool/plugin/question
 2026-10-22 的外部文档阶段阅读同一固定提交 `tool/plugin/webfetch.ts` 的 URL/权限、MIME、下载收集、HTML 转换和超时链路：上游对特定 403 challenge 另换 User-Agent 请求，文字提取跳过 script/style 等元素。Sprig 实现[公开网页读取](../web-fetch.md)，默认关闭、每次 GET 新批准，禁止自动跳转、重试与隐式代理/认证；一次 DNS 检查全部地址后直接连接已验证 sockaddr，保留 TLS 主机验证。内存快照按脱敏摘要和 UTF-8 字节分页，网页内容不授予任何本地动作权限。三协议/TUI/CLI 的实际回环链路和独立检查见[机器记录](../benchmarks/web-fetch-20261022.json)。真实 Python 官方文档读取尝试被当前 DNS 的非公网结果阻止，未发送 HTTP；没有放行私网作为变通，也未声称通用外网已实测成功。网页搜索、浏览器操作、登录、上传和二进制仍缺，整体编码能力目标未达标。
 
 同日继续阅读固定 `shell.ts` 的进程归属、状态/等待、文件输出与游标，以及 `tool/plugin/shell.ts` 的 background/job/完成通知链。上游后台可清除超时，通知合成会话消息。Sprig 补充[受管后台命令](../background-jobs.md)，采用明确硬期限和内存限额；空闲通知不自动调用模型，不复制 shell 字符串或无期限执行。沿用自己的逐次批准、环境/路径/指令复查和 Windows Job/POSIX 进程组，关闭 stdin；任务运行/清理不明或检查中后台状态变化时不产生最终验收。双通道分片解码和重置时新启动竞态均先复现、再修复，正常关闭保留所有权到完成；强制宿主崩溃不提供 POSIX 后代消失保证，也不按旧 PID 附着。最终实际进程、TUI、三协议和安装包范围见[机器记录](../benchmarks/background-jobs-20261022.json)，不把这一批作为 PTY、跨进程后台恢复或完整 agent 能力达标。
+
+## 15. LSP 的独立标签源码阅读（2026-10-22）
+
+原固定 `dev@9d90d892dcbfc52b47e95b2ea31b8aba877128fd` 的树没有本节 LSP 实现路径，不能将其他版本代码归入原快照。本节另行 checkout 标签 **v1.18.34，提交 aec0b9a6d8898f68f923aaf08b7306d931fd9d76**，只读取源文件，没有运行上游程序或测试。
+
+实际阅读 [`packages/opencode/src/lsp/client.ts`](https://github.com/anomalyco/opencode/blob/aec0b9a6d8898f68f923aaf08b7306d931fd9d76/packages/opencode/src/lsp/client.ts) 的连接、能力协商、push/pull 诊断与同步目标段，以及 [`tool/lsp.ts`](https://github.com/anomalyco/opencode/blob/aec0b9a6d8898f68f923aaf08b7306d931fd9d76/packages/opencode/src/tool/lsp.ts) 的参数、批准和操作分发：
+
+- 使用 vscode-jsonrpc 的流传输，文件 open/change 同步后查询；同时维护 push/pull 诊断，提供等待与 debounce，支持动态 diagnostic 注册和 workspace 配置回复。
+- 工具提供定义、引用、悬停、文件/工作区符号、实现与调用层级，输入行/列减一后传递。工具的权限参数含通配模式和可持久批准建议，不能直接迁移成 Sprig 的授权策略。
+- UTF-16/JavaScript code unit 与换行处理需要单独验证；不能认为 Unicode 显示列天然等于协议字符偏移。对照 [LSP 3.17 Position](https://raw.githubusercontent.com/microsoft/language-server-protocol/gh-pages/_specifications/lsp/3.17/types/position.md)、[didChange](https://raw.githubusercontent.com/microsoft/language-server-protocol/gh-pages/_specifications/lsp/3.17/textDocument/didChange.md) 和 [publishDiagnostics](https://raw.githubusercontent.com/microsoft/language-server-protocol/gh-pages/_specifications/lsp/3.17/language/publishDiagnostics.md) 的实际定义，不据此声称 3.17 为最新版。
+
+Sprig 本批实现[明确配置的 LSP 查询](../lsp.md)：复用归属明确的进程后端，逐次批准准确 argv、环境名称和源码快照；协商 UTF-16、维护文档版本、静态 pull 或受限 push 诊断。已知密钥正文必须在同步前阻止，返回目标仍经路径/隐私检查，结果为有界内存页。服务端发起的编辑、命令和动态注册拒绝；不复制上游持久通配授权、自动安装或自动重连。源码变化、取消、超限与失败关闭连接；恢复不重放。
+
+stdlib peer 只证明传输、策略与 CLI/TUI 集成；另以本机已安装 clangd 20.1.8 在临时 C++ 项目验证命名空间同名函数的定义/引用、符号和改动后版本化类型诊断，二者范围分开记录在[机器证据](../benchmarks/lsp-20261022.json)。本批不提供工作区符号、调用层级、rename/format/code action、动态能力和文件监视，不把有 LSP 接口等同于全项目索引完整或整体编码能力追平。CI 按用户要求继续冻结到 2026-11-01，之后仍先检查账户与旧 gate。

@@ -207,6 +207,9 @@
         },
         "job": {
           "type": "boolean"
+        },
+        "lsp": {
+          "type": "boolean"
         }
       },
       "additionalProperties": false
@@ -555,6 +558,92 @@
                   "command"
                 ]
               }
+            ]
+          }
+        }
+      },
+      "additionalProperties": false
+    },
+    "lsp": {
+      "type": "object",
+      "properties": {
+        "servers": {
+          "type": "object",
+          "maxProperties": 8,
+          "propertyNames": {
+            "pattern": "^[A-Za-z0-9_-]{1,64}$"
+          },
+          "additionalProperties": {
+            "type": "object",
+            "properties": {
+              "command": {
+                "type": "array",
+                "minItems": 1,
+                "maxItems": 256,
+                "items": {
+                  "type": "string"
+                }
+              },
+              "languages": {
+                "type": "object",
+                "minProperties": 1,
+                "maxProperties": 32,
+                "propertyNames": {
+                  "pattern": "^\\.[A-Za-z0-9_+-]{1,16}$"
+                },
+                "additionalProperties": {
+                  "type": "string",
+                  "pattern": "^[A-Za-z0-9_+-]{1,64}$"
+                }
+              },
+              "cwd": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 4096,
+                "pattern": "^[^\\x00-\\x1f]+$"
+              },
+              "enabled": {
+                "type": "boolean"
+              },
+              "timeout": {
+                "type": "number",
+                "exclusiveMinimum": 0,
+                "maximum": 120
+              },
+              "deadline": {
+                "type": "number",
+                "exclusiveMinimum": 0,
+                "maximum": 3600
+              },
+              "env": {
+                "type": "object",
+                "maxProperties": 32,
+                "propertyNames": {
+                  "type": "string",
+                  "pattern": "^[A-Za-z_][A-Za-z0-9_]{0,127}$"
+                },
+                "additionalProperties": {
+                  "type": "string",
+                  "maxLength": 4096
+                }
+              },
+              "env_from": {
+                "type": "object",
+                "maxProperties": 32,
+                "propertyNames": {
+                  "type": "string",
+                  "pattern": "^[A-Za-z_][A-Za-z0-9_]{0,127}$"
+                },
+                "additionalProperties": {
+                  "type": "string",
+                  "pattern": "^[A-Za-z_][A-Za-z0-9_]{0,127}$"
+                }
+              }
+            },
+            "additionalProperties": false,
+            "required": [
+              "command",
+              "languages"
             ]
           }
         }
@@ -1202,6 +1291,9 @@
               },
               "job": {
                 "type": "boolean"
+              },
+              "lsp": {
+                "type": "boolean"
               }
             },
             "additionalProperties": false
@@ -1550,6 +1642,92 @@
                         "command"
                       ]
                     }
+                  ]
+                }
+              }
+            },
+            "additionalProperties": false
+          },
+          "lsp": {
+            "type": "object",
+            "properties": {
+              "servers": {
+                "type": "object",
+                "maxProperties": 8,
+                "propertyNames": {
+                  "pattern": "^[A-Za-z0-9_-]{1,64}$"
+                },
+                "additionalProperties": {
+                  "type": "object",
+                  "properties": {
+                    "command": {
+                      "type": "array",
+                      "minItems": 1,
+                      "maxItems": 256,
+                      "items": {
+                        "type": "string"
+                      }
+                    },
+                    "languages": {
+                      "type": "object",
+                      "minProperties": 1,
+                      "maxProperties": 32,
+                      "propertyNames": {
+                        "pattern": "^\\.[A-Za-z0-9_+-]{1,16}$"
+                      },
+                      "additionalProperties": {
+                        "type": "string",
+                        "pattern": "^[A-Za-z0-9_+-]{1,64}$"
+                      }
+                    },
+                    "cwd": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 4096,
+                      "pattern": "^[^\\x00-\\x1f]+$"
+                    },
+                    "enabled": {
+                      "type": "boolean"
+                    },
+                    "timeout": {
+                      "type": "number",
+                      "exclusiveMinimum": 0,
+                      "maximum": 120
+                    },
+                    "deadline": {
+                      "type": "number",
+                      "exclusiveMinimum": 0,
+                      "maximum": 3600
+                    },
+                    "env": {
+                      "type": "object",
+                      "maxProperties": 32,
+                      "propertyNames": {
+                        "type": "string",
+                        "pattern": "^[A-Za-z_][A-Za-z0-9_]{0,127}$"
+                      },
+                      "additionalProperties": {
+                        "type": "string",
+                        "maxLength": 4096
+                      }
+                    },
+                    "env_from": {
+                      "type": "object",
+                      "maxProperties": 32,
+                      "propertyNames": {
+                        "type": "string",
+                        "pattern": "^[A-Za-z_][A-Za-z0-9_]{0,127}$"
+                      },
+                      "additionalProperties": {
+                        "type": "string",
+                        "pattern": "^[A-Za-z_][A-Za-z0-9_]{0,127}$"
+                      }
+                    }
+                  },
+                  "additionalProperties": false,
+                  "required": [
+                    "command",
+                    "languages"
                   ]
                 }
               }

@@ -27,6 +27,7 @@ from .skills import SKILL_SCHEMA
 from .mcp import MCP_SCHEMA, McpManager
 from .web_fetch import WEB_SCHEMA
 from .jobs import JOB_SCHEMA
+from .lsp import LSP_SCHEMA
 from .tools import TOOL_SCHEMAS, Tools
 
 
@@ -113,6 +114,8 @@ class Agent:
             self.schemas.append(copy.deepcopy(WEB_SCHEMA))
         if isinstance(tools, Tools) and tools.jobs.enabled():
             self.schemas.append(copy.deepcopy(JOB_SCHEMA))
+        if isinstance(tools, Tools) and config.lsp_servers and config.tool_enabled("lsp") and config.tool_enabled("read_file") and not config.read_only:
+            self.schemas.append(copy.deepcopy(LSP_SCHEMA))
         self._job_notified = set()
         self._prepared_skills = None
         self.compact_context = config.compact_context
@@ -128,6 +131,7 @@ class Agent:
         if isinstance(self.tools, Tools):
             self.tools._conversation_version += 1
             self.tools.jobs.reset()
+            self.tools.lsp_manager.reset()
         self.runtime_state = None
         manager = getattr(self.tools, "mcp_manager", None)
         if isinstance(manager, McpManager):
@@ -585,6 +589,8 @@ class Agent:
         messages = [dict(messages[0]), *messages[1:]]
         if isinstance(self.tools, Tools) and self.config.mcp_servers and self.config.tool_enabled("mcp") and not self.config.read_only:
             messages[0]["content"] += "\nConfigured MCP endpoints and local state (no connection implied):\n" + json.dumps(redact(self.tools.mcp_manager.status(), self.config.secrets), ensure_ascii=False)
+        if isinstance(self.tools, Tools) and self.config.lsp_servers and self.config.tool_enabled("lsp") and not self.config.read_only:
+            messages[0]["content"] += "\nConfigured LSP servers and local state; no startup or approval implied:\n" + json.dumps(redact(self.tools.lsp_manager.status(), self.config.secrets), ensure_ascii=False)
         if isinstance(self.tools, Tools) and self.tools.jobs.enabled():
             observations = self.tools.jobs.observations()
             if observations:

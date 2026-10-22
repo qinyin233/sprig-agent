@@ -671,7 +671,7 @@ class SprigApp(App[int]):
             def decide(approved):
                 answer[0] = approved
                 self.approval = None
-                if approved and self.local_action in {"run", "worktree-create", "worktree-list", "mcp"}:
+                if approved and self.local_action in {"run", "worktree-create", "worktree-list", "mcp", "lsp"}:
                     # Even a viewing command can invoke Git helpers. Treat its
                     # workspace effects conservatively, including cancellation.
                     self.invalidate_task()
@@ -1290,6 +1290,7 @@ class SprigApp(App[int]):
                         "/mcp（本地状态） /mcp connect|disconnect|tools|resources|templates|prompts SERVER（逐次确认请求）\n"
                         "/web（本地缓存） /web URL（逐次批准公开网页） /web result ID [UTF8偏移]（缓存分页）\n"
                         "/jobs /job start {\"argv\":[\"程序\",\"参数\"]}（新批准） /job status|output|wait|cancel ID\n"
+                        "/lsp（本地状态） /lsp definition|references|implementation|hover SERVER PATH 行 列；symbols|diagnostics SERVER PATH\n"
                         "/continue /new /files /add 文件路径 /ref 文件路径 /unref 文件路径 /refs [clear]\n"
                         "/map [名称或路径查询] /git /diff /compact\n"
                         "/summary（本地预览） /summary create [END]（逐次确认额外请求） /summary clear\n"
@@ -1336,6 +1337,16 @@ class SprigApp(App[int]):
             return
         if command == "/model":
             self.choose_model(argument)
+            return
+        if command == "/lsp":
+            if self.busy:
+                self.notify("请等待当前操作结束；可正常发送文本引导或取消", severity="warning")
+                return
+            try:
+                from .lsp import local_arguments
+                self.start(local=("lsp", local_arguments(argument)))
+            except ValueError as error:
+                self.notify(self.safe(error), severity="warning")
             return
         if command in {"/jobs", "/job"}:
             if self.busy:

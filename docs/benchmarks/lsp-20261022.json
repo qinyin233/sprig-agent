@@ -1,0 +1,209 @@
+{
+  "date": "2026-10-22",
+  "recorded_utc": "2026-10-22T06:20:57.903747+00:00",
+  "base_commit": "461ce1ff41e9fa78a49056e153909c4ba865598c",
+  "feature": "explicit approved LSP semantic queries",
+  "source_manifest": {
+    "src/sprig_agent": {
+      "files": 63,
+      "sha256": "e0e4cba8aa31db2b345dd8915ae580b35608dd397328c68fd70ac3d1367f6643"
+    },
+    "tests": {
+      "files": 78,
+      "sha256": "d74acd20bf869321c2c1e364b57b45adecccc7e03e56f7b8fee645d70d9e00f2"
+    },
+    "tests/fixtures": {
+      "files": 2,
+      "sha256": "bb0f19722a02e27dca9ff6881b85cefd72bb081f7e20081af6c1f0416bdcb09e"
+    }
+  },
+  "artifact_manifest_note": "LF-normalized SHA256 of compact ASCII JSON [relative_path,file_sha256] rows sorted by path; immediate Python files only. Documentation is not part of this manifest.",
+  "observed_test_diagnostic": "Windows loopback HTTP handler logged one server-side ConnectionAbortedError WinError 10053 while writing a response. The final unittest verdict was OK (skipped=19), process exit code 0; this diagnostic is retained in the raw log hash rather than hidden or counted as a failed test.",
+  "local_suites": [
+    {
+      "platform": "native Windows",
+      "python": "3.13.0",
+      "command": "uv run --locked python -m unittest discover -s tests -q",
+      "total": 1185,
+      "passed": 1166,
+      "skipped": 19,
+      "seconds": 500.185,
+      "exit_code": 0,
+      "terminal_log_sha256": "1848345ccb33974073a273067571b5767bd0bec9564461a1d805a20a030b91af"
+    },
+    {
+      "platform": "WSL Ubuntu-26.04",
+      "python": "3.13.14",
+      "command": "UV_PROJECT_ENVIRONMENT=.venv-wsl uv run --locked python -m unittest discover -s tests -q",
+      "total": 1185,
+      "passed": 1162,
+      "skipped": 23,
+      "seconds": 356.651,
+      "exit_code": 0,
+      "terminal_log_sha256": "e7a696de5ffae6a0bb7faddfcdeb0b803bcc0cf97c411101dde4aa33cf95cecc"
+    }
+  ],
+  "compatibility_suites": [
+    {
+      "platform": "native Windows",
+      "python": "3.11.14",
+      "command": "UV_PROJECT_ENVIRONMENT=.venv-py311 uv run --locked --python 3.11 --no-editable python -m unittest tests.test_lsp tests.test_configuration_profiles tests.test_model_selection tests.test_conversation_fork tests.test_jobs -q",
+      "total": 97,
+      "passed": 97,
+      "skipped": 0,
+      "seconds": 61.83,
+      "exit_code": 0,
+      "terminal_log_sha256": "6396476e576051c0ade654eb175168425574fd22687d681fe388df8ecee90a98"
+    }
+  ],
+  "client_suites": [
+    {
+      "platform": "native Windows",
+      "python": null,
+      "command": "uv run --project benchmarks/clients/mini --locked python -I -B -m unittest discover -s benchmarks/clients/tests -q",
+      "total": 25,
+      "passed": 25,
+      "skipped": 0,
+      "seconds": 52.467,
+      "exit_code": 0,
+      "terminal_log_sha256": "ef0f497840d54755cc88aad11b8cd91c376c167d65b610ad55f9d1496d9ee2f1"
+    },
+    {
+      "platform": "WSL Ubuntu-26.04",
+      "python": null,
+      "command": "UV_PROJECT_ENVIRONMENT=.venv-mini-wsl uv run --project benchmarks/clients/mini --locked python -I -B -m unittest discover -s benchmarks/clients/tests -q",
+      "total": 25,
+      "passed": 25,
+      "skipped": 0,
+      "seconds": 224.012,
+      "exit_code": 0,
+      "terminal_log_sha256": "380b9c523d64f48517a950194630e88db8081eeeae30b3b1cadbbf9f9f665a27"
+    }
+  ],
+  "installed_wheel": {
+    "module_comparison": {
+      "wheel_source_modules_matched": 63
+    },
+    "workflow": {
+      "installed_tui_lsp": "passed",
+      "viewport": [
+        80,
+        24
+      ],
+      "separate_approvals": 3,
+      "fixture_model_calls": 3,
+      "external_model_requests": 0,
+      "real_lsp_peer_process": true,
+      "semantic_engine": false,
+      "file_edit_and_independent_check": true,
+      "owned_process_closed": true,
+      "private_restore_without_spawn_or_replay": true,
+      "known_credential_not_saved": true
+    }
+  },
+  "real_semantic_engine": {
+    "engine": "clangd",
+    "version": "20.1.8",
+    "version_reported_revision": "87f0227cb60147a26a1eeb4fb06e3b505e9c7261",
+    "platform": "native Windows",
+    "invocation": "uv run --locked python scripts/verify-lsp-clangd.py --clangd <explicit installed executable> --approve-disposable",
+    "flags": [
+      "--log=error",
+      "--background-index=false",
+      "--enable-config=false"
+    ],
+    "result": {
+      "passed": true,
+      "executable_sha256": "695b84de39702b15f1ba10ae2db7ed67d287d235c78796ed22e8d5c4af4e6edb",
+      "approved_queries": 6,
+      "definition_lines": [
+        1
+      ],
+      "reference_lines": [
+        1,
+        3
+      ],
+      "changed_document_version": 2,
+      "changed_diagnostics": [
+        {
+          "path": "main.cpp",
+          "start_line": 3,
+          "start_column": 34,
+          "end_line": 3,
+          "end_column": 39,
+          "source_sha256": "3c483577a90b22af90c47fe28cd3e806299899d4f5382bfb5a8fc882a408d44d",
+          "message": "Cannot initialize a parameter of type 'int' with an lvalue of type 'const char[4]'\n\nmain.cpp:1:33: note: passing argument to parameter 'value' here",
+          "severity": 1,
+          "code": "init_conversion_failed"
+        },
+        {
+          "path": "main.cpp",
+          "start_line": 1,
+          "start_column": 33,
+          "end_line": 1,
+          "end_column": 38,
+          "source_sha256": "3c483577a90b22af90c47fe28cd3e806299899d4f5382bfb5a8fc882a408d44d",
+          "message": "Passing argument to parameter 'value' here\n\nmain.cpp:3:34: error: cannot initialize a parameter of type 'int' with an lvalue of type 'const char[4]'",
+          "severity": 3,
+          "code": null
+        }
+      ],
+      "no_model_requests": true,
+      "scope": "disposable C++ fixture; no general agent performance claim"
+    },
+    "limits": "One disposable C++ project. Definition chooses left::choose rather than right::choose; references exclude the other namespace; hover/symbols observed; initially clean diagnostics then a version-2 type error. Not a repository performance benchmark."
+  },
+  "upstream_source_read": {
+    "repository": "anomalyco/opencode",
+    "tag": "v1.18.34",
+    "commit": "aec0b9a6d8898f68f923aaf08b7306d931fd9d76",
+    "paths": [
+      "packages/opencode/src/lsp/client.ts",
+      "packages/opencode/src/tool/lsp.ts"
+    ],
+    "scope": "Selected connection/sync/capability/diagnostic portions and tool dispatch. Original dev@9d90d89 does not contain these implementation paths; no upstream tests or executable run."
+  },
+  "fixture_scope": [
+    "Content-Length fragmentation and UTF-8/UTF-16 conversion",
+    "fresh approvals, refusal, read-only and disabled-tool enforcement",
+    "minimal process environment and configured secret redaction/blocking",
+    "source changes during approval/query, private target filtering and result privacy rechecks",
+    "static pull and versioned/versionless/stale push diagnostics",
+    "server edits/commands/dynamic registrations denied; empty configuration replies",
+    "frame/JSON limits, protocol errors, deadlines, cancellation and owned child cleanup",
+    "actual CLI/TUI, guidance superseding approval, reset and installed private restore",
+    "three real loopback HTTP/SSE model protocols with fixed replies; no external model requests"
+  ],
+  "fix_before_final_validation": [
+    "A regression exposed that generic file shape checks did not block arbitrary configured secret strings before LSP synchronization. Added an explicit known-credential check; source and cache privacy tests pass after this fix.",
+    "Full-suite confirmation regression depended on the existing background-stop notice. Preserved that wording and separately described LSP cleanup; revalidated final source after the fix.",
+    "Actual CLI approval events now invalidate previous success even if the approved server subsequently errors or is cancelled; an actual CLI regression covers the error path."
+  ],
+  "other_checks": [
+    "uv lock --check",
+    "uv run --locked python -m compileall -q src tests scripts",
+    "uv run --locked sprig --help",
+    "generated JSON Schema equality, Draft202012 example validation and runtime example validation",
+    "uv build --wheel and isolated installed 80x24 TUI workflow"
+  ],
+  "remote_ci": {
+    "status": "pending; frozen by user",
+    "not_before": "2026-11-01 Asia/Singapore",
+    "triggered_this_batch": false,
+    "commit_marker": "[skip ci]",
+    "prior_required_gate": {
+      "sha": "106b60ed11de6fdfa7756495bf3f17b74d9c7812",
+      "run": "39556289305",
+      "last_observed": "blocked by account billing/spending limit; runners did not start"
+    },
+    "resume_rule": "Verify account restriction and prior required gate before resuming CI-enabled batches; date alone does not lift restriction."
+  },
+  "limitations": [
+    "Platform skips are not passes; local Windows/WSL are not native CI runner or full Python/macOS matrix validation.",
+    "No native process backend edits in this batch; new LSP lifecycle still needs relevant native CI runners after freeze.",
+    "Server is a trusted current-user process, not an OS sandbox; it may act independently while idle and read its own project/dependency configuration.",
+    "No workspace symbols, call hierarchy, rename/format/code actions, dynamic registration, workspace watchers, installation, restart or replay.",
+    "Only up to four explicitly opened documents are synchronized; target snapshots and bounded results do not prove a complete or current whole-project index.",
+    "Protocol fixtures are not semantic-engine or model-performance evidence; a single clangd fixture does not establish parity with leading open-source agents."
+  ]
+}

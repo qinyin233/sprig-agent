@@ -101,6 +101,7 @@ skill = true # exposed only with explicit skills.dirs; loading never executes sc
 mcp = true # explicit endpoints; connect and every RPC ask approval; blocked in read-only
 web_fetch = true # requires separate web.enabled opt-in; every GET needs approval
 job = true # requires execution.background and run; observe/wait or freshly approve stop
+lsp = true # optional configured semantic servers; every query requires approval
 read_history = true # only exposed with an active summary; original conversation data, not current file evidence
 read_log = true # only exposed with command_log_dir; opaque current-conversation history, never file read_id
 
@@ -191,3 +192,15 @@ timeout = 30
 deadline = 120
 env = { NODE_ENV = "production" } # nonsecret fixed values
 env_from = { API_TOKEN = "MCP_LOCAL_TOKEN" } # secret references to process environment
+
+# LSP: explicit installed executable only; never starts on load or installs packages.
+# Server has full current-user filesystem/network authority; review before enabling.
+[lsp.servers.cpp_example]
+enabled = false
+command = ["clangd", "--log=error", "--background-index=false", "--enable-config=false"]
+languages = { ".c" = "c", ".h" = "c", ".cpp" = "cpp", ".hpp" = "cpp" }
+cwd = "."
+timeout = 15
+deadline = 60
+# env = { NODE_ENV = "production" }
+# env_from = { API_TOKEN = "LSP_LOCAL_TOKEN" }

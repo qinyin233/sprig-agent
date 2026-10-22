@@ -2,6 +2,7 @@ include .python-version uv.lock
 include config.example.toml config.schema.json
 recursive-include docs *.md *.json
 include tests/fixtures/mcp_stdio_server.py
+include tests/fixtures/lsp_server.py
 recursive-include examples/skills *.md
 recursive-include scripts *.py *.ps1
 recursive-include benchmarks/coding *.py *.json

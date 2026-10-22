@@ -125,6 +125,7 @@ GROUP_FIELDS = {
     "instructions": {"files", "response_language"},
     "skills": {"dirs"},
     "mcp": {"servers"},
+    "lsp": {"servers"},
     "web": {"enabled"},
 }
 TUI_FIELDS = {"theme": "tui_theme", "sidebar": "tui_sidebar", "editor_height": "tui_editor_height",
@@ -182,6 +183,9 @@ def _flatten(layer, directory):
     if "servers" in layer.get("mcp", {}):
         from .mcp_config import parse_servers
         values["mcp_servers"] = parse_servers(layer["mcp"]["servers"])
+    if "servers" in layer.get("lsp", {}):
+        from .lsp_config import parse_servers as parse_lsp
+        values["lsp_servers"] = parse_lsp(layer["lsp"]["servers"])
     if "enabled" in layer.get("web", {}):
         values["web_enabled"] = layer["web"]["enabled"]
     for name, value in layer.get("storage", {}).items():
@@ -266,8 +270,8 @@ def _validate(data, directory, *, project=False):
     if project:
         # An explicit repository file may tune requests and tighten tool policy.
         # It cannot route credentials, inject environment, or persist transcripts.
-        if set(data) & {"execution", "storage", "skills", "mcp", "web"}:
-            raise ValueError("project configuration cannot change execution environment, storage, skill roots, MCP servers or web opt-in")
+        if set(data) & {"execution", "storage", "skills", "mcp", "web", "lsp"}:
+            raise ValueError("project configuration cannot change execution environment, storage, skill roots, MCP/LSP servers or web opt-in")
         if "keybindings" in data.get("tui", {}):
             raise ValueError("project configuration cannot change trusted keyboard shortcuts")
         if any(data.get("agent", {}).get(name) for name in ("inherit_env", "checks")):
@@ -433,6 +437,10 @@ class Settings:
                 secrets.update(entry.get("headers", {}).values())
                 from .mcp_config import environment_credentials
                 secrets.update(environment_credentials(entry.get("env", {}).items()))
+            for entry in layer.get("lsp", {}).get("servers", {}).values():
+                from .mcp_config import environment_credentials
+                names.update(entry.get("env_from", {}).values())
+                secrets.update(environment_credentials(entry.get("env", {}).items()))
         secrets.update(env[name] for name in names if env.get(name))
         headers = dict(selected.get("headers", {}))
         from .mcp_config import credential_parts
@@ -474,6 +482,10 @@ class Settings:
             from .mcp_config import parse_servers
             combined = {**self.data.get("mcp", {}).get("servers", {}), **profile.get("mcp", {}).get("servers", {})}
             values["mcp_servers"] = tuple(server.resolve(env) for server in parse_servers(combined))
+        if "lsp_servers" in values:
+            from .lsp_config import parse_servers as parse_lsp
+            combined_lsp = {**self.data.get("lsp", {}).get("servers", {}), **profile.get("lsp", {}).get("servers", {})}
+            values["lsp_servers"] = tuple(server.resolve(env) for server in parse_lsp(combined_lsp))
         tool_policy = {**self.data.get("tools", {}), **profile.get("tools", {})}
         if self.project_path:
             project_values = _flatten(self.project_data, self.project_path.parent)
@@ -583,6 +595,7 @@ def public_config(config, metadata):
             "web": {"enabled": config.web_enabled, "direct_only": True, "persistent_cache": False},
             "background": {"enabled": config.background_enabled, "timeout": config.background_timeout, "persistent": False},
             "mcp": {"servers": [server.public() for server in config.mcp_servers]},
+            "lsp": {"servers": [server.public() for server in config.lsp_servers]},
             "execution": {"env_allowlist": config.env_allowlist, "env_names": [name for name, _ in config.command_env],
                           "max_output": config.max_output, "output_limit": config.command_output_limit or config.max_output},
             "storage": {"session_dir": str(config.session_dir) if config.session_dir else None,

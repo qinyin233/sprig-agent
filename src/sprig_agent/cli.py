@@ -22,6 +22,7 @@ from .skills import local_arguments as skill_arguments
 from .mcp import local_arguments as mcp_arguments
 from .web_fetch import local_arguments as web_arguments
 from .jobs import local_arguments as job_arguments
+from .lsp import local_arguments as lsp_arguments
 
 
 def approve(description):
@@ -109,6 +110,7 @@ def chat(agent, task, messages, emit, *, autostart=True, model_selection=None, s
             return status
         try:
             if task == "/help":
+                emit('/lsp shows configured servers without startup; /lsp definition|references|implementation|hover SERVER PATH LINE COLUMN or symbols|diagnostics SERVER PATH asks fresh approval; /lsp result ID [OFFSET] reads a local page. Positions are 1-based Unicode columns. Servers cannot apply edits or commands through this client.')
                 emit('/jobs lists owned tasks; /job start {"argv":["program","arg"]} approves a background command; /job status|output|wait|cancel ID observes or freshly confirms stopping it. Enable execution.background or --background. Exit/reset stops jobs; restore never restarts them.')
                 emit("/web shows local snapshot status; /web URL approves one public HTTP(S) GET; /web result ID [OFFSET] pages retained text without refetch. Enable with [web] enabled=true or --web. No auth, redirects, proxy, scripts or automatic replay.")
                 emit("/timeline [OFFSET] lists local user turns; /fork current or /fork MESSAGE confirms a new branch through that whole turn. Workspace files are not rolled back and actions are not replayed. Only the next task or /continue requests the model.")
@@ -144,6 +146,21 @@ def chat(agent, task, messages, emit, *, autostart=True, model_selection=None, s
                     if result.get("forked"):
                         history_ready, status = True, 2
                     emit(json.dumps(result, ensure_ascii=False))
+            elif task == "/lsp" or task.startswith("/lsp "):
+                approved = False
+                def observe_lsp(phase):
+                    nonlocal approved
+                    approved |= phase == "approved"
+                with agent.tools.observe_actions(observe_lsp):
+                    try:
+                        result = agent.tools.execute("lsp", lsp_arguments(task[5:].strip() if task.startswith("/lsp ") else ""))
+                    finally:
+                        # A failed/cancelled server may already have acted.
+                        if approved:
+                            status = 2
+                            if history_ready:
+                                agent.record_workspace_change(messages, {"action": "command", "path": ".", "outcome": "uncertain"})
+                emit(json.dumps(result, ensure_ascii=False))
             elif task == "/jobs" or task == "/job" or task.startswith("/job "):
                 name, arguments = job_arguments(task[5:].strip() if task.startswith("/job ") else "")
                 result = agent.tools.execute(name, arguments)
