@@ -274,7 +274,7 @@ class CommandLogs:
         selected = [row["id"] for row in state["records"] if row["owner"] == self.owner and row["scope"] == self.scope]
         if not selected:
             return {"deleted": 0}
-        if not approve("DELETE retained command logs from this conversation only: " + json.dumps(selected)):
+        if approve("DELETE retained command logs from this conversation only: " + json.dumps(selected)) is not True:
             return {"approved": False, "deleted": 0}
         self.check()
         with self._open() as store:

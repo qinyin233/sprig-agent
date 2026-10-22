@@ -243,7 +243,7 @@ def chat(agent, task, messages, emit, *, autostart=True, model_selection=None, s
             elif task == "/compact":
                 preview = agent.context_preview(messages)
                 emit(json.dumps(preview, ensure_ascii=False, indent=2))
-                if approve(f"Enable configured request-only compaction? Complete historical reads may survive within the byte caps; closed old inspections may be folded if still oversized. User instructions, failures, refusals and the last {agent.config.context_keep_recent_messages} messages are preserved; saved history is unchanged."):
+                if approve(f"Enable configured request-only compaction? Complete historical reads may survive within the byte caps; closed old inspections may be folded if still oversized. User instructions, failures, refusals and the last {agent.config.context_keep_recent_messages} messages are preserved; saved history is unchanged.") is True:
                     agent.compact_context = True
             elif task in {"/changes", "/undo", "/redo", "/discard-history"}:
                 result = agent.tools.change_action(task[1:])
@@ -468,7 +468,7 @@ def main(argv=None):
                 result = store.prune(lambda prompt: approve(terminal_text(prompt)), dry_run=args.dry_run)
                 print(terminal_text(json.dumps(result, ensure_ascii=False, indent=2)))
                 return 2 if "error" in result or result.get("declined") or result.get("skipped") else 0
-            elif approve("DELETE local session " + terminal_text(args.delete_session) + "\nThis deletes its saved transcript; it does not change workspace files."):
+            elif approve("DELETE local session " + terminal_text(args.delete_session) + "\nThis deletes its saved transcript; it does not change workspace files.") is True:
                 store.delete(args.delete_session)
                 print("Local session deleted")
             else:

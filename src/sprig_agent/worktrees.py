@@ -190,7 +190,7 @@ def worktree_action(config, approve, *, path=None, ref="HEAD", cancel_event=None
         def confirm(description):
             nonlocal add_attempted
             check()
-            answer = approve(redact("LOCAL WORKTREE MANAGEMENT; does not switch the current conversation.\n" + description, config.secrets))
+            answer = approve(redact("LOCAL WORKTREE MANAGEMENT; does not switch the current conversation.\n" + description, config.secrets)) is True
             if answer:
                 check()
                 if adding and not created:

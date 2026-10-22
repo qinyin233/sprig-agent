@@ -1,0 +1,126 @@
+{
+  "scope": "literal True approval contract; not OS sandboxing, remote CI, or model task performance",
+  "base_commit": "9273228cfe0530a345f27b9abe0f5a80ac57219b",
+  "source_manifest": {
+    "src/sprig_agent": {
+      "files": 63,
+      "sha256": "48a6d7835590ba4dda925ae0fedaa2e8db5841c7f474101d6fece440231ee24e"
+    },
+    "tests": {
+      "files": 81,
+      "sha256": "158d00d3383176fb8ab0f020eab174f68db94d8f6c852e0ddd07ff2397c4fb26"
+    },
+    "tests/fixtures": {
+      "files": 2,
+      "sha256": "a10227266217be66894ffec586fc42d0bbfbb59bf031cf4867e300b707542385"
+    }
+  },
+  "new_tests": {
+    "count": 14,
+    "scope": [
+      "real file writes and child processes",
+      "per-action approval and cancellation/exception propagation",
+      "private configuration creation",
+      "independent MCP/LSP/web transport gates",
+      "real private log/session deletion",
+      "model change and conversation branch preflight",
+      "real Git checkout refusal without attempted flag",
+      "actual Textual callbacks and private deletion"
+    ]
+  },
+  "reproduction": {
+    "initial_tests": 11,
+    "failed_subtests": 54,
+    "errors": 0,
+    "scope": "after correcting test setup, before production fix; later added three broader integration regressions"
+  },
+  "local_suites": [
+    {
+      "platform": "native Windows",
+      "python": "3.13.0",
+      "command": "uv run --locked python -m unittest discover -s tests -q",
+      "total": 1216,
+      "passed": 1197,
+      "skipped": 19,
+      "seconds": 411.679,
+      "exit_code": 0,
+      "log_sha256": "a28a375218787fc577307464c099e3cd019ae28e9c0b4625767b2cbf19e74d35"
+    },
+    {
+      "platform": "WSL Ubuntu",
+      "python": "3.13.14",
+      "command": "UV_PROJECT_ENVIRONMENT=.venv-wsl uv run --locked python -m unittest discover -s tests -q",
+      "total": 1216,
+      "passed": 1193,
+      "skipped": 23,
+      "seconds": 320.505,
+      "exit_code": 0,
+      "log_sha256": "dc164fbca6fdf15177cfb303fba2c4c8039bbda6d4ab0428d176eb0d68c230d7"
+    },
+    {
+      "platform": "native Windows",
+      "python": "3.11.14",
+      "suite": "approval types, local actions, model selection, forks, worktrees, retention, logs, LSP, MCP stdio, web, summary; fresh no-cache non-editable installation",
+      "total": 177,
+      "passed": 177,
+      "skipped": 0,
+      "seconds": 103.195,
+      "exit_code": 0,
+      "log_sha256": "0afad0bd6986d479ae1d6e3c141fc082776da3fba869d798f5706e6a626b2aeb"
+    },
+    {
+      "platform": "native Windows",
+      "python": "3.12.12",
+      "suite": "mini SDK",
+      "total": 25,
+      "passed": 25,
+      "skipped": 0,
+      "seconds": 29.546,
+      "exit_code": 0,
+      "log_sha256": "d2807e16fa6136766728e2ccc7f197677bb6c445fd09635851b5517669b881a6"
+    },
+    {
+      "platform": "WSL Ubuntu",
+      "python": "3.12.13",
+      "suite": "mini SDK",
+      "total": 25,
+      "passed": 25,
+      "skipped": 0,
+      "seconds": 134.185,
+      "exit_code": 0,
+      "log_sha256": "2336ec72723dacc1aff59c49241795106a8579df6052fc339ab9e3ed7539b6d2"
+    }
+  ],
+  "installed_wheel": {
+    "source_modules_matched": 63,
+    "approval_tests": 14,
+    "skipped": 0,
+    "passed": true,
+    "new_private_target": true,
+    "no_cache": true,
+    "dependencies": "existing locked local dependencies"
+  },
+  "other_checks": [
+    "four uv locks",
+    "generated Draft 2020-12 JSON Schema and full TOML example",
+    "compileall",
+    "CLI help",
+    "wheel and sdist",
+    "added credential-shape scan and local Markdown links"
+  ],
+  "remote_ci": {
+    "triggered_this_batch": false,
+    "status": "pending/frozen",
+    "resume_not_before": "2026-11-01 Asia/Singapore",
+    "resume_requires": "verify account restriction and previous exact gate; date alone is insufficient",
+    "commit_marker": "[skip ci]"
+  },
+  "limits": [
+    "only literal True is authorization; host callback must represent an actual user decision",
+    "no OS backend changes",
+    "platform skips are not passes",
+    "local WSL is not native Ubuntu CI",
+    "no macOS or full Python matrix",
+    "no external model call on this modified source; the earlier grep trial uses clean source 9273228 and remained 635/642"
+  ]
+}

@@ -282,7 +282,7 @@ class McpManager:
                            + "Limits: 64 KiB requests, 1 MiB frames, 64 MiB stdout / 8 MiB discarded stderr per connection.\n"
                            + json.dumps(params, ensure_ascii=False)
                            + "\nConnecting starts the configured executable now; it can act before any later RPC. No automatic installation, restart, fallback or retry. Closing the conversation kills the owned process tree; this does not provide an OS sandbox.")
-        if not self.approve(description):
+        if self.approve(description) is not True:
             return {"approved": False, "error": "MCP operation declined; no request sent"}
         self.check()
         try:

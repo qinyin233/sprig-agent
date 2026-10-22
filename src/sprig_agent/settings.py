@@ -108,7 +108,7 @@ def initialize_config(path, approve):
         pass
     else:
         raise ValueError("configuration already exists; edit it locally or choose another --config path")
-    if not approve("CREATE private Sprig configuration: " + str(path) + "\n" + TEMPLATE):
+    if approve("CREATE private Sprig configuration: " + str(path) + "\n" + TEMPLATE) is not True:
         return False
     with config_parent(path, create=True) as (directory, name):
         directory.write_new(name, TEMPLATE.encode("utf-8"), private=True)

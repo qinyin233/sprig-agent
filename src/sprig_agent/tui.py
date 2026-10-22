@@ -669,6 +669,7 @@ class SprigApp(App[int]):
                 return
 
             def decide(approved):
+                approved = approved is True
                 answer[0] = approved
                 self.approval = None
                 if approved and self.local_action in {"run", "job", "worktree-create", "worktree-list", "mcp", "lsp"}:
@@ -1201,7 +1202,7 @@ class SprigApp(App[int]):
         name = self.query_one("#session-name", Input).value.strip()
 
         def load(approved=True):
-            if not approved:
+            if approved is not True:
                 return
             try:
                 history = self.get_store().load(name)
@@ -1234,7 +1235,7 @@ class SprigApp(App[int]):
 
     def new_conversation(self):
         def reset(approved=True):
-            if not approved or self.busy:
+            if approved is not True or self.busy:
                 return
             # Detach autosave before replacing history: never overwrite the old
             # session on the next turn, and release its interprocess lease.
@@ -1557,7 +1558,7 @@ class SprigApp(App[int]):
                 preview = self.agent.context_preview(self.messages)
 
                 def compact(approved):
-                    if approved:
+                    if approved is True:
                         self.agent.compact_context = True
                         self.event("已启用请求上下文压缩；保存的完整对话保留")
 
@@ -1567,7 +1568,7 @@ class SprigApp(App[int]):
                 name = self.query_one("#session-name", Input).value.strip()
 
                 def delete(approved):
-                    if approved:
+                    if approved is True:
                         try:
                             self.get_store().delete(name)
                             if name == self.session_name:

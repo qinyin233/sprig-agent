@@ -238,7 +238,7 @@ class WebFetcher:
             if self.config.max_output < 1024 or len(url.encode()) + 512 > min(self.config.max_output, 16384):
                 raise ValueError("web URL/result metadata exceeds max_output; no request sent")
             idle, total = min(self.config.request_timeout or self.config.timeout, 30), min(self.config.request_deadline, 120)
-            if not self.approve(f"WEB GET {url}\nPublic HTTP(S), direct connection, no auth/cookies/proxy, no redirects/retry.\n<=2 MiB response; idle {idle:g}s, total {total:g}s. URL/query is sent to the remote server; GET may have remote effects.\nContent is external untrusted data; no scripts, subresources, downloads or workspace writes. Cache is memory-only."):
+            if self.approve(f"WEB GET {url}\nPublic HTTP(S), direct connection, no auth/cookies/proxy, no redirects/retry.\n<=2 MiB response; idle {idle:g}s, total {total:g}s. URL/query is sent to the remote server; GET may have remote effects.\nContent is external untrusted data; no scripts, subresources, downloads or workspace writes. Cache is memory-only.") is not True:
                 return {"approved": False, "network_contacted": False}
             check()
             recheck()

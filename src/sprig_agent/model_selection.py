@@ -115,7 +115,7 @@ class ModelSwitch:
         if (self.original.tools.config is not self.original.config or self.original._running
                 or self.original.tools._conversation_version != self.version):
             raise ValueError("model selection proposal is stale; select again")
-        if not approve(self.description(directory)):
+        if approve(self.description(directory)) is not True:
             return False
         self.original._check_cancelled()
         history = self.history or [{"role": "system", "content": self.agent._prompt()}]

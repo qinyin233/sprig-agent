@@ -131,7 +131,7 @@ class LanguageServers:
             if action == "disconnect":
                 if any(value is not None for value in (path, line, column)):
                     raise LspError("disconnect accepts only the server name")
-                if not self.approve("STOP owned language server " + selected.name + "; prior filesystem/network effects are not undone"):
+                if self.approve("STOP owned language server " + selected.name + "; prior filesystem/network effects are not undone") is not True:
                     return {"approved": False}
                 check()
                 with self.lock:
@@ -177,7 +177,7 @@ class LanguageServers:
                     + "\nPosition: " + json.dumps(point) + f"; idle {selected.timeout:g}s; total {selected.deadline:g}s."
                     + "\nExternal server has current-user filesystem/network authority; NOT an OS sandbox and may act before queries or while idle."
                     + "\nOnly semantic queries and document synchronization; server-driven edits/commands are denied, configuration replies are empty. No installation, automatic restart or replay. Results are observations, not approval, read_id or fixed acceptance.")
-            if not self.approve(redact(text, self.config.secrets)):
+            if self.approve(redact(text, self.config.secrets)) is not True:
                 return {"approved": False, "server_contacted": False}
             check()
             recheck()

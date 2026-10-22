@@ -441,7 +441,7 @@ class SessionStore:
                           + json.dumps({"bytes": record["bytes"], "modified_ns": record["modified_ns"],
                                         "policy": {"max_age_days": age, "max_count": count}})
                           + "\nThis permanently deletes this transcript. Each candidate requires new approval.")
-                if not approve(redact(prompt, self.config.secrets)):
+                if approve(redact(prompt, self.config.secrets)) is not True:
                     report["declined"] = True
                     break
                 check_cancelled()

@@ -288,7 +288,7 @@ class Agent:
             "No tools are provided or executed. Full originals and the recent tail remain available. "
             "A summary is not approval, current file evidence, or acceptance. No automatic retry.\n"
             + json.dumps(report, ensure_ascii=False))
-        if not approved:
+        if approved is not True:
             return {**report, "approved": False, "network_contacted": False}
         self._check_cancelled()
         source_digest = fingerprint(messages, report["source_end"], self._check_cancelled)

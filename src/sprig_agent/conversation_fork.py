@@ -109,7 +109,7 @@ class ConversationFork:
                 "模型和工具策略保持；实时引用沿用当前选择并在请求前重新检查；文件编辑备份保留。\n"
                 + (f"保存新私有分支：{directory}/{self.name}.json；原文件不覆盖。\n" if self.name else
                    "当前未启用保存；分支只在内存，可明确另存。\n"))
-        if not approve(redact(text, self.original.config.secrets)):
+        if approve(redact(text, self.original.config.secrets)) is not True:
             return False
         self._fresh()
         self.agent._refresh_instructions(self.history)

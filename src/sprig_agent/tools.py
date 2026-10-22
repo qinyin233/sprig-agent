@@ -225,7 +225,7 @@ class Tools:
         if observer is not None:
             observer("waiting")
         self._check_cancelled()
-        approved = self.approve(description)
+        approved = self.approve(description) is True
         if observer is not None:
             observer("approved" if approved else "rejected")
         self._check_cancelled()
