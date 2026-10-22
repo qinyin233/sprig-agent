@@ -78,6 +78,9 @@ while True:
         time.sleep(.25)
     request = json.loads(line)
     log(request)
+    if active == "marker_wait" and "id" in request:
+        Path("LOCAL_EFFECT").write_text("CREATED")
+        continue
     if "id" not in request:
         continue
     if active == "waiting":

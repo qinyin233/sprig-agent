@@ -1,6 +1,7 @@
 """Terminal entry point; approvals default to no, including non-interactive stdin."""
 
 import argparse
+from contextlib import contextmanager
 import json
 import os
 from pathlib import Path
@@ -90,6 +91,25 @@ def chat(agent, task, messages, emit, *, autostart=True, model_selection=None, s
         except (OSError, ValueError, ChangeError, ProviderError, SessionError) as error:
             recover(False, error)
 
+    @contextmanager
+    def local_command():
+        """Observe actual approval, including commands that never return a result."""
+        nonlocal status
+        approved = False
+        def observe(phase):
+            nonlocal approved
+            approved |= phase == "approved"
+        with agent.tools.observe_actions(observe):
+            try:
+                yield
+            finally:
+                if approved:
+                    status = 2
+                    agent.tools.read_versions.clear()
+                    agent.tools.index.clear()
+                    if history_ready:
+                        agent.record_workspace_change(messages, {"action": "command", "path": ".", "outcome": "uncertain"})
+
     if task or (messages is not None and autostart):
         run(task)
     emit("Chat ready. Enter a task; /continue, /help, /status, /ref PATH, /refs, /unref PATH, /context, /changes or /exit.")
@@ -147,27 +167,14 @@ def chat(agent, task, messages, emit, *, autostart=True, model_selection=None, s
                         history_ready, status = True, 2
                     emit(json.dumps(result, ensure_ascii=False))
             elif task == "/lsp" or task.startswith("/lsp "):
-                approved = False
-                def observe_lsp(phase):
-                    nonlocal approved
-                    approved |= phase == "approved"
-                with agent.tools.observe_actions(observe_lsp):
-                    try:
-                        result = agent.tools.execute("lsp", lsp_arguments(task[5:].strip() if task.startswith("/lsp ") else ""))
-                    finally:
-                        # A failed/cancelled server may already have acted.
-                        if approved:
-                            status = 2
-                            if history_ready:
-                                agent.record_workspace_change(messages, {"action": "command", "path": ".", "outcome": "uncertain"})
+                with local_command():
+                    result = agent.tools.execute("lsp", lsp_arguments(task[5:].strip() if task.startswith("/lsp ") else ""))
                 emit(json.dumps(result, ensure_ascii=False))
             elif task == "/jobs" or task == "/job" or task.startswith("/job "):
                 name, arguments = job_arguments(task[5:].strip() if task.startswith("/job ") else "")
-                result = agent.tools.execute(name, arguments)
+                with local_command():
+                    result = agent.tools.execute(name, arguments)
                 emit(json.dumps(result, ensure_ascii=False))
-                if name == "run" and result.get("approved") is True:
-                    status = 2
-                    agent.record_workspace_change(messages, {"action": "command", "path": ".", "outcome": "uncertain"})
             elif task == "/web":
                 emit(json.dumps(agent.tools.web.status(), ensure_ascii=False))
             elif task.startswith("/web "):
@@ -175,11 +182,8 @@ def chat(agent, task, messages, emit, *, autostart=True, model_selection=None, s
             elif task == "/mcp":
                 emit(json.dumps(agent.tools.mcp_manager.status(), ensure_ascii=False))
             elif task.startswith("/mcp "):
-                result = agent.tools.mcp(**mcp_arguments(task.partition(" ")[2]))
-                if result.get("approved") is True:
-                    status = 2
-                    if history_ready:
-                        agent.record_workspace_change(messages, {"action": "external MCP operation", "path": ".", "outcome": "uncertain"})
+                with local_command():
+                    result = agent.tools.mcp(**mcp_arguments(task.partition(" ")[2]))
                 emit(json.dumps(result, ensure_ascii=False))
             elif task == "/skills":
                 emit(json.dumps(agent.tools.skills.catalog(), ensure_ascii=False))
@@ -202,14 +206,11 @@ def chat(agent, task, messages, emit, *, autostart=True, model_selection=None, s
                     emit("Use /worktree PATH to create a detached checkout, or /worktrees to list. The current conversation stays in this workspace.")
                     continue
                 from .worktrees import worktree_action
-                result = worktree_action(agent.config, agent.tools.approve,
-                                         path=task[len("/worktree "):].strip() if task.startswith("/worktree ") else None,
-                                         cancel_event=agent.cancel_event)
-                if result.get("commands_approved") and messages:
-                    status = 2
-                    if history_ready:
-                        agent.record_workspace_change(messages, {"action": "command", "path": ".", "outcome": "uncertain"})
-                elif "error" in result and status == 0:
+                with local_command():
+                    result = worktree_action(agent.config, agent.tools.request_approval,
+                                             path=task[len("/worktree "):].strip() if task.startswith("/worktree ") else None,
+                                             cancel_event=agent.cancel_event)
+                if "error" in result and status == 0:
                     status = 2
                 emit(json.dumps(redact(result, agent.config.secrets), ensure_ascii=False, indent=2))
             elif task == "/status":
@@ -266,12 +267,9 @@ def chat(agent, task, messages, emit, *, autostart=True, model_selection=None, s
                 emit(json.dumps(result, ensure_ascii=False, indent=2))
             elif task in {"/diff", "/git"}:
                 argv = ["git", "diff", "--", "."] if task == "/diff" else ["git", "status", "--short", "--", "."]
-                result = agent.tools.execute("run", {"argv": argv})
-                if result.get("approved") and messages:
-                    status = 2
-                    if history_ready:
-                        agent.record_workspace_change(messages, {"action": "command", "path": ".", "outcome": "uncertain"})
-                elif ("error" in result or result.get("approved") is False or result.get("returncode", 0) != 0) and status == 0:
+                with local_command():
+                    result = agent.tools.execute("run", {"argv": argv})
+                if ("error" in result or result.get("approved") is False or result.get("returncode", 0) != 0) and status == 0:
                     status = 2
                 emit(json.dumps(redact(result, agent.config.secrets), ensure_ascii=False))
             elif task.startswith("/"):
@@ -279,10 +277,6 @@ def chat(agent, task, messages, emit, *, autostart=True, model_selection=None, s
             else:
                 run(task)
         except KeyboardInterrupt:
-            if (task in {"/diff", "/git", "/worktrees"} or task.startswith("/worktree ")) and messages and history_ready:
-                # An interrupt can occur after an approved command starts.
-                # Retain only the uncertainty notice, never local command output.
-                messages.append({"role": "user", "content": "A local command was interrupted and may have changed the workspace; prior acceptance is stale. Inspect current files before continuing."})
             recover(True)
         except (OSError, ValueError, ChangeError, ProviderError, SessionError) as error:
             recover(False, error)

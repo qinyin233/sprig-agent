@@ -1,0 +1,122 @@
+{
+  "date": "2026-10-22",
+  "recorded_utc": "2026-10-22T06:59:03.933404+00:00",
+  "base_commit": "66c94f6b241a8b53eab16a141389dd7cf89daa0d",
+  "change": "local external-action approval events invalidate previous acceptance on success, errors and cancellation",
+  "source_manifest": {
+    "src/sprig_agent": {
+      "files": 63,
+      "sha256": "97c274a54e6e36863620d3920e457768959d3d4e077ef25c220ea4d81c6d1808"
+    },
+    "tests": {
+      "files": 79,
+      "sha256": "15d693989bf7da7dc6783f68cbf5ec561b77b0cac50a004f6673d260b35021ce"
+    },
+    "tests/fixtures": {
+      "files": 2,
+      "sha256": "a10227266217be66894ffec586fc42d0bbfbb59bf031cf4867e300b707542385"
+    }
+  },
+  "manifest_format": "LF-normalized SHA256 of compact ASCII JSON [relative_path,file_sha256] rows sorted by path, immediate Python files only.",
+  "reproduction": {
+    "initial_harness_tests": 8,
+    "failures_before_fix": 6,
+    "terminal_log_sha256": "36fb7e6ccf86ce3fdd1cb9984367704134aca536f29d3f25be7224faf151e701",
+    "scope": "Initial harness before production edits. Final tests additionally cover checkpoint callback failure and owner read-id invalidation; not a byte-identical pre/post benchmark."
+  },
+  "local_suites": [
+    {
+      "platform": "native Windows",
+      "python": "3.13.0",
+      "command": "uv run --locked python -m unittest discover -s tests -q",
+      "total": 1193,
+      "passed": 1174,
+      "skipped": 19,
+      "seconds": 505.179,
+      "exit_code": 0,
+      "terminal_log_sha256": "d6993d3ea99c80bf81101763d837c4ce8759688114ac147516e3e065018339b8"
+    },
+    {
+      "platform": "WSL Ubuntu-26.04",
+      "python": "3.13.14",
+      "command": "UV_PROJECT_ENVIRONMENT=.venv-wsl uv run --locked python -m unittest discover -s tests -q",
+      "total": 1193,
+      "passed": 1170,
+      "skipped": 23,
+      "seconds": 349.136,
+      "exit_code": 0,
+      "terminal_log_sha256": "b1ac1f761abb40fde7c4f79d2ebdc1710e91591c17b1e4e88469cd0f47c17c64"
+    }
+  ],
+  "compatibility_suites": [
+    {
+      "platform": "native Windows",
+      "python": "3.11.14",
+      "command": "UV_PROJECT_ENVIRONMENT=.venv-py311 uv run --locked --python 3.11 --no-editable python -m unittest tests.test_local_actions tests.test_lsp.LspChatTests tests.test_mcp_stdio tests.test_jobs tests.test_worktrees tests.test_acceptance_chat -q",
+      "total": 94,
+      "passed": 94,
+      "skipped": 0,
+      "seconds": 62.344,
+      "exit_code": 0,
+      "terminal_log_sha256": "b187328ae994d42e144c915af4f1825707f2df0b0aa1c0fb7880e6699cb10190"
+    }
+  ],
+  "legacy_test_update": "Full suite found three legacy fixtures that fabricated approved=true or interrupted execution without an actual approval. Replaced them with real disposable Git commands and actual approvals, disabled system/global Git config in those fixtures, preserved output privacy and cancellation assertions, and revalidated the final test tree.",
+  "installed_wheel": {
+    "source_comparison": {
+      "wheel_modules_matched": 63
+    },
+    "workflow": {
+      "installed_tests": 8,
+      "skipped": 0,
+      "passed": true,
+      "real_owned_processes_and_git": true,
+      "actual_cli_and_100x32_tui": true,
+      "private_history_no_replay": true,
+      "external_model_requests": 0
+    },
+    "scope": "Copied tests/fixtures in a disposable directory, isolated -I/-B child with installed package first. All imported sprig_agent modules checked to reside in the installed target. No repository src path is available in that disposable directory."
+  },
+  "tested_behaviors": [
+    "MCP stdio peer creates a file then waits; actual CLI cancellation kills the owned peer, retains private uncertainty notice and continues without replay.",
+    "Real background process creates a file; injected post-start result failure cannot leave CLI status 0 or omit the notice.",
+    "Background stop control failure records actual fresh approval; no lost success state in CLI/TUI.",
+    "Git/worktree cancellation in the approval callback, before approval, does not invent a side-effect notice.",
+    "Four real worktree approvals create one checkout and one notice, with old owner read_id invalidated.",
+    "MCP local status, background list and declined connection do not add notices or create processes.",
+    "Actual TUI runs a background command, then fixed independent acceptance, then freshly approves stop. Control failure invalidates the earlier result.",
+    "TUI checkpoint callback failure settles the operation with error, leaves task unverified, retains notice in memory and does not claim disk was updated.",
+    "Local command output and checkout target are absent from uploaded history; explicit continue sees only a fixed uncertainty notice."
+  ],
+  "upstream_read": {
+    "repository": "anomalyco/opencode",
+    "commit": "9d90d892dcbfc52b47e95b2ea31b8aba877128fd",
+    "path": "packages/core/src/permission.ts",
+    "scope": "assert/Deferred waiting, declined errors and pending cleanup reread; no upstream executable or tests run, no allow/always copied."
+  },
+  "other_checks": [
+    "uv lock --check",
+    "uv run --locked python -m compileall -q src tests scripts",
+    "uv run --locked sprig --help",
+    "uv build --wheel and isolated installed regression suite"
+  ],
+  "external_model_requests": 0,
+  "native_backend_changed": false,
+  "remote_ci": {
+    "status": "pending; frozen by user",
+    "triggered_this_batch": false,
+    "commit_marker": "[skip ci]",
+    "not_before": "2026-11-01 Asia/Singapore",
+    "prior_required_sha": "106b60ed11de6fdfa7756495bf3f17b74d9c7812",
+    "prior_required_run": "39556289305",
+    "resume_rule": "Verify account restriction and prior required gate before resuming CI-enabled batches; the date alone is insufficient."
+  },
+  "limitations": [
+    "Local Windows/WSL results do not replace native CI runners, macOS or the full Python matrix. Skips are not passes.",
+    "Post-start result/control/checkpoint faults are injected after actual process or UI work; these are robustness evidence, not model coding success or general failure-rate measurements.",
+    "Approved programs retain current-user authority; no OS sandbox, automatic rollback, file watcher, command snapshot or crash recovery of side effects is added.",
+    "Runtime snapshots still describe the last model run; they cannot override task invalidation after local operations.",
+    "CLI legacy operation error/cancellation exit codes remain; this batch unifies actual-approval invalidation and privacy, not every local-result status semantic.",
+    "No mini client rerun: client code and model transport were not changed; no new client or model performance claim."
+  ]
+}

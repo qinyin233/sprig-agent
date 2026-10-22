@@ -20,6 +20,8 @@ from sprig_agent.provider import ProviderError
 from sprig_agent.session import SessionStore, validate_history
 from sprig_agent.tools import Tools
 
+GIT_TEST_ENV = (("GIT_CONFIG_NOSYSTEM", "1"), ("GIT_CONFIG_SYSTEM", os.devnull), ("GIT_CONFIG_GLOBAL", os.devnull))
+
 
 class AcceptanceTests(unittest.TestCase):
     def setUp(self):
@@ -143,14 +145,21 @@ class ChatTests(unittest.TestCase):
         self.assertTrue(any("No task to continue" in line for line in emitted))
 
     def test_git_commands_show_local_results_without_uploading_them(self):
+        from tests.test_worktrees import init_repo
+        temporary = tempfile.TemporaryDirectory()
+        self.addCleanup(temporary.cleanup)
+        root = Path(temporary.name)
+        init_repo(root)
+        (root / "base.txt").write_text("fake-secret\n")
         agent, emitted = Mock(), []
-        agent.config.api_key = "fake-secret"
-        agent.config.secrets = ("fake-secret",)
-        agent.tools.execute.return_value = {"approved": True, "output": "diff fake-secret"}
-        with patch("builtins.input", side_effect=["/diff", "/git", "/exit"]):
-            self.assertEqual(cli.chat(agent, None, None, emitted.append), 0)
+        agent.config = Config(root, "fixture", api_key="fake-secret", command_env=GIT_TEST_ENV)
+        agent.tools = Tools(agent.config, lambda _: True)
+        self.addCleanup(agent.tools.close)
+        with patch.object(agent.tools, "execute", wraps=agent.tools.execute) as execute, \
+                patch("builtins.input", side_effect=["/diff", "/git", "/exit"]):
+            self.assertEqual(cli.chat(agent, None, None, emitted.append), 2)
         agent.run.assert_not_called()
-        self.assertEqual([call.args for call in agent.tools.execute.call_args_list], [
+        self.assertEqual([call.args for call in execute.call_args_list], [
             ("run", {"argv": ["git", "diff", "--", "."]}), ("run", {"argv": ["git", "status", "--short", "--", "."]})])
         self.assertNotIn("fake-secret", "".join(emitted))
 
@@ -178,7 +187,7 @@ class ChatRecoveryTests(unittest.TestCase):
         self.parent = Path(temporary.name)
         self.root = self.parent / "workspace"
         self.root.mkdir()
-        self.config = Config(self.root, "test", api_key="fixture-secret")
+        self.config = Config(self.root, "test", api_key="fixture-secret", command_env=GIT_TEST_ENV)
         self.store = SessionStore(self.parent / "sessions", self.config)
         self.addCleanup(self.store.close)
         self.store.ensure_new("chat")
@@ -271,9 +280,11 @@ class ChatRecoveryTests(unittest.TestCase):
         self.assertTrue(any("last status: 1" in line for line in self.emitted))
 
     def test_local_command_invalidates_prior_conclusions_without_uploading_its_output(self):
+        from tests.test_worktrees import init_repo
+        init_repo(self.root)
+        (self.root / "LOCAL_ONLY").write_text("fixture")
         agent = self.agent([{"role": "assistant", "content": "Done"}])
-        with patch.object(self.tools, "execute", return_value={"approved": True, "returncode": 0, "output": "LOCAL_ONLY"}), \
-                patch("builtins.input", side_effect=["/git", "/status", "/exit"]):
+        with patch("builtins.input", side_effect=["/git", "/status", "/exit"]):
             self.assertEqual(cli.chat(agent, "task", None, self.emitted.append), 2)
         self.assertEqual(len(self.requests), 1)
         saved = self.store.load("chat")
@@ -297,12 +308,19 @@ class ChatRecoveryTests(unittest.TestCase):
         self.assertTrue(any("no model request sent" in line for line in self.emitted))
 
     def test_interrupted_local_command_records_uncertainty_and_keeps_chat_open(self):
+        from tests.test_worktrees import init_repo
+        init_repo(self.root)
         agent = self.agent([{"role": "assistant", "content": "Done"}])
-        with patch.object(self.tools, "execute", side_effect=KeyboardInterrupt()), \
+        original = self.tools.run
+        def interrupted(*args, **kwargs):
+            result = original(*args, **kwargs)
+            self.assertTrue(result["approved"])
+            raise KeyboardInterrupt
+        with patch.object(self.tools, "run", side_effect=interrupted), \
                 patch("builtins.input", side_effect=["/git", "/status", "/exit"]):
             self.assertEqual(cli.chat(agent, "task", None, self.emitted.append), 130)
         self.assertEqual(len(self.requests), 1)
-        self.assertIn("prior acceptance is stale", self.store.load("chat")[-1]["content"])
+        self.assertIn("acceptance results are stale", self.store.load("chat")[-1]["content"])
 
 
 if __name__ == "__main__":

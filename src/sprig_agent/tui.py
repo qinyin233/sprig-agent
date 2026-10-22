@@ -671,7 +671,7 @@ class SprigApp(App[int]):
             def decide(approved):
                 answer[0] = approved
                 self.approval = None
-                if approved and self.local_action in {"run", "worktree-create", "worktree-list", "mcp", "lsp"}:
+                if approved and self.local_action in {"run", "job", "worktree-create", "worktree-list", "mcp", "lsp"}:
                     # Even a viewing command can invoke Git helpers. Treat its
                     # workspace effects conservatively, including cancellation.
                     self.invalidate_task()
@@ -817,7 +817,7 @@ class SprigApp(App[int]):
                     result = worktree_action(self.config, self.confirm, cancel_event=self.cancel_event, **arguments)
                 else:
                     result = self.tools.execute(name, arguments)
-                self.emit(("[显式摘要；不执行任务]\n" if name == "summary" else "[本地查看，不自动上传]\n")
+                self.emit(("[显式摘要；不执行任务]\n" if name == "summary" else "[本地操作结果，不自动上传]\n")
                           + json.dumps(result, ensure_ascii=False, indent=2))
                 if "error" in result or result.get("approved") is False or result.get("returncode", 0) != 0:
                     status, message = 2, "本地操作未完成"
@@ -853,11 +853,13 @@ class SprigApp(App[int]):
                 message += "；会话恢复或保存失败: " + self.safe(recovery_error)
         if local and self.local_command_approved:
             try:
+                self.tools.read_versions.clear()
+                self.tools.index.clear()
                 # Keep only the invalidation notice in model history; command
                 # output from the local operation is still not auto-uploaded.
                 self.agent.record_workspace_change(self.messages,
                                                    {"action": "command", "path": ".", "outcome": "uncertain"})
-            except (OSError, SessionError) as error:
+            except Exception as error:
                 status, message = 1, "本地命令后会话保存失败: " + self.safe(error)
         return status, message
 
