@@ -7,6 +7,7 @@ from .json_budget import JSON_OPTIONS, encoded_size
 from .planning import plan_result, validate_plan
 from .revisions import valid_read_id
 from .session import application_check
+from .input_inbox import INPUT_ID
 
 MAX_READ_METADATA_CHARS = 32768
 
@@ -36,8 +37,8 @@ def provider_messages(config, messages, *, check_cancelled=None):
             index += 2
             continue
         drop_reasoning = not config.preserve_reasoning or message.get("role") != "assistant"
-        if "sprig_check" in message or (drop_reasoning and "reasoning_content" in message):
-            message = {key: value for key, value in message.items() if key != "sprig_check"
+        if "sprig_check" in message or INPUT_ID in message or (drop_reasoning and "reasoning_content" in message):
+            message = {key: value for key, value in message.items() if key not in {"sprig_check", INPUT_ID}
                        and (key != "reasoning_content" or not drop_reasoning)}
         selected.append(message)
         index += 1

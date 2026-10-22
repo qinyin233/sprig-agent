@@ -9,6 +9,8 @@ import stat
 import sys
 import time
 import uuid
+import threading
+from functools import wraps
 from contextlib import contextmanager
 
 from .config import redact
@@ -18,6 +20,25 @@ from .provider import ProviderError, validate_message
 from .references import reference_state
 from .summary import summary_state
 from .command_logs import log_state
+from .input_inbox import INPUT_ID, UserInput, delivered_inputs, input_state, remaining_inputs
+
+_PRESERVE_INPUTS = object()
+
+
+def _serialized(method):
+    @wraps(method)
+    def call(self, *args, **kwargs):
+        with self._io_lock:
+            return method(self, *args, **kwargs)
+    return call
+
+
+def _owned_session(method):
+    @wraps(method)
+    def call(self, name, *args, **kwargs):
+        with self._reservation(name):
+            return method(self, name, *args, **kwargs)
+    return call
 
 MAX_SESSION = 8 * 1024 * 1024
 MAX_LIST_ENTRIES = 4096
@@ -83,9 +104,21 @@ def validate_history(messages):
         elif role in {"system", "user"} and isinstance(content, str):
             if (role == "system") != (index == 0):
                 raise SessionError("session must start with one system message")
-            clean.append({"role": role, "content": content})
+            row = {"role": role, "content": content}
+            if INPUT_ID in message:
+                try:
+                    if role != "user":
+                        raise ValueError
+                    row[INPUT_ID] = UserInput(message[INPUT_ID], content).id
+                except (ValueError, UnicodeError):
+                    raise SessionError("invalid delivered user input identity") from None
+            clean.append(row)
         else:
             raise SessionError("invalid session role or content")
+    try:
+        delivered_inputs(clean)
+    except (ValueError, UnicodeError):
+        raise SessionError("invalid or duplicate delivered user input identity") from None
     if clean[0]["role"] != "system":
         raise SessionError("missing system message")
     # A crash could have occurred after a side effect but before the result was saved.
@@ -97,6 +130,7 @@ def validate_history(messages):
 
 class SessionStore:
     def __init__(self, directory, config, *, create=True):
+        self._io_lock = threading.RLock()
         self.directory = Path(directory).expanduser().absolute()
         # macOS exposes these root-owned system paths as aliases into /private.
         # Normalize only these known aliases; user-created symlinks anywhere
@@ -112,6 +146,7 @@ class SessionStore:
         self.loaded_references = reference_state()
         self.loaded_summary = None
         self.loaded_logs = None
+        self.loaded_inputs = input_state()
         # A nested workdir must not allow storing transcripts elsewhere in the same repo.
         forbidden = [config.workdir]
         for parent in (config.workdir, *config.workdir.parents):
@@ -154,12 +189,14 @@ class SessionStore:
             if directory_handle is not None:
                 directory_handle.close()
 
+    @_serialized
     def close(self):
         for lease in self._leases.values():
             lease.close()
         self._leases.clear()
         self.handle.close()
 
+    @_serialized
     def acquire(self, name):
         filename = self._filename(name)
         if name not in self._leases:
@@ -168,6 +205,7 @@ class SessionStore:
             except (OSError, ValueError):
                 raise SessionError("session is busy in another process or its lock file is unsafe") from None
 
+    @_serialized
     def release(self, name):
         lease = self._leases.pop(name, None)
         if lease is not None:
@@ -201,6 +239,7 @@ class SessionStore:
             raise SessionError(str(exc)) from None
         return info
 
+    @_serialized
     def ensure_new(self, name):
         filename = self._filename(name)
         with self._reservation(name):
@@ -210,7 +249,8 @@ class SessionStore:
                 return
             raise SessionError("session already exists; use --resume or choose a new name")
 
-    def save_new(self, name, messages, *, references=None, summary=None, logs=None):
+    @_serialized
+    def save_new(self, name, messages, *, references=None, summary=None, logs=None, inputs=_PRESERVE_INPUTS):
         """Reserve and save a fresh name together, retaining ownership only on success."""
         with self._reservation(name):
             self.ensure_new(name)
@@ -219,10 +259,21 @@ class SessionStore:
                 options["summary"] = summary
             if logs is not None:
                 options["logs"] = logs
+            if inputs is not _PRESERVE_INPUTS:
+                options["inputs"] = inputs
             self.save(name, messages, **options)
 
-    def save(self, name, messages, *, references=None, summary=None, logs=None):
+    @_serialized
+    @_owned_session
+    def save(self, name, messages, *, references=None, summary=None, logs=None, inputs=_PRESERVE_INPUTS):
         filename = self._filename(name)
+        previous = None
+        if inputs is _PRESERVE_INPUTS:
+            try:
+                previous = self._read_document(filename)
+            except FileNotFoundError:
+                pass
+            inputs = previous.get("input_inbox") if previous else None
         payload = {"version": 1, "binding": self.config.binding(), "messages": messages}
         if references is not None:
             try:
@@ -234,6 +285,13 @@ class SessionStore:
                     raise SessionError("configured credentials cannot appear in saved file reference paths")
                 payload["file_references"] = selected
         payload = redact(payload, self.config.secrets)
+        try:
+            inputs = remaining_inputs(redact(inputs, self.config.secrets), payload["messages"])
+            if inputs["pending"] or delivered_inputs(payload["messages"]) or previous and previous.get("version") == 2:
+                payload["version"] = 2
+                payload["input_inbox"] = inputs
+        except (ValueError, UnicodeError):
+            raise SessionError("invalid input inbox; no data was overwritten") from None
         if logs is not None:
             try:
                 payload["command_logs"] = log_state(redact(logs, self.config.secrets))
@@ -268,15 +326,17 @@ class SessionStore:
                 except FileNotFoundError:
                     pass
 
+    @_serialized
     def load(self, name):
         self.loaded_references = reference_state()
         self.loaded_summary = None
         self.loaded_logs = None
+        self.loaded_inputs = input_state()
         filename = self._filename(name)
         with self._reservation(name):
             return self._load(filename)
 
-    def _load(self, filename):
+    def _read_document(self, filename):
         self._check_file(filename)
         try:
             raw = self.handle.read(filename, MAX_SESSION, private=True)
@@ -288,10 +348,22 @@ class SessionStore:
             saved = json.loads(raw)
         except (ValueError, UnicodeError, RecursionError):
             raise SessionError("invalid session JSON") from None
-        if not isinstance(saved, dict) or saved.get("version") != 1:
+        if (not isinstance(saved, dict) or type(saved.get("version")) is not int
+                or saved["version"] not in (1, 2)
+                or saved["version"] == 2 and not isinstance(saved.get("input_inbox"), dict)):
             raise SessionError("unsupported session format")
         if saved.get("binding") != self.config.binding():
             raise SessionError("session endpoint/model/workdir changed; history will not be sent. Resume with the original settings or start a new session")
+        try:
+            if saved["version"] == 1 and ("input_inbox" in saved or delivered_inputs(saved.get("messages"))):
+                raise ValueError
+            remaining_inputs(saved.get("input_inbox"), saved.get("messages"))
+        except (ValueError, UnicodeError):
+            raise SessionError("invalid saved input inbox") from None
+        return saved
+
+    def _load(self, filename):
+        saved = self._read_document(filename)
         history = redact(validate_history(saved.get("messages")), self.config.secrets)
         try:
             selected = reference_state(saved.get("file_references"))
@@ -302,7 +374,54 @@ class SessionStore:
         self.loaded_references = selected
         self.loaded_summary = checkpoint
         self.loaded_logs = logs
+        self.loaded_inputs = remaining_inputs(redact(saved.get("input_inbox"), self.config.secrets), history)
         return history
+
+    @_serialized
+    @_owned_session
+    def pending_inputs(self, name):
+        saved = self._read_document(self._filename(name))
+        return remaining_inputs(redact(saved.get("input_inbox"), self.config.secrets), redact(saved.get("messages"), self.config.secrets))
+
+    @_serialized
+    @_owned_session
+    def enqueue_input(self, name, entry, *, history=None, references=None, summary=None, logs=None):
+        if not isinstance(entry, UserInput):
+            raise SessionError("structured user input is required")
+        entry = UserInput(entry.id, redact(entry.text, self.config.secrets))
+        try:
+            saved = self._read_document(self._filename(name))
+        except FileNotFoundError:
+            if history is None:
+                raise SessionError("a conversation snapshot is required before persisting input") from None
+            saved = {"messages": history, "input_inbox": input_state()}
+        else:
+            history = saved["messages"]  # Never overwrite a newer worker checkpoint with a UI snapshot.
+            references = saved.get("file_references")
+            summary = saved.get("summary_checkpoint")
+            logs = saved.get("command_logs")
+        pending = remaining_inputs(saved.get("input_inbox"), history)
+        delivered = delivered_inputs(history)
+        if entry.id in delivered:
+            if entry.text != delivered[entry.id]:
+                raise SessionError("user input identity was reused with different text")
+            return False
+        prior = next((row for row in pending["pending"] if row["id"] == entry.id), None)
+        if prior is not None and prior != entry.row():
+            raise SessionError("user input identity was reused with different text")
+        if prior is None:
+            pending["pending"].append(entry.row())
+        self.save(name, history, references=references, summary=summary, logs=logs, inputs=pending)
+        return True
+
+    @_serialized
+    @_owned_session
+    def discard_inputs(self, name):
+        saved = self._read_document(self._filename(name))
+        count = len(remaining_inputs(saved.get("input_inbox"), saved["messages"])["pending"])
+        self.save(name, saved["messages"], references=saved.get("file_references"), summary=saved.get("summary_checkpoint"),
+                  logs=saved.get("command_logs"), inputs=input_state())
+        return {"discarded_inputs": count, "network_contacted": False}
 
     def list(self):
         """List local metadata without loading transcripts into a conversation."""
@@ -318,6 +437,7 @@ class SessionStore:
     def _stamp(info):
         return (info.st_dev, info.st_ino, info.st_size, info.st_mtime_ns, info.st_ctime_ns)
 
+    @_serialized
     def _scan(self, *, cancel_event=None):
         """Bound discovery and reads, reporting limits without returning transcript text."""
         records, budget, scanned, reason = [], MAX_LIST_BYTES, 0, None
@@ -353,9 +473,14 @@ class SessionStore:
                         reason = "bytes"
                     else:
                         saved = json.loads(raw)
-                        if not isinstance(saved, dict) or saved.get("version") != 1 or not isinstance(saved.get("binding"), dict):
+                        if (not isinstance(saved, dict) or type(saved.get("version")) is not int
+                                or saved["version"] not in (1, 2) or not isinstance(saved.get("binding"), dict)
+                                or saved["version"] == 2 and not isinstance(saved.get("input_inbox"), dict)):
                             raise ValueError
                         history = validate_history(saved.get("messages"))
+                        if saved["version"] == 1 and ("input_inbox" in saved or delivered_inputs(history)):
+                            raise ValueError
+                        inputs = remaining_inputs(saved.get("input_inbox"), saved.get("messages"))
                         selected = reference_state(saved.get("file_references"))
                         checkpoint = summary_state(saved.get("summary_checkpoint"), history, binding=saved["binding"])
                         log_state(saved.get("command_logs"))
@@ -368,6 +493,8 @@ class SessionStore:
                                       _digest=hashlib.sha256(raw).digest(), _active=owned)
                         if selected["files"]:
                             record["reference_files"] = len(selected["files"])
+                        if inputs["pending"]:
+                            record["pending_inputs"] = len(inputs["pending"])
                         if checkpoint is not None:
                             record["summary_source_end"] = checkpoint["end"]
                 except SessionError as error:
@@ -468,6 +595,7 @@ class SessionStore:
         check_cancelled()
         return redact(report, self.config.secrets)
 
+    @_serialized
     def delete(self, name):
         """Caller must obtain explicit approval; active leases exclude other writers."""
         with self._reservation(name):

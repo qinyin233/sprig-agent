@@ -22,6 +22,7 @@ from .session import MAX_SESSION, validate_history
 from .summary import (HISTORY_SCHEMA, MAX_SUMMARY, PROMPT as SUMMARY_PROMPT, binding_digest, closed_end, fingerprint,
                       history_page, project as project_summary, public_message, summary_fields, summary_state)
 from .command_logs import READ_LOG_SCHEMA
+from .input_inbox import INPUT_ID, UserInput, delivered_inputs
 from .questions import QUESTION_SCHEMA
 from .skills import SKILL_SCHEMA
 from .mcp import MCP_SCHEMA, McpManager
@@ -524,10 +525,46 @@ class Agent:
                 self.config.secrets)})
             self._checkpoint(messages)
 
+    def _input_messages(self, messages, tasks):
+        delivered = delivered_inputs(messages)
+        rows = []
+        for task in tasks:
+            if isinstance(task, UserInput):
+                text = redact(task.text, self.config.secrets)
+                if task.id in delivered:
+                    if delivered[task.id] != text:
+                        raise ValueError("user input identity conflicts with delivered text")
+                    continue
+                delivered[task.id] = text
+                rows.append({"role": "user", "content": text, INPUT_ID: task.id})
+            else:
+                rows.append({"role": "user", "content": redact(task, self.config.secrets)})
+        return rows
+
+    def recover_inputs(self, messages, tasks):
+        """Explicit local delivery; neither a provider request nor tool replay."""
+        candidate = validate_history(messages) if messages else [{"role": "system", "content": self._prompt()}]
+        rows = self._input_messages(candidate, tasks)
+        candidate.extend(rows)
+        _, budget = prepare_context(self.config, self._request_messages(candidate, 1), self.schemas,
+                                    self.compact_context, check_cancelled=self._check_cancelled)
+        if not budget["within_budget"]:
+            raise ValueError("pending inputs exceed the request context budget; no inputs applied")
+        self._check_cancelled()
+        if messages is not None:
+            messages[:] = candidate  # Retain identities even if checkpointing fails; retries deduplicate.
+            candidate = messages
+        self._checkpoint(candidate)
+        return candidate, {"applied_inputs": len(rows), "network_contacted": False, "task_executed": False}
+
     def _steer(self, messages, pending_calls=()):
         """Accept FIFO user guidance only at a boundary with complete tool results."""
         tasks = self.receive_input()
         if not tasks:
+            return False
+        rows = self._input_messages(messages, tasks)
+        if not rows:
+            self._checkpoint(messages)
             return False
         # The provider requires a result for every saved tool intent. These calls
         # have not run; finish their records before inserting another user message.
@@ -535,7 +572,7 @@ class Agent:
             messages.append({"role": "tool", "tool_call_id": call["id"], "content": json.dumps({
                 "approved": False, "skipped": True,
                 "error": "Not executed: superseded by new user guidance. Inspect current state and follow the updated request."})})
-        messages.extend({"role": "user", "content": redact(task, self.config.secrets)} for task in tasks)
+        messages.extend(rows)
         self._checkpoint(messages)
         self._event("steering", "delivered")
         self.emit(f"[steering] 已加入 {len(tasks)} 条新要求；下一次模型请求将使用更新后的对话")
@@ -586,7 +623,8 @@ class Agent:
         # Runtime budget belongs to this invocation, not resumable history.
         # Include it before sizing/compaction so it cannot bypass the byte cap.
         messages = project_summary(messages, self.summary, self._check_cancelled, binding=self.config.binding())
-        messages = [dict(messages[0]), *messages[1:]]
+        messages = [dict(messages[0]), *({key: value for key, value in row.items() if key != INPUT_ID}
+                                      if INPUT_ID in row else row for row in messages[1:])]
         if isinstance(self.tools, Tools) and self.config.mcp_servers and self.config.tool_enabled("mcp") and not self.config.read_only:
             messages[0]["content"] += "\nConfigured MCP endpoints and local state (no connection implied):\n" + json.dumps(redact(self.tools.mcp_manager.status(), self.config.secrets), ensure_ascii=False)
         if isinstance(self.tools, Tools) and self.config.lsp_servers and self.config.tool_enabled("lsp") and not self.config.read_only:

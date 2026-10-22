@@ -92,7 +92,7 @@ def closed_end(messages, keep_recent, end=None, previous=None):
 
 
 def public_message(row):
-    return {key: value for key, value in row.items() if key not in {"native_state", "reasoning_content"}}
+    return {key: value for key, value in row.items() if key not in {"native_state", "reasoning_content", "sprig_input_id"}}
 
 
 def latest_failure(messages, end):

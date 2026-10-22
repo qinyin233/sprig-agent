@@ -1,0 +1,90 @@
+{
+  "scope": "bounded durable steering and explicit local recovery, not overall coding-agent parity",
+  "base_commit": "caf5b53828630263384117a3e20d78aeecc18bdc",
+  "source_manifest": {
+    "src/sprig_agent": {
+      "files": 64,
+      "sha256": "91ce4b0257366d5ad6339d26115c39b9a1990cbf11684439fece25fad64bd5a9"
+    },
+    "tests": {
+      "files": 83,
+      "sha256": "9d5bbbaa23efeddbea71bd8c275e1b7448e7cf0e237bf369e6bf1dd68e8b7b97"
+    },
+    "tests/fixtures": {
+      "files": 2,
+      "sha256": "3ad5a955740a3aee2fe792e30bf2b17bc6ab2945392584a173cbc668369beb79"
+    }
+  },
+  "manifest_algorithm": "sorted relative path + NUL + SHA256(LF-normalized bytes) hex + newline",
+  "new_regressions": 18,
+  "local_suites": [
+    {
+      "platform": "native Windows",
+      "tests": 1238,
+      "passed": 1219,
+      "skipped": 19,
+      "seconds": 391.157
+    },
+    {
+      "platform": "WSL Ubuntu (local)",
+      "tests": 1238,
+      "passed": 1215,
+      "skipped": 23,
+      "seconds": 331.627
+    },
+    {
+      "platform": "Windows Python 3.11 relevant modules",
+      "tests": 111,
+      "passed": 111,
+      "skipped": 0,
+      "seconds": 61.264
+    },
+    {
+      "platform": "Windows mini SDK",
+      "tests": 25,
+      "passed": 25,
+      "skipped": 0,
+      "seconds": 26.313
+    },
+    {
+      "platform": "WSL mini SDK",
+      "tests": 25,
+      "passed": 25,
+      "skipped": 0,
+      "seconds": 151.09
+    }
+  ],
+  "live_model_requests": 0,
+  "wheel_validation": {
+    "installed_wheel_tests": 18,
+    "skipped": 0,
+    "imported_installed_modules": 58,
+    "wheel_source_files_checked": 64
+  },
+  "other_checks": [
+    "four uv lock files",
+    "configuration schema and TOML example",
+    "compileall",
+    "CLI help",
+    "wheel and sdist build",
+    "added credential-shaped strings",
+    "local Markdown links"
+  ],
+  "corrected_during_development": [
+    "fresh reserved autosave has no transcript file yet",
+    "delivery metadata excluded at provider boundary",
+    "legacy steering assertions and CLI mocks updated",
+    "malformed version-2 inbox rejected"
+  ],
+  "ci": {
+    "triggered": false,
+    "status": "pending; user freeze before 2026-11-01 Asia/Singapore; account restriction must be verified afterwards"
+  },
+  "limits": [
+    "no native Ubuntu or macOS CI on this commit",
+    "skips are not passes",
+    "no exactly-once tool side-effect guarantee",
+    "no long-task model quality or performance result",
+    "no queue editing or reordering; unsaved inputs remain process-local"
+  ]
+}

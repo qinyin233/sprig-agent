@@ -211,9 +211,17 @@ class TuiTests(unittest.IsolatedAsyncioTestCase):
         app = self.app(ScriptedProvider([]))
         async with app.run_test(size=(110, 36)):
             app.pending_tasks = ["first guidance", "second guidance"]
-            self.assertEqual(app.take_pending(), ["first guidance"])
+            first = app.take_pending()
+            self.assertEqual([entry.text for entry in first], ["first guidance"])
+            self.assertEqual(len(app.pending_tasks), 2)  # Delivery is acknowledged only by a successful checkpoint.
+            history = [{"role": "system", "content": "system"},
+                       {"role": "user", "content": first[0].text, "sprig_input_id": first[0].id}]
+            app.checkpoint(history)
             self.assertEqual(app.pending_tasks, ["second guidance"])
-            self.assertEqual(app.take_pending(), ["second guidance"])
+            second = app.take_pending()
+            self.assertEqual([entry.text for entry in second], ["second guidance"])
+            history.append({"role": "user", "content": second[0].text, "sprig_input_id": second[0].id})
+            app.checkpoint(history)
             self.assertEqual(app.pending_tasks, [])
 
     async def test_configured_shortcuts_and_keys_keep_enter_and_modal_rejection(self):
@@ -933,7 +941,9 @@ class TuiTests(unittest.IsolatedAsyncioTestCase):
                 await self.until(pilot, lambda: not app.busy)
                 self.assertEqual(app.last_status, 130)
                 self.assertEqual(len(provider.calls), 1)
-                self.assertEqual(app.messages[-1], {"role": "user", "content": "keep this correction"})
+                self.assertEqual({key: value for key, value in app.messages[-1].items() if key != "sprig_input_id"},
+                                 {"role": "user", "content": "keep this correction"})
+                self.assertRegex(app.messages[-1]["sprig_input_id"], r"^i[0-9a-f]{32}$")
                 self.assertEqual(app.store.load("cancel-guidance"), app.messages)
                 await self.click(pilot, "#continue")
                 await self.until(pilot, lambda: not app.busy)

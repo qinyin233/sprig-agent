@@ -47,11 +47,15 @@ def check_argv(text):
         raise argparse.ArgumentTypeError("--check expects a JSON argv array, e.g. '[\"python\",\"-m\",\"unittest\"]'") from None
 
 
-def chat(agent, task, messages, emit, *, autostart=True, model_selection=None, switch_model=None, fork_conversation=None):
+def chat(agent, task, messages, emit, *, autostart=True, model_selection=None, switch_model=None, fork_conversation=None,
+         pending_control=None):
     """Keep context across turns; only a new task or /continue calls the model."""
     status = 0
     history_ready = True
     agent.restore_plan(messages)
+
+    def pending():
+        return bool(pending_control and pending_control("count", messages)[1]["pending_inputs"])
 
     def recover(cancelled, error=None):
         nonlocal messages, status, history_ready
@@ -75,6 +79,10 @@ def chat(agent, task, messages, emit, *, autostart=True, model_selection=None, s
 
     def run(task):
         nonlocal messages, status
+        if pending():
+            status = 2
+            emit("Saved inputs await recovery. Use /pending, then /pending apply or /pending discard before /continue. No model request sent.")
+            return
         if not history_ready:
             status = 1
             emit("History is not valid; no model request sent. Use local controls or /exit and start a new session.")
@@ -112,6 +120,8 @@ def chat(agent, task, messages, emit, *, autostart=True, model_selection=None, s
 
     if task or (messages is not None and autostart):
         run(task)
+    elif pending():
+        emit("Saved inputs await recovery: /pending previews them; /pending apply adds them locally; /pending discard asks fresh approval. /continue then requests the model.")
     emit("Chat ready. Enter a task; /continue, /help, /status, /ref PATH, /refs, /unref PATH, /context, /changes or /exit.")
     while True:
         try:
@@ -129,7 +139,22 @@ def chat(agent, task, messages, emit, *, autostart=True, model_selection=None, s
         if task == "/exit":
             return status
         try:
-            if task == "/help":
+            if pending() and (task.startswith("/model ") or task.startswith("/fork ") or task.startswith("/summary create")):
+                emit("Resolve /pending apply or /pending discard first; no model request sent.")
+                continue
+            if task == "/pending" or task.startswith("/pending "):
+                action = task[8:].strip() or "preview"
+                if action not in {"preview", "apply", "discard"}:
+                    raise ValueError("Use /pending [apply|discard]")
+                if pending_control is None:
+                    emit('{"pending_inputs": 0, "network_contacted": false}')
+                else:
+                    messages, result = pending_control(action, messages)
+                    if action == "apply" and result.get("applied_inputs"):
+                        status = 2
+                    emit(json.dumps(result, ensure_ascii=False))
+            elif task == "/help":
+                emit("/pending previews recovered inputs; /pending apply delivers them locally without a model call; /pending discard asks fresh approval to remove them. Continue explicitly afterwards.")
                 emit('/lsp shows configured servers without startup; /lsp definition|references|implementation|hover SERVER PATH LINE COLUMN or symbols|diagnostics SERVER PATH asks fresh approval; /lsp result ID [OFFSET] reads a local page. Positions are 1-based Unicode columns. Servers cannot apply edits or commands through this client.')
                 emit('/jobs lists owned tasks; /job start {"argv":["program","arg"]} approves a background command; /job status|output|wait|cancel ID observes or freshly confirms stopping it. Enable execution.background or --background. Exit/reset stops jobs; restore never restarts them.')
                 emit("/web shows local snapshot status; /web URL approves one public HTTP(S) GET; /web result ID [OFFSET] pages retained text without refetch. Enable with [web] enabled=true or --web. No auth, redirects, proxy, scripts or automatic replay.")
@@ -523,8 +548,23 @@ def main(argv=None):
             messages, attached = agent.attach_files(args.file, messages)
             emit("[attached snapshots] " + json.dumps(attached, ensure_ascii=False))
         if args.chat:
+            from .input_inbox import UserInput, input_preview
             from .model_selection import ModelSelection, ModelSwitch
             model_selection = ModelSelection(settings, options, os.environ, config)
+            def pending_control(action, messages):
+                try:
+                    state = store.pending_inputs(session_name) if store and session_name else {"version": 1, "pending": []}
+                except FileNotFoundError:
+                    state = {"version": 1, "pending": []}  # Reserved fresh autosave has no transcript yet.
+                if action == "count":
+                    return messages, {"pending_inputs": len(state["pending"])}
+                if action == "apply":
+                    return agent.recover_inputs(messages, [UserInput(**row) for row in state["pending"]])
+                if action == "discard" and state["pending"]:
+                    if confirm("Discard saved pending inputs? This does not run tasks or undo workspace actions.") is not True:
+                        return messages, {"approved": False, "network_contacted": False}
+                    return messages, store.discard_inputs(session_name)
+                return messages, input_preview(state, min(4096, config.max_output))
             def fork_conversation(target, messages):
                 from .conversation_fork import ConversationFork
                 nonlocal agent, store, session_name
@@ -564,7 +604,11 @@ def main(argv=None):
                         result["warning"] = "model changed, but old session lock cleanup failed; exit before resuming that file elsewhere"
                 return agent, messages, result
             return chat(agent, args.task, messages, emit, autostart=bool(args.task or args.resume),
-                        model_selection=model_selection, switch_model=switch_model, fork_conversation=fork_conversation)
+                        model_selection=model_selection, switch_model=switch_model, fork_conversation=fork_conversation,
+                        pending_control=pending_control)
+        if args.resume and store.pending_inputs(session_name)["pending"]:
+            emit("Saved pending inputs require explicit recovery. Resume with --chat and use /pending apply or /pending discard, then /continue. No model request sent.")
+            return 2
         _, complete = agent.run(args.task, messages)
         return 0 if complete else 2
     except KeyboardInterrupt:
