@@ -1,6 +1,6 @@
 # 正则代码检索与资源边界
 
-日期：2026-10-05。Sprig 的 `search` 默认仍按字面字符串检索，传入 `regex=true` 才解释表达式。该模式与原有文件/目录范围、glob、上下文和命中条数一起使用。
+日期：2026-10-05，接口更新于 2026-10-22。模型现在使用默认正则的 [grep](grep.md)，显式 `literal=true` 搜索原文；旧 `search` 仍默认字面字符串、`regex=true` 才解释表达式。以下旧入口示例和历史测量保持其原始条件；后端和资源边界共用。
 
 参考 [Pi grep 的实际实现](https://github.com/earendil-works/pi/blob/main/packages/coding-agent/src/core/tools/grep.ts)：它默认使用 ripgrep 正则，并提供 literal、glob、ignoreCase、context 和 limit。Sprig 使用锁定的本地 `google-re2==1.1.20251105`，保留文件工具自己的目录句柄、隐私检查和遍历预算。工具执行时不下载或启动外部搜索程序；这不意味着两者的全部正则语法相同。
 

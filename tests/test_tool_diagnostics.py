@@ -11,6 +11,17 @@ spec.loader.exec_module(module)
 
 
 class ToolDiagnosticsTests(unittest.TestCase):
+    def test_grep_default_regex_literal_and_legacy_diagnostics_do_not_publish_patterns(self):
+        tracker = module.ToolDiagnostics()
+        result = {"matches": [], "truncated": False, "timed_out": False}
+        self.assertTrue(tracker.record("grep", {"pattern": "private"}, result)["regex"])
+        self.assertFalse(tracker.record("grep", {"pattern": "private", "literal": True}, result)["regex"])
+        self.assertFalse(tracker.record("search", {"query": "private"}, result)["regex"])
+        report = tracker.record("grep", {"pattern": "private"}, result)
+        self.assertEqual(report["same_output_repeats"], 1)
+        self.assertNotIn("private", json.dumps(report))
+        self.assertNotIn("regex", tracker.record("grep", {"literal": 1}, result))
+
     def test_search_counts_and_coverage_do_not_publish_private_text(self):
         tracker = module.ToolDiagnostics()
         result = {"matches": [{"path": "private-path", "text": "private-content"}],

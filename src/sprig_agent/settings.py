@@ -495,7 +495,9 @@ class Settings:
                 raise ValueError("project configuration cannot disable trusted baseline checks")
             if values.get("check_after_edit") and project_values.get("check_after_edit") is False:
                 raise ValueError("project configuration cannot disable trusted edit checks")
-            if any(enabled and (tool_policy.get(name) is False or (name in {"edit_lines", "file_action"} and tool_policy.get("edit_file") is False))
+            if any(enabled and (tool_policy.get(name) is False
+                                or name in {"search", "grep"} and any(tool_policy.get(alias) is False for alias in ("search", "grep"))
+                                or name in {"edit_lines", "file_action"} and tool_policy.get("edit_file") is False)
                    for name, enabled in self.project_data.get("tools", {}).items()):
                 raise ValueError("project configuration cannot enable a disabled tool")
             if "excluded_paths" in project_values:
@@ -532,6 +534,9 @@ class Settings:
         if tool_policy.get("edit_file") is False:
             sources["tools.edit_lines"] = "tools.edit_file"
             sources["tools.file_action"] = "tools.edit_file"
+        for name, alias in (("search", "grep"), ("grep", "search")):
+            if tool_policy.get(name) is not False and tool_policy.get(alias) is False:
+                sources["tools." + name] = "tools." + alias
         def selection_source(entries):
             return next((label for value, label in entries if value), "default")
         sources["model"] = selection_source(((options.get("model"), "CLI"), (env.get("SPRIG_MODEL"), "environment"),

@@ -114,7 +114,7 @@ class NavigationFeedbackTests(unittest.TestCase):
         self.assertIn("between 0 and 10", result["error"])
         self.assertIn("read_file offset/limit or symbol", result["error"])
         self.assertNotIn("matches", result)
-        schema = next(item["function"] for item in TOOL_SCHEMAS if item["function"]["name"] == "search")
+        schema = next(item["function"] for item in TOOL_SCHEMAS if item["function"]["name"] == "grep")
         self.assertEqual(schema["parameters"]["properties"]["context"]["maximum"], 10)
         approve.assert_not_called()
 

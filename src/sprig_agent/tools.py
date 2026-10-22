@@ -66,12 +66,13 @@ TOOL_SCHEMAS = [
             "limit": {"type": "integer", "minimum": 1, "maximum": 10000}, "line_numbers": {"type": "boolean"},
             "cursor": {"type": "string", "maxLength": 80},
             "symbol": {"type": "string", "minLength": 1, "maxLength": 1024}}, ["path"]),
-    schema("search", "Literal/RE2 regex: no lookaround/backrefs; ASCII \\w/\\d/\\b; 1MiB/cooperative 1s. ignore_case: full literal/simple folding RE2. glob * within /, ** across, case-sensitive. output_mode content(context<=10), files or count(physical CR/LF lines/file, context=0). truncated/timed_out/skipped cannot prove absence.",
-           {"query": STRING, "path": STRING, "glob": {"type": "string", "minLength": 1, "maxLength": 256},
-            "ignore_case": {"type": "boolean"}, "regex": {"type": "boolean"},
+    schema("grep", "RE2 regex default; literal=true: exact text. No lookaround/backrefs; ASCII \\w/\\d/\\b; 1MiB/cooperative 1s. ignore_case: full literal/simple folding RE2. files/count: context=0, physical CR/LF lines. Check truncated/timed_out/skipped.",
+           {"pattern": {"type": "string", "minLength": 1, "maxLength": 1000}, "path": STRING,
+            "glob": {"type": "string", "minLength": 1, "maxLength": 256},
+            "ignore_case": {"type": "boolean"}, "literal": {"type": "boolean"},
             "context": {"type": "integer", "minimum": 0, "maximum": 10},
             "limit": {"type": "integer", "minimum": 1, "maximum": 1000},
-            "output_mode": {"enum": ["content", "files", "count"]}}, ["query"]),
+            "output_mode": {"enum": ["content", "files", "count"]}}, ["pattern"]),
     schema("project_map", "Python/JS/TS/TSX/Rust/Go/C/C++/Java declarations, 1-based. Case-insensitive literal name/path, exact/prefix first. include_calls: syntax, not resolved references. Check flags; read source before edits.",
            {"path": STRING, "query": {"type": "string", "minLength": 1, "maxLength": 256},
             "include_calls": {"type": "boolean"}}),
@@ -323,7 +324,7 @@ class Tools:
             if not isinstance(arguments, dict):
                 raise ToolError("tool arguments must be an object")
             method = {"list_files": self.list_files, "read_file": self.read_file,
-                      "search": self.search, "project_map": self.project_map,
+                      "search": self.search, "grep": self.grep, "project_map": self.project_map,
                       "edit_file": self.edit_file, "edit_lines": self.edit_lines,
                       "run": self.run, "update_plan": self.update_plan, "file_action": self.file_action,
                       "read_log": self.read_log, "question": self.question, "skill": self.skill, "mcp": self.mcp,
@@ -611,6 +612,16 @@ class Tools:
         # from content, including a secret outside the requested line range.
         if not any(secret in text for secret in self.config.credential_secrets):
             result["sha256"] = hashlib.sha256(raw).hexdigest()
+        return result
+
+    def grep(self, pattern, path=".", *, glob=_MISSING, ignore_case=False, literal=False, context=0, limit=100, output_mode="content"):
+        self._require_tool("grep")
+        if type(literal) is not bool:
+            raise ToolError("literal must be a boolean; false uses RE2 regex, true uses exact text")
+        result = self.search(pattern, path, glob=glob, ignore_case=ignore_case, regex=not literal,
+                             context=context, limit=limit, output_mode=output_mode)
+        # Legacy search's regex=true suggestion does not apply to this API.
+        result.pop("search_guidance", None)
         return result
 
     def search(self, query, path=".", *, glob=_MISSING, ignore_case=False, regex=False, context=0, limit=100, output_mode="content"):

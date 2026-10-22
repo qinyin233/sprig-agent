@@ -170,7 +170,7 @@ class SearchModeTests(unittest.TestCase):
             for mode in ("files", "count"):
                 self.assertIn("context=0", self.search(output_mode=mode, context=1)["error"])
             read.assert_not_called()
-        schema = next(item["function"] for item in TOOL_SCHEMAS if item["function"]["name"] == "search")
+        schema = next(item["function"] for item in TOOL_SCHEMAS if item["function"]["name"] == "grep")
         self.assertEqual(schema["parameters"]["properties"]["output_mode"]["enum"], ["content", "files", "count"])
 
     def test_literal_hint_does_not_change_semantics_compile_patterns_or_repeat_reads(self):

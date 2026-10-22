@@ -345,3 +345,6 @@ Sprig 本批实现[明确配置的 LSP 查询](../lsp.md)：复用归属明确�
 stdlib peer 只证明传输、策略与 CLI/TUI 集成；另以本机已安装 clangd 20.1.8 在临时 C++ 项目验证命名空间同名函数的定义/引用、符号和改动后版本化类型诊断，二者范围分开记录在[机器证据](../benchmarks/lsp-20261022.json)。本批不提供工作区符号、调用层级、rename/format/code action、动态能力和文件监视，不把有 LSP 接口等同于全项目索引完整或整体编码能力追平。CI 按用户要求继续冻结到 2026-11-01，之后仍先检查账户与旧 gate。
 
 2026-10-22 后续基础修正重新核对原 `dev@9d90d89` 的 `packages/core/src/permission.ts` 中 assert、Deferred 等待、DeclinedError 与 pending 清理：上游把授权决定、拒绝和后续工具结果分开，不能拿工具返回文字替代授权事件。Sprig 依据自身逐次批准规则统一[本地外部操作后的失效记录](../local-actions.md)，覆盖 Git/worktree/MCP/LSP/后台 start 与 cancel；不复制 allow/always。真实子进程和终端流程先复现后台结果丢失后仍返回成功、MCP 取消缺少提示、批准前取消被误记，以及 TUI 后台停止沿用旧状态，再修复并检查私有保存/继续不重放。该修正不构成统一持久事件流、命令快照或 OS 沙箱，亦不改变本研究的历史基线表。
+
+
+2026-10-22 检索接口补充：重新阅读同一 `dev@9d90d89` 的 [packages/core/src/tool/plugin/grep.ts](https://github.com/anomalyco/opencode/blob/9d90d892dcbfc52b47e95b2ea31b8aba877128fd/packages/core/src/tool/plugin/grep.ts)：工具名为 grep，非空 pattern、literal 默认 false，另有 path/include/caseSensitive/limit；结果转为文件和行预览，截断给出缩小查询的提示。该取样没有运行 OpenCode。Sprig 根据真实任务六次正则形式的字面查询失败，提供默认正则的 [grep](../grep.md)，继续使用原有本地 RE2、范围/隐私/限额，不复制通配持久授权或外部 ripgrep 启动。旧 search 默认行为保留，禁用任一名称同时禁用两者。原候选只读语义重放有命中，不证明模型任务成功率提升；真实失败和完整用量单列于[实测](../live-evaluation-20261022.md)。

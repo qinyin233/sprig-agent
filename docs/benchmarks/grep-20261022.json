@@ -1,0 +1,135 @@
+{
+  "scope": "regex-first grep interface and legacy compatibility; local implementation verification, not model success or remote CI",
+  "base_commit": "87598b222e10bf4aa6fb2abc23f7c50cd0d2d65e",
+  "source_manifest": {
+    "src/sprig_agent": {
+      "files": 63,
+      "sha256": "06beba230543d4122e14c2a4b0500465f0025f1ae0ada9f933e217cc33d6bec5"
+    },
+    "tests": {
+      "files": 80,
+      "sha256": "36cdaead6a44ff4c7007616c6b696f34fb17be9e587361fa04bbb792f1abf5f1"
+    },
+    "tests/fixtures": {
+      "files": 2,
+      "sha256": "a10227266217be66894ffec586fc42d0bbfbb59bf031cf4867e300b707542385"
+    }
+  },
+  "tool_schema_bytes": 4880,
+  "prior_schema_cap_bytes": 4932,
+  "local_suites": [
+    {
+      "platform": "native Windows",
+      "python": "3.13.0",
+      "command": "uv run --locked python -m unittest discover -s tests -q",
+      "total": 1202,
+      "passed": 1183,
+      "skipped": 19,
+      "seconds": 412.534,
+      "exit_code": 0,
+      "log_sha256": "80cec6d76a92bb179579b413da79bd9b8510a1a57ac7fe4d2108f09597bdde24"
+    },
+    {
+      "platform": "WSL Ubuntu",
+      "python": "3.13.14",
+      "command": "UV_PROJECT_ENVIRONMENT=.venv-wsl uv run --locked python -m unittest discover -s tests -q",
+      "total": 1202,
+      "passed": 1179,
+      "skipped": 23,
+      "seconds": 324.808,
+      "exit_code": 0,
+      "completion_evidence": {
+        "tool": "write_stdin",
+        "session_id": 18443,
+        "summary": "Ran 1202 tests in 324.808s; OK (skipped=23)"
+      },
+      "original_tmp_log_retained": false
+    },
+    {
+      "platform": "native Windows",
+      "python": "3.11.14",
+      "command": "UV_PROJECT_ENVIRONMENT=.venv-py311 uv run --no-cache --locked --python 3.11 --no-editable --reinstall-package sprig-agent python -m unittest tests.test_grep tests.test_regex_search tests.test_search_modes tests.test_configuration_profiles tests.test_tool_diagnostics tests.test_context_folding tests.test_context_edits tests.test_file_actions.FileActionTests.test_lifecycle_schema_does_not_increase_prior_tool_request_overhead -q",
+      "total": 94,
+      "passed": 94,
+      "skipped": 0,
+      "seconds": 9.544,
+      "exit_code": 0,
+      "log_sha256": "2044670dbe955922fb60664b47fe46080c5217df87e562174be7390a45d4d244"
+    },
+    {
+      "platform": "native Windows",
+      "suite": "mini SDK",
+      "python": "3.12.12",
+      "total": 25,
+      "passed": 25,
+      "skipped": 0,
+      "seconds": 38.327,
+      "exit_code": 0,
+      "log_sha256": "71c87a45cbc41c44800d6a6f3dde47b357c02d5b86bd77ac6ca1d16367a57476"
+    },
+    {
+      "platform": "WSL Ubuntu",
+      "suite": "mini SDK",
+      "python": "3.12.13",
+      "total": 25,
+      "passed": 25,
+      "skipped": 0,
+      "seconds": 135.971,
+      "exit_code": 0,
+      "completion_evidence": {
+        "tool": "write_stdin",
+        "session_id": 65481,
+        "summary": "Ran 25 tests in 135.971s; OK"
+      },
+      "original_tmp_log_retained": false
+    }
+  ],
+  "installed_wheel": {
+    "source_modules_matched": 63,
+    "grep_tests": 8,
+    "skipped": 0,
+    "passed": true,
+    "new_private_target": true,
+    "no_cache": true,
+    "dependencies": "existing locked local dependencies; no new dependency resolution"
+  },
+  "click_calibration": {
+    "python": "3.12.12",
+    "locked": true,
+    "external_model_requests": 0,
+    "initial_passed": 635,
+    "reference_passed": 642,
+    "collected": 642,
+    "skipped": 0,
+    "reference_contract_passed": true
+  },
+  "other_checks": [
+    "all four uv locks",
+    "generated JSON Schema equality and Draft 2020-12",
+    "full TOML example",
+    "compileall",
+    "CLI help",
+    "wheel and sdist",
+    "changed-content credential-shape and local Markdown link checks"
+  ],
+  "corrections": [
+    "Initial final-suite attempt failed two existing budget regressions on both systems; shortened schema without increasing budgets and removed redundant prompt text before rerunning.",
+    "Initial Python 3.11 test imported a stale non-editable installation; excluded it and reinstalled without cache before validation.",
+    "WSL mini initially reused the Windows environment path; discarded that setup and reran using separate environment paths after restoring the Windows test environment."
+  ],
+  "remote_ci": {
+    "triggered_this_batch": false,
+    "status": "pending/frozen",
+    "resume_not_before": "2026-11-01 Asia/Singapore",
+    "resume_requires": "verify account restriction and prior exact required gate; date alone is insufficient",
+    "commit_marker": "[skip ci]"
+  },
+  "limits": [
+    "platform skips are not passes",
+    "WSL is not a native Ubuntu CI runner",
+    "no macOS or full Python matrix",
+    "no OS backend changes",
+    "WSL /tmp logs were no longer readable during final export; numeric summaries come from captured successful tool completions, no reconstructed log/checksum",
+    "live trial preceded new interface and remained failed; replay has zero model requests"
+  ]
+}

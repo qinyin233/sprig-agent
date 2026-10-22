@@ -90,6 +90,7 @@ response_language = "简体中文" # explanations only; direct user requests tak
 list_files = true
 read_file = true
 search = true
+grep = true # canonical model search; search is the legacy alias; either false disables both
 project_map = true
 edit_file = true
 edit_lines = true # also disabled when edit_file=false

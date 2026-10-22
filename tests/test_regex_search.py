@@ -261,17 +261,17 @@ class RegexSearchTests(unittest.TestCase):
             for value in (None, 0, 1, "true", [], {}):
                 self.assertEqual(self.search(regex=value), {"error": "regex must be a boolean"})
             read.assert_not_called()
-        schema = next(item["function"] for item in TOOL_SCHEMAS if item["function"]["name"] == "search")
-        self.assertEqual(schema["parameters"]["properties"]["regex"], {"type": "boolean"})
-        for fragment in ("RE2", "no lookaround", "timed_out", "physical CR/LF", "simple folding"):
+        schema = next(item["function"] for item in TOOL_SCHEMAS if item["function"]["name"] == "grep")
+        self.assertEqual(schema["parameters"]["properties"]["literal"], {"type": "boolean"})
+        for fragment in ("RE2", "lookaround", "timed_out", "physical CR/LF", "simple folding"):
             self.assertIn(fragment, schema["description"])
 
     def test_actual_http_agent_receives_regex_schema_and_complete_tool_windows(self):
         self.write("src/a.py", "def load_item():\n    return 1\ndef save_item():\n    return 2\n")
-        arguments = {"query": r"^def (?:load|save)_item\(", "path": "src/a.py", "regex": True, "context": 1}
+        arguments = {"pattern": r"^def (?:load|save)_item\(", "path": "src/a.py", "context": 1}
         replies = [
             {"role": "assistant", "content": None, "tool_calls": [{"id": "regex-1", "type": "function",
-             "function": {"name": "search", "arguments": json.dumps(arguments)}}]},
+             "function": {"name": "grep", "arguments": json.dumps(arguments)}}]},
             {"role": "assistant", "content": "Found the two definitions."}]
         requests = []
         class Handler(BaseHTTPRequestHandler):
@@ -304,8 +304,8 @@ class RegexSearchTests(unittest.TestCase):
         self.assertFalse(thread.is_alive())
         self.assertTrue(complete)
         self.assertEqual(len(requests), 2)
-        search = next(item["function"] for item in requests[0]["tools"] if item["function"]["name"] == "search")
-        self.assertEqual(search["parameters"]["properties"]["regex"], {"type": "boolean"})
+        search = next(item["function"] for item in requests[0]["tools"] if item["function"]["name"] == "grep")
+        self.assertEqual(search["parameters"]["properties"]["literal"], {"type": "boolean"})
         self.assertNotIn("run", [item["function"]["name"] for item in requests[0]["tools"]])
         result = json.loads(next(message["content"] for message in requests[1]["messages"]
                                  if message["role"] == "tool" and message["tool_call_id"] == "regex-1"))

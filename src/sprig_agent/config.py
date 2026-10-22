@@ -10,7 +10,7 @@ import unicodedata
 from urllib.parse import urlsplit, urlunsplit
 from .credentials import RuntimeCredentials
 
-TOOL_NAMES = ("list_files", "read_file", "search", "project_map", "edit_file", "run", "update_plan", "edit_lines", "file_action", "read_history", "read_log", "question", "skill", "mcp", "web_fetch", "job", "lsp")
+TOOL_NAMES = ("list_files", "read_file", "search", "grep", "project_map", "edit_file", "run", "update_plan", "edit_lines", "file_action", "read_history", "read_log", "question", "skill", "mcp", "web_fetch", "job", "lsp")
 SHORTCUT_ACTIONS = ("cancel", "quit", "focus_input", "toggle_sidebar", "help", "new_conversation")
 GENERATION_FIELDS = ("max_tokens", "thinking", "temperature", "top_p", "reasoning_effort", "seed", "token_limit_field", "extra_body")
 MODEL_CONFIG_FIELDS = frozenset((*GENERATION_FIELDS, "model", "base_url", "api_key", "provider_name", "headers",
@@ -483,6 +483,7 @@ class Config:
 
     def tool_enabled(self, name):
         return (name in TOOL_NAMES and name not in self.disabled_tools
+                and (name not in {"search", "grep"} or not {"search", "grep"}.intersection(self.disabled_tools))
                 and (name not in {"edit_lines", "file_action"} or "edit_file" not in self.disabled_tools))
 
     def binding(self):

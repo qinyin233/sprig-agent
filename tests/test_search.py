@@ -221,7 +221,7 @@ class SearchTests(unittest.TestCase):
             for arguments in cases:
                 self.assertIn("error", self.search(**arguments), arguments)
             read.assert_not_called()
-        function = next(schema["function"] for schema in TOOL_SCHEMAS if schema["function"]["name"] == "search")
+        function = next(schema["function"] for schema in TOOL_SCHEMAS if schema["function"]["name"] == "grep")
         properties = function["parameters"]["properties"]
         self.assertEqual(properties["context"]["maximum"], 10)
         self.assertEqual(properties["limit"]["maximum"], 1000)

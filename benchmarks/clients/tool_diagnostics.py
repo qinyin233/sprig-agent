@@ -20,7 +20,7 @@ class ToolDiagnostics:
         for field in ("returncode", "files_read", "bytes_read", "entries_scanned", "skipped_files"):
             if type(result.get(field)) is int:
                 summary[field] = result[field]
-        if name == "search":
+        if name in {"search", "grep"}:
             if isinstance(result.get("matches"), list):
                 summary["matched_lines"] = len(result["matches"])
             elif result.get("output_mode") in ("files", "count") and isinstance(result.get("files"), list):
@@ -29,8 +29,9 @@ class ToolDiagnostics:
                 if result["output_mode"] == "count" and all(isinstance(row, dict) and type(row.get("count")) is int
                                                           and row["count"] > 0 for row in result["files"]):
                     summary["matched_lines"] = sum(row["count"] for row in result["files"])
-            if isinstance(arguments, dict) and type(arguments.get("regex", False)) is bool:
-                summary["regex"] = arguments.get("regex", False)
+            flag = "literal" if name == "grep" else "regex"
+            if isinstance(arguments, dict) and type(arguments.get(flag, False)) is bool:
+                summary["regex"] = not arguments.get(flag, False) if name == "grep" else arguments.get(flag, False)
         if name == "read_file" and isinstance(result.get("content"), str):
             summary["content_bytes"] = len(result["content"].encode("utf-8"))
             digest = result.get("sha256")
@@ -52,7 +53,7 @@ class ToolDiagnostics:
             summary["planned_steps"] = len(result["plan"])
             for status in ("pending", "in_progress", "completed"):
                 summary["plan_" + status] = sum(isinstance(step, dict) and step.get("status") == status for step in result["plan"])
-        if name in {"read_file", "search", "list_files", "project_map"} and not summary["error"]:
+        if name in {"read_file", "search", "grep", "list_files", "project_map"} and not summary["error"]:
             # Equality of bounded tool output does not imply a complete or
             # unchanged workspace. Never cache or skip the actual inspection.
             inspected = {key: value for key, value in result.items() if name != "read_file" or key != "read_id"}

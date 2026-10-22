@@ -169,6 +169,9 @@
         "search": {
           "type": "boolean"
         },
+        "grep": {
+          "type": "boolean"
+        },
         "project_map": {
           "type": "boolean"
         },
@@ -1251,6 +1254,9 @@
                 "type": "boolean"
               },
               "search": {
+                "type": "boolean"
+              },
+              "grep": {
                 "type": "boolean"
               },
               "project_map": {

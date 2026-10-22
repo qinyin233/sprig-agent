@@ -264,13 +264,15 @@ CLI 与 TUI 都实时显示命令输出，保留 UTF-8 分段，遮盖跨片段�
 | --- | --- |
 | `list_files(path=".")` | 列出目录内容 |
 | `read_file(path, offset=1, limit=..., line_numbers=..., cursor=...)` | UTF-8 行范围或版本绑定的字节页；范围默认显示行号，cursor 模式用于超长单行 |
-| `search(query, path=".", glob=..., ignore_case=False, regex=False, context=0, limit=100)` | 搜索指定文件或目录，默认字面字符串；可显式启用 RE2 正则、筛选文件、忽略大小写并返回上下文 |
+| `grep(pattern, path=".", glob=..., ignore_case=False, literal=False, context=0, limit=100)` | 搜索指定文件或目录，默认 RE2 正则；`literal=True` 使用字面字符串，可筛选文件、忽略大小写并返回上下文 |
 | `project_map(path=".", query=...)` | 返回有界文件地图和九种语言的声明名称与行号；可按路径或声明名筛选，优先保留精确匹配；不支持的语言只列路径 |
 | `edit_file(path, old, new)` 或 `edit_file(path, edits=[...])` | 单片段或同文件多片段替换，展示合并 diff，经确认后一次写入 |
 | `edit_lines(path, read_id, edits=[...])` | 使用读取返回的短版本标识进行整行替换；内部核对完整摘要，仍需完整 diff 和新批准 |
 | `run(argv, cwd=".", timeout=...)` | 运行参数数组所指定的命令；可选超时不能超过全局上限 |
 | `file_action(action, path, read_id=..., destination=...)` | 创建单个目录、读取标识关联的删除或复制后删除的移动；逐阶段新批准，不覆盖目标，支持文件撤销 |
 | `update_plan(plan, explanation="")` | 更新有界的模型进度清单；TUI 计划页和 `/plan` 查看，随显式保存的会话恢复；不批准操作、不代表验收通过 |
+
+模型内容检索使用 [grep](docs/grep.md)，默认解释 RE2 正则，`literal=true` 搜索原文。旧 `search(query, regex=false, ...)` 仍供历史会话和嵌入调用使用，字面默认不变；下文的 `search`/`regex` 示例描述该兼容入口。禁用任一名称同时禁用两者。
 
 大文本使用[文件与传输说明](docs/text-transfer.md)：超长单行可用 `read_file(cursor="start")`，随后传回 `next_cursor` 续读；页面绑定路径与内容版本，按 UTF-8 码点边界截取。TUI 超限输入保留草稿，待处理引导有数量和字节限额，显示裁剪与模型历史分开。
 

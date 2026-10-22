@@ -1,0 +1,97 @@
+{
+  "scope": "offline semantic replay of six public Click queries; no model, edits or automatic retries; not model performance evidence",
+  "candidate_unchanged": true,
+  "external_model_requests": 0,
+  "queries": [
+    {
+      "arguments": {
+        "pattern": "NoSuchCommand|NoSuchOption|did you mean|Did you mean",
+        "path": "src/click",
+        "context": 4
+      },
+      "legacy_matched_lines": 0,
+      "grep_matched_lines": 8,
+      "legacy_files_read": 18,
+      "grep_files_read": 18,
+      "legacy_truncated": false,
+      "grep_truncated": false,
+      "grep_timed_out": false,
+      "grep_skipped_files": 0
+    },
+    {
+      "arguments": {
+        "pattern": "NoSuch|did you|Did you",
+        "path": "src/click",
+        "ignore_case": true,
+        "context": 6
+      },
+      "legacy_matched_lines": 0,
+      "grep_matched_lines": 8,
+      "legacy_files_read": 18,
+      "grep_files_read": 18,
+      "legacy_truncated": false,
+      "grep_truncated": false,
+      "grep_timed_out": false,
+      "grep_skipped_files": 0
+    },
+    {
+      "arguments": {
+        "pattern": "suggest_possible|test_unknown_options",
+        "path": "tests",
+        "context": 10
+      },
+      "legacy_matched_lines": 0,
+      "grep_matched_lines": 2,
+      "legacy_files_read": 31,
+      "grep_files_read": 31,
+      "legacy_truncated": false,
+      "grep_truncated": false,
+      "grep_timed_out": false,
+      "grep_skipped_files": 0
+    },
+    {
+      "arguments": {
+        "pattern": "Possible options|Unknown command|get_close_matches",
+        "path": "src/click",
+        "context": 8
+      },
+      "legacy_matched_lines": 0,
+      "grep_matched_lines": 3,
+      "legacy_files_read": 18,
+      "grep_files_read": 18,
+      "legacy_truncated": false,
+      "grep_truncated": false,
+      "grep_timed_out": false,
+      "grep_skipped_files": 0
+    },
+    {
+      "arguments": {
+        "pattern": "No such command|No such option",
+        "path": "src/click",
+        "context": 10
+      },
+      "legacy_matched_lines": 0,
+      "grep_matched_lines": 2,
+      "legacy_files_read": 18,
+      "grep_files_read": 18,
+      "legacy_truncated": false,
+      "grep_truncated": false,
+      "grep_timed_out": false,
+      "grep_skipped_files": 0
+    },
+    {
+      "arguments": {
+        "pattern": "NoSuchOption\\(",
+        "path": "src/click"
+      },
+      "legacy_matched_lines": 0,
+      "grep_matched_lines": 3,
+      "legacy_files_read": 18,
+      "grep_files_read": 18,
+      "legacy_truncated": false,
+      "grep_truncated": false,
+      "grep_timed_out": false,
+      "grep_skipped_files": 0
+    }
+  ]
+}
