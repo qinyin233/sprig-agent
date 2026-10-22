@@ -67,6 +67,7 @@ def configuration_schema():
         "skills": obj({"dirs": {"type": "array", "maxItems": 8, "items": text,
                                 "description": "Explicit skill collection directories, relative to the declaring user/profile config. Project settings cannot add roots. No automatic home/workspace scan."}}),
         "mcp": obj({"servers": {"type": "object", "maxProperties": 8, "propertyNames": {"pattern": identifier}, "additionalProperties": {"oneOf": [mcp_http, mcp_stdio]}}}),
+        "web": obj({"enabled": {**boolean, "description": "Opt-in public HTTP(S) documents. Each GET needs approval; no proxies, auth, redirects, retries or persistent cache. Project configuration cannot enable it."}}),
         "tui": obj({"theme": {"enum": ["textual-dark", "textual-light", "nord", "gruvbox", "dracula", "monokai", "tokyo-night", "solarized-dark", "solarized-light"]},
                     "sidebar": boolean, "editor_height": integer(3, 12), "steering_mode": {"enum": ["all", "one-at-a-time"]}, "metrics": boolean,
                     "keybindings": obj({action: {"type": "array", "maxItems": 4, "items": {"type": "string",

@@ -774,6 +774,8 @@ class SprigApp(App[int]):
                     result = self.tools.log_control(**arguments)
                 elif name == "skills":
                     result = self.tools.skills.catalog()
+                elif name == "web-status":
+                    result = self.tools.web.status()
                 elif name == "mcp-status":
                     result = self.tools.mcp_manager.status()
                 elif name == "model-switch":
@@ -1268,6 +1270,7 @@ class SprigApp(App[int]):
                         "/help /keys /plan /status /config /models /context /usage /cancel /exit\n"
                         "/skills（已配置技能摘要） /skill NAME [PATH [OFFSET PAGE_SHA256]]（本地预览，不运行脚本）\n"
                         "/mcp（本地状态） /mcp connect|disconnect|tools|resources|templates|prompts SERVER（逐次确认请求）\n"
+                        "/web（本地缓存） /web URL（逐次批准公开网页） /web result ID [UTF8偏移]（缓存分页）\n"
                         "/continue /new /files /add 文件路径 /ref 文件路径 /unref 文件路径 /refs [clear]\n"
                         "/map [名称或路径查询] /git /diff /compact\n"
                         "/summary（本地预览） /summary create [END]（逐次确认额外请求） /summary clear\n"
@@ -1314,6 +1317,22 @@ class SprigApp(App[int]):
             return
         if command == "/model":
             self.choose_model(argument)
+            return
+        if command == "/web" and not argument:
+            if not self.busy:
+                self.start(local=("web-status", {}))
+            else:
+                self.notify("请等待当前操作结束后查看网页缓存", severity="warning")
+            return
+        if command == "/web":
+            from .web_fetch import local_arguments
+            if self.busy:
+                self.notify("请等待当前操作结束后读取网页；执行中可输入普通引导", severity="warning")
+                return
+            try:
+                self.start(local=("web_fetch", local_arguments(argument)))
+            except ValueError as error:
+                self.notify(self.safe(error), severity="warning")
             return
         if command in {"/fork", "/timeline"}:
             if command == "/timeline" and argument:

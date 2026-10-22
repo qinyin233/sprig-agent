@@ -22,6 +22,7 @@ COMMANDS = {
     "logs": "查看或逐次确认清理当前会话的命令日志", "log": "按日志句柄分页回查命令输出",
     "skills": "列出已配置技能；本地查看不请求模型", "skill": "本地预览技能或资料；不会执行脚本",
     "mcp": "查看外部服务状态；connect 和每次 RPC 单独批准",
+    "web": "本地网页缓存状态；URL 逐次批准 GET，result 按句柄分页",
     "discard-history": "清除修改备份", "sessions": "列出会话", "save": "保存会话",
     "restore": "恢复会话", "delete": "删除会话", "prune": "清理旧会话",
     "worktrees": "列出工作树", "worktree": "创建工作树",

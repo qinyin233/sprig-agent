@@ -201,6 +201,9 @@
         },
         "mcp": {
           "type": "boolean"
+        },
+        "web_fetch": {
+          "type": "boolean"
         }
       },
       "additionalProperties": false
@@ -543,6 +546,16 @@
               }
             ]
           }
+        }
+      },
+      "additionalProperties": false
+    },
+    "web": {
+      "type": "object",
+      "properties": {
+        "enabled": {
+          "type": "boolean",
+          "description": "Opt-in public HTTP(S) documents. Each GET needs approval; no proxies, auth, redirects, retries or persistent cache. Project configuration cannot enable it."
         }
       },
       "additionalProperties": false
@@ -1172,6 +1185,9 @@
               },
               "mcp": {
                 "type": "boolean"
+              },
+              "web_fetch": {
+                "type": "boolean"
               }
             },
             "additionalProperties": false
@@ -1514,6 +1530,16 @@
                     }
                   ]
                 }
+              }
+            },
+            "additionalProperties": false
+          },
+          "web": {
+            "type": "object",
+            "properties": {
+              "enabled": {
+                "type": "boolean",
+                "description": "Opt-in public HTTP(S) documents. Each GET needs approval; no proxies, auth, redirects, retries or persistent cache. Project configuration cannot enable it."
               }
             },
             "additionalProperties": false

@@ -29,6 +29,7 @@ from .command_logs import CommandLogs, LogCapture
 from .questions import answer_result, validate_questions
 from .skills import Skills
 from .mcp import McpManager
+from .web_fetch import WebFetcher
 from .edit_match import failure_details
 from .edit_batch import EditPreview, digest, preflight
 from .line_edits import replace_lines, validate_edits
@@ -127,6 +128,7 @@ class Tools:
                                                 config.project_instructions, config.instruction_files)
         self.skills = Skills(config, self.root.ensure_open, self._check_cancelled, self.policy)
         self.mcp_manager = McpManager(config, self._check_mcp, self.request_approval, self._prepare_mcp_process)
+        self.web = WebFetcher(config, self._check_mcp, self.request_approval)
 
     def _check_mcp(self):
         self.root.ensure_open()
@@ -167,12 +169,14 @@ class Tools:
             raise ToolError(str(error)) from None
         self._conversation_version += 1
         self.mcp_manager.reset()
+        self.web.reset()
         self.read_versions.clear()
         self.index.clear()
         self.config = config
         self.skills.config = config
         self.logs.config = config
         self.mcp_manager.config = config
+        self.web.config = config
         if self.history.store is not None:
             self.history.store.config = config
 
@@ -226,6 +230,7 @@ class Tools:
 
     def close(self):
         self.mcp_manager.reset()
+        self.web.reset()
         self.root.close()
         self.history.close()
         self.index.clear()
@@ -305,7 +310,8 @@ class Tools:
                       "search": self.search, "project_map": self.project_map,
                       "edit_file": self.edit_file, "edit_lines": self.edit_lines,
                       "run": self.run, "update_plan": self.update_plan, "file_action": self.file_action,
-                      "read_log": self.read_log, "question": self.question, "skill": self.skill, "mcp": self.mcp}.get(name)
+                      "read_log": self.read_log, "question": self.question, "skill": self.skill, "mcp": self.mcp,
+                      "web_fetch": self.web_fetch}.get(name)
             if method is None:
                 raise ToolError("unknown tool")
             result = method(**arguments)
@@ -319,6 +325,15 @@ class Tools:
 
     def edit_batch(self, requests):
         return preflight(self, requests)
+
+    def web_fetch(self, url=None, result_id=None, offset=0, format="text"):
+        self._require_tool("web_fetch")
+        self._check_cancelled()
+        rules = self.instructions.prepare_action(()) if url is not None else None
+        def recheck():
+            self._check_mcp()
+            self.instructions.recheck_action((), rules)
+        return self.web.fetch(url, result_id, offset, format, recheck=recheck)
 
     def file_action(self, action, path, read_id=None, destination=None):
         from .file_actions import execute

@@ -56,7 +56,7 @@ class IOBudget:
         self.check()
         # The platform resolver is synchronous. Check again immediately after
         # it returns, so cancellation/expiry cannot cause a late TCP/POST send.
-        addresses = socket.getaddrinfo(address[0], address[1], 0, socket.SOCK_STREAM)
+        addresses = self.resolve(address)
         self.check()
         pending = {errno.EINPROGRESS, errno.EWOULDBLOCK, errno.EALREADY, errno.EINTR}
         pending.update(getattr(errno, name) for name in ("WSAEWOULDBLOCK", "WSAEINPROGRESS", "WSAEALREADY")
@@ -84,6 +84,9 @@ class IOBudget:
                     raise
                 error = exc
         raise error
+
+    def resolve(self, address):
+        return socket.getaddrinfo(address[0], address[1], 0, socket.SOCK_STREAM)
 
     def handshake(self, sock):
         sock.setblocking(False)

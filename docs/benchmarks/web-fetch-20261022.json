@@ -1,0 +1,187 @@
+{
+  "schema_version": 1,
+  "date": "2026-10-22",
+  "started": "2026-10-21",
+  "feature": "Opt-in approved public HTTP(S) document GET, bounded text/HTML extraction and conversation-local paged snapshots",
+  "base_commit": "7cc2168f362db950482da62f1210f40ef0de9f32",
+  "source_digest": {
+    "files": 59,
+    "sha256": "52d17b161e72e2a25b063ea60f9a0870f0486a533c11d88ce6f6dccd249516da"
+  },
+  "tests_digest": {
+    "files": 76,
+    "sha256": "eb9a6e8b38173fb107dc0d6f37db5e5ed6e656b16af5fd138d630c682027150d"
+  },
+  "fixture_digest": {
+    "files": 1,
+    "sha256": "dc2a3a7cce3f248181a3bc50e74346a15deb0dda5a6ee0f94fa938ecc3e93eeb"
+  },
+  "digest_method": "SHA256 of compact ASCII JSON arrays [POSIX relative path, SHA256 of CRLF-normalized-to-LF bytes], sorted by path, immediate *.py files per directory",
+  "source_reference": {
+    "repository": "https://github.com/anomalyco/opencode",
+    "commit": "9d90d892dcbfc52b47e95b2ea31b8aba877128fd",
+    "file": "packages/core/src/tool/plugin/webfetch.ts",
+    "scope": "Read pinned URL/permission, MIME, bounded response, HTML text extraction and timeout code. Upstream has special User-Agent retry; Sprig does not copy retries or persistent authorization. No upstream tests/runtime comparison."
+  },
+  "local_suites": [
+    {
+      "platform": "Windows 11",
+      "command": "uv run --locked python -m unittest discover -s tests -q",
+      "total": 1141,
+      "passed": 1122,
+      "skipped": 19,
+      "seconds": 430.823,
+      "failures": 0,
+      "errors": 0,
+      "full_suite": true,
+      "python": "3.13.0"
+    },
+    {
+      "platform": "WSL Ubuntu-26.04",
+      "command": "UV_PROJECT_ENVIRONMENT=.venv-wsl uv run --locked python -m unittest discover -s tests -q",
+      "total": 1141,
+      "passed": 1118,
+      "skipped": 23,
+      "seconds": 307.934,
+      "failures": 0,
+      "errors": 0,
+      "full_suite": true,
+      "python": "3.13.14"
+    }
+  ],
+  "compatibility_suites": [
+    {
+      "platform": "Windows 11",
+      "command": "UV_PROJECT_ENVIRONMENT=.venv-py311 uv run --locked --python 3.11 --no-editable python -m unittest tests.test_web_fetch tests.test_configuration_profiles tests.test_transport -q",
+      "total": 58,
+      "passed": 58,
+      "skipped": 0,
+      "seconds": 28.837,
+      "failures": 0,
+      "errors": 0,
+      "full_suite": false,
+      "python": "3.11.14"
+    }
+  ],
+  "client_suites": [
+    {
+      "platform": "Windows 11",
+      "command": "uv run --project benchmarks/clients/mini --locked python -I -B -m unittest discover -s benchmarks/clients/tests -q",
+      "total": 25,
+      "passed": 25,
+      "skipped": 0,
+      "seconds": 37.14,
+      "failures": 0,
+      "errors": 0,
+      "full_suite": false
+    },
+    {
+      "platform": "WSL Ubuntu-26.04",
+      "command": "UV_PROJECT_ENVIRONMENT=.venv-mini-wsl uv run --project benchmarks/clients/mini --locked python -I -B -m unittest discover -s benchmarks/clients/tests -q",
+      "total": 25,
+      "passed": 25,
+      "skipped": 0,
+      "seconds": 160.327,
+      "failures": 0,
+      "errors": 0,
+      "full_suite": false
+    }
+  ],
+  "workflow_evidence": {
+    "new_test_methods": 18,
+    "kind": "Real loopback HTTP and TLS with actual Textual/CLI and three fixed model wire protocols",
+    "model_protocols": [
+      "chat_completions",
+      "messages",
+      "responses"
+    ],
+    "model_workflow_cases": 3,
+    "loopback_model_requests_per_case": 4,
+    "document_requests_per_case": 1,
+    "fresh_approvals_per_case": 3,
+    "sequence": [
+      "approved GET",
+      "cached UTF-8 byte page without network",
+      "separately approved real file creation",
+      "independent application fixed subprocess assertion"
+    ],
+    "test_loopback_exemption": "Production has no private-address allowlist flag. Tests only patch the fixture loopback address predicate. Separate cases prove private/mixed DNS refusal, no second resolution, original Host retention and TLS certificate enforcement.",
+    "coverage": [
+      "default off, read-only and tool hard-disable, decline and pre/post-approval cancellation",
+      "closed resources and served instruction changes before network",
+      "literal private/metadata/multicast/transition IPs and DNS of mixed targets",
+      "single vetted resolution then direct sockaddr connect with original host",
+      "invalid and trusted fixture TLS certificates; no verification bypass",
+      "ambient proxy and provider header/cookie isolation; no redirect following or retry",
+      "text/raw HTML, Unicode byte boundaries, preserved code indentation and unfetched links",
+      "MIME, charset, compressed/binary, duplicate lengths, truncation, large and chunked quota refusal",
+      "real 8 MiB aggregate and 8-snapshot count eviction",
+      "cached JSON output cap, new known credential invalidation and reset/restore without replay",
+      "idle/total request deadline and cancellation during actual body transfer",
+      "TUI approval rejection, new guidance, cancel/unmount and confirmed new conversation",
+      "trusted config/profile/CLI opt-in, session binding and project prohibition",
+      "actual chat local commands with zero model calls"
+    ]
+  },
+  "public_document_attempt": {
+    "url": "https://docs.python.org/3/library/html.parser.html",
+    "attempts": 1,
+    "approvals": 1,
+    "outcome": "blocked_before_http",
+    "reason": "web DNS resolved a non-public or unsupported address; no HTTP request sent",
+    "http_request_sent": false,
+    "successful_public_fetch_claim": false,
+    "policy_bypass_or_retry": false,
+    "external_model_requests": 0,
+    "limit": "Current resolver returned a non-public target. No claim that arbitrary external document delivery was validated in this environment; the policy was not weakened to accommodate it."
+  },
+  "packaging": {
+    "uv_lock_check": "passed",
+    "configuration_schema_and_example": "passed",
+    "compileall": "passed",
+    "cli_help": "passed",
+    "sdist_and_wheel_build": "passed",
+    "wheel_source_modules_matched": 59,
+    "isolated_installed_tui": "passed at 80x24 in Unicode/space workspace, using actual installed package and disposable HTTP server",
+    "separate_approvals": 3,
+    "fixture_model_calls": 3,
+    "loopback_document_requests": 1,
+    "real_file_write_and_fixed_check": true,
+    "cached_page_without_refetch": true,
+    "private_restore_without_request_or_replay": true,
+    "known_credential_not_saved": true,
+    "dependencies_added": [],
+    "external_model_requests": 0
+  },
+  "development_corrections": [
+    "A new regression reproduced a 5169-byte redirect diagnostic exceeding max_output=1024. The fix omits the full target with redirect_url_omitted instead of truncating it; the regression and all sealed suites are after this fix. Earlier full/scoped passes are not final-source evidence.",
+    "Initial optional request_timeout=None used min directly; aligned web fallback with the existing provider timeout before final freeze.",
+    "Fixture SessionStore now closes with contextlib.closing, profile fixture supplies a model, and confirmed new-conversation UI is awaited; no production approval or privacy rule relaxed.",
+    "Shipped schema regenerated and the explicit known-tool contract includes the new optional tool. Default model tool schema count remains unchanged. All final suites are after these corrections."
+  ],
+  "remote_ci": {
+    "run": false,
+    "status": "user_requested_freeze",
+    "commit_policy": "[skip ci]",
+    "do_not_run_before": "2026-11-01",
+    "timezone": "Asia/Singapore",
+    "dispatches_or_reruns_this_batch": 0,
+    "native_filesystem_or_process_backend_changed": false,
+    "shared_transport_change": "Add an overridable address-resolution method; existing provider/MCP transport still uses ordinary resolution. Only web adds address vetting.",
+    "green_ci_claim": false,
+    "previous_required_run_id": 39556289305,
+    "previous_required_commit": "106b60ed11de6fdfa7756495bf3f17b74d9c7812",
+    "after_freeze": "Verify account restriction and prior exact-SHA gate before next CI-enabled batch."
+  },
+  "limits": [
+    "Web text retrieval is not search, a browser, JavaScript/CSS rendering, login, arbitrary upload or binary/PDF transport.",
+    "Direct public connections only; no proxy/auth/cookie inheritance, automatic redirects, retry, challenge bypass or installs. GET may have remote effects.",
+    "Conservative public-address policy excludes special-use ranges consistently across Python versions. Synchronous system DNS cannot be forcibly interrupted; late results are rejected before connect.",
+    "Snapshots are memory-only and evictable; displayed model tool pages may be saved as ordinary private conversation history. Private storage is not encrypted.",
+    "Known credentials and common secret query names are blocked, not every conceivable custom signed parameter. Users must review the full approved URL.",
+    "HTML conversion is a bounded extraction, not a guarantee of visual/semantic completeness. All page content remains untrusted and cannot approve local actions.",
+    "Public-address restrictions are not an OS sandbox and do not constrain independently approved run/MCP operations.",
+    "Platform skips are not passes; local Windows/WSL do not replace native CI runners, full Python/client/macOS matrix remains pending.",
+    "No external model calls or extra paid account. Fixed replies and protocol checks do not establish new coding performance or parity with top agents."
+  ]
+}

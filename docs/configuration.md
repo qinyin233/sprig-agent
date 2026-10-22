@@ -191,7 +191,7 @@ uv run --locked sprig --config-schema
 
 `[tools].file_action=false` 禁用目录创建、读取标识删除和复制后删除的移动；`edit_file=false` 也同时禁用 `file_action` 与 `edit_lines`，显式项目层不能重新打开。CLI 为 `--disable-tool file_action`；只读模式在 schema 和实际执行层阻止这些写入。移动的两个阶段分别取得新批准，不提供原子 rename，见[专用文件操作](file-actions.md)。
 
-`[tools]` 对十四种工具设置 true/false：`list_files`、`read_file`、`search`、`project_map`、`edit_file`、`edit_lines`、`file_action`、`run`、`update_plan`、`question`、`skill`、`mcp`、`read_history`、`read_log`。false 同时移除对应模型 schema，并由实际执行层检查；CLI `--disable-tool NAME` 可重复。`question` 仅在交互式 TUI/终端 CLI 或显式嵌入回调中提供，支持需求选项与自填；答案不能批准操作，同批其他提案跳过后重新规划，见[澄清流程](questions.md)。`skill` 仅在显式配置 `[skills].dirs` 时提供，按需加载技能说明和资料；不是执行或授权入口，见[技能配置](skills.md)。`read_history` 仅在有显式摘要检查点时提供，按消息编号回查当前对话被概括的原文；`read_log` 仅在配置 `command_log_dir` 时提供，按不透明句柄回查当前会话的历史命令输出。两者都不接受任意文件或其他会话路径，本地 `/history`、`/log` 是用户查看控制。无可选配置的非交互任务仍为九种工具，交互式任务增加 `question` 后为十种；摘要、日志、技能和 MCP 都启用时最多十四种。关闭 `read_file` 也阻止 `/add` 附件；关闭 `edit_file` 同时禁止 `edit_lines` 与 `file_action`，项目不能重新启用。整行编辑的短版本标识仍关联完整摘要并要求新批准，见[读取绑定编辑](read-bound-edits.md)。`run=false` 或 `read_only=true` 不能配置非空 `checks`。`update_plan` 只维护模型报告的进度，不授权执行或替代验收，详见[任务计划](task-plans.md)。
+`[tools]` 对十五种工具设置 true/false：`list_files`、`read_file`、`search`、`project_map`、`edit_file`、`edit_lines`、`file_action`、`run`、`update_plan`、`question`、`skill`、`mcp`、`web_fetch`、`read_history`、`read_log`。false 同时移除对应模型 schema，并由实际执行层检查；CLI `--disable-tool NAME` 可重复。`question` 仅在交互式 TUI/终端 CLI 或显式嵌入回调中提供，支持需求选项与自填；答案不能批准操作，同批其他提案跳过后重新规划，见[澄清流程](questions.md)。`skill` 仅在显式配置 `[skills].dirs` 时提供，按需加载技能说明和资料；不是执行或授权入口，见[技能配置](skills.md)。`read_history` 仅在有显式摘要检查点时提供，按消息编号回查当前对话被概括的原文；`read_log` 仅在配置 `command_log_dir` 时提供，按不透明句柄回查当前会话的历史命令输出。两者都不接受任意文件或其他会话路径，本地 `/history`、`/log` 是用户查看控制。无可选配置的非交互任务仍为九种工具，交互式任务增加 `question` 后为十种；摘要、日志、技能、MCP 和网页都启用时最多十五种。`web_fetch` 需要用户/profile 的 `[web] enabled=true` 或 CLI `--web` 明确开启；逐次批准公开 HTTP(S) 请求，缓存分页不联网，见[网页读取](web-fetch.md)。关闭 `read_file` 也阻止 `/add` 附件；关闭 `edit_file` 同时禁止 `edit_lines` 与 `file_action`，项目不能重新启用。整行编辑的短版本标识仍关联完整摘要并要求新批准，见[读取绑定编辑](read-bound-edits.md)。`run=false` 或 `read_only=true` 不能配置非空 `checks`。`update_plan` 只维护模型报告的进度，不授权执行或替代验收，详见[任务计划](task-plans.md)。
 
 禁用单个工具只控制该工具接口，例如 `search` 仍会读取匹配内容。要禁止某些路径通过所有文件工具访问，使用 `[files].exclude`；要禁用全部命令，使用 `run=false` 或只读模式。任意获批命令仍无 OS 沙箱，不能把文件排除当作命令隔离。
 
@@ -202,6 +202,10 @@ uv run --locked sprig --config-schema
 `[storage].command_log_dir` 或 `--command-log-dir PATH` 显式启用专用私有命令日志目录，绑定会话，默认不保留。每次命令批准包含存储与候选淘汰；每份最多 8 MiB、专用 journal 最多 16 MiB/16 条，七天后不可读，磁盘清理仍需获批操作。模型 `read_log` 和本地 `/logs`、`/log ID [OFFSET]` 支持回查，`/logs clear` 新批准后只清理当前会话；不提高原始输出上限，不替代验收，详见[日志回查与隔离边界](command-logs.md)。
 
 长测试日志可显式设置 `[execution].output_limit`，将原始总输出上限与 `max_output` 展示预算分开：例如 `output_limit=1048576` 允许至多 1 MiB 输出，展示仍保留有界首尾。范围 256–8388608，默认沿用 `max_output`，CLI 为 `--command-output-limit`，显式值绑定会话。首尾展示的 `output_truncated` 与进程被停止的 `output_limited` 含义不同，见[命令输出与验收边界](command-output.md)。
+
+## 网页文档
+
+`[web] enabled=false` 为默认值；用户和 profile 可开启，CLI `--web` / `--no-web` 覆盖，项目配置禁止声明此组。`[tools] web_fetch=false` 或 `--disable-tool web_fetch` 进一步禁用；只读模式阻止执行。没有额外依赖，不继承认证/代理或保存单独网页缓存，详见[网页读取的地址、分页与限额](web-fetch.md)。
 
 ## MCP 外部服务
 

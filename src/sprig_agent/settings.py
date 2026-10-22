@@ -53,6 +53,9 @@ files = [] # initial live references; small complete files refresh before reques
 [skills]
 dirs = [] # explicit collections, e.g. ["~/.agents/skills"]; loading never approves commands
 
+[web]
+enabled = false # opt-in public HTTP(S) documents; every fetch needs fresh approval
+
 # Optional additional shortcuts; Enter and approval keys remain fixed.
 # [tui.keybindings]
 # help = ["f1"]
@@ -122,6 +125,7 @@ GROUP_FIELDS = {
     "instructions": {"files", "response_language"},
     "skills": {"dirs"},
     "mcp": {"servers"},
+    "web": {"enabled"},
 }
 TUI_FIELDS = {"theme": "tui_theme", "sidebar": "tui_sidebar", "editor_height": "tui_editor_height",
               "steering_mode": "steering_mode", "metrics": "show_metrics", "keybindings": "tui_keybindings"}
@@ -174,6 +178,8 @@ def _flatten(layer, directory):
     if "servers" in layer.get("mcp", {}):
         from .mcp_config import parse_servers
         values["mcp_servers"] = parse_servers(layer["mcp"]["servers"])
+    if "enabled" in layer.get("web", {}):
+        values["web_enabled"] = layer["web"]["enabled"]
     for name, value in layer.get("storage", {}).items():
         if name.endswith("_dir"):
             value = Path(value).expanduser()
@@ -256,8 +262,8 @@ def _validate(data, directory, *, project=False):
     if project:
         # An explicit repository file may tune requests and tighten tool policy.
         # It cannot route credentials, inject environment, or persist transcripts.
-        if set(data) & {"execution", "storage", "skills", "mcp"}:
-            raise ValueError("project configuration cannot change execution environment, storage, skill roots or MCP servers")
+        if set(data) & {"execution", "storage", "skills", "mcp", "web"}:
+            raise ValueError("project configuration cannot change execution environment, storage, skill roots, MCP servers or web opt-in")
         if "keybindings" in data.get("tui", {}):
             raise ValueError("project configuration cannot change trusted keyboard shortcuts")
         if any(data.get("agent", {}).get(name) for name in ("inherit_env", "checks")):
@@ -486,7 +492,7 @@ class Settings:
         apply({name: selected[name] for name in TRANSPORT_FIELDS if name in selected}, "provider")
         configurable = {*AGENT_DEFAULTS, *GENERATION_FIELDS, *TRANSPORT_FIELDS, *CONTEXT_FIELDS.values(),
                         "session_dir", "change_history_dir", "command_log_dir", "show_metrics", "instruction_files", "response_language",
-                        "session_max_age_days", "session_max_count", "command_output_limit", "skill_dirs"}
+                        "session_max_age_days", "session_max_count", "command_output_limit", "skill_dirs", "web_enabled"}
         overrides = {name: value for name, value in options.items() if name in configurable and value is not None}
         if "skill_dirs" in overrides:
             overrides["skill_dirs"] = tuple(overrides["skill_dirs"])
@@ -570,6 +576,7 @@ def public_config(config, metadata):
             "files": {"exclude": config.excluded_paths},
             "instructions": {"files": config.instruction_files, "response_language": config.response_language},
             "skills": {"dirs": [str(path) for path in config.skill_dirs]},
+            "web": {"enabled": config.web_enabled, "direct_only": True, "persistent_cache": False},
             "mcp": {"servers": [server.public() for server in config.mcp_servers]},
             "execution": {"env_allowlist": config.env_allowlist, "env_names": [name for name, _ in config.command_env],
                           "max_output": config.max_output, "output_limit": config.command_output_limit or config.max_output},

@@ -99,8 +99,14 @@ update_plan = true # bounded task checklist, not approval or acceptance
 question = true # exposed only with an interactive callback; human answers never approve actions
 skill = true # exposed only with explicit skills.dirs; loading never executes scripts
 mcp = true # explicit endpoints; connect and every RPC ask approval; blocked in read-only
+web_fetch = true # requires separate web.enabled opt-in; every GET needs approval
 read_history = true # only exposed with an active summary; original conversation data, not current file evidence
 read_log = true # only exposed with command_log_dir; opaque current-conversation history, never file read_id
+
+[web]
+enabled = false # user/profile opt-in, or --web; project cannot enable it
+# Only public HTTP(S) text documents; no auth headers/cookies/proxy/redirects/JS.
+# <=2 MiB response, <=8 MiB memory cache; local result pages never refetch.
 
 [files]
 exclude = ["private/", "*.local.json"] # additive with .sprigignore
