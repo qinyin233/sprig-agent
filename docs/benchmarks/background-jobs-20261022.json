@@ -1,0 +1,180 @@
+{
+  "schema_version": 1,
+  "date": "2026-10-22",
+  "feature": "Opt-in owned noninteractive background commands, bounded memory output, local notifications and independent acceptance barriers",
+  "base_commit": "53366dd77a685061f7c3a644eef63800c08bd1fc",
+  "source_digest": {
+    "files": 60,
+    "sha256": "1df06e465ba3864ffc8a800aba34f00318a6ae789ed03829cc93560584937bfe"
+  },
+  "tests_digest": {
+    "files": 77,
+    "sha256": "1125cb9d625b956aec4c0b55d5981150d36beaa22623c39b76412453c67f9946"
+  },
+  "fixture_digest": {
+    "files": 1,
+    "sha256": "dc2a3a7cce3f248181a3bc50e74346a15deb0dda5a6ee0f94fa938ecc3e93eeb"
+  },
+  "digest_method": "SHA256 of compact ASCII JSON arrays [POSIX relative path, SHA256 of CRLF-normalized-to-LF bytes], sorted by path; immediate *.py files per directory",
+  "source_reference": {
+    "repository": "https://github.com/anomalyco/opencode",
+    "commit": "9d90d892dcbfc52b47e95b2ea31b8aba877128fd",
+    "files": [
+      "packages/core/src/shell.ts",
+      "packages/core/src/tool/plugin/shell.ts"
+    ],
+    "scope": "Pinned source read: owned process/status/wait/output, background Jobs, completion notifications and timeout changes. No upstream runtime/test or coding performance comparison."
+  },
+  "local_suites": [
+    {
+      "platform": "Windows 11",
+      "command": "uv run --locked python -m unittest discover -s tests -q",
+      "total": 1163,
+      "passed": 1144,
+      "skipped": 19,
+      "seconds": 432.318,
+      "failures": 0,
+      "errors": 0,
+      "full_suite": true,
+      "python": "3.13.0"
+    },
+    {
+      "platform": "WSL Ubuntu-26.04",
+      "command": "UV_PROJECT_ENVIRONMENT=.venv-wsl uv run --locked python -m unittest discover -s tests -q",
+      "total": 1163,
+      "passed": 1140,
+      "skipped": 23,
+      "seconds": 322.058,
+      "failures": 0,
+      "errors": 0,
+      "full_suite": true,
+      "python": "3.13.14"
+    }
+  ],
+  "compatibility_suites": [
+    {
+      "platform": "Windows 11",
+      "command": "UV_PROJECT_ENVIRONMENT=.venv-py311 uv run --locked --python 3.11 --no-editable python -m unittest tests.test_jobs tests.test_configuration_profiles tests.test_conversation_fork tests.test_mcp_stdio -q",
+      "total": 78,
+      "passed": 78,
+      "skipped": 0,
+      "seconds": 44.945,
+      "failures": 0,
+      "errors": 0,
+      "full_suite": false,
+      "python": "3.11.14"
+    }
+  ],
+  "client_suites": [
+    {
+      "platform": "Windows 11",
+      "command": "uv run --project benchmarks/clients/mini --locked python -I -B -m unittest discover -s benchmarks/clients/tests -q",
+      "total": 25,
+      "passed": 25,
+      "skipped": 0,
+      "seconds": 39.363,
+      "failures": 0,
+      "errors": 0,
+      "full_suite": false
+    },
+    {
+      "platform": "WSL Ubuntu-26.04",
+      "command": "UV_PROJECT_ENVIRONMENT=.venv-mini-wsl uv run --project benchmarks/clients/mini --locked python -I -B -m unittest discover -s benchmarks/clients/tests -q",
+      "total": 25,
+      "passed": 25,
+      "skipped": 0,
+      "seconds": 149.715,
+      "failures": 0,
+      "errors": 0,
+      "full_suite": false
+    }
+  ],
+  "workflow_evidence": {
+    "new_test_methods": 22,
+    "external_model_requests": 0,
+    "kind": "Actual subprocesses, descendants and stdin EOF, Textual and CLI, three loopback model HTTP/SSE protocols, fixed independent subprocess checks",
+    "model_protocols": [
+      "chat_completions",
+      "messages",
+      "responses"
+    ],
+    "model_workflow_cases": 3,
+    "model_requests_per_case": 5,
+    "fresh_approvals_per_case": 3,
+    "sequence": [
+      "approved background command returns while waiting for file",
+      "separately approved release file edit proceeds while command runs",
+      "wait for cleanup/exit",
+      "read retained output",
+      "independently approved fixed check verifies actual resulting file"
+    ],
+    "coverage": [
+      "default off, read-only, run/job disabled and decline block spawning",
+      "argv frozen across approval callbacks; foreground timeout remains unchanged",
+      "cwd privacy, credential argv rejection and cancellation/closed root after approval",
+      "served AGENTS snapshot changes block launch",
+      "timeout, output kill limit, retained-prefix truncation, nonzero exit and fresh cancel approval stay distinct",
+      "four active / eight retained records, status pagination and one-MiB output retention",
+      "UTF-8 byte pages and stable end-bound prefix digest",
+      "stdout/stderr independently decode split Unicode and redact before merging",
+      "new known credentials suppress retained/future output without forging exit status",
+      "cancel, reset and leader exit kill owned descendants",
+      "normal command environment policy retained; private overrides remain redacted",
+      "active tasks block task completion/baseline/acceptance; background changes during checks invalidate pass",
+      "old read IDs invalidate on effects; private restore has no job/PID attachment or replay",
+      "confirmed history branching stops current owned tasks",
+      "reset fences concurrent starts and close permanently forbids re-opening the owner",
+      "trusted profile/CLI/settings/schema/binding, project cannot add execution policy",
+      "TUI idle Ctrl+C, unmount, startup refusal and guidance; completion notices do not call a model",
+      "actual terminal chat start/list/exit with no model call and no surviving owned process"
+    ]
+  },
+  "packaging": {
+    "uv_lock_check": "passed",
+    "configuration_schema_and_example": "passed",
+    "compileall": "passed",
+    "cli_help": "passed",
+    "sdist_and_wheel_build": "passed",
+    "wheel_source_modules_matched": 60,
+    "installed_tui_viewport": [
+      80,
+      24
+    ],
+    "isolated_installed_workflow": "Real background worker in Unicode/space workspace; parallel file edit, wait/output, independent fixed check, three distinct approvals, close and private restore with spawn disabled",
+    "fixture_model_calls": 5,
+    "external_model_requests": 0,
+    "known_credential_not_saved": true,
+    "dependencies_added": []
+  },
+  "development_corrections": [
+    "A coordinated real-process regression reproduced stderr corrupting a stdout split UTF-8 character when using one decoder. Separate incremental decoders and redactors now preserve each channel before merging.",
+    "A paused real cleanup reproduced accepting a new start during reset. Reset now fences new launches and invalidates pre-reset proposals; permanent close cannot reopen the owner. Cleanup ownership is retained if joining fails.",
+    "Approval argv is copied before callbacks, protecting foreground and background against mutable input changes.",
+    "Fixtures explicitly request UTF-8 on Windows instead of expecting GBK to encode emoji, respect existing command-env redaction, and wait for the scheduled completion notification. Production privacy/approval rules were not weakened."
+  ],
+  "remote_ci": {
+    "run": false,
+    "status": "user_requested_freeze",
+    "commit_policy": "[skip ci]",
+    "do_not_run_before": "2026-11-01",
+    "timezone": "Asia/Singapore",
+    "dispatches_or_reruns_this_batch": 0,
+    "native_process_lifecycle_changed": true,
+    "scope": "Owned nonblocking pipes gain explicit stdin EOF for background commands; foreground process runner is retained apart from freezing argv. Windows launch diagnostics use generic command wording.",
+    "green_ci_claim": false,
+    "previous_required_run_id": 39556289305,
+    "previous_required_commit": "106b60ed11de6fdfa7756495bf3f17b74d9c7812",
+    "after_freeze": "Verify account restriction and prior exact-SHA gate before another CI-enabled batch; validate native process behavior on required runners."
+  },
+  "limits": [
+    "Background commands have current-user authority and can access outside files/network; this is not a sandbox or side-effect rollback.",
+    "Normal scoped close/cancel kills owned process groups/Jobs. Forced host termination, especially POSIX, does not guarantee descendants disappeared; restore never attaches to stale PIDs or restarts commands.",
+    "No PTY, interactive stdin, cross-process durable jobs, persistent background output or unlimited runtime. Foreground command-log journal is not used by background captures.",
+    "At most four active and eight retained records, at most one MiB redacted body per record; stdout/stderr ordering is observational, not globally chronological. Programs should output UTF-8.",
+    "Only displayed tool output fragments may enter optional private history, which is not encrypted. Raw retained body and process handles are not restored.",
+    "Completion notifications do not call a model while idle. Further work needs the current active run or explicit user continuation; start and model-requested cancellation need fresh approvals.",
+    "Cleanup may have a separate bounded grace/join period. Unknown cleanup blocks new starts and acceptance; ownership is preserved for inspection/retry closing.",
+    "Platform skips are not passes. Local Windows/WSL do not replace native CI runners, full Python/client/macOS matrix remains pending.",
+    "No external model requests or extra paid account. Protocol/process workflows do not establish new coding performance or parity with top open-source agents."
+  ]
+}

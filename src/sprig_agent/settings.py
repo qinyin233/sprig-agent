@@ -118,7 +118,7 @@ def initialize_config(path, approve):
 
 GROUP_FIELDS = {
     "agent": set(AGENT_DEFAULTS), "generation": set(GENERATION_FIELDS), "tools": set(TOOL_NAMES),
-    "files": {"exclude"}, "execution": {"inherit_env", "timeout", "max_output", "output_limit", "env_allowlist", "env"},
+    "files": {"exclude"}, "execution": {"inherit_env", "timeout", "max_output", "output_limit", "env_allowlist", "env", "background", "background_timeout"},
     "storage": {"session_dir", "change_history_dir", "command_log_dir", "auto_save_session", "session_max_age_days", "session_max_count"},
     "context": {"max_bytes", "compact", "trigger_ratio", "keep_recent_messages", "keep_read_bytes", "files"},
     "tui": {"theme", "sidebar", "editor_height", "steering_mode", "metrics", "keybindings"},
@@ -159,6 +159,10 @@ def _flatten(layer, directory):
     values.update({name: execution[name] for name in ("inherit_env", "timeout", "max_output") if name in execution})
     if "output_limit" in execution:
         values["command_output_limit"] = execution["output_limit"]
+    if "background" in execution:
+        values["background_enabled"] = execution["background"]
+    if "background_timeout" in execution:
+        values["background_timeout"] = execution["background_timeout"]
     if "env_allowlist" in execution:
         values["env_allowlist"] = tuple(execution["env_allowlist"])
     if "env" in execution:
@@ -448,7 +452,7 @@ class Settings:
         sources = {name: "default" for name in {*AGENT_DEFAULTS, *GENERATION_FIELDS, *TRANSPORT_FIELDS,
                     *TUI_FIELDS.values(), "instruction_files", "response_language", "excluded_paths",
                     "session_dir", "change_history_dir", "command_log_dir", "auto_save_session", "env_allowlist", "command_env",
-                    "session_max_age_days", "session_max_count", "command_output_limit", *CONTEXT_FIELDS.values()}}
+                    "session_max_age_days", "session_max_count", "command_output_limit", "background_enabled", "background_timeout", *CONTEXT_FIELDS.values()}}
         def apply(entries, label):
             if "tui_keybindings" in entries:
                 merged = dict(values.get("tui_keybindings", ()))
@@ -492,7 +496,7 @@ class Settings:
         apply({name: selected[name] for name in TRANSPORT_FIELDS if name in selected}, "provider")
         configurable = {*AGENT_DEFAULTS, *GENERATION_FIELDS, *TRANSPORT_FIELDS, *CONTEXT_FIELDS.values(),
                         "session_dir", "change_history_dir", "command_log_dir", "show_metrics", "instruction_files", "response_language",
-                        "session_max_age_days", "session_max_count", "command_output_limit", "skill_dirs", "web_enabled"}
+                        "session_max_age_days", "session_max_count", "command_output_limit", "skill_dirs", "web_enabled", "background_enabled", "background_timeout"}
         overrides = {name: value for name, value in options.items() if name in configurable and value is not None}
         if "skill_dirs" in overrides:
             overrides["skill_dirs"] = tuple(overrides["skill_dirs"])
@@ -577,6 +581,7 @@ def public_config(config, metadata):
             "instructions": {"files": config.instruction_files, "response_language": config.response_language},
             "skills": {"dirs": [str(path) for path in config.skill_dirs]},
             "web": {"enabled": config.web_enabled, "direct_only": True, "persistent_cache": False},
+            "background": {"enabled": config.background_enabled, "timeout": config.background_timeout, "persistent": False},
             "mcp": {"servers": [server.public() for server in config.mcp_servers]},
             "execution": {"env_allowlist": config.env_allowlist, "env_names": [name for name, _ in config.command_env],
                           "max_output": config.max_output, "output_limit": config.command_output_limit or config.max_output},

@@ -21,6 +21,7 @@ from .questions import terminal_questions
 from .skills import local_arguments as skill_arguments
 from .mcp import local_arguments as mcp_arguments
 from .web_fetch import local_arguments as web_arguments
+from .jobs import local_arguments as job_arguments
 
 
 def approve(description):
@@ -97,7 +98,10 @@ def chat(agent, task, messages, emit, *, autostart=True, model_selection=None, s
         except EOFError:
             return status
         except KeyboardInterrupt:
-            emit("Input cancelled; conversation retained. Use /exit to close chat.")
+            had_jobs = agent.tools.jobs.unsettled()
+            agent.tools.jobs.request_cancel_all()
+            emit("Input cancelled; owned background commands are stopping; conversation retained. Use /exit to close chat."
+                 if had_jobs else "Input cancelled; conversation retained. Use /exit to close chat.")
             continue
         if not task:
             continue
@@ -105,6 +109,7 @@ def chat(agent, task, messages, emit, *, autostart=True, model_selection=None, s
             return status
         try:
             if task == "/help":
+                emit('/jobs lists owned tasks; /job start {"argv":["program","arg"]} approves a background command; /job status|output|wait|cancel ID observes or freshly confirms stopping it. Enable execution.background or --background. Exit/reset stops jobs; restore never restarts them.')
                 emit("/web shows local snapshot status; /web URL approves one public HTTP(S) GET; /web result ID [OFFSET] pages retained text without refetch. Enable with [web] enabled=true or --web. No auth, redirects, proxy, scripts or automatic replay.")
                 emit("/timeline [OFFSET] lists local user turns; /fork current or /fork MESSAGE confirms a new branch through that whole turn. Workspace files are not rolled back and actions are not replayed. Only the next task or /continue requests the model.")
                 emit("/models lists the configured snapshot; /model KEY explicitly confirms a local model change. @startup restores startup model settings. It retains conversation text, removes old reasoning metadata and forks enabled private saves; no request is sent until the next task.")
@@ -139,6 +144,13 @@ def chat(agent, task, messages, emit, *, autostart=True, model_selection=None, s
                     if result.get("forked"):
                         history_ready, status = True, 2
                     emit(json.dumps(result, ensure_ascii=False))
+            elif task == "/jobs" or task == "/job" or task.startswith("/job "):
+                name, arguments = job_arguments(task[5:].strip() if task.startswith("/job ") else "")
+                result = agent.tools.execute(name, arguments)
+                emit(json.dumps(result, ensure_ascii=False))
+                if name == "run" and result.get("approved") is True:
+                    status = 2
+                    agent.record_workspace_change(messages, {"action": "command", "path": ".", "outcome": "uncertain"})
             elif task == "/web":
                 emit(json.dumps(agent.tools.web.status(), ensure_ascii=False))
             elif task.startswith("/web "):
@@ -311,6 +323,8 @@ def main(argv=None):
     parser.add_argument("--instruction-file", dest="instruction_files", action="append", help="additional workspace-relative guidance file; repeatable, replaces configured files")
     parser.add_argument("--skill-dir", dest="skill_dirs", action="append", help="explicit skill collection directory; repeatable, replaces configured roots; no automatic execution")
     parser.add_argument("--web", dest="web_enabled", action=argparse.BooleanOptionalAction, default=None, help="opt in to approved public HTTP(S) document fetches; no auth/redirects/proxy/scripts")
+    parser.add_argument("--background", dest="background_enabled", action=argparse.BooleanOptionalAction, default=None, help="opt in to approved, owned noninteractive background commands; no restart on restore")
+    parser.add_argument("--background-timeout", type=float, default=None, help="background command timeout cap, seconds (0,3600]; foreground timeout is unchanged")
     parser.add_argument("--response-language", help="preferred language for explanations; direct task requests take precedence")
     interface = parser.add_mutually_exclusive_group()
     interface.add_argument("--chat", dest="interface", action="store_const", const="chat", help="keep an interactive conversation open")

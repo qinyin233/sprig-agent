@@ -50,6 +50,7 @@ def configuration_schema():
         "files": obj({"exclude": {"type": "array", "maxItems": 256, "items": {**text, "maxLength": 256},
                                   "description": "Relative POSIX glob patterns; no !, .. components, backslashes or absolute paths. Adds to .sprigignore."}}),
         "execution": obj({"inherit_env": boolean, "timeout": number(0, 120, True), "max_output": integer(256, 1000000),
+                          "background": boolean, "background_timeout": number(0, 3600, True),
                           "output_limit": {**integer(256, 8388608), "description": "Raw command output kill limit; defaults to max_output. Higher values use bounded redacted head/tail display."},
                           "env_allowlist": {"type": "array", "maxItems": 128, "items": environment},
                           "env": {"type": "object", "maxProperties": 32, "propertyNames": environment,

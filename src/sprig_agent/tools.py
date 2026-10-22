@@ -30,6 +30,7 @@ from .questions import answer_result, validate_questions
 from .skills import Skills
 from .mcp import McpManager
 from .web_fetch import WebFetcher
+from .jobs import Jobs
 from .edit_match import failure_details
 from .edit_batch import EditPreview, digest, preflight
 from .line_edits import replace_lines, validate_edits
@@ -129,6 +130,8 @@ class Tools:
         self.skills = Skills(config, self.root.ensure_open, self._check_cancelled, self.policy)
         self.mcp_manager = McpManager(config, self._check_mcp, self.request_approval, self._prepare_mcp_process)
         self.web = WebFetcher(config, self._check_mcp, self.request_approval)
+        self.jobs = Jobs(config, self._check_mcp)
+        self._jobs_revision = self.jobs.revision
 
     def _check_mcp(self):
         self.root.ensure_open()
@@ -168,6 +171,7 @@ class Tools:
         except ValueError as error:
             raise ToolError(str(error)) from None
         self._conversation_version += 1
+        self.jobs.reset()
         self.mcp_manager.reset()
         self.web.reset()
         self.read_versions.clear()
@@ -177,6 +181,7 @@ class Tools:
         self.logs.config = config
         self.mcp_manager.config = config
         self.web.config = config
+        self.jobs.config = config
         if self.history.store is not None:
             self.history.store.config = config
 
@@ -225,10 +230,15 @@ class Tools:
 
     def _require_tool(self, name):
         self.root.ensure_open()
+        if self._jobs_revision != self.jobs.revision:
+            self.read_versions.clear()
+            self.index.clear()
+            self._jobs_revision = self.jobs.revision
         if name in TOOL_NAMES and not self.config.tool_enabled(name):
             raise ToolError("tool is disabled by configuration")
 
     def close(self):
+        self.jobs.close()
         self.mcp_manager.reset()
         self.web.reset()
         self.root.close()
@@ -311,7 +321,7 @@ class Tools:
                       "edit_file": self.edit_file, "edit_lines": self.edit_lines,
                       "run": self.run, "update_plan": self.update_plan, "file_action": self.file_action,
                       "read_log": self.read_log, "question": self.question, "skill": self.skill, "mcp": self.mcp,
-                      "web_fetch": self.web_fetch}.get(name)
+                      "web_fetch": self.web_fetch, "job": self.job}.get(name)
             if method is None:
                 raise ToolError("unknown tool")
             result = method(**arguments)
@@ -334,6 +344,20 @@ class Tools:
             self._check_mcp()
             self.instructions.recheck_action((), rules)
         return self.web.fetch(url, result_id, offset, format, recheck=recheck)
+
+    def job(self, action="list", job_id=None, offset=0, end=None, seconds=0):
+        self._require_tool("job")
+        self._check_cancelled()
+        if action == "cancel":
+            self.jobs.control("status", job_id)
+            if not self.request_approval("STOP owned background command " + str(job_id)
+                                         + "; terminate its process tree. Prior filesystem/network effects are not undone."):
+                return {"approved": False, "job_id": job_id}
+            self.root.ensure_open()
+        result = self.jobs.control(action, job_id, offset, end, seconds)
+        if action == "cancel":
+            result["approved"] = True
+        return result
 
     def file_action(self, action, path, read_id=None, destination=None):
         from .file_actions import execute
@@ -1076,21 +1100,28 @@ class Tools:
             result["log"] = {"saved": False, "outcome": "unknown", "reason": "command log save failed; inspect /logs before relying on retention"}
         return result
 
-    def run(self, argv, cwd=".", timeout=None):
+    def run(self, argv, cwd=".", timeout=None, background=False):
         self._require_tool("run")
         if self.config.read_only:
             return {"approved": False, "error": "read-only mode blocks command execution"}
+        if type(background) is not bool:
+            raise ToolError("background must be a boolean")
+        if background:
+            self.jobs.available()
+            job_epoch = self.jobs.epoch
         if (not isinstance(argv, list) or not argv or len(argv) > 256
                 or any(not isinstance(arg, str) or "\0" in arg for arg in argv) or not argv[0]):
             raise ToolError("argv must be a nonempty array of strings (at most 256)")
         if sum(len(arg) for arg in argv) > 65536:
             raise ToolError("argv is too large")
+        argv = list(argv)  # Approval callbacks cannot mutate the proposed argv.
         if any(secret in arg for secret in self.config.credential_secrets for arg in argv):
             raise ToolError("configured API key must not appear in command arguments")
-        seconds = self.config.timeout if timeout is None else timeout
+        maximum = self.config.background_timeout if background else self.config.timeout
+        seconds = maximum if timeout is None else timeout
         if (isinstance(seconds, bool) or not isinstance(seconds, (int, float))
-                or not math.isfinite(seconds) or not 0 < seconds <= self.config.timeout):
-            raise ToolError(f"command timeout must be positive and at most {self.config.timeout:g} seconds; omit timeout to use that configured limit")
+                or not math.isfinite(seconds) or not 0 < seconds <= maximum):
+            raise ToolError(f"command timeout must be positive and at most {maximum:g} seconds; omit timeout to use that configured limit")
         parts = self._parts(cwd)
         with self._directory(parts):
             pass
@@ -1107,7 +1138,13 @@ class Tools:
                             + "; additional inherited names: " + json.dumps(self.config.env_allowlist)
                             + "; override names: " + json.dumps([name for name, _ in self.config.command_env]))
         preview = None
-        if self.config.command_log_dir is not None:
+        if background:
+            description += ("\nBACKGROUND: returns an owned job handle. Non-interactive stdin is closed; no PTY. "
+                            "At most four active / eight retained records, <=1 MiB redacted output per job in memory. "
+                            "Completion only notifies locally, without automatic model requests or acceptance. "
+                            "Cancellation/reset/exit stops the process tree. Not resumed or replayed after restore. "
+                            "Background output is not written to the foreground command-log journal.")
+        if self.config.command_log_dir is not None and not background:
             try:
                 preview = self.logs.preview()
             except (OSError, ValueError):
@@ -1129,6 +1166,14 @@ class Tools:
             pass
         env = command_environment(self.config)
         self.instructions.recheck_action(parts, rules)
+        if background:
+            if any(secret in arg for secret in self.config.credential_secrets for arg in argv):
+                raise ToolError("configured credentials cannot appear in background argv")
+            self.read_versions.clear()
+            try:
+                return self.jobs.start(argv, directory, env, seconds, output_limit, epoch=job_epoch)
+            finally:
+                self.read_versions.clear()
         sampled = output_limit > self.config.max_output
         stream = (SampledCommandOutput(self.emit_output, self.config.secrets, self.config.max_output) if sampled
                   else CommandOutput(self.emit_output, self.config.secrets))

@@ -10,7 +10,7 @@ import unicodedata
 from urllib.parse import urlsplit, urlunsplit
 from .credentials import RuntimeCredentials
 
-TOOL_NAMES = ("list_files", "read_file", "search", "project_map", "edit_file", "run", "update_plan", "edit_lines", "file_action", "read_history", "read_log", "question", "skill", "mcp", "web_fetch")
+TOOL_NAMES = ("list_files", "read_file", "search", "project_map", "edit_file", "run", "update_plan", "edit_lines", "file_action", "read_history", "read_log", "question", "skill", "mcp", "web_fetch", "job")
 SHORTCUT_ACTIONS = ("cancel", "quit", "focus_input", "toggle_sidebar", "help", "new_conversation")
 GENERATION_FIELDS = ("max_tokens", "thinking", "temperature", "top_p", "reasoning_effort", "seed", "token_limit_field", "extra_body")
 MODEL_CONFIG_FIELDS = frozenset((*GENERATION_FIELDS, "model", "base_url", "api_key", "provider_name", "headers",
@@ -180,9 +180,16 @@ class Config:
     skill_dirs: tuple = ()
     mcp_servers: tuple = field(default=(), repr=False)
     web_enabled: bool = False
+    background_enabled: bool = False
+    background_timeout: float = 300
     _runtime_credentials: RuntimeCredentials = field(default_factory=RuntimeCredentials, init=False, repr=False, compare=False)
 
     def __post_init__(self):
+        if type(self.background_enabled) is not bool:
+            raise ValueError("execution.background must be a boolean")
+        if (type(self.background_timeout) not in (int, float) or not math.isfinite(self.background_timeout)
+                or not 0 < self.background_timeout <= 3600):
+            raise ValueError("execution.background_timeout must be positive and at most 3600 seconds")
         if type(self.web_enabled) is not bool:
             raise ValueError("web.enabled must be a boolean")
         if self.wire_api not in ("chat_completions", "messages", "responses"):
@@ -474,6 +481,8 @@ class Config:
         binding = {"base_url": self.base_url, "model": self.model, "workdir": str(self.workdir)}
         if self.web_enabled:
             binding["web_enabled"] = True
+        if self.background_enabled:
+            binding["background"] = {"enabled": True, "timeout": self.background_timeout}
         if self.wire_api != "chat_completions":
             binding["wire_api"] = self.wire_api
         if self.command_output_limit is not None:

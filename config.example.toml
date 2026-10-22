@@ -100,6 +100,7 @@ question = true # exposed only with an interactive callback; human answers never
 skill = true # exposed only with explicit skills.dirs; loading never executes scripts
 mcp = true # explicit endpoints; connect and every RPC ask approval; blocked in read-only
 web_fetch = true # requires separate web.enabled opt-in; every GET needs approval
+job = true # requires execution.background and run; observe/wait or freshly approve stop
 read_history = true # only exposed with an active summary; original conversation data, not current file evidence
 read_log = true # only exposed with command_log_dir; opaque current-conversation history, never file read_id
 
@@ -112,6 +113,8 @@ enabled = false # user/profile opt-in, or --web; project cannot enable it
 exclude = ["private/", "*.local.json"] # additive with .sprigignore
 
 [execution]
+background = false # opt-in noninteractive owned commands; never restart on restore
+background_timeout = 300 # independent background cap, >0..3600 seconds
 # Optional raw command-output kill limit (256..8388608 bytes).
 # Omit to retain max_output as the kill limit. Higher values keep bounded head/tail display.
 # output_limit = 1048576

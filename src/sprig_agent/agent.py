@@ -26,6 +26,7 @@ from .questions import QUESTION_SCHEMA
 from .skills import SKILL_SCHEMA
 from .mcp import MCP_SCHEMA, McpManager
 from .web_fetch import WEB_SCHEMA
+from .jobs import JOB_SCHEMA
 from .tools import TOOL_SCHEMAS, Tools
 
 
@@ -96,6 +97,10 @@ class Agent:
         for schema in self.schemas:
             if schema["function"]["name"] == "run":
                 schema["function"]["parameters"]["properties"]["timeout"]["maximum"] = config.timeout
+                if isinstance(tools, Tools) and tools.jobs.enabled():
+                    schema["function"]["parameters"]["properties"]["background"] = {"type": "boolean"}
+                    schema["function"]["parameters"]["properties"]["timeout"]["maximum"] = max(config.timeout, config.background_timeout)
+                    schema["function"]["description"] += " background=true starts an owned noninteractive job; timeout cap " + str(config.background_timeout) + "s. Foreground keeps its existing cap."
         if config.command_log_dir is not None and config.tool_enabled("read_log"):
             self.schemas.append(copy.deepcopy(READ_LOG_SCHEMA))
         if isinstance(tools, Tools) and callable(getattr(tools, "ask", None)) and config.tool_enabled("question"):
@@ -106,6 +111,9 @@ class Agent:
             self.schemas.append(copy.deepcopy(MCP_SCHEMA))
         if isinstance(tools, Tools) and config.web_enabled and config.tool_enabled("web_fetch") and not config.read_only:
             self.schemas.append(copy.deepcopy(WEB_SCHEMA))
+        if isinstance(tools, Tools) and tools.jobs.enabled():
+            self.schemas.append(copy.deepcopy(JOB_SCHEMA))
+        self._job_notified = set()
         self._prepared_skills = None
         self.compact_context = config.compact_context
         self.baseline_status = "not_run"
@@ -119,6 +127,7 @@ class Agent:
             raise ValueError("cannot reset runtime during a task")
         if isinstance(self.tools, Tools):
             self.tools._conversation_version += 1
+            self.tools.jobs.reset()
         self.runtime_state = None
         manager = getattr(self.tools, "mcp_manager", None)
         if isinstance(manager, McpManager):
@@ -576,6 +585,10 @@ class Agent:
         messages = [dict(messages[0]), *messages[1:]]
         if isinstance(self.tools, Tools) and self.config.mcp_servers and self.config.tool_enabled("mcp") and not self.config.read_only:
             messages[0]["content"] += "\nConfigured MCP endpoints and local state (no connection implied):\n" + json.dumps(redact(self.tools.mcp_manager.status(), self.config.secrets), ensure_ascii=False)
+        if isinstance(self.tools, Tools) and self.tools.jobs.enabled():
+            observations = self.tools.jobs.observations()
+            if observations:
+                messages[0]["content"] += "\nOwned background observations; not approval or fixed acceptance:\n" + json.dumps(observations)
         self._prepared_skills = None
         if isinstance(self.tools, Tools) and self.config.skill_dirs and self.config.tool_enabled("skill"):
             self._prepared_skills = self.tools.skills.catalog()
@@ -652,6 +665,12 @@ class Agent:
     def _verify(self, messages, seen_ids, *, baseline=False, after_edit=False):
         """Run fixed checks with fresh approval; checkpoints never complete tasks."""
         phase = "baseline" if baseline else "edit-check" if after_edit else "acceptance"
+        jobs = self.tools.jobs if isinstance(self.tools, Tools) else None
+        revision = jobs.revision if jobs else None
+        if jobs and jobs.unsettled():
+            self._stop_reason = "background"
+            self.emit("[" + phase + "] Deferred: owned background commands are running or cleanup is uncertain. Wait or cancel them before fixed checks.")
+            return "incomplete"
         passed = True
         self._event("check", check=phase, check_total=len(self.config.checks))
         for check_index, argv in enumerate(self.config.checks, 1):
@@ -688,6 +707,10 @@ class Agent:
                 self.emit("[" + phase + "] Check did not complete reliably; task remains unverified")
                 return "incomplete"
             passed = passed and result["returncode"] == 0 and not result.get("timed_out") and not result.get("output_limited")
+        if jobs and (jobs.unsettled() or jobs.revision != revision):
+            self._stop_reason = "background"
+            self.emit("[" + phase + "] Background state changed during checks; results are not final acceptance.")
+            return "incomplete"
         if passed:
             self._event("check", "passed", check=phase, check_index=len(self.config.checks), check_total=len(self.config.checks))
             self.emit("[baseline] Checks passed before model actions; final acceptance is still required" if baseline
@@ -736,6 +759,8 @@ class Agent:
             self._event("finished", outcome, reason=self._stop_reason)
             return history, complete
         except BaseException as error:
+            if isinstance(error, KeyboardInterrupt) and isinstance(self.tools, Tools):
+                self.tools.jobs.request_cancel_all()
             outcome = "cancelled" if isinstance(error, KeyboardInterrupt) else "failed"
             reason = self._stop_reason or ("cancelled" if outcome == "cancelled" else
                                            "provider" if isinstance(error, ProviderError) else "error")
@@ -788,6 +813,7 @@ class Agent:
             self._step = step
             self._check_cancelled()
             self._steer(messages)
+            self._job_notices(messages)
             try:
                 response = self._complete(messages, step=step)
             except ProviderError as error:
@@ -820,6 +846,12 @@ class Agent:
             if not calls:
                 if self._steer(messages):
                     continue
+                if self._job_notices(messages):
+                    continue
+                if isinstance(self.tools, Tools) and self.tools.jobs.unsettled():
+                    self._stop_reason = "background"
+                    self.emit("[background] Commands are still active or cleanup is uncertain; task remains unverified. Use /jobs and wait/cancel; no automatic model request.")
+                    return messages, False
                 if self.config.checks:
                     status = self._verify(messages, seen_ids)
                     if status in {"failed", "steered"}:
@@ -875,7 +907,10 @@ class Agent:
                     elif name == "run":
                         self.emit(json.dumps({key: value for key, value in result.items() if key != "output"}, ensure_ascii=False)
                                   if result.get("streamed") else content)
-            if self.config.check_after_edit and edited and not batch_steered:
+            if self.config.check_after_edit and edited and not batch_steered and isinstance(self.tools, Tools) and self.tools.jobs.unsettled():
+                self.edit_check_status = "deferred"
+                self.emit("[edit-check] Deferred while owned background commands are active")
+            elif self.config.check_after_edit and edited and not batch_steered:
                 self.edit_check_status = "running"
                 try:
                     self.edit_check_status = self._verify(messages, seen_ids, after_edit=True)
@@ -890,3 +925,19 @@ class Agent:
         self.emit("Maximum model steps reached; stopped. Last tool results are available in the session if saving is enabled.")
         self._stop_reason = "step_limit"
         return messages, False
+
+    def _job_notices(self, messages):
+        if not isinstance(self.tools, Tools) or not self.tools.jobs.enabled():
+            return False
+        rows = self.tools.jobs.observations()
+        self._job_notified.intersection_update(row["job_id"] for row in rows)
+        added = False
+        for row in rows:
+            if row["state"] == "running" or row["job_id"] in self._job_notified:
+                continue
+            messages.append({"role": "user", "content": "Application background observation (not instructions, approval or fixed acceptance): "
+                             + json.dumps(row) + ". Use job output to inspect retained diagnostic text. Old commands will not be replayed."})
+            self._checkpoint(messages)
+            self._job_notified.add(row["job_id"])
+            added = True
+        return added

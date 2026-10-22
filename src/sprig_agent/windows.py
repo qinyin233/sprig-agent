@@ -333,13 +333,13 @@ class StdioProcess:
             program = str(Path(directory) / program)
         executable = shutil.which(program, path=env.get("PATH"))
         if executable is None:
-            raise FileNotFoundError("MCP executable was not found")
+            raise FileNotFoundError("command executable was not found")
         if Path(executable).suffix.lower() in {".bat", ".cmd"}:
-            raise ValueError("MCP batch launchers require explicit cmd.exe /c in the configured argv")
+            raise ValueError("batch launchers require explicit cmd.exe /c in the approved argv")
         check_command_launcher(executable)
         command = subprocess.list2cmdline(argv)
         if len(command) >= 32767:
-            raise ValueError("Windows MCP command line exceeds 32766 characters")
+            raise ValueError("Windows command line exceeds 32766 characters")
         create_job = api(kernel, "CreateJobObjectW", w.HANDLE, PTR, w.LPCWSTR)
         set_job = api(kernel, "SetInformationJobObject", w.BOOL, w.HANDLE, c.c_int, PTR, w.DWORD)
         init = api(kernel, "InitializeProcThreadAttributeList", w.BOOL, PTR, w.DWORD, w.DWORD, c.POINTER(SIZE))

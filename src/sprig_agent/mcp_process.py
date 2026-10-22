@@ -1,4 +1,4 @@
-"""Owned, nonblocking MCP pipes; process cleanup is not an OS sandbox."""
+"""Owned nonblocking process pipes; cleanup is not an OS sandbox."""
 import os
 import signal
 import subprocess
@@ -39,7 +39,7 @@ class Process:
     def write(self, raw):
         with self._lock:
             if self.closed:
-                raise ValueError("MCP process pipes are closed")
+                raise ValueError("process pipes are closed")
             if os.name == "nt":
                 return self.child.write(raw)
             fd = self.child.stdin.fileno()
@@ -51,7 +51,7 @@ class Process:
     def read(self, channel):
         with self._lock:
             if self.closed:
-                raise ValueError("MCP process pipes are closed")
+                raise ValueError("process pipes are closed")
             if os.name == "nt":
                 return self.child.read(channel)
             stream = getattr(self.child, channel)
@@ -60,6 +60,18 @@ class Process:
                 return os.read(fd, 4096)
             except BlockingIOError:
                 return None
+
+    def close_input(self):
+        """Non-interactive commands receive EOF; MCP leaves this pipe open."""
+        with self._lock:
+            if self.closed:
+                raise ValueError("process pipes are closed")
+            if os.name == "nt":
+                if self.child.stdin is not None:
+                    os.close(self.child.stdin)
+                    self.child.stdin = None
+            else:
+                self.child.stdin.close()
 
     def close(self):
         with self._lock:

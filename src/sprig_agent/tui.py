@@ -327,6 +327,7 @@ class SprigApp(App[int]):
         self.question = None
         # UI-thread-owned queue. Only the single agent worker takes its contents.
         self.pending_tasks = []
+        self._job_seen = set()
         self._draft_submission = None
         if self.session_name:
             self.store = SessionStore(self.session_dir, config)
@@ -447,6 +448,7 @@ class SprigApp(App[int]):
         self.query_one("#map", Button).disabled = "project_map" in self.config.disabled_tools
         self._ui_thread_id = threading.get_ident()
         self.set_interval(self.OUTPUT_REFRESH_SECONDS, self.flush_output)
+        self.set_interval(.25, self.refresh_jobs)
         self.action_focus_task()
         self.refresh_plan()
         self.append("Sprig 就绪。任务、读取内容和工具结果会发送到所示服务。\n写入和命令逐次确认；命令没有沙箱。\n")
@@ -470,6 +472,17 @@ class SprigApp(App[int]):
         if snapshot["explanation"]:
             lines.append("说明：" + snapshot["explanation"])
         self.query_one("#task-plan", TextArea).load_text(self.safe("\n".join(lines) or "尚无任务计划"))
+
+    def refresh_jobs(self):
+        if not self._ui_ready or self._unmounted:
+            return
+        rows = self.tools.jobs.observations()
+        self._job_seen.intersection_update(row["job_id"] for row in rows)
+        for row in rows:
+            if row["state"] != "running" and row["job_id"] not in self._job_seen:
+                self._job_seen.add(row["job_id"])
+                self.append("\n[后台任务状态；不是验收结果] " + json.dumps(row) + "；/job output ID 查看输出。\n")
+                self.event("后台命令已结束；当前工作区仍需独立检查")
 
     def safe(self, text):
         return terminal_text(redact(str(text), self.config.secrets))
@@ -850,6 +863,7 @@ class SprigApp(App[int]):
 
     def on_unmount(self):
         self._unmounted = True
+        self.tools.jobs.request_cancel_all()
         self.cancel_event.set()
         with self._output_condition:
             self._output_condition.notify_all()
@@ -1130,7 +1144,11 @@ class SprigApp(App[int]):
         return True
 
     def action_cancel(self):
+        had_jobs = self.tools.jobs.unsettled()
+        self.tools.jobs.request_cancel_all()
         if not self.busy:
+            if had_jobs:
+                self.set_state("已请求停止后台任务；使用 /jobs 查看清理结果")
             return
         self.cancel_event.set()
         with self._output_condition:
@@ -1271,6 +1289,7 @@ class SprigApp(App[int]):
                         "/skills（已配置技能摘要） /skill NAME [PATH [OFFSET PAGE_SHA256]]（本地预览，不运行脚本）\n"
                         "/mcp（本地状态） /mcp connect|disconnect|tools|resources|templates|prompts SERVER（逐次确认请求）\n"
                         "/web（本地缓存） /web URL（逐次批准公开网页） /web result ID [UTF8偏移]（缓存分页）\n"
+                        "/jobs /job start {\"argv\":[\"程序\",\"参数\"]}（新批准） /job status|output|wait|cancel ID\n"
                         "/continue /new /files /add 文件路径 /ref 文件路径 /unref 文件路径 /refs [clear]\n"
                         "/map [名称或路径查询] /git /diff /compact\n"
                         "/summary（本地预览） /summary create [END]（逐次确认额外请求） /summary clear\n"
@@ -1317,6 +1336,19 @@ class SprigApp(App[int]):
             return
         if command == "/model":
             self.choose_model(argument)
+            return
+        if command in {"/jobs", "/job"}:
+            if self.busy:
+                self.notify("请等待当前操作结束；Ctrl+C 可取消当前与后台任务", severity="warning")
+                return
+            try:
+                from .jobs import local_arguments
+                if command == "/jobs" and argument:
+                    raise ValueError("用法：/jobs 或 /job list OFFSET")
+                name, arguments = local_arguments(argument)
+                self.start(local=(name, arguments))
+            except (ValueError, OSError) as error:
+                self.notify(self.safe(error), severity="warning")
             return
         if command == "/web" and not argument:
             if not self.busy:
@@ -1537,6 +1569,7 @@ class SprigApp(App[int]):
         # Textual cancels the async wrapper without joining its worker thread.
         # Keep filesystem/session handles alive until that thread has stopped.
         self.cancel_event.set()
+        self.tools.jobs.request_cancel_all()
         with self._output_condition:
             self._output_condition.notify_all()
         cleanup_timeout = max(self.config.timeout, self.config.request_timeout or 0)
