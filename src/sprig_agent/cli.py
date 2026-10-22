@@ -143,18 +143,18 @@ def chat(agent, task, messages, emit, *, autostart=True, model_selection=None, s
                 emit("Resolve /pending apply or /pending discard first; no model request sent.")
                 continue
             if task == "/pending" or task.startswith("/pending "):
-                action = task[8:].strip() or "preview"
-                if action not in {"preview", "apply", "discard"}:
-                    raise ValueError("Use /pending [apply|discard]")
+                from .input_inbox import pending_command
+                request = pending_command(task[8:].strip())
+                action = request["action"]
                 if pending_control is None:
                     emit('{"pending_inputs": 0, "network_contacted": false}')
                 else:
-                    messages, result = pending_control(action, messages)
+                    messages, result = pending_control(action if action in {"preview", "apply", "discard"} else request, messages)
                     if action == "apply" and result.get("applied_inputs"):
                         status = 2
                     emit(json.dumps(result, ensure_ascii=False))
             elif task == "/help":
-                emit("/pending previews recovered inputs; /pending apply delivers them locally without a model call; /pending discard asks fresh approval to remove them. Continue explicitly afterwards.")
+                emit('/pending lists local inputs and IDs; show ID [CHAR_OFFSET] pages full text; edit ID "JSON text", drop ID or move ID POSITION asks fresh local approval. manage opens the --tui manager. apply delivers locally, discard confirms removal; /continue then requests the model.')
                 emit('/lsp shows configured servers without startup; /lsp definition|references|implementation|hover SERVER PATH LINE COLUMN or symbols|diagnostics SERVER PATH asks fresh approval; /lsp result ID [OFFSET] reads a local page. Positions are 1-based Unicode columns. Servers cannot apply edits or commands through this client.')
                 emit('/jobs lists owned tasks; /job start {"argv":["program","arg"]} approves a background command; /job status|output|wait|cancel ID observes or freshly confirms stopping it. Enable execution.background or --background. Exit/reset stops jobs; restore never restarts them.')
                 emit("/web shows local snapshot status; /web URL approves one public HTTP(S) GET; /web result ID [OFFSET] pages retained text without refetch. Enable with [web] enabled=true or --web. No auth, redirects, proxy, scripts or automatic replay.")
@@ -548,7 +548,7 @@ def main(argv=None):
             messages, attached = agent.attach_files(args.file, messages)
             emit("[attached snapshots] " + json.dumps(attached, ensure_ascii=False))
         if args.chat:
-            from .input_inbox import UserInput, input_preview
+            from .input_inbox import UserInput, change_inputs, check_input_growth, input_change_prompt, input_page, input_preview
             from .model_selection import ModelSelection, ModelSwitch
             model_selection = ModelSelection(settings, options, os.environ, config)
             def pending_control(action, messages):
@@ -556,6 +556,21 @@ def main(argv=None):
                     state = store.pending_inputs(session_name) if store and session_name else {"version": 1, "pending": []}
                 except FileNotFoundError:
                     state = {"version": 1, "pending": []}  # Reserved fresh autosave has no transcript yet.
+                if isinstance(action, dict):
+                    request = action
+                    if request["action"] == "show":
+                        return messages, input_page(state, request["identity"], request["offset"], min(8192, config.max_output))
+                    if request["action"] == "manage":
+                        return messages, {"error": "Use --tui for the manager, or /pending show|edit|drop|move in chat", "network_contacted": False}
+                    options = {key: request[key] for key in ("text", "position") if key in request}
+                    if "text" in options:
+                        options["text"] = redact(options["text"], config.secrets)
+                    candidate, result = change_inputs(state, request["action"], request["identity"], **options)
+                    check_input_growth(state, candidate, config.max_context_bytes)
+                    if confirm(input_change_prompt(state, candidate, result)) is not True:
+                        return messages, {"approved": False, "network_contacted": False}
+                    store.revise_inputs(session_name, state, candidate)
+                    return messages, {**result, "approved": True}
                 if action == "count":
                     return messages, {"pending_inputs": len(state["pending"])}
                 if action == "apply":

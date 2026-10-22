@@ -230,7 +230,8 @@ class InboxTests(unittest.TestCase):
             self.assertEqual(result["pending_inputs"], 32)
             self.assertTrue(result["limited"])
             self.assertLessEqual(len(json.dumps(result, ensure_ascii=False, indent=2).encode("utf-8")), budget)
-        self.assertNotIn("id", result["items"][0])
+        self.assertRegex(result["items"][0]["id"], r"^i[0-9a-f]{32}$")
+        self.assertEqual(result["items"][0]["position"], 1)
 
     def test_explicit_recovery_retry_keeps_one_message_and_new_requests_remain_distinct(self):
         entry = new_input("same request")

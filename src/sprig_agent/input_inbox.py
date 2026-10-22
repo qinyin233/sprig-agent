@@ -1,13 +1,132 @@
 """Bounded user inputs and local delivery identities, never action authority."""
 from dataclasses import dataclass
+import hashlib
+import json
 import re
 import threading
 import uuid
 from .json_budget import JsonBudgetExceeded, encoded_size
+from .config import terminal_text
 
 MAX_INPUTS = 32
 MAX_INPUT_BYTES = 2 * 1024 * 1024
 INPUT_ID = "sprig_input_id"
+
+
+def _output_size(value, budget):
+    encoded_size(value, max_bytes=budget, indent=2)
+    size = len(terminal_text(json.dumps(value, ensure_ascii=False, indent=2)).encode("utf-8"))
+    if size > budget:
+        raise JsonBudgetExceeded
+    return size
+
+
+class InputChanged(ValueError):
+    """A local review snapshot is stale; no mutation was attempted."""
+
+
+def input_revision(state):
+    return hashlib.sha256(json.dumps(input_state(state), ensure_ascii=False, sort_keys=True,
+                                     separators=(",", ":")).encode("utf-8")).hexdigest()
+
+
+def change_inputs(state, action, identity, *, text=None, position=None):
+    state = input_state(state)
+    index = next((index for index, row in enumerate(state["pending"]) if row["id"] == identity), None)
+    if index is None:
+        raise InputChanged("input is no longer pending; refresh before reviewing another change")
+    result = {"action": action, "input_id": identity, "network_contacted": False, "task_executed": False}
+    if action == "edit":
+        replacement = new_input(text)
+        state["pending"][index] = replacement.row()
+        result["replacement_id"] = replacement.id
+    elif action == "drop":
+        state["pending"].pop(index)
+    elif action == "move":
+        if type(position) is not int or not 1 <= position <= len(state["pending"]):
+            raise ValueError("position must identify a pending input, starting at 1")
+        state["pending"].insert(position - 1, state["pending"].pop(index))
+        result["position"] = position
+    else:
+        raise ValueError("unknown pending input mutation")
+    return input_state(state), result
+
+
+def pending_command(argument):
+    """Shared local command grammar; edit text is one JSON string, never a shell."""
+    if len(argument) > MAX_INPUT_BYTES * 6 + 256:
+        raise ValueError("pending command exceeds the encoded text limit")
+    parts = argument.split(None, 2)
+    if not parts:
+        return {"action": "preview"}
+    if parts[0] in {"apply", "discard", "manage"} and len(parts) == 1:
+        return {"action": parts[0]}
+    if len(parts) >= 2 and re.fullmatch(r"i[0-9a-f]{32}", parts[1]):
+        request = {"action": parts[0], "identity": parts[1]}
+        if parts[0] == "show" and len(parts) in (2, 3):
+            request["offset"] = int(parts[2]) if len(parts) == 3 else 0
+            return request
+        if parts[0] == "drop" and len(parts) == 2:
+            return request
+        if parts[0] == "move" and len(parts) == 3:
+            request["position"] = int(parts[2])
+            return request
+        if parts[0] == "edit" and len(parts) == 3:
+            try:
+                request["text"] = json.loads(parts[2])
+                UserInput(parts[1], request["text"])
+            except (ValueError, TypeError, RecursionError):
+                raise ValueError("edit expects a nonempty UTF-8 JSON string of at most 2 MiB") from None
+            return request
+    raise ValueError('Use /pending [apply|discard|manage], show ID [CHAR_OFFSET], edit ID "JSON text", drop ID or move ID POSITION')
+
+
+def check_input_growth(expected, candidate, limit):
+    size = sum(len(row["text"].encode("utf-8")) for row in input_state(candidate)["pending"])
+    previous = sum(len(row["text"].encode("utf-8")) for row in input_state(expected)["pending"])
+    if size > limit and size > previous:
+        raise ValueError("pending input change exceeds the context byte limit; original inputs retained")
+
+
+def input_page(state, identity, offset=0, budget=4096):
+    row = next((row for row in input_state(state)["pending"] if row["id"] == identity), None)
+    if row is None:
+        raise InputChanged("input is no longer pending; refresh the list")
+    text = row["text"]
+    if type(offset) is not int or not 0 <= offset <= len(text):
+        raise ValueError("pending input character offset is out of range")
+    def page(length):
+        end = offset + length
+        return {"input_id": identity, "offset": offset, "text": text[offset:end],
+                "next_offset": end if end < len(text) else None, "complete": end == len(text),
+                "characters": len(text), "network_contacted": False}
+    low, high = 0, min(len(text) - offset, 8192)
+    while low < high:
+        middle = (low + high + 1) // 2
+        try:
+            _output_size(page(middle), budget)
+        except JsonBudgetExceeded:
+            high = middle - 1
+        else:
+            low = middle
+    result = page(low)
+    _output_size(result, budget)
+    if not low and not result["complete"]:
+        raise ValueError("pending input page metadata exceeds output budget")
+    return result
+
+
+def input_change_prompt(expected, candidate, result):
+    """Small review with fingerprints for the full, explicitly edited local text."""
+    identity = result["input_id"]
+    before = input_page(expected, identity, budget=768)
+    after = (input_page(candidate, result["replacement_id"], budget=768)
+             if "replacement_id" in result else None)
+    return ("Change local pending user input; no model request or workspace action.\n"
+            + json.dumps({**result, "before": before, "after": after,
+                          "before_revision": input_revision(expected), "after_revision": input_revision(candidate)},
+                         ensure_ascii=False)
+            + "\nPreviews may be partial. Only this reviewed local queue change is approved; tool actions still need fresh approval.")
 
 
 @dataclass(frozen=True)
@@ -82,6 +201,9 @@ class InputInbox:
     def __init__(self, state=None):
         self._lock = threading.RLock()
         self._state = input_state(state)
+        self._claimed = set()
+        self.blocked = False
+        self._version = 0
 
     def snapshot(self):
         with self._lock:
@@ -97,6 +219,7 @@ class InputInbox:
                     raise ValueError("user input identity was reused with different text")
                 return False
             self._state = input_state({"version": 1, "pending": [*self._state["pending"], entry.row()]})
+            self._version += 1
             return True
 
     def batch(self, count=None):
@@ -104,27 +227,69 @@ class InputInbox:
             rows = self._state["pending"] if count is None else self._state["pending"][:count]
             return [UserInput(**row) for row in rows]
 
+    def claim(self, count=None):
+        with self._lock:
+            if self.blocked:
+                raise RuntimeError("pending input save is uncertain; restore this session before continuing")
+            entries = self.batch(count)
+            previous = len(self._claimed)
+            self._claimed.update(entry.id for entry in entries)
+            if len(self._claimed) != previous:
+                self._version += 1
+            return entries
+
+    def version(self):
+        with self._lock:
+            return self._version
+
+    def claimed(self):
+        with self._lock:
+            return frozenset(self._claimed)
+
+    def revise(self, expected, candidate, persist=lambda: None):
+        """Reserve delivery across durable mutation; never publish an uncertain write."""
+        candidate = input_state(candidate)
+        with self._lock:
+            if self.blocked:
+                raise RuntimeError("pending input save is uncertain; restore this session before editing")
+            if self._claimed or input_revision(self._state) != input_revision(expected):
+                raise InputChanged("pending inputs changed or are being delivered; refresh before editing")
+            try:
+                persist()
+            except InputChanged:
+                raise
+            except BaseException:
+                self.blocked = True
+                raise
+            self._state = candidate
+            self._version += 1
+
     def acknowledge(self, messages):
         with self._lock:
-            self._state = remaining_inputs(self._state, messages)
+            candidate = remaining_inputs(self._state, messages)
+            if candidate != self._state:
+                self._version += 1
+            self._state = candidate
+            self._claimed.intersection_update(row["id"] for row in self._state["pending"])
 
 
 def input_preview(state, budget=4096):
     """Bounded local preview; inbox identities carry no action authority."""
     rows = input_state(state)["pending"]
-    result = {"pending_inputs": len(rows), "items": [], "limited": bool(rows), "network_contacted": False}
-    for row in rows:
+    result = {"pending_inputs": len(rows), "items": [], "limited": False, "network_contacted": False}
+    for index, row in enumerate(rows, 1):
         text = row["text"].encode("utf-8")[:256].decode("utf-8", errors="ignore")
         while text:
-            candidate = {"preview": text, "truncated": text != row["text"]}
+            candidate = {"id": row["id"], "position": index, "preview": text, "truncated": text != row["text"]}
             try:
-                encoded_size({**result, "items": [*result["items"], candidate]}, max_bytes=budget, indent=2)
+                _output_size({**result, "items": [*result["items"], candidate]}, budget)
             except JsonBudgetExceeded:
                 text = text[:len(text) // 2]
             else:
                 result["items"].append(candidate)
                 break
-        if not text or candidate["truncated"]:
+        if not text:
             break
     result["limited"] = len(result["items"]) < len(rows) or any(row["truncated"] for row in result["items"])
+    _output_size(result, budget)
     return result

@@ -1,0 +1,114 @@
+{
+  "scope": "pending input editing, bounded inspection, TUI management and safe delivery, not coding-agent parity",
+  "base_commit": "ba08585288a58e06d8ac4ada2a5ae407498827f1",
+  "source_manifest": {
+    "src/sprig_agent": {
+      "files": 65,
+      "sha256": "0874856b308808fc88385fd9993faa903ac21e74e835cbab3d0ce6948d5a7a6a"
+    },
+    "tests": {
+      "files": 84,
+      "sha256": "32177dae28eaa2ecc4993a9a13c5c394a13dce09a57614ec75afe51eef5d6f57"
+    },
+    "tests/fixtures": {
+      "files": 2,
+      "sha256": "3ad5a955740a3aee2fe792e30bf2b17bc6ab2945392584a173cbc668369beb79"
+    }
+  },
+  "manifest_algorithm": "sorted relative path + NUL + SHA256(LF-normalized bytes) hex + newline",
+  "new_regressions": 18,
+  "local_suites": [
+    {
+      "platform": "native Windows",
+      "tests": 1256,
+      "passed": 1237,
+      "skipped": 19,
+      "seconds": 488.672
+    },
+    {
+      "platform": "WSL Ubuntu (local)",
+      "tests": 1256,
+      "passed": 1233,
+      "skipped": 23,
+      "seconds": 375.529
+    },
+    {
+      "platform": "Windows Python 3.11 relevant modules",
+      "tests": 129,
+      "passed": 129,
+      "skipped": 0,
+      "seconds": 104.549
+    },
+    {
+      "platform": "Windows mini SDK",
+      "tests": 25,
+      "passed": 25,
+      "skipped": 0,
+      "seconds": 53.021
+    },
+    {
+      "platform": "WSL mini SDK",
+      "tests": 25,
+      "passed": 25,
+      "skipped": 0,
+      "seconds": 197.326
+    }
+  ],
+  "live_model_requests": 0,
+  "wheel_validation": {
+    "installed_wheel_tests": 18,
+    "skipped": 0,
+    "imported_installed_modules": 58,
+    "wheel_source_files_checked": 65
+  },
+  "other_checks": [
+    "four uv lock files",
+    "configuration schema and TOML example",
+    "compileall",
+    "CLI help",
+    "wheel and sdist build",
+    "added credential-shaped strings",
+    "local Markdown links"
+  ],
+  "corrected_during_development": [
+    "valid paste inserted multiple times by inherited Textual handlers",
+    "terminal-expanded output budget for bidi controls",
+    "80x24 manager controls kept on screen",
+    "stale review assertion allowed the actual delivery status",
+    "streaming test uses an explicit release or cancellation gate rather than an eight-second wall-clock deadline"
+  ],
+  "ci": {
+    "triggered": false,
+    "status": "pending; user freeze before 2026-11-01 Asia/Singapore; account restriction must be verified afterwards"
+  },
+  "packaging_follow_up": {
+    "runtime_fix_in_this_batch": false,
+    "probe": [
+      {
+        "layout": "baseline",
+        "producer_python": "3.13",
+        "consumer_python": "3.11",
+        "isolated_import_exit": 1,
+        "editable_pth_ascii": false,
+        "gbk_pth_error": true
+      },
+      {
+        "layout": "explicit-map",
+        "producer_python": "3.13",
+        "consumer_python": "3.11",
+        "isolated_import_exit": 0,
+        "editable_pth_ascii": true,
+        "gbk_pth_error": false
+      }
+    ],
+    "scope": "minimal disposable package; reuse of a 3.13 editable artifact under Windows 3.11, not full-package validation"
+  },
+  "limits": [
+    "Windows Python 3.11 validation used a fresh non-editable install; cached UTF-8 editable pth in a non-ASCII path remains unresolved",
+    "no native Ubuntu or macOS CI on this commit",
+    "skips are not passes",
+    "no exactly-once tool side-effect guarantee",
+    "no long-task model quality or performance result",
+    "no independent queue versus steer mode or delivered-history editing; unsaved inputs and edit drafts remain process-local"
+  ]
+}

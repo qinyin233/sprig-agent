@@ -20,7 +20,7 @@ from .provider import ProviderError, validate_message
 from .references import reference_state
 from .summary import summary_state
 from .command_logs import log_state
-from .input_inbox import INPUT_ID, UserInput, delivered_inputs, input_state, remaining_inputs
+from .input_inbox import INPUT_ID, UserInput, InputChanged, delivered_inputs, input_state, remaining_inputs, input_revision
 
 _PRESERVE_INPUTS = object()
 
@@ -422,6 +422,19 @@ class SessionStore:
         self.save(name, saved["messages"], references=saved.get("file_references"), summary=saved.get("summary_checkpoint"),
                   logs=saved.get("command_logs"), inputs=input_state())
         return {"discarded_inputs": count, "network_contacted": False}
+
+    @_serialized
+    @_owned_session
+    def revise_inputs(self, name, expected, candidate):
+        """Caller reviews exact local input changes; recheck before atomic replacement."""
+        saved = self._read_document(self._filename(name))
+        current = remaining_inputs(redact(saved.get("input_inbox"), self.config.secrets),
+                                   redact(saved["messages"], self.config.secrets))
+        if input_revision(current) != input_revision(expected):
+            raise InputChanged("saved pending inputs changed; refresh before applying a local change")
+        candidate = input_state(redact(candidate, self.config.secrets))
+        self.save(name, saved["messages"], references=saved.get("file_references"),
+                  summary=saved.get("summary_checkpoint"), logs=saved.get("command_logs"), inputs=candidate)
 
     def list(self):
         """List local metadata without loading transcripts into a conversation."""

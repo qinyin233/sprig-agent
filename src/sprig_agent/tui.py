@@ -18,7 +18,8 @@ from textual.widgets import Button, Footer, Header, Input, RichLog, Static, Tabb
 from textual.worker import get_current_worker
 
 from .agent import Agent
-from .input_inbox import InputInbox, UserInput, input_state, input_preview, new_input
+from .input_inbox import (InputInbox, UserInput, InputChanged, input_state, input_preview, new_input,
+                          change_inputs, check_input_growth, input_change_prompt, input_page, input_revision, pending_command)
 from .changes import ChangeHistory
 from .config import SHORTCUT_ACTIONS, redact, terminal_text
 from .composer import DraftPastes, MAX_PASTE_BYTES, paste_text
@@ -412,6 +413,7 @@ class SprigApp(App[int]):
                     with TabPane("操作", id="actions-tab"):
                         with VerticalScroll(id="operations"):
                             yield Button("继续当前对话", id="continue")
+                            yield Button("管理待处理要求", id="pending")
                             yield Button("新建对话", id="new")
                             yield Button("切换模型", id="model", disabled=self.model_selection is None)
                             yield Button("查看 Git diff", id="diff", disabled=self.config.read_only)
@@ -618,16 +620,72 @@ class SprigApp(App[int]):
             state["pending"].append(self._input_retry.row())
         return input_state(state)
 
+    def manage_pending(self):
+        from .pending_ui import PendingScreen
+        self.push_screen(PendingScreen(self))
+
+    def change_pending(self, request, *, expected=None, completed=None):
+        """Review local queue mutations without replacing the active agent worker."""
+        def report(result):
+            if completed:
+                completed(result)
+            else:
+                self.append("\n[本地队列修改；未请求模型]\n" + json.dumps(result, ensure_ascii=False) + "\n")
+
+        try:
+            if self._input_retry or self._input_inbox.blocked:
+                raise ValueError("输入保存尚未确认；请先恢复会话或明确处理 /pending，不能直接修改队列")
+            current = self.pending_state()
+            expected = current if expected is None else expected
+            if input_revision(expected) != input_revision(current) or self._input_inbox.claimed():
+                raise InputChanged("要求已变化或正在递送，请刷新后再修改")
+            options = {key: request[key] for key in ("text", "position") if key in request}
+            if "text" in options:
+                options["text"] = redact(options["text"], self.config.secrets)
+            candidate, result = change_inputs(expected, request["action"], request["identity"], **options)
+            check_input_growth(expected, candidate, self.config.max_context_bytes)
+            source, agent, session = self._input_inbox, self.agent, self.session_name
+            recovered = bool(self.recovered_inputs["pending"])
+        except (OSError, ValueError, RuntimeError, SessionError) as error:
+            report({"approved": False, "error": self.safe(error), "network_contacted": False})
+            return
+
+        def decide(approved):
+            if approved is not True:
+                report({"approved": False, "network_contacted": False})
+                return
+            try:
+                if (self._closed or self._unmounted or self.agent is not agent or self.session_name != session
+                        or self._input_inbox is not source or self.busy and self.cancel_event.is_set()
+                        or input_revision(self.pending_state()) != input_revision(expected)):
+                    raise InputChanged("对话或待处理要求已变化；修改未应用，请刷新")
+                def persist():
+                    if self.store and session:
+                        self.store.revise_inputs(session, expected, candidate)
+                if recovered:
+                    source.revise(source.snapshot(), source.snapshot(), persist)
+                    self.recovered_inputs = candidate
+                else:
+                    source.revise(expected, candidate, persist)
+                self.set_task_result(2, "待处理要求已修改，尚未递送或重新验收")
+                report({**result, "approved": True})
+            except (OSError, ValueError, RuntimeError, SessionError) as error:
+                if source.blocked and self.busy:
+                    self.action_cancel()
+                report({"approved": False, "error": self.safe(error), "save_uncertain": source.blocked,
+                        "network_contacted": False})
+        self.push_screen(ApprovalScreen(self.safe(input_change_prompt(expected, candidate, result))), decide)
+
     def take_pending(self):
         count = 1 if self.config.steering_mode == "one-at-a-time" else len(self.pending_tasks)
-        tasks = self._input_inbox.batch(count)
+        tasks = self._input_inbox.claim(count)
         if tasks:
             self.set_state("已接收新要求，继续当前会话")
         return tasks
 
     def receive_input(self):
         if self._unmounted:
-            return self._input_inbox.batch()
+            return self._input_inbox.claim()
         return self.ui_call(self.take_pending)
 
     @on(UiRequest)
@@ -738,7 +796,7 @@ class SprigApp(App[int]):
     def start(self, task=None, local=None, *, context_files=(), preflight=False):
         if self.busy:
             return
-        if (self.recovered_inputs["pending"] or self._input_retry) and (not local or local[0] in {"model-switch", "conversation-fork", "summary"}):
+        if (self.recovered_inputs["pending"] or self._input_retry or self._input_inbox.blocked) and (not local or local[0] in {"model-switch", "conversation-fork", "summary"}):
             self.reject_input("请先用 /pending apply 或 /pending discard 处理已恢复的要求；未请求模型。")
             return
         if not local and not task and not self.messages and not self.pending_tasks:
@@ -790,6 +848,8 @@ class SprigApp(App[int]):
                 if name == "pending":
                     action = arguments["action"]
                     if action == "apply":
+                        if self._input_inbox.blocked:
+                            raise ValueError("队列修改保存未确认；请恢复此会话或明确丢弃待处理要求后继续")
                         self.messages, result = self.agent.recover_inputs(
                             self.messages, [UserInput(**row) for row in self.pending_state()["pending"]])
                         self.recovered_inputs = input_state()
@@ -921,7 +981,7 @@ class SprigApp(App[int]):
         self.flush_output()
         if self.local_action is not None:
             self.last_operation_status = status
-        if self.pending_tasks and not self._input_retry and status in (0, 2) and not self.cancel_event.is_set():
+        if self.pending_tasks and not self._input_retry and not self._input_inbox.blocked and status in (0, 2) and not self.cancel_event.is_set():
             self.local_action = None
             self.set_task_result(2, "新要求待处理，等待更新后的结果")
             self.set_state(f"继续处理 {len(self.pending_tasks)} 条新要求")
@@ -1041,7 +1101,7 @@ class SprigApp(App[int]):
                                      title="历史分支：保留到该轮结束；搜索消息号/预览，Enter 后确认，Esc 关闭"), selected)
 
     def commit_fork(self, candidate):
-        if (self._unmounted or self._closed or self.cancel_event.is_set() or self.pending_tasks or self.recovered_inputs["pending"] or self._input_retry
+        if (self._unmounted or self._closed or self.cancel_event.is_set() or self.pending_tasks or self.recovered_inputs["pending"] or self._input_retry or self._input_inbox.blocked
                 or self.agent is not candidate.original or self.messages is not candidate.source):
             raise ValueError("分支已取消或被新要求取代；原对话和草稿保留")
         old_store, pending_draft = self.store, self._draft_submission
@@ -1066,7 +1126,7 @@ class SprigApp(App[int]):
         return result
 
     def commit_model(self, candidate):
-        if (self._unmounted or self._closed or self.cancel_event.is_set() or self.pending_tasks or self.recovered_inputs["pending"] or self._input_retry
+        if (self._unmounted or self._closed or self.cancel_event.is_set() or self.pending_tasks or self.recovered_inputs["pending"] or self._input_retry or self._input_inbox.blocked
                 or self.agent is not candidate.original):
             raise ValueError("模型切换已取消或被新要求取代；原模型与草稿保留")
         old_store = self.store
@@ -1173,6 +1233,9 @@ class SprigApp(App[int]):
             self.start(None if retry else task, context_files=event.files, preflight=event.preflight)
 
     def queue_guidance(self, task):
+        if self._input_inbox.blocked:
+            self.reject_input("队列修改保存未确认；请恢复当前会话后再发送。草稿保留。")
+            return False
         if self.recovered_inputs["pending"]:
             self.reject_input("请先处理 /pending apply 或 /pending discard；新要求未接收，草稿保留。")
             return False
@@ -1380,7 +1443,8 @@ class SprigApp(App[int]):
                         "/history 消息编号 [字符偏移]（本地分页原文，系统提示与推理元数据不展示）\n"
                         "/changes /undo /redo /discard-history /sessions /prune [--dry-run]\n"
                         "/save [名称] /restore [名称] /delete [名称]\n"
-                        "/pending 查看待处理要求；/pending apply 仅加入对话；/pending discard 逐次确认丢弃；之后 /continue 才请求模型。\n"
+                        "/pending 查看；/pending manage 管理；show ID [字符偏移] 查看原文；edit ID JSON字符串、drop ID、move ID 位置逐次确认。\n"
+                        "/pending apply 仅加入对话；/pending discard 逐次确认全部丢弃；之后 /continue 才请求模型。\n"
                         "/worktrees /worktree 新目录路径（完整剩余文本作为路径；不会切换当前对话）\n"
                         "执行中可输入普通消息调整引导。// 开头发送以 / 开头的普通消息。\n"
                         "Tab 补全本地命令或 /add、/ref 的文件参数；普通消息 @关键词 + Tab 选择本轮文件。\n"
@@ -1405,12 +1469,24 @@ class SprigApp(App[int]):
             self.append(f"[待恢复要求: {len(self.recovered_inputs['pending'])}；运行状态仅当前进程]\n" + json.dumps(self.agent.runtime_snapshot(), ensure_ascii=False) + "\n")
             return
         if command == "/pending":
-            if argument not in {"", "apply", "discard"}:
-                self.append("用法：/pending [apply|discard]；apply 仅加入对话，/continue 才请求模型。\n")
-            elif self.busy:
-                self.notify("请等待当前操作结束", severity="warning")
-            else:
-                self.start(local=("pending", {"action": argument or "preview"}))
+            try:
+                request = pending_command(argument)
+                if request["action"] == "manage":
+                    self.manage_pending()
+                elif request["action"] == "show":
+                    result = input_page(self.pending_state(), request["identity"], request["offset"], min(8192, self.config.max_output))
+                    self.append(json.dumps(result, ensure_ascii=False, indent=2) + "\n")
+                elif request["action"] in {"edit", "drop", "move"}:
+                    self.change_pending(request)
+                elif self.busy:
+                    if request["action"] == "preview":
+                        self.append(json.dumps(input_preview(self.pending_state(), min(4096, self.config.max_output)), ensure_ascii=False, indent=2) + "\n")
+                    else:
+                        self.notify("请等待当前操作结束", severity="warning")
+                else:
+                    self.start(local=("pending", {"action": request["action"]}))
+            except (ValueError, RuntimeError, OSError, SessionError) as error:
+                self.notify(self.safe(error), severity="warning")
             return
         if command == "/refs" and not argument:
             self.append("\n[当前文件引用；准备记录不是已发送证明]\n" + json.dumps(
@@ -1616,6 +1692,8 @@ class SprigApp(App[int]):
             self.query_one("#task", TaskInput).action_expand_pastes()
         elif identity == "cancel":
             self.action_cancel()
+        elif identity == "pending":
+            self.manage_pending()
         elif not self.busy:
             if identity == "continue":
                 self.start()
