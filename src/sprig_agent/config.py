@@ -157,7 +157,7 @@ class Config:
     auto_save_session: bool = False
     session_max_age_days: int | None = None
     session_max_count: int | None = None
-    context_trigger_ratio: float = 0
+    context_trigger_ratio: float = 0.8
     context_keep_recent_messages: int = 6
     context_keep_read_bytes: int = 8192
     tui_theme: str | None = None

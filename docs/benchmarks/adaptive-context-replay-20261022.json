@@ -1,0 +1,300 @@
+{
+  "scope": "offline counterfactual context projection of a saved real trace; no model request, no candidate edits, not model-success evidence",
+  "source_trace_commit": "9273228cfe0530a345f27b9abe0f5a80ac57219b",
+  "trace_digest": "51cb1c2f7312162e546a5c8ffb7e6cd12ad2590d659b0efd0e7f5df92531b6be",
+  "hard_request_cap": 131072,
+  "eager_ratio": 0,
+  "adaptive_ratio": 0.8,
+  "all_recorded_sizes_reproduced": true,
+  "external_model_requests": 0,
+  "observations": [
+    {
+      "step": 1,
+      "recorded_request_bytes": 13672,
+      "eager": {
+        "before_bytes": 13672,
+        "after_bytes": 13672,
+        "triggered": true,
+        "within_budget": true,
+        "changes": 0,
+        "read_bodies": 0,
+        "read_body_bytes": 0,
+        "read_ids_visible": 0
+      },
+      "adaptive": {
+        "before_bytes": 13672,
+        "after_bytes": 13672,
+        "triggered": false,
+        "within_budget": true,
+        "changes": 0,
+        "read_bodies": 0,
+        "read_body_bytes": 0,
+        "read_ids_visible": 0
+      }
+    },
+    {
+      "step": 2,
+      "recorded_request_bytes": 15922,
+      "eager": {
+        "before_bytes": 15922,
+        "after_bytes": 15922,
+        "triggered": true,
+        "within_budget": true,
+        "changes": 0,
+        "read_bodies": 0,
+        "read_body_bytes": 0,
+        "read_ids_visible": 0
+      },
+      "adaptive": {
+        "before_bytes": 15922,
+        "after_bytes": 15922,
+        "triggered": false,
+        "within_budget": true,
+        "changes": 0,
+        "read_bodies": 0,
+        "read_body_bytes": 0,
+        "read_ids_visible": 0
+      }
+    },
+    {
+      "step": 3,
+      "recorded_request_bytes": 22782,
+      "eager": {
+        "before_bytes": 22782,
+        "after_bytes": 22782,
+        "triggered": true,
+        "within_budget": true,
+        "changes": 0,
+        "read_bodies": 1,
+        "read_body_bytes": 4793,
+        "read_ids_visible": 1
+      },
+      "adaptive": {
+        "before_bytes": 22782,
+        "after_bytes": 22782,
+        "triggered": false,
+        "within_budget": true,
+        "changes": 0,
+        "read_bodies": 1,
+        "read_body_bytes": 4793,
+        "read_ids_visible": 1
+      }
+    },
+    {
+      "step": 4,
+      "recorded_request_bytes": 24032,
+      "eager": {
+        "before_bytes": 24868,
+        "after_bytes": 24032,
+        "triggered": true,
+        "within_budget": true,
+        "changes": 1,
+        "read_bodies": 1,
+        "read_body_bytes": 4793,
+        "read_ids_visible": 1
+      },
+      "adaptive": {
+        "before_bytes": 24868,
+        "after_bytes": 24868,
+        "triggered": false,
+        "within_budget": true,
+        "changes": 0,
+        "read_bodies": 1,
+        "read_body_bytes": 4793,
+        "read_ids_visible": 1
+      }
+    },
+    {
+      "step": 5,
+      "recorded_request_bytes": 29171,
+      "eager": {
+        "before_bytes": 29928,
+        "after_bytes": 29171,
+        "triggered": true,
+        "within_budget": true,
+        "changes": 2,
+        "read_bodies": 3,
+        "read_body_bytes": 8167,
+        "read_ids_visible": 2
+      },
+      "adaptive": {
+        "before_bytes": 29928,
+        "after_bytes": 29928,
+        "triggered": false,
+        "within_budget": true,
+        "changes": 0,
+        "read_bodies": 3,
+        "read_body_bytes": 8167,
+        "read_ids_visible": 3
+      }
+    },
+    {
+      "step": 6,
+      "recorded_request_bytes": 29778,
+      "eager": {
+        "before_bytes": 31385,
+        "after_bytes": 29778,
+        "triggered": true,
+        "within_budget": true,
+        "changes": 4,
+        "read_bodies": 3,
+        "read_body_bytes": 8167,
+        "read_ids_visible": 2
+      },
+      "adaptive": {
+        "before_bytes": 31385,
+        "after_bytes": 31385,
+        "triggered": false,
+        "within_budget": true,
+        "changes": 0,
+        "read_bodies": 3,
+        "read_body_bytes": 8167,
+        "read_ids_visible": 3
+      }
+    },
+    {
+      "step": 7,
+      "recorded_request_bytes": 33754,
+      "eager": {
+        "before_bytes": 35282,
+        "after_bytes": 33754,
+        "triggered": true,
+        "within_budget": true,
+        "changes": 5,
+        "read_bodies": 4,
+        "read_body_bytes": 11223,
+        "read_ids_visible": 2
+      },
+      "adaptive": {
+        "before_bytes": 35282,
+        "after_bytes": 35282,
+        "triggered": false,
+        "within_budget": true,
+        "changes": 0,
+        "read_bodies": 4,
+        "read_body_bytes": 11223,
+        "read_ids_visible": 4
+      }
+    },
+    {
+      "step": 8,
+      "recorded_request_bytes": 29494,
+      "eager": {
+        "before_bytes": 36450,
+        "after_bytes": 29494,
+        "triggered": true,
+        "within_budget": true,
+        "changes": 6,
+        "read_bodies": 3,
+        "read_body_bytes": 6430,
+        "read_ids_visible": 1
+      },
+      "adaptive": {
+        "before_bytes": 36450,
+        "after_bytes": 36450,
+        "triggered": false,
+        "within_budget": true,
+        "changes": 0,
+        "read_bodies": 4,
+        "read_body_bytes": 11223,
+        "read_ids_visible": 4
+      }
+    },
+    {
+      "step": 9,
+      "recorded_request_bytes": 31243,
+      "eager": {
+        "before_bytes": 38560,
+        "after_bytes": 31243,
+        "triggered": true,
+        "within_budget": true,
+        "changes": 7,
+        "read_bodies": 4,
+        "read_body_bytes": 7612,
+        "read_ids_visible": 2
+      },
+      "adaptive": {
+        "before_bytes": 38560,
+        "after_bytes": 38560,
+        "triggered": false,
+        "within_budget": true,
+        "changes": 0,
+        "read_bodies": 5,
+        "read_body_bytes": 12405,
+        "read_ids_visible": 5
+      }
+    },
+    {
+      "step": 10,
+      "recorded_request_bytes": 29976,
+      "eager": {
+        "before_bytes": 39165,
+        "after_bytes": 29976,
+        "triggered": true,
+        "within_budget": true,
+        "changes": 8,
+        "read_bodies": 3,
+        "read_body_bytes": 6005,
+        "read_ids_visible": 1
+      },
+      "adaptive": {
+        "before_bytes": 39165,
+        "after_bytes": 39165,
+        "triggered": false,
+        "within_budget": true,
+        "changes": 0,
+        "read_bodies": 5,
+        "read_body_bytes": 12405,
+        "read_ids_visible": 5
+      }
+    },
+    {
+      "step": 11,
+      "recorded_request_bytes": 30384,
+      "eager": {
+        "before_bytes": 39706,
+        "after_bytes": 30384,
+        "triggered": true,
+        "within_budget": true,
+        "changes": 9,
+        "read_bodies": 3,
+        "read_body_bytes": 6005,
+        "read_ids_visible": 1
+      },
+      "adaptive": {
+        "before_bytes": 39706,
+        "after_bytes": 39706,
+        "triggered": false,
+        "within_budget": true,
+        "changes": 0,
+        "read_bodies": 5,
+        "read_body_bytes": 12405,
+        "read_ids_visible": 5
+      }
+    },
+    {
+      "step": 12,
+      "recorded_request_bytes": 31243,
+      "eager": {
+        "before_bytes": 40492,
+        "after_bytes": 31243,
+        "triggered": true,
+        "within_budget": true,
+        "changes": 10,
+        "read_bodies": 3,
+        "read_body_bytes": 6005,
+        "read_ids_visible": 0
+      },
+      "adaptive": {
+        "before_bytes": 40492,
+        "after_bytes": 40492,
+        "triggered": false,
+        "within_budget": true,
+        "changes": 0,
+        "read_bodies": 5,
+        "read_body_bytes": 12405,
+        "read_ids_visible": 5
+      }
+    }
+  ]
+}

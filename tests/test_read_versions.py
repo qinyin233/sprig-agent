@@ -265,7 +265,7 @@ class ReadVersionTests(unittest.TestCase):
         for index in range(4):
             history.extend([{"role": "user", "content": str(index)}, {"role": "assistant", "content": "ack"}])
         original = copy.deepcopy(history)
-        selected, report = prepare_context(self.config, history, TOOL_SCHEMAS, compact=True)
+        selected, report = prepare_context(self.config, history, TOOL_SCHEMAS, compact=True, force=True)
         self.assertLess(report["after_bytes"], report["before_bytes"])
         self.assertTrue(json.loads(selected[2]["tool_calls"][0]["function"]["arguments"])["context_elided"])
         self.assertEqual(history, original)

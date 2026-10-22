@@ -24,7 +24,9 @@ class ReadRetentionTests(unittest.TestCase):
         temporary = tempfile.TemporaryDirectory()
         self.addCleanup(temporary.cleanup)
         self.root = Path(temporary.name)
-        self.config = Config(self.root, "fixture", compact_context=True, max_context_bytes=32768)
+        # Exercise elision mechanics even for small histories; the adaptive
+        # default is covered separately in test_adaptive_context.
+        self.config = Config(self.root, "fixture", compact_context=True, max_context_bytes=32768, context_trigger_ratio=0)
 
     def append(self, history, identity, path, result=None, **arguments):
         history.append(call(identity, "read_file", {"path": path, **arguments}))

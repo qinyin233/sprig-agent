@@ -1,0 +1,157 @@
+{
+  "scope": "adaptive deterministic context scheduling default; implementation evidence and one partial real task, not overall parity or causal ranking",
+  "base_commit": "ffdc2730e21e051f94d0cc082d2253dbfc13ee03",
+  "source_manifest": {
+    "src/sprig_agent": {
+      "files": 63,
+      "sha256": "ede0a8626c7648272001e93ed93bd575978bb7e138374a7f8b33661b413e19d6"
+    },
+    "tests": {
+      "files": 82,
+      "sha256": "f4d13bff1a8358662c54918b05d90a4ccf140b48e51082d92f8584641356364b"
+    },
+    "tests/fixtures": {
+      "files": 2,
+      "sha256": "a10227266217be66894ffec586fc42d0bbfbb59bf031cf4867e300b707542385"
+    }
+  },
+  "default_compaction_enabled": false,
+  "default_trigger_ratio": 0.8,
+  "legacy_explicit_ratio": 0,
+  "new_tests": {
+    "count": 4,
+    "scope": [
+      "below-trigger full observations and read IDs without saved-history mutation",
+      "explicit zero, manual force, disabled compaction",
+      "actual HTTP/SSE on three protocols, five reads then original read ID edit and separate fixed-check approval",
+      "unspecified settings default, CLI zero precedence and unchanged binding"
+    ]
+  },
+  "local_suites": [
+    {
+      "platform": "native Windows",
+      "python": "3.13.0",
+      "command": "uv run --locked python -m unittest discover -s tests -q",
+      "total": 1220,
+      "passed": 1201,
+      "skipped": 19,
+      "seconds": 381.602,
+      "exit_code": 0,
+      "log_sha256": "b44ebf5b3a2d2075d14b8288cbcf07921b75d9857b44af343c00ef63d3065c62"
+    },
+    {
+      "platform": "WSL Ubuntu",
+      "python": "3.13.14",
+      "command": "UV_PROJECT_ENVIRONMENT=.venv-wsl uv run --locked python -m unittest discover -s tests -q",
+      "total": 1220,
+      "passed": 1197,
+      "skipped": 23,
+      "seconds": 319.884,
+      "exit_code": 0,
+      "log_sha256": "d4f11c20acf92c6fa8c114f0d01586bc87a6fa3f07159352b075526d992cda27"
+    },
+    {
+      "platform": "native Windows",
+      "python": "3.11.14",
+      "suite": "adaptive, context, read retention, check history, edit/folding history, configuration, runtime budget and navigation; fresh no-cache non-editable package",
+      "total": 89,
+      "passed": 89,
+      "skipped": 0,
+      "seconds": 11.228,
+      "exit_code": 0,
+      "log_sha256": "c49cf028bbc601537e3e50bc88f2a02bb233f65443113a9f67e1cd4a23a3d854"
+    },
+    {
+      "platform": "native Windows",
+      "python": "3.11.14",
+      "suite": "read-version and adaptive regression; overlaps preceding suite",
+      "total": 17,
+      "passed": 17,
+      "skipped": 0,
+      "seconds": 3.124,
+      "exit_code": 0,
+      "log_sha256": "2e73aff72c90e6a17c553c2709aab553d1f27463dd1090ecac008a8e1bcba810"
+    },
+    {
+      "platform": "native Windows",
+      "python": "3.12.12",
+      "suite": "mini SDK; production source identical to sealed matrix",
+      "total": 25,
+      "passed": 25,
+      "skipped": 0,
+      "seconds": 31.448,
+      "exit_code": 0,
+      "log_sha256": "bd40e2e9d0020bd21b0856cf436c1dff6a174c5f20327ca0d01b6a418539eb4b"
+    },
+    {
+      "platform": "WSL Ubuntu",
+      "python": "3.12.13",
+      "suite": "mini SDK; production source identical to sealed matrix",
+      "total": 25,
+      "passed": 25,
+      "skipped": 0,
+      "seconds": 136.109,
+      "exit_code": 0,
+      "log_sha256": "55bcdcd29cd04596e6df11de5773aa38363c57f0375954fee50b6fd851ca917c"
+    }
+  ],
+  "installed_wheel": {
+    "source_modules_matched": 63,
+    "adaptive_tests": 4,
+    "skipped": 0,
+    "passed": true,
+    "new_private_target": true,
+    "no_cache": true,
+    "dependencies": "existing locked local dependencies"
+  },
+  "replay": {
+    "artifact": "adaptive-context-replay-20261022.json",
+    "recorded_requests_reproduced": 12,
+    "external_model_requests": 0,
+    "hard_cap_unchanged": 131072
+  },
+  "real_task": {
+    "artifact": "click-adaptive-live-20261022.json",
+    "source": "ffdc2730e21e051f94d0cc082d2253dbfc13ee03",
+    "explicit_ratio": 0.8,
+    "default_modified_during_run": false,
+    "http_requests": 12,
+    "initial_passed": 635,
+    "final_passed": 640,
+    "collected": 642,
+    "skipped": 0,
+    "overall_passed": false,
+    "reported_total_tokens": 137572,
+    "causal_or_overall_claim": false
+  },
+  "corrections": [
+    "Eager retention/folding mechanics fixtures now explicitly set zero; default behavior has independent tests.",
+    "First full matrix failed a below-threshold completed-edit mechanics fixture; it now explicitly forces compaction. No request/test budget was raised.",
+    "An initial trigger test assumed retained-read annotations always shrink the request; use zero retained-read bytes to test trigger-only savings."
+  ],
+  "other_checks": [
+    "four uv locks",
+    "generated Draft 2020-12 Schema and full TOML example",
+    "compileall",
+    "CLI help",
+    "wheel/sdist",
+    "added credential-shape scan and local Markdown links"
+  ],
+  "remote_ci": {
+    "triggered_this_batch": false,
+    "status": "pending/frozen",
+    "resume_not_before": "2026-11-01 Asia/Singapore",
+    "resume_requires": "verify account restriction and previous exact gate; date alone is insufficient",
+    "commit_marker": "[skip ci]"
+  },
+  "limits": [
+    "no OS backend changes",
+    "platform skips are not passes",
+    "WSL is not a native Ubuntu CI runner",
+    "no macOS or full Python matrix",
+    "byte caps are not provider token windows",
+    "preserved read IDs never authorize writes or bypass revision checks",
+    "more context can increase tokens; no fee reduction claim",
+    "real task is still failed and is one stochastic run, not a controlled attribution"
+  ]
+}

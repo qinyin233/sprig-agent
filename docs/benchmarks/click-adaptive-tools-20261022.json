@@ -1,0 +1,336 @@
+{
+  "scope": "numeric tool diagnostics only; no raw prompts, arguments, paths, model reasoning or source",
+  "model_steps": 12,
+  "model_tools": {
+    "grep": 9,
+    "read_file": 9,
+    "edit_file": 4
+  },
+  "observations": [
+    {
+      "step": 1,
+      "tool": "grep",
+      "arguments_sha256": "037cf1a97a0d477b626a20aef99f66255235ec3a20c566d5aa9eb67822233507",
+      "diagnostics": {
+        "error": false,
+        "timed_out": false,
+        "truncated": false,
+        "files_read": 18,
+        "bytes_read": 396957,
+        "entries_scanned": 19,
+        "skipped_files": 0,
+        "matched_lines": 8,
+        "regex": true,
+        "same_output_repeats": 0
+      }
+    },
+    {
+      "step": 1,
+      "tool": "grep",
+      "arguments_sha256": "6bddc0a3c1816ccf87ccbe1e6faee7c19212173312fd7e548426cc201a574623",
+      "diagnostics": {
+        "error": false,
+        "timed_out": false,
+        "truncated": false,
+        "files_read": 31,
+        "bytes_read": 343728,
+        "entries_scanned": 32,
+        "skipped_files": 0,
+        "matched_lines": 2,
+        "regex": true,
+        "same_output_repeats": 0
+      }
+    },
+    {
+      "step": 2,
+      "tool": "read_file",
+      "arguments_sha256": "77c91cb4871de0c30a58652fd14ea1927a1f30333a7112100cef86b0d9d1581f",
+      "diagnostics": {
+        "error": false,
+        "truncated": true,
+        "line_truncated": false,
+        "range_complete": true,
+        "content_bytes": 3638,
+        "revision_available": true,
+        "read_id_available": true,
+        "same_output_repeats": 0
+      }
+    },
+    {
+      "step": 2,
+      "tool": "read_file",
+      "arguments_sha256": "8f65d50cdaef2e731b0667b8bdb5759d343566c2670fc557bb4f0bbf3cfb7ad3",
+      "diagnostics": {
+        "error": false,
+        "truncated": true,
+        "line_truncated": false,
+        "range_complete": true,
+        "content_bytes": 1767,
+        "revision_available": true,
+        "read_id_available": true,
+        "same_output_repeats": 0
+      }
+    },
+    {
+      "step": 2,
+      "tool": "grep",
+      "arguments_sha256": "3f06f447268a192673af1e4227968a1b3535fc613abccfc067ea4e87086c2a07",
+      "diagnostics": {
+        "error": false,
+        "timed_out": false,
+        "truncated": false,
+        "files_read": 1,
+        "bytes_read": 18066,
+        "entries_scanned": 0,
+        "skipped_files": 0,
+        "matched_lines": 2,
+        "regex": true,
+        "same_output_repeats": 0
+      }
+    },
+    {
+      "step": 3,
+      "tool": "grep",
+      "arguments_sha256": "04c8ac78b5c508f3847432bc3e79d40bf0bcb34b9468e43a46b571c11356b2a0",
+      "diagnostics": {
+        "error": false,
+        "timed_out": false,
+        "truncated": false,
+        "files_read": 1,
+        "bytes_read": 135359,
+        "entries_scanned": 0,
+        "skipped_files": 0,
+        "matched_lines": 8,
+        "regex": true,
+        "same_output_repeats": 0
+      }
+    },
+    {
+      "step": 3,
+      "tool": "read_file",
+      "arguments_sha256": "e623bcd9639339d51aeffb61aab5e75a6c32ae1f34c6d75d3e9889d6795bffa8",
+      "diagnostics": {
+        "error": false,
+        "truncated": true,
+        "line_truncated": false,
+        "range_complete": true,
+        "content_bytes": 4476,
+        "revision_available": true,
+        "read_id_available": true,
+        "same_output_repeats": 0
+      }
+    },
+    {
+      "step": 4,
+      "tool": "read_file",
+      "arguments_sha256": "125366fc6f588428ee5c6b0acab955d545548efbfc9945212989dc9a4a44fe96",
+      "diagnostics": {
+        "error": false,
+        "truncated": true,
+        "line_truncated": false,
+        "range_complete": true,
+        "content_bytes": 2790,
+        "revision_available": true,
+        "read_id_available": true,
+        "same_output_repeats": 0
+      }
+    },
+    {
+      "step": 4,
+      "tool": "read_file",
+      "arguments_sha256": "7ef79cd6ec9b54a99c077b705dc290cff8684e6671f849d5e662b8f2147fd754",
+      "diagnostics": {
+        "error": false,
+        "truncated": true,
+        "line_truncated": false,
+        "range_complete": true,
+        "content_bytes": 1593,
+        "revision_available": true,
+        "read_id_available": true,
+        "same_output_repeats": 0
+      }
+    },
+    {
+      "step": 4,
+      "tool": "read_file",
+      "arguments_sha256": "17f9664fe0cdcc36058cd81c5a174708a5325758ceb25eb5f41fdb3c789b28a9",
+      "diagnostics": {
+        "error": false,
+        "truncated": true,
+        "line_truncated": false,
+        "range_complete": true,
+        "content_bytes": 871,
+        "revision_available": true,
+        "read_id_available": true,
+        "same_output_repeats": 0
+      }
+    },
+    {
+      "step": 5,
+      "tool": "grep",
+      "arguments_sha256": "d4d0ce745643473364d77b07a588eb81893d9b5bddb130aacc1bad052030027e",
+      "diagnostics": {
+        "error": false,
+        "timed_out": false,
+        "truncated": false,
+        "files_read": 1,
+        "bytes_read": 10123,
+        "entries_scanned": 0,
+        "skipped_files": 0,
+        "matched_lines": 0,
+        "regex": true,
+        "same_output_repeats": 0
+      }
+    },
+    {
+      "step": 5,
+      "tool": "grep",
+      "arguments_sha256": "cf1ec76a636dcfbcbf2fd4cec2f8eb8012bc91bbd092d68f8864a150c259fbbc",
+      "diagnostics": {
+        "error": false,
+        "timed_out": false,
+        "truncated": false,
+        "files_read": 1,
+        "bytes_read": 18066,
+        "entries_scanned": 0,
+        "skipped_files": 0,
+        "matched_lines": 0,
+        "regex": true,
+        "same_output_repeats": 0
+      }
+    },
+    {
+      "step": 6,
+      "tool": "grep",
+      "arguments_sha256": "1575e0b73b7730ad8e96f0749a4238b3917cf93cc91a66dc0086cfdfe2151fec",
+      "diagnostics": {
+        "error": false,
+        "timed_out": false,
+        "truncated": false,
+        "files_read": 18,
+        "bytes_read": 396957,
+        "entries_scanned": 18,
+        "skipped_files": 0,
+        "matched_lines": 5,
+        "regex": true,
+        "same_output_repeats": 0
+      }
+    },
+    {
+      "step": 7,
+      "tool": "read_file",
+      "arguments_sha256": "688e0b6a12198a57e39e6a7aa1c43567125c8c68567bf93cf5eb686b6f75ad23",
+      "diagnostics": {
+        "error": false,
+        "truncated": true,
+        "line_truncated": false,
+        "range_complete": true,
+        "content_bytes": 753,
+        "revision_available": true,
+        "read_id_available": true,
+        "same_output_repeats": 0
+      }
+    },
+    {
+      "step": 7,
+      "tool": "read_file",
+      "arguments_sha256": "28885fc90680b091ef045f5edf0ec7a53b30ff8e04eedbbad633b988b7d860a4",
+      "diagnostics": {
+        "error": false,
+        "truncated": true,
+        "line_truncated": false,
+        "range_complete": true,
+        "content_bytes": 976,
+        "revision_available": true,
+        "read_id_available": true,
+        "same_output_repeats": 0
+      }
+    },
+    {
+      "step": 8,
+      "tool": "read_file",
+      "arguments_sha256": "f51e455e755af075cb226a91d67f13c14563a9f05345691092e97e3dd67c3ba8",
+      "diagnostics": {
+        "error": false,
+        "truncated": true,
+        "line_truncated": false,
+        "range_complete": true,
+        "content_bytes": 1097,
+        "revision_available": true,
+        "read_id_available": true,
+        "same_output_repeats": 0
+      }
+    },
+    {
+      "step": 9,
+      "tool": "edit_file",
+      "arguments_sha256": "56ef7164cde89fc64ee82db265e4bda75b433945eec8511f9690ec9958cf21a7",
+      "diagnostics": {
+        "error": false,
+        "approved": true
+      }
+    },
+    {
+      "step": 10,
+      "tool": "grep",
+      "arguments_sha256": "6455b9a51bc224826f843c33b8b889c865bda318f68775fb4cd5acf2c6bd03f2",
+      "diagnostics": {
+        "error": false,
+        "timed_out": false,
+        "truncated": false,
+        "files_read": 18,
+        "bytes_read": 397983,
+        "entries_scanned": 18,
+        "skipped_files": 0,
+        "matched_lines": 10,
+        "regex": true,
+        "same_output_repeats": 0
+      }
+    },
+    {
+      "step": 10,
+      "tool": "edit_file",
+      "arguments_sha256": "3ced12ef475f3db8bed61314c9a5dcfe8f1e21cad6611752276449e24ff43cb6",
+      "diagnostics": {
+        "error": false,
+        "approved": true
+      }
+    },
+    {
+      "step": 10,
+      "tool": "edit_file",
+      "arguments_sha256": "ac9ee09c35a31c9e3bafe9e3ae8c8da8ecfbb5efa85e0872a6db85f701cf810b",
+      "diagnostics": {
+        "error": false,
+        "approved": true
+      }
+    },
+    {
+      "step": 11,
+      "tool": "grep",
+      "arguments_sha256": "16d24969c03b94341ac41fb55c947275402da138b4a33e6e4cc209da8a24b60d",
+      "diagnostics": {
+        "error": false,
+        "timed_out": false,
+        "truncated": false,
+        "files_read": 1,
+        "bytes_read": 135566,
+        "entries_scanned": 0,
+        "skipped_files": 0,
+        "matched_lines": 7,
+        "regex": true,
+        "same_output_repeats": 0
+      }
+    },
+    {
+      "step": 12,
+      "tool": "edit_file",
+      "arguments_sha256": "4403ec97f641dbed468c52a11a7b06c7831c3449ea25ae37b6622d967aa5aed5",
+      "diagnostics": {
+        "error": false,
+        "approved": true
+      }
+    }
+  ],
+  "diagnostics_source_sha256": "d812a32ce9b40ce6eac21ef0bfd65ba131d882bff8bbe376d71e0ce6799165ed"
+}

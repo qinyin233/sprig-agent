@@ -48,7 +48,8 @@ class InspectionFoldingTests(unittest.TestCase):
         temporary = tempfile.TemporaryDirectory()
         self.addCleanup(temporary.cleanup)
         self.root = Path(temporary.name)
-        self.config = Config(self.root, 'fixture', max_context_bytes=4096, context_keep_read_bytes=0)
+        # Compare the same eager projection across caps before testing folding.
+        self.config = Config(self.root, 'fixture', max_context_bytes=4096, context_keep_read_bytes=0, context_trigger_ratio=0)
 
     def append(self, history, identity, name='read_file', arguments=None, result=None, text='\n\n'):
         arguments = {'path': f'{identity}.py', 'offset': 1, 'limit': 80} if arguments is None else arguments

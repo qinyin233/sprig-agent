@@ -327,7 +327,7 @@ def main(argv=None):
     parser.add_argument("--inherit-env", action=argparse.BooleanOptionalAction, default=None, help="let approved commands inherit additional environment variables")
     parser.add_argument("--max-context-bytes", type=int, help="maximum serialized model request size; not a token/cost estimate")
     parser.add_argument("--compact-context", action=argparse.BooleanOptionalAction, default=None, help="compact old output/edit text; fold closed inspections if still oversized; keep full saved history")
-    parser.add_argument("--context-trigger-ratio", type=float, help="compact at this fraction of the request byte cap (0..1), only when compaction is enabled")
+    parser.add_argument("--context-trigger-ratio", type=float, help="compact at this fraction of the request byte cap (default 0.8; 0 is eager), only when compaction is enabled")
     parser.add_argument("--context-keep-recent-messages", type=int, help="protect 6..1000 recent messages from compaction")
     parser.add_argument("--context-keep-read-bytes", type=int, help="retain up to 0..262144 encoded bytes of historical complete reads within the request cap; 0 disables retention")
     parser.add_argument("--project-instructions", action=argparse.BooleanOptionalAction, default=None, help="load workspace AGENTS.md guidance; never reads parent/home directories")
