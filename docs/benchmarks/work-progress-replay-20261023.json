@@ -1,0 +1,114 @@
+{
+  "scope": "offline replay of application observations; no model behavior inferred",
+  "original_model_requests": 12,
+  "first_advice_eligible_request": 4,
+  "original_first_approved_edit_request": 9,
+  "before_each_request": [
+    {
+      "model_request": 1,
+      "source_inspection_calls": 0,
+      "source_inspection_rounds_since_approved_action_or_guidance": 0,
+      "confirmed_file_tool_changes": 0,
+      "approved_run_calls": 0,
+      "advice_eligible": false
+    },
+    {
+      "model_request": 2,
+      "source_inspection_calls": 2,
+      "source_inspection_rounds_since_approved_action_or_guidance": 1,
+      "confirmed_file_tool_changes": 0,
+      "approved_run_calls": 0,
+      "advice_eligible": false
+    },
+    {
+      "model_request": 3,
+      "source_inspection_calls": 5,
+      "source_inspection_rounds_since_approved_action_or_guidance": 2,
+      "confirmed_file_tool_changes": 0,
+      "approved_run_calls": 0,
+      "advice_eligible": false
+    },
+    {
+      "model_request": 4,
+      "source_inspection_calls": 7,
+      "source_inspection_rounds_since_approved_action_or_guidance": 3,
+      "confirmed_file_tool_changes": 0,
+      "approved_run_calls": 0,
+      "advice_eligible": true
+    },
+    {
+      "model_request": 5,
+      "source_inspection_calls": 10,
+      "source_inspection_rounds_since_approved_action_or_guidance": 4,
+      "confirmed_file_tool_changes": 0,
+      "approved_run_calls": 0,
+      "advice_eligible": true
+    },
+    {
+      "model_request": 6,
+      "source_inspection_calls": 12,
+      "source_inspection_rounds_since_approved_action_or_guidance": 5,
+      "confirmed_file_tool_changes": 0,
+      "approved_run_calls": 0,
+      "advice_eligible": true
+    },
+    {
+      "model_request": 7,
+      "source_inspection_calls": 13,
+      "source_inspection_rounds_since_approved_action_or_guidance": 6,
+      "confirmed_file_tool_changes": 0,
+      "approved_run_calls": 0,
+      "advice_eligible": true
+    },
+    {
+      "model_request": 8,
+      "source_inspection_calls": 15,
+      "source_inspection_rounds_since_approved_action_or_guidance": 7,
+      "confirmed_file_tool_changes": 0,
+      "approved_run_calls": 0,
+      "advice_eligible": true
+    },
+    {
+      "model_request": 9,
+      "source_inspection_calls": 16,
+      "source_inspection_rounds_since_approved_action_or_guidance": 8,
+      "confirmed_file_tool_changes": 0,
+      "approved_run_calls": 0,
+      "advice_eligible": true
+    },
+    {
+      "model_request": 10,
+      "source_inspection_calls": 16,
+      "source_inspection_rounds_since_approved_action_or_guidance": 0,
+      "confirmed_file_tool_changes": 1,
+      "approved_run_calls": 0,
+      "advice_eligible": false
+    },
+    {
+      "model_request": 11,
+      "source_inspection_calls": 17,
+      "source_inspection_rounds_since_approved_action_or_guidance": 0,
+      "confirmed_file_tool_changes": 3,
+      "approved_run_calls": 0,
+      "advice_eligible": false
+    },
+    {
+      "model_request": 12,
+      "source_inspection_calls": 18,
+      "source_inspection_rounds_since_approved_action_or_guidance": 1,
+      "confirmed_file_tool_changes": 3,
+      "approved_run_calls": 0,
+      "advice_eligible": false
+    }
+  ],
+  "largest_original_request_bytes": 63658,
+  "conservative_advice_json_growth_ceiling_bytes": 1466,
+  "would_cross_original_context_trigger": false,
+  "original_candidate_sha256": "1ad17894debd4fe3ce12a7d137375befcc6a15908b441badf1f8ffac0e84257b",
+  "candidate_unchanged": true,
+  "live_model_requests": 0,
+  "limitations": [
+    "eligibility does not predict model actions or solve the two remaining checks",
+    "original transcript and reasoning remain private"
+  ]
+}

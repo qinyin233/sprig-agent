@@ -1,0 +1,82 @@
+{
+  "scope": "tool-result workflow advice; not task acceptance or model-quality evidence",
+  "base_commit": "fa0e40b00d0ae01ff95834f6e3fbae654d148fe6",
+  "source_manifest": {
+    "src/sprig_agent": {
+      "files": 66,
+      "sha256": "c002f6ea5b16cf46ffdfede5b3ba20c79a18540e95f2c3b42bf004c4c6b073d5"
+    },
+    "tests": {
+      "files": 85,
+      "sha256": "cafcb96f814f5d05c6ae8e2d29969b23d0094a6bd1c6bf68ff7b66ee5dc36856"
+    },
+    "tests/fixtures": {
+      "files": 2,
+      "sha256": "3ad5a955740a3aee2fe792e30bf2b17bc6ab2945392584a173cbc668369beb79"
+    }
+  },
+  "manifest_algorithm": "sorted relative path + NUL + SHA256(LF-normalized bytes) hex + newline",
+  "local_suites": [
+    {
+      "platform": "native Windows Python 3.13",
+      "tests": 1265,
+      "passed": 1246,
+      "skipped": 19,
+      "seconds": 494.484
+    },
+    {
+      "platform": "local WSL Python 3.13",
+      "tests": 1265,
+      "passed": 1242,
+      "skipped": 23,
+      "seconds": 352.177
+    }
+  ],
+  "windows_python311_relevant": {
+    "tests": 42,
+    "passed": 42,
+    "skipped": 0
+  },
+  "mini_sdk": [
+    {
+      "platform": "native Windows",
+      "tests": 25,
+      "passed": 25,
+      "skipped": 0
+    },
+    {
+      "platform": "local WSL",
+      "tests": 25,
+      "passed": 25,
+      "skipped": 0
+    }
+  ],
+  "installed_wheel": {
+    "tests": 9,
+    "skipped": 0,
+    "source_files_checked": 66,
+    "imported_installed_modules": 59,
+    "sdist_changed_source_matches": true
+  },
+  "other_checks": [
+    "four uv lock files",
+    "schema and TOML example",
+    "compileall",
+    "CLI help",
+    "sdist and wheel build",
+    "local document links",
+    "credential-shaped additions"
+  ],
+  "live_model_requests": 0,
+  "ci": {
+    "triggered": false,
+    "status": "pending; frozen before 2026-11-01 Asia/Singapore; verify account restriction afterwards"
+  },
+  "limits": [
+    "platform skips are not passes",
+    "local WSL is not native Ubuntu CI",
+    "no native OS backend changes",
+    "no model success-rate or cost claim",
+    "retained Click candidate unchanged; no extra turns"
+  ]
+}
