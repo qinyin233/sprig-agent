@@ -1,5 +1,6 @@
 """Local, bounded declaration discovery. This is not semantic analysis."""
 
+import ast
 import importlib
 import warnings
 
@@ -7,6 +8,8 @@ MAX_PARSE_MICROS = 1000000
 MAX_NODES = 100000
 MAX_SYMBOLS = 4096
 MAX_NAME_BYTES = 1024
+MAX_DIAGNOSTIC_BYTES = 512 * 1024
+MAX_DIAGNOSTICS = 3
 
 EXTENSIONS = {
     ".py": "python", ".js": "javascript", ".mjs": "javascript", ".cjs": "javascript",
@@ -77,6 +80,17 @@ class SyntaxParser:
         # Match physical CR/LF line numbers from read_file/search. These bytes
         # are temporary; only declaration metadata enters SymbolIndex's cache.
         raw = text.removeprefix("\ufeff").replace("\r\n", "\n").replace("\r", "\n").encode("utf-8")
+        tree = self._tree(raw, language, check_cancelled)
+        if tree.root_node.has_error:
+            return None
+        if calls:
+            from .call_sites import tree_calls
+            indexed = declarations(tree.root_node, raw, language, check_cancelled, spans=True, positions=True)
+            return tree_calls(tree.root_node, raw, indexed, check_cancelled)
+        return (declarations(tree.root_node, raw, language, check_cancelled, spans=True) if spans
+                else declarations(tree.root_node, raw, language, check_cancelled))
+
+    def _tree(self, raw, language, check_cancelled):
         parser = self._parser(language)
         parser.reset()
         try:
@@ -89,14 +103,52 @@ class SyntaxParser:
         check_cancelled()
         if tree is None:
             raise IndexUnavailable("symbol parsing exceeded its time limit")
-        if tree.root_node.has_error:
-            return None
-        if calls:
-            from .call_sites import tree_calls
-            indexed = declarations(tree.root_node, raw, language, check_cancelled, spans=True, positions=True)
-            return tree_calls(tree.root_node, raw, indexed, check_cancelled)
-        return (declarations(tree.root_node, raw, language, check_cancelled, spans=True) if spans
-                else declarations(tree.root_node, raw, language, check_cancelled))
+        return tree
+
+    def diagnostics(self, text, language, check_cancelled):
+        """Parse one bounded text; return positions, never source or error text.
+
+        Python AST parsing and tree-sitter recovery are observations, not a
+        compiler, language-version compatibility check or task acceptance.
+        """
+        check_cancelled()
+        text = text.removeprefix("\ufeff").replace("\r\n", "\n").replace("\r", "\n")
+        raw = text.encode("utf-8")
+        if len(raw) > MAX_DIAGNOSTIC_BYTES:
+            raise IndexUnavailable("diagnostic input exceeds its byte limit")
+        if language == "python":
+            try:
+                with warnings.catch_warnings():
+                    warnings.simplefilter("ignore")
+                    ast.parse(text)
+            except SyntaxError as error:
+                check_cancelled()
+                return {"status": "parse_error", "locations": [{"kind": "parse_error",
+                    "line": max(1, error.lineno or 1), "column": max(1, error.offset or 1)}]}
+            check_cancelled()
+            return {"status": "parsed"}
+        tree = self._tree(raw, language, check_cancelled)
+        if not tree.root_node.has_error:
+            return {"status": "parsed"}
+        locations, pending, visited = [], [tree.root_node], 0
+        lines = raw.split(b"\n")
+        while pending:
+            check_cancelled()
+            node = pending.pop()
+            visited += 1
+            if visited > MAX_NODES:
+                raise IndexUnavailable("diagnostic traversal exceeds its node limit")
+            if node.is_error or node.is_missing:
+                row, column = node.start_point
+                locations.append({"kind": "missing_token" if node.is_missing else "parse_error",
+                    "line": row + 1, "column": len(lines[row][:column].decode("utf-8", errors="ignore")) + 1})
+                if len(locations) == MAX_DIAGNOSTICS:
+                    return {"status": "parse_error", "locations": locations, "limit_reached": True}
+            elif node.has_error:
+                if len(pending) + node.child_count > MAX_NODES:
+                    raise IndexUnavailable("diagnostic traversal exceeds its node limit")
+                pending.extend(reversed(node.children))
+        return {"status": "parse_error", "locations": locations}
 
 
 def declarations(root, raw, language, check_cancelled, *, spans=False, positions=False):

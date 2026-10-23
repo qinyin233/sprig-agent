@@ -12,6 +12,7 @@ import selectors
 import signal
 import stat
 import subprocess
+import sys
 import time
 import uuid
 
@@ -968,6 +969,26 @@ class Tools:
             result["edit_failure"] = {**result["edit_failure"], "source": "read_id"}
         return result
 
+    def _edit_syntax(self, path, before, after, data):
+        language = language_for(path)
+        if language is None:
+            return None
+
+        def inspect(text):
+            try:
+                return self.index.syntax.diagnostics(text, language, self._check_cancelled)
+            except (IndexUnavailable, RecursionError, MemoryError):
+                return {"status": "unavailable", "reason": "parse_limit"}
+            except (ImportError, ValueError, RuntimeError):
+                return {"status": "unavailable", "reason": "parser_unavailable"}
+
+        report = {"language": language, "parser": "python_ast" if language == "python" else "tree_sitter",
+                  "before": {"status": "absent"} if before is None else inspect(before), "after": inspect(after),
+                  "sha256": hashlib.sha256(data).hexdigest(), "not_acceptance": True}
+        if language == "python":
+            report["python_version"] = ".".join(map(str, sys.version_info[:3]))
+        return report
+
     def edit_file(self, path, old=_MISSING, new=_MISSING, *, edits=_MISSING, sha256=_MISSING, line_edits=_MISSING):
         self._require_tool("edit_file")
         if self.config.read_only:
@@ -1067,6 +1088,9 @@ class Tools:
             diff = self._diff(path, before if before_stat else None, after)
             if not self.request_approval(f"WRITE {json.dumps(path)}\n{diff or '(create empty file)'}"):
                 return {"approved": False, "changed": False}
+            # Parse only the already approved proposal, before side effects.
+            # Cancellation and fresh identity checks still precede the write.
+            syntax = self._edit_syntax(path, before if before_stat else None, after, data)
             # Recheck after approval: an editor may have changed the file while the user read the diff.
             self._parts(path)
             self.instructions.recheck_action(parts[:-1], rules)
@@ -1082,6 +1106,12 @@ class Tools:
         result = {"approved": True, "changed": True, "path": path}
         if by_line:
             result["sha256"] = hashlib.sha256(data).hexdigest()
+        if syntax is not None:
+            result["syntax"] = syntax
+            if len(json.dumps(result, ensure_ascii=False).encode("utf-8")) > self.config.max_output:
+                result["syntax"] = {"status": "omitted", "reason": "output_limit", "not_acceptance": True}
+                if len(json.dumps(result, ensure_ascii=False).encode("utf-8")) > self.config.max_output:
+                    del result["syntax"]
         return result
 
     def mcp(self, action="status", **arguments):

@@ -963,6 +963,9 @@ class Agent:
                         self.emit("[rejected] No action taken")
                     elif name == "update_plan":
                         self.emit("[plan; model-reported, not acceptance] " + content)
+                    elif name in {"edit_file", "edit_lines"} and "syntax" in result:
+                        self.emit("[syntax; parser observations, not acceptance] "
+                                  + json.dumps(redact(result["syntax"], self.config.secrets), ensure_ascii=False))
                     elif name == "file_action":
                         self.emit(content)
                     elif name == "run":

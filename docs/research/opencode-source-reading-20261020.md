@@ -264,6 +264,8 @@ Sprig 已有 `/add` 快照和 `/ref` 请求前刷新；应给这些现有后端�
 
 ## 13. 先完成哪些已有能力
 
+2026-10-23 的编辑反馈阶段重新核对同一只读副本 HEAD `9d90d892dcbfc52b47e95b2ea31b8aba877128fd`：`tool/plugin/edit.ts` 第 205 行仍列有 LSP notification/diagnostics TODO，执行链第 307 行实际调用 formatter。Sprig 在已有 P0-B 之上增加[本地语法解析反馈](../edit-syntax.md)，使用已经安装的解析器，在获批提案写入前计算观察，并经公共循环显示到 CLI/TUI；不启动 formatter 或 LSP，不执行源码。位置、字节绑定、输出省略及新的审批/取消/版本复查有实际回归；它只是基础反馈的补齐，不把上游 TODO 泛化成其他版本没有诊断，也不从语法解析推断真实模型任务完成。
+
 2026-10-22 队列管理补充：继续检查同一固定提交 `session/inbox.ts` 的 cancel/steer/queue 独立变更与 promote 边界。Sprig 在前一批持久化之上增加[单条编辑、移除、排序与全文查看](../pending-inputs.md)，TUI 管理不替换运行 worker，领取中的输入锁定，批准后再次比较快照。这里是 Sprig 自身的实现与验证边界，不将上游某个方法的存在视为 Sprig 已有相同能力，也不将这批本地管理等同于独立 queue 模式或副作用 exactly-once。
 
 2026-10-22 后续实现补充：重新阅读同一固定提交 `packages/core/src/session/inbox.ts` 与 `prompt.ts`，确认输入与可见历史分离、按会话串行递送的边界。Sprig 已加入[有界待处理输入持久化和显式恢复](../pending-inputs.md)，同一标识重试去重，冲突正文拒绝而不是替换第一次输入；不引入数据库、远程服务或自动副作用重试。原固定 Sprig 快照的缺项表保留作为当时证据；该持久化批次未含独立 queue 模式、编辑/排序队列或工具副作用的 exactly-once 保证。

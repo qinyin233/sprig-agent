@@ -1,0 +1,97 @@
+{
+  "scope": "bounded parse observations on approved edit proposals; no compilation, execution or acceptance claim",
+  "base_commit": "bddfa9751c7d4b11c44859e4809d6e81833ce60e",
+  "source_manifest": {
+    "src/sprig_agent": {
+      "files": 66,
+      "sha256": "0d8175e9c4c71063092a9caca1f4bc7bb8af1cd6bdb4162cbc7bb13adbf44e91"
+    },
+    "tests": {
+      "files": 86,
+      "sha256": "99a1894b1ca354cfd9811f501f686fbed873f85d8f8fd6b64e248fa43a6419cf"
+    },
+    "tests/fixtures": {
+      "files": 2,
+      "sha256": "3ad5a955740a3aee2fe792e30bf2b17bc6ab2945392584a173cbc668369beb79"
+    }
+  },
+  "manifest_algorithm": "sorted relative path + NUL + SHA256(LF-normalized bytes) hex + newline",
+  "local_suites": [
+    {
+      "platform": "native Windows Python 3.13",
+      "tests": 1275,
+      "passed": 1256,
+      "skipped": 19,
+      "seconds": 542.057
+    },
+    {
+      "platform": "local WSL Python 3.13",
+      "tests": 1275,
+      "passed": 1252,
+      "skipped": 23,
+      "seconds": 371.454
+    },
+    {
+      "platform": "native Windows Python 3.11 editable; relevant suites",
+      "tests": 36,
+      "passed": 36,
+      "skipped": 0,
+      "seconds": 3.955
+    }
+  ],
+  "installed_wheel": {
+    "tests": 10,
+    "skipped": 0,
+    "source_files_checked": 66,
+    "imported_installed_modules": 59,
+    "sdist_changed_source_matches": true
+  },
+  "offline_tui": {
+    "size": [
+      80,
+      24
+    ],
+    "enter_submitted": true,
+    "fresh_approval_screens": 3,
+    "model_fixture_responses": 3,
+    "parse_error_repaired": true,
+    "independent_fixed_check": true,
+    "ast_is_not_compilation": true,
+    "external_model_requests": 0
+  },
+  "regressions": [
+    "Python and eight native grammars",
+    "BOM CRLF Unicode positions and missing tokens",
+    "parse limits and missing grammar return unavailable",
+    "no execution or raw source/error-text retention",
+    "read-only rejection cancellation external-change and fresh-approval boundaries",
+    "three real loopback streaming protocols: error then repair then independently approved check",
+    "output-limit omission",
+    "parse success cannot replace failed fixed checks"
+  ],
+  "other_checks": [
+    "four uv lock files",
+    "schema and example TOML",
+    "compileall",
+    "CLI help",
+    "sdist and wheel build",
+    "local document links",
+    "credential-shaped additions"
+  ],
+  "external_model_requests": 0,
+  "ci": {
+    "triggered": false,
+    "status": "pending; frozen before 2026-11-01 Asia/Singapore; verify account restriction afterwards"
+  },
+  "development_findings": [
+    "initial TUI check found diagnostics were not displayed; common Agent output fixed, new emission assertion added, TUI rerun passed",
+    "initial WSL full suite and isolated queue test exposed Textual active-effect click suppression; existing test now forces a one-second effect and waits actual readiness; final full suites rerun"
+  ],
+  "limits": [
+    "platform skips are not passes; local WSL is not native Ubuntu CI",
+    "native parser versions and timeout mechanism unchanged; no OS backend changes",
+    "AST and grammar recovery do not imply compilable or semantically correct code",
+    "Python parsing uses the host interpreter; language-version differences remain",
+    "no real model performance improvement claimed; prior 640/642 candidate unchanged"
+  ]
+}

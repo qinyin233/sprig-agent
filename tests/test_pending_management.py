@@ -321,9 +321,13 @@ class PendingTuiTests(unittest.IsolatedAsyncioTestCase):
             await pilot.click("#pending-down")
             await self.approve(app, pilot)
             self.assertEqual([row["text"] for row in app.recovered_inputs["pending"]], ["second", "first"])
+            app.screen.query_one("#pending-drop").active_effect_duration = 1
             await pilot.click("#pending-drop")
             await self.approve(app, pilot, False)
             self.assertEqual(len(app.recovered_inputs["pending"]), 2)
+            # Textual ignores clicks during its activation effect. Wait for
+            # readiness so this assertion exercises a new approval request.
+            await self.wait_for(pilot, lambda: not app.screen.query_one("#pending-drop").has_class("-active"))
             await pilot.click("#pending-drop")
             await self.approve(app, pilot)
             self.assertEqual([row["text"] for row in app.recovered_inputs["pending"]], ["second"])
