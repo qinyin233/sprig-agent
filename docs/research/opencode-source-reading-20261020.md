@@ -366,3 +366,11 @@ stdlib peer 只证明传输、策略与 CLI/TUI 集成；另以本机已安装 c
 Sprig 实现[明确启动的文本任务队列](../task-queue.md)，普通 Enter 保留当前任务引导，排队项在现有调用正常结束后单条递送并重新取得轮次预算。启动权限固定于 `/queue run` 时的 ID，新追加、编辑或切换模式的项需要再次启动；拒绝、取消、未完成和存储不确定会暂停后续项。收存不关闭当前批准或提问，恢复不自动启动，三协议仅收到正常用户正文。模式切换仍走新的本地批准，后续文件与命令批准不继承。大文本粘贴保留数据属性，避免粘贴的 `run` 被当成控制命令；选中文件元数据不静默丢弃。
 
 该实现未复制上游自动调度、数据库事件系统或合成 compaction/move 项。它保留同一对话与工作区，不提供并行隔离、已递送消息编辑或跨进程后台恢复；没有新增真实模型编码成功率证据。回归、安装包及 CI 待验证范围记录于[本地机器记录](../benchmarks/task-queue-20261023.json)，先前章节的能力缺口是当时的状态。
+
+## 17. 拒绝与更正说明（2026-10-23）
+
+继续读原固定 `dev@9d90d892dcbfc52b47e95b2ea31b8aba877128fd` 的 [permission.ts](https://github.com/anomalyco/opencode/blob/9d90d892dcbfc52b47e95b2ea31b8aba877128fd/packages/core/src/permission.ts)：`DeclinedError` 与带 `feedback: string` 的 `CorrectedError` 分开。`reply` 在 reject 且有 message 时拒绝当前 Deferred，并以同一反馈拒绝同会话的其余等待请求；反馈不授予执行权限。[to-session-error.ts](https://github.com/anomalyco/opencode/blob/9d90d892dcbfc52b47e95b2ea31b8aba877128fd/packages/core/src/session/to-session-error.ts) 将后者映射为 `permission.rejected` 和反馈正文。这限定于已读核心路径，不推断每个 UI/SDK 都提供同样入口，也不把该固定快照当作当前最新实现。
+
+Sprig 的 `ApprovalScreen` 已有 `approval-task` 输入：Enter 发送更正、停止待确认提案，随后走持久化引导和安全边界；不能写成完全没有拒绝后调整。当前 CLI `approve` 则只将 y/yes 视为批准，其他输入一律拒绝，不把拒绝说明递送给模型。可补的具体差距是 CLI 的说明入口，验收应保持只有布尔 `True` 能授权、默认拒绝和非交互拒绝，说明作为有界的新用户引导，沿用脱敏、保存与去重，不自动重放旧提案或增加请求预算。本节只记录差距和验收条件，没有实现该入口。
+
+同日 [mini Flash-2 参考运行](../live-evaluation-mini-flash2-20261023.md)中，通用拒绝之后重复提出错误目录，直到获批命令返回原生路径错误才调整。mini 最终仍为 639/642，近期 Sprig 为另一提交上的 640/642；批准轨迹和工具不同，不能用这个样本证明说明入口会提高成功率。它提供待验证的交互问题，后续仍应检查完整编码及验收修复过程。

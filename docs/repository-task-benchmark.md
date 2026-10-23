@@ -30,7 +30,7 @@ uv run --project benchmarks/repositories/click --locked python -I -B scripts/ben
 
 `--self-test` 在两个一次性候选工作区运行固定校准，不请求模型。`--prepare .\prepared-click` 只导出初始工作区、任务文字和外部验收，不启动候选程序或模型；目标必须是新目录。`--report` 只能显式创建新文件，不覆盖已有文件。
 
-root 依赖更新后要同时核对 `uv lock --project benchmarks/repositories/click --check`；2026-10-22 已修复嵌套锁文件缺少 root 既有依赖的问题。不要用非锁定运行绕过失败。最新一次[真实模型记录](live-evaluation-20261022.md)仍为 635/642，校准通过不算真实任务完成。
+root 依赖更新后要同时核对 `uv lock --project benchmarks/repositories/click --check`；2026-10-22 已修复嵌套锁文件缺少 root 既有依赖的问题。不要用非锁定运行绕过失败。近期 [Sprig Flash-2 记录](live-evaluation-work-progress-20261023.md)为 640/642，另一提交上的 [mini Flash-2 参考](live-evaluation-mini-flash2-20261023.md)为 639/642，两者均未完成；这不是已配对的性能对照，校准通过也不算真实任务完成。
 
 真实运行需要在当前终端进程中提供 `SPRIG_API_KEY` 或 `OPENAI_API_KEY`；Agnes HTTPS 原点也支持 `AGNES_API_KEY`，不把该别名发送到其他服务。模型和地址可用参数或 `SPRIG_MODEL`、`SPRIG_BASE_URL` 设置，默认服务预设仍为 Agnes。两条命令需在交互式终端分别运行，报告使用不同的新路径：
 
