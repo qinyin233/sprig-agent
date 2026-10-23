@@ -1,0 +1,340 @@
+{
+  "schema": 1,
+  "scope": "one fresh pinned repository task; not a controlled comparison or overall agent ranking",
+  "source_commit": "e635e0c9c65844d143812ba31ad30364ef27685a",
+  "dirty_paths": [],
+  "helper_sha256": "e9d6126b1e08f8ec543c720f08f383f8586b041c9adcc5cfff9f225c088a0e2a",
+  "model": "deepseek-flash-2",
+  "base_url": "https://api.llm.ustc.edu.cn/v1",
+  "max_steps": 12,
+  "max_context_bytes": 131072,
+  "max_output": 16000,
+  "max_tokens": 2048,
+  "request_timeout_seconds": 120,
+  "request_deadline_seconds": 180,
+  "stream": true,
+  "thinking": false,
+  "preserve_reasoning": true,
+  "compact_context": true,
+  "context_trigger_ratio": 0.8,
+  "check_before_task": true,
+  "check_after_edit": true,
+  "exit_code": 2,
+  "elapsed_ms": 291351.381,
+  "repository_task": {
+    "protocol": 1,
+    "repository": "pallets/click",
+    "snapshot_files": 52,
+    "base_commit": "19fd4d6e18bc9fce451f92f422696b11169faa57",
+    "base_sha256": "7d610833c8a6564f980f747e4601e7f4821872702c4a59f32ff9c5d653300d08",
+    "acceptance_commit": "831c8f0948af519e45b90801d7430ff25451f972",
+    "acceptance_snapshot_sha256": "62d0162a63fa5322307e29d1710ec7624bd3ca20572329fddbdae1fe628f628d",
+    "expected_upstream_checks": 642,
+    "public_exception_contract": true,
+    "acceptance_python": "3.12",
+    "acceptance_pytest": "8.4.2",
+    "entry_sha256": "f140413cd276f36c79bfcece77a03073668235db3661eddf2feca0c0d1e012e9",
+    "adapter_sha256": "309d80e760b4203ca0ad8548a7d841eb6b3f54ec39792d6c7724dca4826b08b8",
+    "comparison_lock_sha256": "3747c262bf21f9b01ffac8dea83749098b54fd6686503227872c4793117f7d6b",
+    "task_sha256": "2908db436a3b9ac92c17b2d60eed48baae6c6549b9a1c83bb775bc816bcf6273"
+  },
+  "initial_candidate_sha256": "7d610833c8a6564f980f747e4601e7f4821872702c4a59f32ff9c5d653300d08",
+  "final_candidate_sha256": "8567b0dac956a9ff83be8722940ec24e9446283db5f46d81c1aa6fc89fbaaa08",
+  "verifier_sha256": "b34b42869ce1a0c5d5ea6116bf7ba36b3ac38858d299dd385bab5c02ffbaffc5",
+  "verifier_intact": true,
+  "helper_intact": true,
+  "requests": {
+    "available": true,
+    "scope": "current provider instance; not persisted or sent to the model",
+    "attempts": 12,
+    "not_attempted": 0,
+    "outcomes": {
+      "success": 12,
+      "error": 0,
+      "cancelled": 0
+    },
+    "failures": {},
+    "request_bytes": 380420,
+    "response_bytes": 25462,
+    "elapsed_ms": 181530.536,
+    "usage": {
+      "prompt_tokens": {
+        "reported_sum": 103882,
+        "known_requests": 12,
+        "unknown_requests": 0,
+        "complete_sum": 103882
+      },
+      "completion_tokens": {
+        "reported_sum": 2881,
+        "known_requests": 12,
+        "unknown_requests": 0,
+        "complete_sum": 2881
+      },
+      "total_tokens": {
+        "reported_sum": 106763,
+        "known_requests": 12,
+        "unknown_requests": 0,
+        "complete_sum": 106763
+      }
+    },
+    "recent_limit": 128,
+    "recent_dropped": 0,
+    "recent": [
+      {
+        "attempted": true,
+        "streamed": true,
+        "outcome": "success",
+        "http_status": 200,
+        "request_bytes": 13690,
+        "response_bytes": 1648,
+        "elapsed_ms": 9314.975,
+        "first_text_ms": 1641.861,
+        "usage": {
+          "prompt_tokens": 3528,
+          "completion_tokens": 128,
+          "total_tokens": 3656
+        },
+        "finish_reason": "tool_calls",
+        "error_code": null
+      },
+      {
+        "attempted": true,
+        "streamed": true,
+        "outcome": "success",
+        "http_status": 200,
+        "request_bytes": 19213,
+        "response_bytes": 1685,
+        "elapsed_ms": 13189.614,
+        "first_text_ms": 1841.436,
+        "usage": {
+          "prompt_tokens": 5080,
+          "completion_tokens": 174,
+          "total_tokens": 5254
+        },
+        "finish_reason": "tool_calls",
+        "error_code": null
+      },
+      {
+        "attempted": true,
+        "streamed": true,
+        "outcome": "success",
+        "http_status": 200,
+        "request_bytes": 23209,
+        "response_bytes": 1765,
+        "elapsed_ms": 18056.2,
+        "first_text_ms": 1264.557,
+        "usage": {
+          "prompt_tokens": 6259,
+          "completion_tokens": 188,
+          "total_tokens": 6447
+        },
+        "finish_reason": "tool_calls",
+        "error_code": null
+      },
+      {
+        "attempted": true,
+        "streamed": true,
+        "outcome": "success",
+        "http_status": 200,
+        "request_bytes": 24254,
+        "response_bytes": 1747,
+        "elapsed_ms": 21485.192,
+        "first_text_ms": 1014.52,
+        "usage": {
+          "prompt_tokens": 6538,
+          "completion_tokens": 156,
+          "total_tokens": 6694
+        },
+        "finish_reason": "tool_calls",
+        "error_code": null
+      },
+      {
+        "attempted": true,
+        "streamed": true,
+        "outcome": "success",
+        "http_status": 200,
+        "request_bytes": 26219,
+        "response_bytes": 1670,
+        "elapsed_ms": 11261.269,
+        "first_text_ms": 674.502,
+        "usage": {
+          "prompt_tokens": 7021,
+          "completion_tokens": 171,
+          "total_tokens": 7192
+        },
+        "finish_reason": "tool_calls",
+        "error_code": null
+      },
+      {
+        "attempted": true,
+        "streamed": true,
+        "outcome": "success",
+        "http_status": 200,
+        "request_bytes": 31104,
+        "response_bytes": 1642,
+        "elapsed_ms": 4714.158,
+        "first_text_ms": 2404.598,
+        "usage": {
+          "prompt_tokens": 8576,
+          "completion_tokens": 110,
+          "total_tokens": 8686
+        },
+        "finish_reason": "tool_calls",
+        "error_code": null
+      },
+      {
+        "attempted": true,
+        "streamed": true,
+        "outcome": "success",
+        "http_status": 200,
+        "request_bytes": 31846,
+        "response_bytes": 1279,
+        "elapsed_ms": 2969.195,
+        "first_text_ms": 1121.381,
+        "usage": {
+          "prompt_tokens": 8741,
+          "completion_tokens": 90,
+          "total_tokens": 8831
+        },
+        "finish_reason": "tool_calls",
+        "error_code": null
+      },
+      {
+        "attempted": true,
+        "streamed": true,
+        "outcome": "success",
+        "http_status": 200,
+        "request_bytes": 33754,
+        "response_bytes": 1666,
+        "elapsed_ms": 8596.722,
+        "first_text_ms": 2925.148,
+        "usage": {
+          "prompt_tokens": 9267,
+          "completion_tokens": 174,
+          "total_tokens": 9441
+        },
+        "finish_reason": "tool_calls",
+        "error_code": null
+      },
+      {
+        "attempted": true,
+        "streamed": true,
+        "outcome": "success",
+        "http_status": 200,
+        "request_bytes": 40476,
+        "response_bytes": 1212,
+        "elapsed_ms": 12404.012,
+        "first_text_ms": 2292.393,
+        "usage": {
+          "prompt_tokens": 11206,
+          "completion_tokens": 77,
+          "total_tokens": 11283
+        },
+        "finish_reason": "tool_calls",
+        "error_code": null
+      },
+      {
+        "attempted": true,
+        "streamed": true,
+        "outcome": "success",
+        "http_status": 200,
+        "request_bytes": 41280,
+        "response_bytes": 1667,
+        "elapsed_ms": 11010.106,
+        "first_text_ms": 2924.146,
+        "usage": {
+          "prompt_tokens": 11432,
+          "completion_tokens": 175,
+          "total_tokens": 11607
+        },
+        "finish_reason": "tool_calls",
+        "error_code": null
+      },
+      {
+        "attempted": true,
+        "streamed": true,
+        "outcome": "success",
+        "http_status": 200,
+        "request_bytes": 44729,
+        "response_bytes": 6202,
+        "elapsed_ms": 59463.763,
+        "first_text_ms": 1242.764,
+        "usage": {
+          "prompt_tokens": 12421,
+          "completion_tokens": 993,
+          "total_tokens": 13414
+        },
+        "finish_reason": "tool_calls",
+        "error_code": null
+      },
+      {
+        "attempted": true,
+        "streamed": true,
+        "outcome": "success",
+        "http_status": 200,
+        "request_bytes": 50646,
+        "response_bytes": 3279,
+        "elapsed_ms": 9065.33,
+        "first_text_ms": 1131.142,
+        "usage": {
+          "prompt_tokens": 13813,
+          "completion_tokens": 445,
+          "total_tokens": 14258
+        },
+        "finish_reason": "tool_calls",
+        "error_code": null
+      }
+    ]
+  },
+  "baseline_external": {
+    "collected": 642,
+    "schema": 1,
+    "pytest_returncode": 1,
+    "checks_passed": 635,
+    "skipped": 0,
+    "public_exception_contract": false,
+    "passed": false,
+    "failed": [
+      "tests/test_commands.py::test_suggest_possible_commands[decline-(Did you mean one of: 'declare', 'refine'?)]",
+      "tests/test_commands.py::test_suggest_possible_commands[pause-Did you mean 'push'?]",
+      "tests/test_options.py::test_suggest_possible_options[--bounds-(Did you mean one of: '--bound', '--count'?)]",
+      "tests/test_options.py::test_suggest_possible_options[--bount-(Did you mean one of: '--bound', '--count'?)]",
+      "tests/test_options.py::test_suggest_possible_options[--cat-Did you mean '--count'?]",
+      "tests/test_options.py::test_unknown_options[--foo]",
+      "tests/test_options.py::test_unknown_options[-f]"
+    ],
+    "other_failures": 0
+  },
+  "private_session_retained": true,
+  "post_external": {
+    "pytest_returncode": 1,
+    "schema": 1,
+    "public_exception_contract": true,
+    "skipped": 0,
+    "collected": 642,
+    "checks_passed": 640,
+    "passed": false,
+    "failed": [
+      "tests/test_options.py::test_unknown_options[--foo]",
+      "tests/test_options.py::test_unknown_options[-f]"
+    ],
+    "other_failures": 0
+  },
+  "candidate_unchanged_by_postcheck": true,
+  "modified_snapshot_files_count": 4,
+  "tool_counts": {
+    "project_map": 3,
+    "grep": 7,
+    "read_file": 8,
+    "edit_file": 7
+  },
+  "first_approved_edit_request": 11,
+  "max_actual_request_bytes": 50646,
+  "limits": [
+    "one fresh run; no controlled ablation or overall agent ranking",
+    "no manual candidate fixes, extra model rounds or automatic retry",
+    "provider tokens are reported usage; price and billing unknown",
+    "raw session, reasoning and candidate remain private",
+    "remote CI frozen; local tests are not CI"
+  ]
+}

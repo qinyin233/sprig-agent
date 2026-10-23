@@ -1,0 +1,342 @@
+{
+  "scope": "numeric tool outcomes and replayed advice eligibility only; no source, arguments, paths or reasoning",
+  "model_steps": 12,
+  "model_tools": {
+    "project_map": 3,
+    "grep": 7,
+    "read_file": 8,
+    "edit_file": 7
+  },
+  "first_approved_edit_request": 11,
+  "observations": [
+    {
+      "step": 1,
+      "tool": "project_map",
+      "error": false,
+      "truncated": false
+    },
+    {
+      "step": 1,
+      "tool": "grep",
+      "error": false,
+      "truncated": false,
+      "timed_out": false,
+      "files_read": 18,
+      "bytes_read": 396957,
+      "entries_scanned": 19,
+      "skipped_files": 0,
+      "returned_matches": 21
+    },
+    {
+      "step": 2,
+      "tool": "read_file",
+      "error": false,
+      "truncated": true,
+      "line_truncated": false,
+      "range_complete": true,
+      "content_bytes": 623
+    },
+    {
+      "step": 2,
+      "tool": "read_file",
+      "error": false,
+      "truncated": true,
+      "line_truncated": false,
+      "range_complete": true,
+      "content_bytes": 1827
+    },
+    {
+      "step": 3,
+      "tool": "grep",
+      "error": true
+    },
+    {
+      "step": 3,
+      "tool": "grep",
+      "error": true
+    },
+    {
+      "step": 4,
+      "tool": "grep",
+      "error": false,
+      "truncated": false,
+      "timed_out": false,
+      "files_read": 1,
+      "bytes_read": 18066,
+      "entries_scanned": 0,
+      "skipped_files": 0,
+      "returned_matches": 0
+    },
+    {
+      "step": 4,
+      "tool": "grep",
+      "error": false,
+      "truncated": false,
+      "timed_out": false,
+      "files_read": 1,
+      "bytes_read": 88654,
+      "entries_scanned": 0,
+      "skipped_files": 0,
+      "returned_matches": 2
+    },
+    {
+      "step": 5,
+      "tool": "read_file",
+      "error": false,
+      "truncated": true,
+      "line_truncated": false,
+      "range_complete": true,
+      "content_bytes": 2105
+    },
+    {
+      "step": 5,
+      "tool": "read_file",
+      "error": false,
+      "truncated": true,
+      "line_truncated": false,
+      "range_complete": true,
+      "content_bytes": 989
+    },
+    {
+      "step": 6,
+      "tool": "project_map",
+      "error": true
+    },
+    {
+      "step": 6,
+      "tool": "project_map",
+      "error": false,
+      "truncated": false
+    },
+    {
+      "step": 7,
+      "tool": "grep",
+      "error": false,
+      "truncated": false,
+      "timed_out": false,
+      "files_read": 18,
+      "bytes_read": 396957,
+      "entries_scanned": 18,
+      "skipped_files": 0,
+      "returned_matches": 11
+    },
+    {
+      "step": 8,
+      "tool": "read_file",
+      "error": false,
+      "truncated": true,
+      "line_truncated": false,
+      "range_complete": true,
+      "content_bytes": 2329
+    },
+    {
+      "step": 8,
+      "tool": "read_file",
+      "error": false,
+      "truncated": true,
+      "line_truncated": false,
+      "range_complete": true,
+      "content_bytes": 2792
+    },
+    {
+      "step": 9,
+      "tool": "grep",
+      "error": false,
+      "truncated": false,
+      "timed_out": false,
+      "files_read": 18,
+      "bytes_read": 396957,
+      "entries_scanned": 19,
+      "skipped_files": 0,
+      "returned_matches": 2
+    },
+    {
+      "step": 10,
+      "tool": "read_file",
+      "error": false,
+      "truncated": true,
+      "line_truncated": false,
+      "range_complete": true,
+      "content_bytes": 1328
+    },
+    {
+      "step": 10,
+      "tool": "read_file",
+      "error": false,
+      "truncated": true,
+      "line_truncated": false,
+      "range_complete": true,
+      "content_bytes": 713
+    },
+    {
+      "step": 11,
+      "tool": "edit_file",
+      "error": false,
+      "approved": true,
+      "changed": true
+    },
+    {
+      "step": 11,
+      "tool": "edit_file",
+      "error": false,
+      "approved": true,
+      "changed": true
+    },
+    {
+      "step": 11,
+      "tool": "edit_file",
+      "error": false,
+      "approved": true,
+      "changed": true
+    },
+    {
+      "step": 11,
+      "tool": "edit_file",
+      "error": false,
+      "approved": true,
+      "changed": true
+    },
+    {
+      "step": 12,
+      "tool": "edit_file",
+      "error": false,
+      "approved": true,
+      "changed": true
+    },
+    {
+      "step": 12,
+      "tool": "edit_file",
+      "error": false,
+      "approved": true,
+      "changed": true
+    },
+    {
+      "step": 12,
+      "tool": "edit_file",
+      "error": false,
+      "approved": true,
+      "changed": true
+    }
+  ],
+  "before_each_request": [
+    {
+      "request": 1,
+      "source_inspection_calls": 0,
+      "source_inspection_rounds_since_approved_action_or_guidance": 0,
+      "confirmed_file_tool_changes": 0,
+      "approved_run_calls": 0,
+      "advice_eligible": false
+    },
+    {
+      "request": 2,
+      "source_inspection_calls": 2,
+      "source_inspection_rounds_since_approved_action_or_guidance": 1,
+      "confirmed_file_tool_changes": 0,
+      "approved_run_calls": 0,
+      "advice_eligible": false
+    },
+    {
+      "request": 3,
+      "source_inspection_calls": 4,
+      "source_inspection_rounds_since_approved_action_or_guidance": 2,
+      "confirmed_file_tool_changes": 0,
+      "approved_run_calls": 0,
+      "advice_eligible": false
+    },
+    {
+      "request": 4,
+      "source_inspection_calls": 4,
+      "source_inspection_rounds_since_approved_action_or_guidance": 2,
+      "confirmed_file_tool_changes": 0,
+      "approved_run_calls": 0,
+      "advice_eligible": false
+    },
+    {
+      "request": 5,
+      "source_inspection_calls": 6,
+      "source_inspection_rounds_since_approved_action_or_guidance": 3,
+      "confirmed_file_tool_changes": 0,
+      "approved_run_calls": 0,
+      "advice_eligible": true
+    },
+    {
+      "request": 6,
+      "source_inspection_calls": 8,
+      "source_inspection_rounds_since_approved_action_or_guidance": 4,
+      "confirmed_file_tool_changes": 0,
+      "approved_run_calls": 0,
+      "advice_eligible": true
+    },
+    {
+      "request": 7,
+      "source_inspection_calls": 9,
+      "source_inspection_rounds_since_approved_action_or_guidance": 5,
+      "confirmed_file_tool_changes": 0,
+      "approved_run_calls": 0,
+      "advice_eligible": true
+    },
+    {
+      "request": 8,
+      "source_inspection_calls": 10,
+      "source_inspection_rounds_since_approved_action_or_guidance": 6,
+      "confirmed_file_tool_changes": 0,
+      "approved_run_calls": 0,
+      "advice_eligible": true
+    },
+    {
+      "request": 9,
+      "source_inspection_calls": 12,
+      "source_inspection_rounds_since_approved_action_or_guidance": 7,
+      "confirmed_file_tool_changes": 0,
+      "approved_run_calls": 0,
+      "advice_eligible": true
+    },
+    {
+      "request": 10,
+      "source_inspection_calls": 13,
+      "source_inspection_rounds_since_approved_action_or_guidance": 8,
+      "confirmed_file_tool_changes": 0,
+      "approved_run_calls": 0,
+      "advice_eligible": true
+    },
+    {
+      "request": 11,
+      "source_inspection_calls": 15,
+      "source_inspection_rounds_since_approved_action_or_guidance": 9,
+      "confirmed_file_tool_changes": 0,
+      "approved_run_calls": 0,
+      "advice_eligible": true
+    },
+    {
+      "request": 12,
+      "source_inspection_calls": 15,
+      "source_inspection_rounds_since_approved_action_or_guidance": 0,
+      "confirmed_file_tool_changes": 4,
+      "approved_run_calls": 0,
+      "advice_eligible": false
+    }
+  ],
+  "application_checks": [
+    {
+      "checks_passed": 635,
+      "collected": 642,
+      "skipped": 0,
+      "public_exception_contract": false,
+      "passed": false
+    },
+    {
+      "checks_passed": 637,
+      "collected": 642,
+      "skipped": 0,
+      "public_exception_contract": true,
+      "passed": false
+    },
+    {
+      "checks_passed": 640,
+      "collected": 642,
+      "skipped": 0,
+      "public_exception_contract": true,
+      "passed": false
+    }
+  ]
+}
