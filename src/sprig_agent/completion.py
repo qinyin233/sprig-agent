@@ -10,7 +10,8 @@ from .tools import skip_directory
 
 
 COMMANDS = {
-    "pending": "待处理要求：manage 管理，show 分页；edit/drop/move 逐次确认，apply 加入对话",
+    "queue": "正文仅收存；run 顺序启动，每项独立预算；pause 暂停后续任务",
+    "pending": "待处理要求：manage 管理，show 分页；edit/drop/move/delivery 逐次确认，apply 递送引导",
     "help": "本地帮助", "keys": "快捷键", "status": "任务与运行状态", "plan": "模型报告的计划",
     "config": "生效配置", "models": "配置中的模型", "model": "明确确认后切换配置模型", "context": "上下文预算", "usage": "请求统计",
     "files": "选择快照或实时引用文件", "add": "附加文件快照", "ref": "添加实时文件引用",

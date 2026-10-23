@@ -30,16 +30,20 @@ def input_revision(state):
                                      separators=(",", ":")).encode("utf-8")).hexdigest()
 
 
-def change_inputs(state, action, identity, *, text=None, position=None):
+def change_inputs(state, action, identity, *, text=None, position=None, delivery=None):
     state = input_state(state)
     index = next((index for index, row in enumerate(state["pending"]) if row["id"] == identity), None)
     if index is None:
         raise InputChanged("input is no longer pending; refresh before reviewing another change")
     result = {"action": action, "input_id": identity, "network_contacted": False, "task_executed": False}
     if action == "edit":
-        replacement = new_input(text)
+        replacement = new_input(text, delivery=state["pending"][index].get("delivery", "steer"))
         state["pending"][index] = replacement.row()
         result["replacement_id"] = replacement.id
+    elif action == "delivery":
+        replacement = new_input(state["pending"][index]["text"], delivery=delivery)
+        state["pending"][index] = replacement.row()
+        result.update(replacement_id=replacement.id, delivery=delivery)
     elif action == "drop":
         state["pending"].pop(index)
     elif action == "move":
@@ -71,6 +75,9 @@ def pending_command(argument):
         if parts[0] == "move" and len(parts) == 3:
             request["position"] = int(parts[2])
             return request
+        if parts[0] == "delivery" and len(parts) == 3 and parts[2] in {"steer", "queue"}:
+            request["delivery"] = parts[2]
+            return request
         if parts[0] == "edit" and len(parts) == 3:
             try:
                 request["text"] = json.loads(parts[2])
@@ -78,7 +85,24 @@ def pending_command(argument):
             except (ValueError, TypeError, RecursionError):
                 raise ValueError("edit expects a nonempty UTF-8 JSON string of at most 2 MiB") from None
             return request
-    raise ValueError('Use /pending [apply|discard|manage], show ID [CHAR_OFFSET], edit ID "JSON text", drop ID or move ID POSITION')
+    raise ValueError('Use /pending [apply|discard|manage], show ID [CHAR_OFFSET], edit ID "JSON text", drop ID, move ID POSITION or delivery ID steer|queue')
+
+
+def queue_command(argument):
+    """Explicit local dispatch; JSON add preserves whitespace and reserved words."""
+    if len(argument) > MAX_INPUT_BYTES * 6 + 256:
+        raise ValueError("queue command exceeds the encoded input limit")
+    command = argument.strip()
+    if not command:
+        return {"action": "preview"}
+    if command in {"run", "pause"}:
+        return {"action": command}
+    try:
+        text = json.loads(command[4:]) if command.startswith("add ") else argument
+    except (ValueError, TypeError, RecursionError):
+        raise ValueError("queue add requires one UTF-8 JSON string") from None
+    UserInput("i" + "0" * 32, text, "queue")
+    return {"action": "add", "text": text}
 
 
 def check_input_growth(expected, candidate, limit):
@@ -97,7 +121,7 @@ def input_page(state, identity, offset=0, budget=4096):
         raise ValueError("pending input character offset is out of range")
     def page(length):
         end = offset + length
-        return {"input_id": identity, "offset": offset, "text": text[offset:end],
+        return {**({"delivery": "queue"} if row.get("delivery") == "queue" else {}), "input_id": identity, "offset": offset, "text": text[offset:end],
                 "next_offset": end if end < len(text) else None, "complete": end == len(text),
                 "characters": len(text), "network_contacted": False}
     low, high = 0, min(len(text) - offset, 8192)
@@ -133,8 +157,11 @@ def input_change_prompt(expected, candidate, result):
 class UserInput:
     id: str
     text: str
+    delivery: str = "steer"
 
     def __post_init__(self):
+        if not isinstance(self.delivery, str) or self.delivery not in {"steer", "queue"}:
+            raise ValueError("user input delivery must be steer or queue")
         if not isinstance(self.id, str) or not re.fullmatch(r"i[0-9a-f]{32}", self.id):
             raise ValueError("invalid user input identity")
         if (not isinstance(self.text, str) or not self.text.strip() or len(self.text) > MAX_INPUT_BYTES
@@ -142,11 +169,11 @@ class UserInput:
             raise ValueError("user input must be nonempty UTF-8 text of at most 2 MiB")
 
     def row(self):
-        return {"id": self.id, "text": self.text}
+        return {"id": self.id, "text": self.text, **({"delivery": "queue"} if self.delivery == "queue" else {})}
 
 
-def new_input(text):
-    return UserInput("i" + uuid.uuid4().hex, text)
+def new_input(text, *, delivery="steer"):
+    return UserInput("i" + uuid.uuid4().hex, text, delivery)
 
 
 def input_state(value=None):
@@ -158,9 +185,9 @@ def input_state(value=None):
         raise ValueError("invalid input inbox state")
     rows, seen, size = [], set(), 0
     for row in value["pending"]:
-        if not isinstance(row, dict) or set(row) != {"id", "text"}:
+        if not isinstance(row, dict) or set(row) not in ({"id", "text"}, {"id", "text", "delivery"}):
             raise ValueError("invalid queued user input")
-        entry = UserInput(row["id"], row["text"])
+        entry = UserInput(**row)
         if entry.id in seen:
             raise ValueError("duplicate queued user input identity")
         seen.add(entry.id)
@@ -222,21 +249,30 @@ class InputInbox:
             self._version += 1
             return True
 
-    def batch(self, count=None):
+    def batch(self, count=None, *, delivery=None):
         with self._lock:
-            rows = self._state["pending"] if count is None else self._state["pending"][:count]
+            rows = [row for row in self._state["pending"] if delivery is None or row.get("delivery", "steer") == delivery]
+            rows = rows if count is None else rows[:count]
             return [UserInput(**row) for row in rows]
 
-    def claim(self, count=None):
+    def claim(self, count=None, *, delivery=None):
         with self._lock:
             if self.blocked:
                 raise RuntimeError("pending input save is uncertain; restore this session before continuing")
-            entries = self.batch(count)
+            entries = self.batch(count, delivery=delivery)
             previous = len(self._claimed)
             self._claimed.update(entry.id for entry in entries)
             if len(self._claimed) != previous:
                 self._version += 1
             return entries
+
+    def release(self, entries):
+        """Release a delivery that failed before entering owned history."""
+        with self._lock:
+            previous = len(self._claimed)
+            self._claimed.difference_update(entry.id for entry in entries)
+            if len(self._claimed) != previous:
+                self._version += 1
 
     def version(self):
         with self._lock:
@@ -281,6 +317,8 @@ def input_preview(state, budget=4096):
         text = row["text"].encode("utf-8")[:256].decode("utf-8", errors="ignore")
         while text:
             candidate = {"id": row["id"], "position": index, "preview": text, "truncated": text != row["text"]}
+            if row.get("delivery") == "queue":
+                candidate["delivery"] = "queue"
             try:
                 _output_size({**result, "items": [*result["items"], candidate]}, budget)
             except JsonBudgetExceeded:

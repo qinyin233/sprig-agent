@@ -22,6 +22,7 @@ from sprig_agent.pending_ui import PendingScreen
 from sprig_agent.session import SessionStore
 from sprig_agent.tui import ApprovalScreen, SprigApp
 from tests.test_tui import ScriptedProvider, call, response
+from tests import test_tui as ui
 
 
 class PendingTests(unittest.TestCase):
@@ -229,6 +230,9 @@ class PendingTuiTests(unittest.IsolatedAsyncioTestCase):
                 return
         self.fail("TUI condition did not settle")
 
+    until = wait_for
+    click = ui.TuiTests.click
+
     async def approve(self, app, pilot, answer=True):
         await self.wait_for(pilot, lambda: isinstance(app.screen, ApprovalScreen))
         app.screen.dismiss(answer)
@@ -238,10 +242,11 @@ class PendingTuiTests(unittest.IsolatedAsyncioTestCase):
         app = self.app(recovered=True)
         async with app.run_test(size=(110, 36)) as pilot:
             app.query_one("#task", TextArea).load_text("main draft")
-            await pilot.click("#pending")
+            await self.click(pilot, "#pending")
             await self.wait_for(pilot, lambda: isinstance(app.screen, PendingScreen))
             manager = app.screen
-            await pilot.click("#pending-edit")
+            await self.click(pilot, "#pending-edit")
+            await self.wait_for(pilot, lambda: manager.editing)
             manager.query_one("#pending-editor", TextArea).load_text("updated\n中文")
             await pilot.press("ctrl+s")
             await self.approve(app, pilot, False)

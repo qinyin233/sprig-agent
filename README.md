@@ -14,6 +14,7 @@
 - 全屏终端 TUI、连续对话、项目代码地图、分目录 `AGENTS.md` 规则与本地 Git 查看
 - 交互式需求澄清：选项、多选和自填，Enter 确认、中途引导；答案不批准操作，见[提问流程](docs/questions.md)
 - 中途引导持久化与明确恢复；TUI `/pending manage` 支持单条查看、编辑、移除和排序，递送中的条目锁定，见[待处理输入](docs/pending-inputs.md)
+- [任务排队](docs/task-queue.md)：`/queue 正文` 仅收存，`/queue run` 明确顺序启动，每项独立轮次预算；普通 Enter 继续调整当前任务，拒绝/取消/未完成会暂停后续项
 - 显式配置的 [Agent Skills](docs/skills.md)：先发现摘要，按需加载说明和资料；脚本仍需另行批准命令
 - [MCP HTTP](docs/mcp.md) 与[本地 stdio](docs/mcp-stdio.md)：新旧协议、工具/资源/提示词、渐进发现与逐次 RPC 批准；本地进程也须确认，不自动安装、连接或重放
 - [网页文档读取](docs/web-fetch.md)：明确开启后逐次批准公开 HTTP(S)，HTML 文本提取与缓存分页；不继承认证、代理，不跟随重定向或执行网页脚本

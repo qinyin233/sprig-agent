@@ -49,13 +49,18 @@ def check_argv(text):
 
 def chat(agent, task, messages, emit, *, autostart=True, model_selection=None, switch_model=None, fork_conversation=None,
          pending_control=None):
-    """Keep context across turns; only a new task or /continue calls the model."""
+    """Keep context across turns; queued work also needs explicit /queue run."""
     status = 0
     history_ready = True
     agent.restore_plan(messages)
 
     def pending():
-        return bool(pending_control and pending_control("count", messages)[1]["pending_inputs"])
+        state = pending_control("count", messages)[1] if pending_control else {"pending_inputs": 0}
+        return bool(state.get("blocking_inputs", state["pending_inputs"]))
+
+    def queued_or_pending():
+        state = pending_control("count", messages)[1] if pending_control else {"pending_inputs": 0}
+        return bool(state["pending_inputs"] or state.get("blocking_inputs"))
 
     def recover(cancelled, error=None):
         nonlocal messages, status, history_ready
@@ -125,7 +130,9 @@ def chat(agent, task, messages, emit, *, autostart=True, model_selection=None, s
     emit("Chat ready. Enter a task; /continue, /help, /status, /ref PATH, /refs, /unref PATH, /context, /changes or /exit.")
     while True:
         try:
-            task = input("sprig> ").strip()
+            task = input("sprig> ")
+            if task.lstrip().split(None, 1)[:1] != ["/queue"]:
+                task = task.strip()
         except EOFError:
             return status
         except KeyboardInterrupt:
@@ -139,10 +146,35 @@ def chat(agent, task, messages, emit, *, autostart=True, model_selection=None, s
         if task == "/exit":
             return status
         try:
-            if pending() and (task.startswith("/model ") or task.startswith("/fork ") or task.startswith("/summary create")):
+            if queued_or_pending() and (task.startswith("/model ") or task.startswith("/fork ") or task.startswith("/summary create")):
                 emit("Resolve /pending apply or /pending discard first; no model request sent.")
                 continue
-            if task == "/pending" or task.startswith("/pending "):
+            if task.lstrip().split(None, 1)[:1] == ["/queue"]:
+                from .input_inbox import queue_command
+                request = queue_command(task.lstrip()[len("/queue"):].removeprefix(" "))
+                if pending_control is None:
+                    emit("Queue controls require the normal --chat controller; no model request sent.")
+                elif request["action"] == "run":
+                    emit(f"Queue run explicitly requested; each item has at most {agent.config.max_steps} model requests. Rejection, cancellation or incomplete work pauses remaining items.")
+                    _, scope = pending_control("queue_scope", messages)
+                    while True:
+                        if messages is None:
+                            messages = []  # Own history before a delivery checkpoint can fail.
+                        messages, result = pending_control({"action": "queue_take", "allowed_ids": scope["ids"]}, messages)
+                        if not result.get("applied_inputs"):
+                            break
+                        run(None)
+                        if status != 0 or getattr(agent, "had_rejected_action", False):
+                            if status == 0:
+                                status = 2
+                            emit("Queue paused; pending items retained. /continue resumes current work; /queue run explicitly advances the queue.")
+                            break
+                elif request["action"] == "pause":
+                    emit("Queue is idle; Ctrl+C during /queue run pauses remaining items.")
+                else:
+                    messages, result = pending_control({"action": "queue_add", "text": request["text"]} if request["action"] == "add" else "preview", messages)
+                    emit(json.dumps(result, ensure_ascii=False))
+            elif task == "/pending" or task.startswith("/pending "):
                 from .input_inbox import pending_command
                 request = pending_command(task[8:].strip())
                 action = request["action"]
@@ -154,7 +186,8 @@ def chat(agent, task, messages, emit, *, autostart=True, model_selection=None, s
                         status = 2
                     emit(json.dumps(result, ensure_ascii=False))
             elif task == "/help":
-                emit('/pending lists local inputs and IDs; show ID [CHAR_OFFSET] pages full text; edit ID "JSON text", drop ID or move ID POSITION asks fresh local approval. manage opens the --tui manager. apply delivers locally, discard confirms removal; /continue then requests the model.')
+                emit('/queue TEXT only stores a queued task; /queue add "JSON text" preserves whitespace; /queue run explicitly starts sequential model calls with a fresh per-item step limit. Ctrl+C pauses subsequent items. /pending delivery ID steer|queue changes mode after fresh confirmation.')
+                emit('/pending lists local inputs and IDs; show ID [CHAR_OFFSET] pages full text; edit ID "JSON text", drop ID, move ID POSITION or delivery ID steer|queue asks fresh local approval. manage opens the --tui manager. apply delivers guidance locally and retains queued items, discard confirms removal; /continue resumes current work, /queue run explicitly starts queued work.')
                 emit('/lsp shows configured servers without startup; /lsp definition|references|implementation|hover SERVER PATH LINE COLUMN, symbols|diagnostics SERVER PATH, or workspace_symbols SERVER QUERY asks fresh approval; /lsp result ID [OFFSET] reads a local page. Positions are 1-based Unicode columns. Servers cannot apply edits or commands through this client.')
                 emit('/jobs lists owned tasks; /job start {"argv":["program","arg"]} approves a background command; /job status|output|wait|cancel ID observes or freshly confirms stopping it. Enable execution.background or --background. Exit/reset stops jobs; restore never restarts them.')
                 emit("/web shows local snapshot status; /web URL approves one public HTTP(S) GET; /web result ID [OFFSET] pages retained text without refetch. Enable with [web] enabled=true or --web. No auth, redirects, proxy, scripts or automatic replay.")
@@ -548,37 +581,84 @@ def main(argv=None):
             messages, attached = agent.attach_files(args.file, messages)
             emit("[attached snapshots] " + json.dumps(attached, ensure_ascii=False))
         if args.chat:
-            from .input_inbox import UserInput, change_inputs, check_input_growth, input_change_prompt, input_page, input_preview
+            from .input_inbox import UserInput, InputInbox, new_input, change_inputs, check_input_growth, input_change_prompt, input_page, input_preview
+            runtime_inputs = InputInbox()
+            queue_retry = None
+            recovery_required = bool(args.resume and store.loaded_inputs["pending"])
             from .model_selection import ModelSelection, ModelSwitch
             model_selection = ModelSelection(settings, options, os.environ, config)
             def pending_control(action, messages):
+                nonlocal queue_retry, recovery_required
                 try:
-                    state = store.pending_inputs(session_name) if store and session_name else {"version": 1, "pending": []}
+                    state = store.pending_inputs(session_name) if store and session_name else runtime_inputs.snapshot()
                 except FileNotFoundError:
                     state = {"version": 1, "pending": []}  # Reserved fresh autosave has no transcript yet.
                 if isinstance(action, dict):
                     request = action
+                    if request["action"] == "queue_add":
+                        text = redact(request["text"], config.secrets)
+                        if queue_retry is not None and queue_retry.text != text:
+                            raise ValueError("Retry the same queued text or resolve /pending discard first; prior receipt is uncertain")
+                        entry = queue_retry or new_input(text, delivery="queue")
+                        candidate = {"version": 1, "pending": [*state["pending"], entry.row()]}
+                        if not any(row["id"] == entry.id for row in state["pending"]):
+                            check_input_growth(state, candidate, config.max_context_bytes)
+                        queue_retry = entry
+                        if store and session_name:
+                            store.enqueue_input(session_name, entry, history=messages if messages is not None else [{"role": "system", "content": SYSTEM_PROMPT}], **agent.reference_save_options())
+                        else:
+                            runtime_inputs.append(entry)
+                        queue_retry = None
+                        return messages, {"queued_input": entry.id, "delivery": "queue", "saved": bool(store and session_name),
+                                          "network_contacted": False, "task_executed": False}
+                    if request["action"] == "queue_take":
+                        if queue_retry or any(row.get("delivery", "steer") != "queue" for row in state["pending"]):
+                            raise ValueError("Resolve uncertain receipt or /pending apply before running queued tasks")
+                        entries = [UserInput(**row) for row in state["pending"] if row.get("delivery") == "queue"][:1]
+                        if not entries or entries[0].id not in request["allowed_ids"]:
+                            return messages, {"applied_inputs": 0, "network_contacted": False}
+                        messages, result = agent.recover_inputs(messages, entries)
+                        runtime_inputs.acknowledge(messages)
+                        recovery_required = False
+                        return messages, result
                     if request["action"] == "show":
                         return messages, input_page(state, request["identity"], request["offset"], min(8192, config.max_output))
                     if request["action"] == "manage":
                         return messages, {"error": "Use --tui for the manager, or /pending show|edit|drop|move in chat", "network_contacted": False}
-                    options = {key: request[key] for key in ("text", "position") if key in request}
+                    options = {key: request[key] for key in ("text", "position", "delivery") if key in request}
                     if "text" in options:
                         options["text"] = redact(options["text"], config.secrets)
                     candidate, result = change_inputs(state, request["action"], request["identity"], **options)
                     check_input_growth(state, candidate, config.max_context_bytes)
                     if confirm(input_change_prompt(state, candidate, result)) is not True:
                         return messages, {"approved": False, "network_contacted": False}
-                    store.revise_inputs(session_name, state, candidate)
+                    if store and session_name:
+                        store.revise_inputs(session_name, state, candidate)
+                    else:
+                        runtime_inputs.revise(state, candidate)
                     return messages, {**result, "approved": True}
                 if action == "count":
-                    return messages, {"pending_inputs": len(state["pending"])}
+                    return messages, {"pending_inputs": len(state["pending"]), "blocking_inputs":
+                        len(state["pending"]) if recovery_required else int(bool(queue_retry)) + sum(row.get("delivery", "steer") != "queue" for row in state["pending"])}
+                if action == "queue_scope":
+                    return messages, {"ids": [row["id"] for row in state["pending"] if row.get("delivery") == "queue"]}
                 if action == "apply":
-                    return agent.recover_inputs(messages, [UserInput(**row) for row in state["pending"]])
-                if action == "discard" and state["pending"]:
+                    if queue_retry:
+                        raise ValueError("Retry the same /queue text or discard pending inputs; receipt is uncertain")
+                    messages, result = agent.recover_inputs(messages, [UserInput(**row) for row in state["pending"] if row.get("delivery", "steer") == "steer"])
+                    runtime_inputs.acknowledge(messages)
+                    recovery_required = False
+                    result["queued_inputs"] = sum(row.get("delivery") == "queue" for row in state["pending"])
+                    return messages, result
+                if action == "discard" and (state["pending"] or queue_retry):
                     if confirm("Discard saved pending inputs? This does not run tasks or undo workspace actions.") is not True:
                         return messages, {"approved": False, "network_contacted": False}
-                    return messages, store.discard_inputs(session_name)
+                    queue_retry = None
+                    recovery_required = False
+                    if store and session_name:
+                        return messages, store.discard_inputs(session_name)
+                    runtime_inputs.revise(state, {"version": 1, "pending": []})
+                    return messages, {"discarded_inputs": len(state["pending"]), "network_contacted": False}
                 return messages, input_preview(state, min(4096, config.max_output))
             def fork_conversation(target, messages):
                 from .conversation_fork import ConversationFork

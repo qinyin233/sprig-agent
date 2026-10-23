@@ -388,7 +388,7 @@ class SessionStore:
     def enqueue_input(self, name, entry, *, history=None, references=None, summary=None, logs=None):
         if not isinstance(entry, UserInput):
             raise SessionError("structured user input is required")
-        entry = UserInput(entry.id, redact(entry.text, self.config.secrets))
+        entry = UserInput(entry.id, redact(entry.text, self.config.secrets), entry.delivery)
         try:
             saved = self._read_document(self._filename(name))
         except FileNotFoundError:

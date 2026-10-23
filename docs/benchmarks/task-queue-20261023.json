@@ -1,0 +1,120 @@
+{
+  "scope": "explicit sequential text task queue separate from Enter guidance, with fresh action approvals; not model performance",
+  "base_commit": "b24ecc4a686c4d9906f5afc962c7aea7faf5ed39",
+  "source_manifest": {
+    "src/sprig_agent": {
+      "files": 66,
+      "sha256": "fbc851e1c1c1b7919418aae01d8b09b3e2e8d3a8e4e3b2a11d518d7ffb08ba63"
+    },
+    "tests": {
+      "files": 88,
+      "sha256": "e89c21be4a6987bf8c51e0769b2beaec00fd54d8dcf49ba6770a92cc4a0bbe68"
+    },
+    "tests/fixtures": {
+      "files": 2,
+      "sha256": "8d85c1704599d29f45db0dbb3c1278557cce9be44a004366dd969217c3a40718"
+    }
+  },
+  "manifest_algorithm": "sorted relative path + NUL + SHA256(LF-normalized bytes) hex + newline",
+  "local_suites": [
+    {
+      "platform": "native Windows Python 3.13.0",
+      "tests": 1314,
+      "passed": 1295,
+      "skipped": 19,
+      "seconds": 571.278
+    },
+    {
+      "platform": "local WSL Python 3.13.14",
+      "tests": 1314,
+      "passed": 1291,
+      "skipped": 23,
+      "seconds": 405.504
+    },
+    {
+      "platform": "native Windows Python 3.11 editable; queue, paste, inbox, management and chat",
+      "tests": 95,
+      "passed": 95,
+      "skipped": 0,
+      "seconds": 52.567
+    }
+  ],
+  "client_suites": [
+    {
+      "platform": "native Windows mini SDK",
+      "tests": 25,
+      "passed": 25,
+      "skipped": 0,
+      "seconds": 48.987
+    },
+    {
+      "platform": "local WSL mini SDK",
+      "tests": 25,
+      "passed": 25,
+      "skipped": 0,
+      "seconds": 203.687
+    }
+  ],
+  "initial_full_suite_failures": [
+    {
+      "platform": "windows",
+      "failures": 3,
+      "cause": "early unavailable-tool response replaced existing unknown-tool and history diagnostics; corrected without changing those contracts"
+    },
+    {
+      "platform": "wsl",
+      "failures": 3,
+      "cause": "early unavailable-tool response replaced existing unknown-tool and history diagnostics; corrected without changing those contracts"
+    }
+  ],
+  "initial_py311_fixture_timeout": {
+    "failures": 1,
+    "isolated_rerun": "passed",
+    "change": "existing manager fixture now verifies visible button-center hit and waits for actual editing state before injecting draft; no approval assertions removed"
+  },
+  "installed_wheel": {
+    "tests": 25,
+    "skipped": 0,
+    "source_files_checked": 66,
+    "imported_installed_modules": 60,
+    "sdist_changed_source_matches": true
+  },
+  "regressions": [
+    "queue stores without model call or dismissal of current approval",
+    "explicit run scope snapshots identities; later append or edit needs another run",
+    "FIFO within lanes; guidance supersedes stale work without delivering future queue items",
+    "fresh per-item model step limit and independent check approvals",
+    "cancellation, pause, exhausted steps, policy or user rejection stop subsequent items",
+    "saved delivery modes, uncertain receipt deduplication, checkpoint failure without model call",
+    "recovery never auto-runs; local apply delivers guidance and retains queue",
+    "three loopback HTTP model protocols strip local delivery metadata",
+    "80x24 TUI delivery-mode approval and CLI saved or memory-only queue",
+    "folded, expanded and undone paste metadata; reserved words remain data and JSON preserves exact CRLF",
+    "selected file metadata rejected with draft intact; budget failure releases unreceived item"
+  ],
+  "other_checks": [
+    "four uv lock files",
+    "schema and example TOML",
+    "compileall",
+    "CLI help",
+    "sdist and wheel build",
+    "local document links",
+    "credential-shaped additions"
+  ],
+  "upstream_source": "https://github.com/anomalyco/opencode/blob/9d90d892dcbfc52b47e95b2ea31b8aba877128fd/packages/core/src/session/inbox.ts",
+  "external_model_requests": 0,
+  "ci": {
+    "triggered": false,
+    "status": "pending; frozen before 2026-11-01 Asia/Singapore; verify account restriction and prior gate afterwards"
+  },
+  "limits": [
+    "platform skips are not passes; WSL is not native Ubuntu CI",
+    "no OS backend changes",
+    "same conversation; not parallel isolated jobs or persisted scheduler",
+    "explicit run permits up to N times configured per-item steps; no cost estimate",
+    "without configured checks, a reply ending is not task acceptance",
+    "text-only queue; no queued attachment snapshots",
+    "history editing, process-crash exactly-once side effects and automatic retry are not provided",
+    "no new real model completion-rate or cost improvement evidence"
+  ]
+}

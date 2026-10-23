@@ -20,6 +20,7 @@ from textual.worker import get_current_worker
 from .agent import Agent
 from .input_inbox import (InputInbox, UserInput, InputChanged, input_state, input_preview, new_input,
                           change_inputs, check_input_growth, input_change_prompt, input_page, input_revision, pending_command)
+from .input_inbox import delivered_inputs, queue_command
 from .changes import ChangeHistory
 from .config import SHORTCUT_ACTIONS, redact, terminal_text
 from .composer import DraftPastes, MAX_PASTE_BYTES, paste_text
@@ -75,6 +76,7 @@ class TaskInput(TextArea):
         self.files = DraftFiles()
         self.pastes = DraftPastes()
         self.verbatim_paste = self.literal_paste = False
+        self._queue_paste_mode = None
         self._paste_identity = 0
         self._expanding_paste = False
         self._last_composer_edit = None
@@ -87,13 +89,14 @@ class TaskInput(TextArea):
         self.files = DraftFiles(self.text)
         self.pastes = DraftPastes(self.text)
         self.verbatim_paste = self.literal_paste = False
+        self._queue_paste_mode = None
         self._last_composer_edit = None
 
     def paste_state(self):
-        return tuple(self.pastes.spans), self.verbatim_paste, self.literal_paste
+        return tuple(self.pastes.spans), self.verbatim_paste, self.literal_paste, self._queue_paste_mode
 
     def restore_paste_state(self, state):
-        spans, self.verbatim_paste, self.literal_paste = state
+        spans, self.verbatim_paste, self.literal_paste, self._queue_paste_mode = state
         self.pastes = DraftPastes(self.text)
         self.pastes.spans = [row for row in spans if self.text[row[0]:row[1]] == row[3]]
 
@@ -104,6 +107,8 @@ class TaskInput(TextArea):
         edit.paste_before = self.paste_state()
         start = self.document.get_index_from_location(edit.top)
         end = self.document.get_index_from_location(edit.bottom)
+        if self._queue_paste_mode is not None and start <= len(self.text) - len(self.text.lstrip()) + len('/queue'):
+            self._queue_paste_mode = None
         previous = len(self.pastes.spans)
         result = super().edit(edit)
         self.files.sync(self.text, start, end)
@@ -112,6 +117,7 @@ class TaskInput(TextArea):
             self.notify("已删除或修改粘贴标记，对应正文已移除；编辑正文前请先 F4 展开", severity="warning")
         if not self.text:
             self.verbatim_paste = self.literal_paste = False
+            self._queue_paste_mode = None
         edit.paste_after = self.paste_state()
         edit.redo_selection = self.selection
         self._last_composer_edit = edit
@@ -160,10 +166,17 @@ class TaskInput(TextArea):
             self.notify(str(error), title="粘贴未插入，原草稿保留", severity="warning")
             return
         self.history.checkpoint()
+        queue_mode = self._queue_paste_mode
+        prefix = self.text[:left].lstrip()
+        if not self.literal_paste and prefix.split()[:1] == ['/queue']:
+            queue_mode = queue_mode or ('json' if prefix.split() == ['/queue', 'add'] else 'raw')
+        if left <= len(self.text) - len(self.text.lstrip()) + len('/queue'):
+            queue_mode = None
         self.replace(inserted, start, end, maintain_selection_offset=False)
         self.pastes = candidate
         self.verbatim_paste = True
         self.literal_paste = self.literal_paste or folded
+        self._queue_paste_mode = queue_mode
         self._paste_identity += 1
         self._last_composer_edit.paste_after = self.paste_state()
         self.history.checkpoint()
@@ -193,6 +206,7 @@ class TaskInput(TextArea):
             self.files = editor.files.paths()
             self.preflight = editor.verbatim_paste
             self.literal = editor.literal_paste
+            self.queue_paste_mode = editor._queue_paste_mode
 
     class Complete(Message):
         def __init__(self, editor):
@@ -204,7 +218,8 @@ class TaskInput(TextArea):
 
     def action_send(self):
         self.pastes.sync(self.text)
-        text = self.pastes.expanded() if self.verbatim_paste else self.text.strip()
+        queued = self.text.lstrip().split(None, 1)[:1] == ["/queue"]
+        text = self.pastes.expanded() if self.verbatim_paste or queued else self.text.strip()
         if text.strip() and not getattr(self, "_sending", False):
             self._sending = True
             self.post_message(self.Submitted(self, text, self.text))
@@ -349,7 +364,7 @@ class SprigApp(App[int]):
         class UiTools(Tools):
             def execute(self, name, arguments):
                 result = super().execute(name, arguments)
-                if result.get("approved") is False and app.ui_call(lambda: bool(app.pending_tasks)):
+                if result.get("approved") is False and app.ui_call(lambda: bool(app._input_inbox.batch(delivery="steer"))):
                     note = ("Stopped after a workspace change; inspect current files: " if result.get("changed") or result.get("outcome")
                             else "Not executed: ")
                     result = {**result, "skipped": True, "error": note +
@@ -613,6 +628,8 @@ class SprigApp(App[int]):
     @pending_tasks.setter
     def pending_tasks(self, tasks):
         self._input_inbox = InputInbox({"version": 1, "pending": [new_input(text).row() for text in tasks]})
+        self._queue_running = self._queue_next = False
+        self._queue_scope = frozenset()
 
     def pending_state(self):
         state = input_state(self.recovered_inputs if self.recovered_inputs["pending"] else self._input_inbox.snapshot())
@@ -639,7 +656,7 @@ class SprigApp(App[int]):
             expected = current if expected is None else expected
             if input_revision(expected) != input_revision(current) or self._input_inbox.claimed():
                 raise InputChanged("要求已变化或正在递送，请刷新后再修改")
-            options = {key: request[key] for key in ("text", "position") if key in request}
+            options = {key: request[key] for key in ("text", "position", "delivery") if key in request}
             if "text" in options:
                 options["text"] = redact(options["text"], self.config.secrets)
             candidate, result = change_inputs(expected, request["action"], request["identity"], **options)
@@ -677,15 +694,15 @@ class SprigApp(App[int]):
         self.push_screen(ApprovalScreen(self.safe(input_change_prompt(expected, candidate, result))), decide)
 
     def take_pending(self):
-        count = 1 if self.config.steering_mode == "one-at-a-time" else len(self.pending_tasks)
-        tasks = self._input_inbox.claim(count)
+        count = 1 if self.config.steering_mode == "one-at-a-time" else None
+        tasks = self._input_inbox.claim(count, delivery="steer")
         if tasks:
             self.set_state("已接收新要求，继续当前会话")
         return tasks
 
     def receive_input(self):
         if self._unmounted:
-            return self._input_inbox.claim()
+            return self._input_inbox.claim(delivery="steer")
         return self.ui_call(self.take_pending)
 
     @on(UiRequest)
@@ -745,7 +762,7 @@ class SprigApp(App[int]):
         def show():
             self.flush_output()
             # Guidance could arrive between the agent boundary and this approval.
-            if self.pending_tasks:
+            if self._input_inbox.batch(delivery="steer"):
                 done.set()
                 return
 
@@ -777,7 +794,7 @@ class SprigApp(App[int]):
         answers, done = [None], threading.Event()
         def show():
             self.flush_output()
-            if self.pending_tasks:
+            if self._input_inbox.batch(delivery="steer"):
                 done.set()
                 return
             def finish(result):
@@ -850,11 +867,18 @@ class SprigApp(App[int]):
                     if action == "apply":
                         if self._input_inbox.blocked:
                             raise ValueError("队列修改保存未确认；请恢复此会话或明确丢弃待处理要求后继续")
+                        if self._input_retry and self._input_retry.delivery == "queue":
+                            raise ValueError("排队输入保存尚未确认；请用相同 /queue 正文重试，或明确丢弃/恢复会话")
+                        pending = self.pending_state()
                         self.messages, result = self.agent.recover_inputs(
-                            self.messages, [UserInput(**row) for row in self.pending_state()["pending"]])
+                            self.messages, [UserInput(**row) for row in pending["pending"] if row.get("delivery", "steer") == "steer"])
+                        for row in pending["pending"]:
+                            if row.get("delivery") == "queue":
+                                self._input_inbox.append(UserInput(**row))
                         self.recovered_inputs = input_state()
                         self._input_retry = None
-                        self.ui_call(self.set_task_result, 2, "新要求已加入对话，尚未请求模型；请明确继续")
+                        result["queued_inputs"] = len(self._input_inbox.batch(delivery="queue"))
+                        self.ui_call(self.set_task_result, 2, "引导已加入对话；排队项保留，/queue run 才启动队列")
                     elif action == "discard":
                         if self.confirm("丢弃本地保存的待处理要求？这不会运行任务，也不会撤销工作区操作。") is True:
                             result = (self.get_store().discard_inputs(self.session_name) if self.session_name
@@ -929,6 +953,23 @@ class SprigApp(App[int]):
                 if "error" in result or result.get("approved") is False or result.get("returncode", 0) != 0:
                     status, message = 2, "本地操作未完成"
             else:
+                if self._queue_next:
+                    self._queue_next = False
+                    entries = self._input_inbox.claim(1, delivery="queue")
+                    if not entries or entries[0].id not in self._queue_scope:
+                        self._input_inbox.release(entries)
+                        raise ValueError("排队项已变化；没有启动新的模型请求")
+                    if self.messages is None:
+                        self.messages = []  # Own history before any uncertain checkpoint.
+                    try:
+                        self.messages, _ = self.agent.recover_inputs(self.messages, entries)
+                    except BaseException:
+                        if not any(entry.id in delivered_inputs(self.messages) for entry in entries):
+                            self._input_inbox.release(entries)
+                        else:
+                            self._input_inbox.blocked = True
+                        raise
+                    self.emit("[queue] 开始下一项；本项最多 " + str(self.config.max_steps) + " 次模型请求，工具仍逐次批准")
                 options = {"context_files": context_files} if context_files else {}
                 if preflight:
                     options["preflight"] = True
@@ -979,19 +1020,30 @@ class SprigApp(App[int]):
 
     def finished(self, status, message):
         self.flush_output()
+        if self._queue_running and self.agent.had_rejected_action and status == 0:
+            status, message = 2, "本项有操作被拒绝；排队任务已暂停，结果待确认"
         if self.local_action is not None:
             self.last_operation_status = status
-        if self.pending_tasks and not self._input_retry and not self._input_inbox.blocked and status in (0, 2) and not self.cancel_event.is_set():
+        if status != 0 or self.agent.had_rejected_action or self.cancel_event.is_set() or self._input_retry or self._input_inbox.blocked:
+            self._queue_running = False
+        if self._input_inbox.batch(delivery="steer") and not self._input_retry and not self._input_inbox.blocked and status in (0, 2) and not self.cancel_event.is_set():
             self.local_action = None
             self.set_task_result(2, "新要求待处理，等待更新后的结果")
             self.set_state(f"继续处理 {len(self.pending_tasks)} 条新要求")
             return True
+        queued = self._input_inbox.batch(1, delivery="queue")
+        if self.local_action is None and status == 0 and self._queue_running and queued and queued[0].id in self._queue_scope:
+            self._queue_next = True
+            self.set_task_result(2, "按明确请求继续下一条排队任务")
+            return True
+        self._queue_running = False
         if self.local_action is None:
             self.set_task_result(status, message)
         self.local_action = None
         self.set_busy(False)
         if self.pending_tasks:
-            message += f"；{len(self.pending_tasks)} 条要求待处理，点击继续"
+            queued = len(self._input_inbox.batch(delivery="queue"))
+            message += f"；{queued} 条排队未执行，/queue run 启动" if queued else f"；{len(self.pending_tasks)} 条引导待处理，点击继续"
         if self._input_retry:
             message += "；一条输入保存未确认，请用 /pending 处理或重试原文"
         self.set_state(message)
@@ -1202,6 +1254,25 @@ class SprigApp(App[int]):
             self.reject_input(str(error))
             return
         command = task.strip()
+        queue_mode = getattr(event, 'queue_paste_mode', None)
+        if command.split(None, 1)[:1] == ['/queue'] and (not event.literal or queue_mode is not None):
+            if event.files:
+                self.reject_input("排队项当前接收文本；文件选择与草稿保留，请在对应任务中显式附加或按文件名读取")
+                return
+            try:
+                if queue_mode is not None:
+                    body = task.lstrip()[len('/queue'):].removeprefix(' ')
+                    if queue_mode == 'json':
+                        body = queue_command('add ' + body.lstrip().removeprefix('add '))['text']
+                    accepted = self.queue_guidance(body, delivery='queue')
+                else:
+                    accepted = self.slash_command(task.lstrip())
+            except (ValueError, TypeError, RecursionError):
+                accepted = False
+                self.reject_input("排队输入无效；草稿保留，/queue add 后需为一个 JSON 字符串")
+            if accepted and event.editor.text == event.draft:
+                event.editor.load_text('')
+            return
         if not event.literal and command.startswith("//"):
             task = command[1:]  # A literal task starting with a slash.
         elif not event.literal and command.startswith("/"):
@@ -1232,14 +1303,14 @@ class SprigApp(App[int]):
             self._draft_submission = (event.editor.id, event.draft, task)
             self.start(None if retry else task, context_files=event.files, preflight=event.preflight)
 
-    def queue_guidance(self, task):
+    def queue_guidance(self, task, *, delivery="steer"):
         if self._input_inbox.blocked:
             self.reject_input("队列修改保存未确认；请恢复当前会话后再发送。草稿保留。")
             return False
         if self.recovered_inputs["pending"]:
             self.reject_input("请先处理 /pending apply 或 /pending discard；新要求未接收，草稿保留。")
             return False
-        if self._input_retry and self._input_retry.text != redact(task, self.config.secrets):
+        if self._input_retry and (self._input_retry.text != redact(task, self.config.secrets) or self._input_retry.delivery != delivery):
             self.reject_input("上一条要求的保存尚未确认；请重试原文，或 /pending apply、/pending discard 处理后再发送。")
             return False
         limit = self.config.max_context_bytes
@@ -1253,7 +1324,7 @@ class SprigApp(App[int]):
             return False
         try:
             text = redact(task, self.config.secrets)
-            entry = self._input_retry if self._input_retry and self._input_retry.text == text else new_input(text)
+            entry = self._input_retry if self._input_retry and self._input_retry.text == text else new_input(text, delivery=delivery)
             state = self._input_inbox.snapshot()
             if not any(row["id"] == entry.id for row in state["pending"]):
                 input_state({"version": 1, "pending": [*state["pending"], entry.row()]})
@@ -1261,13 +1332,19 @@ class SprigApp(App[int]):
             # Publish only after the private atomic save succeeds. Retrying an
             # uncertain save reuses the identity, so an accepted input stays unique.
             if self.store and self.session_name:
-                self.store.enqueue_input(self.session_name, entry, history=self.messages,
+                self.store.enqueue_input(self.session_name, entry, history=self.messages if self.messages is not None else
+                                         [{"role": "system", "content": self.agent._prompt()}],
                                          **self.agent.reference_save_options())
             self._input_inbox.append(entry)
             self._input_retry = None
         except (OSError, ValueError, SessionError) as error:
             self.reject_input("要求未接收；保存失败，请保留草稿后重试：" + self.safe(error))
             return False
+        if delivery == "queue":
+            self.append("\n你[排队]> " + task + "\n[已收存排队项"
+                        + ("并保存" if self.store and self.session_name else "；仅当前进程内存")
+                        + "；不打断当前任务或批准。/queue run 明确启动，/queue pause 暂停后续项]\n")
+            return True
         self.set_task_result(2, "新要求待处理，等待更新后的结果")
         self.streaming = False
         self.append("\n你> " + task + "\n")
@@ -1281,7 +1358,30 @@ class SprigApp(App[int]):
             self.question.settle(None)
         return True
 
+    def run_queue(self):
+        if self.recovered_inputs["pending"] or self._input_retry or self._input_inbox.blocked:
+            self.reject_input("请先处理 /pending apply、重试未确认保存或明确丢弃；队列未启动")
+            return False
+        entries = self._input_inbox.batch(delivery="queue")
+        count = len(entries)
+        if not count:
+            self.append("[queue] 暂无排队项；/queue 正文 只收存，不请求模型。\n")
+            return True
+        if self.busy and self.local_action is not None:
+            self.reject_input("请等待当前本地操作结束后再 /queue run")
+            return False
+        self._queue_running = True
+        self._queue_scope = frozenset(entry.id for entry in entries)
+        self.append(f"[queue] 已明确请求顺序执行 {count} 项；每项最多 {self.config.max_steps} 次模型请求。"
+                    "当前调用结束后处理；未配置 checks 时仅表示模型回复结束。拒绝、取消或未完成时暂停；"
+                    "新增或编辑过的排队项须再次 /queue run。\n")
+        if not self.busy:
+            self._queue_next = True
+            self.start()
+        return True
+
     def action_cancel(self):
+        self._queue_running = False
         had_jobs = self.tools.jobs.unsettled()
         self.tools.jobs.request_cancel_all()
         if not self.busy:
@@ -1428,6 +1528,8 @@ class SprigApp(App[int]):
     def slash_command(self, text):
         command, _, argument = text.partition(" ")
         argument = argument.strip()
+        if text.split(None, 1) and text.split(None, 1)[0] == "/queue":
+            command = "/queue"
         if command == "/help":
             self.append("\n本地命令（不发送给模型）：\n"
                         "/help /keys /plan /status /config /models /context /usage /cancel /exit\n"
@@ -1444,7 +1546,10 @@ class SprigApp(App[int]):
                         "/changes /undo /redo /discard-history /sessions /prune [--dry-run]\n"
                         "/save [名称] /restore [名称] /delete [名称]\n"
                         "/pending 查看；/pending manage 管理；show ID [字符偏移] 查看原文；edit ID JSON字符串、drop ID、move ID 位置逐次确认。\n"
-                        "/pending apply 仅加入对话；/pending discard 逐次确认全部丢弃；之后 /continue 才请求模型。\n"
+                        "/pending apply 仅将引导加入对话，保留排队项；/pending discard 逐次确认全部丢弃。\n"
+                        "/continue 继续当前任务；/queue run 才启动排队项。\n"
+                        "/queue 正文 仅收存下一项；/queue add JSON字符串 保留空白；/queue run 明确顺序请求模型，/queue pause 暂停后续项。\n"
+                        "/pending delivery ID steer|queue 逐次确认切换模式；管理窗口也可使用“模式”按钮。\n"
                         "/worktrees /worktree 新目录路径（完整剩余文本作为路径；不会切换当前对话）\n"
                         "执行中可输入普通消息调整引导。// 开头发送以 / 开头的普通消息。\n"
                         "Tab 补全本地命令或 /add、/ref 的文件参数；普通消息 @关键词 + Tab 选择本轮文件。\n"
@@ -1467,7 +1572,24 @@ class SprigApp(App[int]):
         if command == "/status":
             self.append(f"\n[本地状态] {self.task_message} | 执行中: {self.busy} | 消息: {len(self.messages or [])} | 本次基线: {self.agent.baseline_status} | 编辑后检查: {self.agent.edit_check_status} | 待处理引导: {len(self.pending_tasks)}\n")
             self.append(f"[待恢复要求: {len(self.recovered_inputs['pending'])}；运行状态仅当前进程]\n" + json.dumps(self.agent.runtime_snapshot(), ensure_ascii=False) + "\n")
+            self.append(f"[队列: {'已启动' if self._queue_running else '未启动/暂停'}；引导 {len(self._input_inbox.batch(delivery='steer'))} 条；排队 {len(self._input_inbox.batch(delivery='queue'))} 条]\n")
             return
+        if command == "/queue":
+            try:
+                request = queue_command(text.lstrip()[len("/queue"):].removeprefix(" "))
+                if request["action"] == "run":
+                    return self.run_queue()
+                elif request["action"] == "pause":
+                    self._queue_running = False
+                    self.append("[queue] 后续项已暂停；当前任务继续，可用 Ctrl+C 取消。\n")
+                elif request["action"] == "preview":
+                    self.append(json.dumps(input_preview(self.pending_state(), min(4096, self.config.max_output)), ensure_ascii=False) + "\n")
+                else:
+                    return self.queue_guidance(request["text"], delivery="queue")
+            except (ValueError, TypeError, RecursionError) as error:
+                self.reject_input("排队输入无效；使用 /queue 正文，或 /queue add JSON字符串 保留完整原文")
+                return False
+            return True
         if command == "/pending":
             try:
                 request = pending_command(argument)
@@ -1476,7 +1598,7 @@ class SprigApp(App[int]):
                 elif request["action"] == "show":
                     result = input_page(self.pending_state(), request["identity"], request["offset"], min(8192, self.config.max_output))
                     self.append(json.dumps(result, ensure_ascii=False, indent=2) + "\n")
-                elif request["action"] in {"edit", "drop", "move"}:
+                elif request["action"] in {"edit", "drop", "move", "delivery"}:
                     self.change_pending(request)
                 elif self.busy:
                     if request["action"] == "preview":

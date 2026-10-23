@@ -64,7 +64,7 @@ class PendingScreen(ModalScreen):
             yield PendingEditor(read_only=True, id="pending-editor", soft_wrap=True)
             yield Static("", id="pending-status", markup=False)
             with Horizontal(id="pending-buttons"):
-                for label, name in (("刷新", "refresh"), ("编辑", "edit"), ("移除", "drop"), ("上移", "up"), ("下移", "down"), ("关闭", "close")):
+                for label, name in (("刷新", "refresh"), ("编辑", "edit"), ("模式", "delivery"), ("移除", "drop"), ("上移", "up"), ("下移", "down"), ("关闭", "close")):
                     yield Button(label, id="pending-" + name)
             with Horizontal(id="pending-edit-buttons"):
                 yield Button("保存编辑 / Ctrl+S", id="pending-save", variant="primary")
@@ -91,7 +91,7 @@ class PendingScreen(ModalScreen):
         self.selected = next((row["id"] for row in rows if row["id"] == selected), rows[0]["id"] if rows else None)
         options = self.query_one("#pending-list", OptionList)
         options.clear_options()
-        options.add_options([f"{index}. {row['id']} · " + terminal_text(row["text"][:80]).replace("\n", " ")
+        options.add_options([f"{index}. {'排队' if row.get('delivery') == 'queue' else '引导'} · {row['id']} · " + terminal_text(row["text"][:80]).replace("\n", " ")
                              for index, row in enumerate(rows, 1)])
         options.highlighted = next((index for index, row in enumerate(rows) if row["id"] == self.selected), None)
         self.show_selected()
@@ -112,7 +112,7 @@ class PendingScreen(ModalScreen):
             self._signature = signature
         stale = self._stale
         locked = bool(self.host._input_inbox.claimed()) or self.host._input_inbox.blocked or bool(self.host._input_retry)
-        for name in ("edit", "drop", "up", "down"):
+        for name in ("edit", "delivery", "drop", "up", "down"):
             self.query_one("#pending-" + name, Button).disabled = self.editing or not self.selected or stale or locked
         self.query_one("#pending-save", Button).disabled = not self.editing or stale or locked
         self.query_one("#pending-cancel-edit", Button).disabled = not self.editing
@@ -198,6 +198,10 @@ class PendingScreen(ModalScreen):
             self.show_selected()
             self.refresh_status()
             self.status("编辑草稿已取消；原要求保留。")
+        elif action == "delivery" and self.selected:
+            self.host.change_pending({"action": "delivery", "identity": self.selected,
+                "delivery": "steer" if self.selected_row().get("delivery") == "queue" else "queue"},
+                expected=self.state, completed=self.changed)
         elif action in {"drop", "up", "down"} and self.selected:
             request = {"action": "drop" if action == "drop" else "move", "identity": self.selected}
             if action != "drop":

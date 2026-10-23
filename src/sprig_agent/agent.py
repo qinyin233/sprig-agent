@@ -120,6 +120,7 @@ class Agent:
             self.schemas.append(copy.deepcopy(LSP_SCHEMA))
         self._job_notified = set()
         self.work_progress = WorkProgress()
+        self.had_rejected_action = False
         self._prepared_skills = None
         self.compact_context = config.compact_context
         self.baseline_status = "not_run"
@@ -137,6 +138,7 @@ class Agent:
             self.tools.lsp_manager.reset()
         self.runtime_state = None
         self.work_progress = WorkProgress()
+        self.had_rejected_action = False
         manager = getattr(self.tools, "mcp_manager", None)
         if isinstance(manager, McpManager):
             manager.reset()
@@ -146,6 +148,8 @@ class Agent:
     def _event(self, phase, outcome="running", **metadata):
         if not self._running:
             return  # Recovery/local controls cannot overwrite a terminal run.
+        if phase in {"approval", "tool"} and outcome == "rejected":
+            self.had_rejected_action = True
         self._sequence += 1
         event = RuntimeEvent(self._run_id, self._sequence, phase, outcome,
                              self._step, self.config.max_steps, **metadata)
@@ -587,6 +591,10 @@ class Agent:
             raise KeyboardInterrupt
 
     def _execute_model_tool(self, name, arguments):
+        if self._running and name in TOOL_NAMES and not any(schema["function"]["name"] == name for schema in self.schemas):
+            # Keep the execution layer's original diagnostic and enforcement.
+            # An unavailable model tool still pauses explicitly queued work.
+            self.had_rejected_action = True
         if name == "read_history":
             try:
                 if not isinstance(arguments, dict):
@@ -796,6 +804,7 @@ class Agent:
         self._run_id, self._sequence, self._step, self._action = uuid.uuid4().hex, 0, 0, 0
         self._stop_reason = None
         self.work_progress = WorkProgress()
+        self.had_rejected_action = False
         self._running = True
         try:
             self._event("starting")

@@ -358,3 +358,11 @@ stdlib peer 只证明传输、策略与 CLI/TUI 集成；另以本机已安装 c
 
 
 2026-10-22 检索接口补充：重新阅读同一 `dev@9d90d89` 的 [packages/core/src/tool/plugin/grep.ts](https://github.com/anomalyco/opencode/blob/9d90d892dcbfc52b47e95b2ea31b8aba877128fd/packages/core/src/tool/plugin/grep.ts)：工具名为 grep，非空 pattern、literal 默认 false，另有 path/include/caseSensitive/limit；结果转为文件和行预览，截断给出缩小查询的提示。该取样没有运行 OpenCode。Sprig 根据真实任务六次正则形式的字面查询失败，提供默认正则的 [grep](../grep.md)，继续使用原有本地 RE2、范围/隐私/限额，不复制通配持久授权或外部 ripgrep 启动。旧 search 默认行为保留，禁用任一名称同时禁用两者。原候选只读语义重放有命中，不证明模型任务成功率提升；真实失败和完整用量单列于[实测](../live-evaluation-20261022.md)。
+
+## 16. 排队与引导的递送时机（2026-10-23）
+
+继续阅读原固定 `dev@9d90d892dcbfc52b47e95b2ea31b8aba877128fd` 的 [packages/core/src/session/inbox.ts](https://github.com/anomalyco/opencode/blob/9d90d892dcbfc52b47e95b2ea31b8aba877128fd/packages/core/src/session/inbox.ts)，再次核对本地 checkout 的 HEAD，并读取 `Promotable`、有序选择与 `promote`：`steer` 只在工作步骤边界提升引导，`input` 在没有引导时允许一条排队输入；后者按入队序号选首项，发布后还会再次处理引导。模式修改与已提升状态协调并发，不能只给 UI 列表加不同标签而仍一次性递送所有正文。这里没有运行上游程序，也不将固定快照描述成其最新行为。
+
+Sprig 实现[明确启动的文本任务队列](../task-queue.md)，普通 Enter 保留当前任务引导，排队项在现有调用正常结束后单条递送并重新取得轮次预算。启动权限固定于 `/queue run` 时的 ID，新追加、编辑或切换模式的项需要再次启动；拒绝、取消、未完成和存储不确定会暂停后续项。收存不关闭当前批准或提问，恢复不自动启动，三协议仅收到正常用户正文。模式切换仍走新的本地批准，后续文件与命令批准不继承。大文本粘贴保留数据属性，避免粘贴的 `run` 被当成控制命令；选中文件元数据不静默丢弃。
+
+该实现未复制上游自动调度、数据库事件系统或合成 compaction/move 项。它保留同一对话与工作区，不提供并行隔离、已递送消息编辑或跨进程后台恢复；没有新增真实模型编码成功率证据。回归、安装包及 CI 待验证范围记录于[本地机器记录](../benchmarks/task-queue-20261023.json)，先前章节的能力缺口是当时的状态。
