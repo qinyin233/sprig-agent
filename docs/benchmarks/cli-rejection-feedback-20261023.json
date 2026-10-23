@@ -1,0 +1,94 @@
+{
+  "scope": "CLI corrected rejection routes bounded guidance into the existing steering inbox without authorizing the rejected action",
+  "base_commit": "72a030152ed8d33b7256f07e0587026918675075",
+  "source_manifest": {
+    "src/sprig_agent": {
+      "files": 67,
+      "sha256": "179ad553c8233a42a7cc37639b951a71e6ec2cf79261e9008286b5d931e0529d"
+    },
+    "tests": {
+      "files": 89,
+      "sha256": "b51c627412dc2c5cc8cd0765ff399316033f00c2d4880fff40285672bc29a29f"
+    },
+    "tests/fixtures": {
+      "files": 2,
+      "sha256": "8d85c1704599d29f45db0dbb3c1278557cce9be44a004366dd969217c3a40718"
+    }
+  },
+  "manifest_algorithm": "sorted relative path + NUL + SHA256(LF-normalized bytes) hex + newline",
+  "local_suites": [
+    {
+      "platform": "native Windows Python 3.13.0",
+      "tests": 1335,
+      "passed": 1316,
+      "skipped": 19,
+      "seconds": 678.441
+    },
+    {
+      "platform": "local WSL Python 3.13.14",
+      "tests": 1335,
+      "passed": 1312,
+      "skipped": 23,
+      "seconds": 464.815
+    },
+    {
+      "platform": "native Windows Python 3.11.14 editable; terminal feedback, queue, inbox, chat, model switch, fork, approval types and management",
+      "tests": 145,
+      "passed": 145,
+      "skipped": 0,
+      "seconds": 103.871
+    }
+  ],
+  "installed_wheel": {
+    "tests": 19,
+    "skipped": 0,
+    "source_files_checked": 67,
+    "imported_installed_modules": 60,
+    "sdist_changed_source_matches": true
+  },
+  "storage_failure_negative_control": {
+    "tests": 2,
+    "expected_failures": 2,
+    "errors": 0,
+    "pre_hardening_terminal_input_sha256": "e6bd1120809c2dd00240fcd944f0ac7c21bf920c0fe5893beda8160e3786a35f",
+    "scope": "earlier candidate allowed stale in-memory feedback after durable revision or discard followed by sync error; both now block delivery until restore or explicit discard"
+  },
+  "regressions": [
+    "only literal y or yes grants approval; non-TTY never reads feedback",
+    "single-line 4096-byte UTF-8 limit; invalid feedback leaves approval open",
+    "uncertain receipt blocks yes, retry retains input ID, delivery acknowledgement follows successful checkpoint",
+    "old batch calls skipped; replacement write and fixed acceptance check need fresh approval",
+    "last-step feedback persists; resume and local apply do not send a model request",
+    "queue delivery remains separate and explicit",
+    "local controls, nested main and new threads do not inherit task feedback",
+    "model switch and conversation fork save feedback under the active session with active-key redaction",
+    "loopback Chat Completions, Messages and Responses deliver guidance without local IDs"
+  ],
+  "other_checks": [
+    "four uv lock files",
+    "schema and example TOML",
+    "compileall",
+    "CLI help",
+    "sdist and wheel build",
+    "local document links",
+    "credential-shaped staged additions"
+  ],
+  "verification_notes": [
+    "initial online build failed on PyPI TLS connection; final build used cached dependencies with uv build --offline",
+    "first Windows Python 3.11 related run had one existing pending-manager TUI wait failure; isolated unmodified test passed and the complete related set was rerun after both full suites; no TUI source or existing fixture change"
+  ],
+  "external_model_requests": 0,
+  "ci": {
+    "triggered": false,
+    "status": "pending; frozen before 2026-11-01 Asia/Singapore; verify account restriction and prior gate afterwards"
+  },
+  "limits": [
+    "platform skips are not passes; WSL is not native Ubuntu CI",
+    "no OS backend or protocol adapter change",
+    "TUI correction input already existed and is unchanged",
+    "request step budget is unchanged; feedback may remain pending at the limit",
+    "without saving, pending feedback exists in process memory only",
+    "receipt and delivery are not task acceptance; no new model-performance, cost or throughput evidence",
+    "mini SDK suite not rerun for this terminal input change"
+  ]
+}

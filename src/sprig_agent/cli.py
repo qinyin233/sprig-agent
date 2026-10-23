@@ -1,7 +1,7 @@
 """Terminal entry point; approvals default to no, including non-interactive stdin."""
 
 import argparse
-from contextlib import contextmanager
+from contextlib import contextmanager, ExitStack
 import json
 import os
 from pathlib import Path
@@ -24,6 +24,7 @@ from .mcp import local_arguments as mcp_arguments
 from .web_fetch import local_arguments as web_arguments
 from .jobs import local_arguments as job_arguments
 from .lsp import local_arguments as lsp_arguments
+from .terminal_input import TerminalInputs, correction_text, current_feedback, feedback_scope
 
 
 def approve(description):
@@ -31,9 +32,25 @@ def approve(description):
     if not sys.stdin.isatty():
         print("Non-interactive input: action rejected", file=sys.stderr)
         return False
-    try:
-        return input("Approve this exact action? [y/N] ").strip().lower() in {"y", "yes"}
-    except EOFError:
+    receiver = current_feedback()
+    prompt = "Approve this exact action? [y/N; n: correction] " if receiver else "Approve this exact action? [y/N] "
+    while True:
+        try:
+            answer = input(prompt).strip()
+        except EOFError:
+            return False
+        if answer.lower() in {"y", "yes"}:
+            if receiver is not None and receiver.ready is not True:
+                print("Input receipt is uncertain; retry the same n: correction, or reject and resolve /pending.", file=sys.stderr)
+                continue
+            return True
+        prefix, separator, text = answer.partition(":")
+        if receiver is not None and separator and prefix.strip().lower() in {"n", "no"} and text.strip():
+            try:
+                receiver.submit(correction_text(text))
+            except (OSError, ValueError, SessionError):
+                print("Correction not received; current action remains unapproved. Retry the same text after a save error, or enter N to reject.", file=sys.stderr)
+                continue
         return False
 
 
@@ -48,7 +65,7 @@ def check_argv(text):
 
 
 def chat(agent, task, messages, emit, *, autostart=True, model_selection=None, switch_model=None, fork_conversation=None,
-         pending_control=None):
+         pending_control=None, terminal_inputs=None):
     """Keep context across turns; queued work also needs explicit /queue run."""
     status = 0
     history_ready = True
@@ -97,7 +114,8 @@ def chat(agent, task, messages, emit, *, autostart=True, model_selection=None, s
         if not messages:
             messages = [{"role": "system", "content": SYSTEM_PROMPT}]
         try:
-            messages, complete = agent.run(task, messages)
+            with feedback_scope(terminal_inputs):
+                messages, complete = agent.run(task, messages)
             status = 0 if complete else 2
         except KeyboardInterrupt:
             recover(True)
@@ -431,6 +449,8 @@ def main(argv=None):
     key = ""
     store = tools = history = provider = None
     show_metrics = False
+    feedback_context = ExitStack()
+    feedback_context.enter_context(feedback_scope(None))
     try:
         manage_sessions = args.list_sessions or args.delete_session or args.prune_sessions
         manage_worktrees = args.list_worktrees or args.create_worktree is not None
@@ -544,7 +564,7 @@ def main(argv=None):
         emit = lambda text: print(terminal_text(redact(text, key)), flush=True)
         confirm = lambda text: approve(redact(text, key))
         emit_delta = lambda text: print(terminal_text(text), end="", flush=True)
-        messages, checkpoint = None, None
+        messages = None
         session_name = args.resume or args.save_session or ("auto-" + uuid.uuid4().hex if config.auto_save_session else None)
         if session_name:
             store = SessionStore(session_dir, config)
@@ -552,7 +572,6 @@ def main(argv=None):
                 messages = store.load(args.resume)
             else:
                 store.ensure_new(session_name)
-            checkpoint = lambda history: store.save(session_name, history, **agent.reference_save_options())
         emit(f"Sprig | model: {config.model} | endpoint: {config.base_url} | workdir: {config.workdir}")
         emit("Prompts and tool results are sent to this endpoint. Commands are NOT sandboxed and may access outside files/network. Writes and commands require approval.")
         if store:
@@ -569,7 +588,10 @@ def main(argv=None):
             if event.phase in {"model", "check", "finished"}:
                 emit("[runtime] " + runtime_label(event))
 
-        agent = Agent(config, provider, tools, emit, checkpoint, emit_delta=emit_delta, on_event=runtime_event)
+        terminal_inputs = TerminalInputs(emit)
+        agent = Agent(config, provider, tools, emit, terminal_inputs.checkpoint, emit_delta=emit_delta,
+                      on_event=runtime_event, receive_input=terminal_inputs.receive)
+        terminal_inputs.bind(agent, store, session_name, messages)
         if args.resume:
             state = getattr(store, "loaded_references", None)
             agent.restore_references(state if isinstance(state, dict) else None)
@@ -581,50 +603,34 @@ def main(argv=None):
             messages, attached = agent.attach_files(args.file, messages)
             emit("[attached snapshots] " + json.dumps(attached, ensure_ascii=False))
         if args.chat:
-            from .input_inbox import UserInput, InputInbox, new_input, change_inputs, check_input_growth, input_change_prompt, input_page, input_preview
-            runtime_inputs = InputInbox()
-            queue_retry = None
+            from .input_inbox import UserInput, change_inputs, check_input_growth, input_change_prompt, input_page, input_preview
             recovery_required = bool(args.resume and store.loaded_inputs["pending"])
             from .model_selection import ModelSelection, ModelSwitch
             model_selection = ModelSelection(settings, options, os.environ, config)
             def pending_control(action, messages):
-                nonlocal queue_retry, recovery_required
-                try:
-                    state = store.pending_inputs(session_name) if store and session_name else runtime_inputs.snapshot()
-                except FileNotFoundError:
-                    state = {"version": 1, "pending": []}  # Reserved fresh autosave has no transcript yet.
+                nonlocal recovery_required
+                state = terminal_inputs.state()
                 if isinstance(action, dict):
                     request = action
                     if request["action"] == "queue_add":
-                        text = redact(request["text"], config.secrets)
-                        if queue_retry is not None and queue_retry.text != text:
-                            raise ValueError("Retry the same queued text or resolve /pending discard first; prior receipt is uncertain")
-                        entry = queue_retry or new_input(text, delivery="queue")
-                        candidate = {"version": 1, "pending": [*state["pending"], entry.row()]}
-                        if not any(row["id"] == entry.id for row in state["pending"]):
-                            check_input_growth(state, candidate, config.max_context_bytes)
-                        queue_retry = entry
-                        if store and session_name:
-                            store.enqueue_input(session_name, entry, history=messages if messages is not None else [{"role": "system", "content": SYSTEM_PROMPT}], **agent.reference_save_options())
-                        else:
-                            runtime_inputs.append(entry)
-                        queue_retry = None
+                        entry = terminal_inputs.accept(request["text"], delivery="queue", history=messages)
                         return messages, {"queued_input": entry.id, "delivery": "queue", "saved": bool(store and session_name),
                                           "network_contacted": False, "task_executed": False}
                     if request["action"] == "queue_take":
-                        if queue_retry or any(row.get("delivery", "steer") != "queue" for row in state["pending"]):
+                        if not terminal_inputs.ready or any(row.get("delivery", "steer") != "queue" for row in state["pending"]):
                             raise ValueError("Resolve uncertain receipt or /pending apply before running queued tasks")
                         entries = [UserInput(**row) for row in state["pending"] if row.get("delivery") == "queue"][:1]
                         if not entries or entries[0].id not in request["allowed_ids"]:
                             return messages, {"applied_inputs": 0, "network_contacted": False}
                         messages, result = agent.recover_inputs(messages, entries)
-                        runtime_inputs.acknowledge(messages)
                         recovery_required = False
                         return messages, result
                     if request["action"] == "show":
                         return messages, input_page(state, request["identity"], request["offset"], min(8192, config.max_output))
                     if request["action"] == "manage":
                         return messages, {"error": "Use --tui for the manager, or /pending show|edit|drop|move in chat", "network_contacted": False}
+                    if not terminal_inputs.ready or terminal_inputs.inbox.claimed():
+                        raise ValueError("input receipt or delivery is uncertain; apply or discard before editing")
                     options = {key: request[key] for key in ("text", "position", "delivery") if key in request}
                     if "text" in options:
                         options["text"] = redact(options["text"], config.secrets)
@@ -632,33 +638,32 @@ def main(argv=None):
                     check_input_growth(state, candidate, config.max_context_bytes)
                     if confirm(input_change_prompt(state, candidate, result)) is not True:
                         return messages, {"approved": False, "network_contacted": False}
-                    if store and session_name:
-                        store.revise_inputs(session_name, state, candidate)
-                    else:
-                        runtime_inputs.revise(state, candidate)
+                    terminal_inputs.revise(state, candidate)
                     return messages, {**result, "approved": True}
                 if action == "count":
-                    return messages, {"pending_inputs": len(state["pending"]), "blocking_inputs":
-                        len(state["pending"]) if recovery_required else int(bool(queue_retry)) + sum(row.get("delivery", "steer") != "queue" for row in state["pending"])}
+                    blocking = len(state["pending"]) if recovery_required else sum(row.get("delivery", "steer") != "queue" for row in state["pending"])
+                    return messages, {"pending_inputs": len(state["pending"]),
+                                      "blocking_inputs": max(blocking, int(not terminal_inputs.ready))}
                 if action == "queue_scope":
                     return messages, {"ids": [row["id"] for row in state["pending"] if row.get("delivery") == "queue"]}
                 if action == "apply":
-                    if queue_retry:
-                        raise ValueError("Retry the same /queue text or discard pending inputs; receipt is uncertain")
+                    if terminal_inputs.retry:
+                        if terminal_inputs.retry.delivery != "steer":
+                            raise ValueError("Retry the same /queue text or discard pending inputs; receipt is uncertain")
+                        terminal_inputs.accept(terminal_inputs.retry.text, history=messages)
+                        state = terminal_inputs.state()
+                    if terminal_inputs.inbox.blocked:
+                        raise ValueError("input save is uncertain; restore this session or explicitly discard pending inputs")
                     messages, result = agent.recover_inputs(messages, [UserInput(**row) for row in state["pending"] if row.get("delivery", "steer") == "steer"])
-                    runtime_inputs.acknowledge(messages)
                     recovery_required = False
                     result["queued_inputs"] = sum(row.get("delivery") == "queue" for row in state["pending"])
                     return messages, result
-                if action == "discard" and (state["pending"] or queue_retry):
+                if action == "discard" and (state["pending"] or not terminal_inputs.ready):
                     if confirm("Discard saved pending inputs? This does not run tasks or undo workspace actions.") is not True:
                         return messages, {"approved": False, "network_contacted": False}
-                    queue_retry = None
+                    result = terminal_inputs.discard()
                     recovery_required = False
-                    if store and session_name:
-                        return messages, store.discard_inputs(session_name)
-                    runtime_inputs.revise(state, {"version": 1, "pending": []})
-                    return messages, {"discarded_inputs": len(state["pending"]), "network_contacted": False}
+                    return messages, result
                 return messages, input_preview(state, min(4096, config.max_output))
             def fork_conversation(target, messages):
                 from .conversation_fork import ConversationFork
@@ -669,6 +674,7 @@ def main(argv=None):
                     return agent, messages, {"forked": False, "approved": False, "network_contacted": False}
                 old_store = store
                 agent, messages, store, session_name = candidate.commit(session_dir)
+                terminal_inputs.bind(agent, store, session_name, messages)
                 result = {"forked": True, "session": session_name, "through_message": candidate.through,
                           "workspace_rolled_back": False, "network_contacted": False}
                 if old_store is not None:
@@ -687,6 +693,7 @@ def main(argv=None):
                     return agent, messages, {"approved": False, "model_changed": False, "network_contacted": False}
                 old_store, previous_usage = store, agent.usage_report()
                 agent, messages, store, session_name = candidate.commit(session_dir)
+                terminal_inputs.bind(agent, store, session_name, messages)
                 provider, config = agent.provider, agent.config
                 key = config.secrets
                 result = {"model_changed": True, "model": config.model, "provider": config.provider_name,
@@ -700,11 +707,12 @@ def main(argv=None):
                 return agent, messages, result
             return chat(agent, args.task, messages, emit, autostart=bool(args.task or args.resume),
                         model_selection=model_selection, switch_model=switch_model, fork_conversation=fork_conversation,
-                        pending_control=pending_control)
+                        pending_control=pending_control, terminal_inputs=terminal_inputs)
         if args.resume and store.pending_inputs(session_name)["pending"]:
             emit("Saved pending inputs require explicit recovery. Resume with --chat and use /pending apply or /pending discard, then /continue. No model request sent.")
             return 2
-        _, complete = agent.run(args.task, messages)
+        with feedback_scope(terminal_inputs):
+            _, complete = agent.run(args.task, messages)
         return 0 if complete else 2
     except KeyboardInterrupt:
         print("Interrupted; no pending actions will be replayed on resume", file=sys.stderr)
@@ -713,6 +721,7 @@ def main(argv=None):
         print("Error: " + terminal_text(redact(str(exc), key)), file=sys.stderr)
         return 1
     finally:
+        feedback_context.close()
         if show_metrics and provider is not None:
             print("[usage] " + json.dumps(provider.measurements.report(), ensure_ascii=False), file=sys.stderr, flush=True)
         if tools:

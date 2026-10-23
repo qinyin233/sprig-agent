@@ -371,6 +371,8 @@ Sprig 实现[明确启动的文本任务队列](../task-queue.md)，普通 Enter
 
 继续读原固定 `dev@9d90d892dcbfc52b47e95b2ea31b8aba877128fd` 的 [permission.ts](https://github.com/anomalyco/opencode/blob/9d90d892dcbfc52b47e95b2ea31b8aba877128fd/packages/core/src/permission.ts)：`DeclinedError` 与带 `feedback: string` 的 `CorrectedError` 分开。`reply` 在 reject 且有 message 时拒绝当前 Deferred，并以同一反馈拒绝同会话的其余等待请求；反馈不授予执行权限。[to-session-error.ts](https://github.com/anomalyco/opencode/blob/9d90d892dcbfc52b47e95b2ea31b8aba877128fd/packages/core/src/session/to-session-error.ts) 将后者映射为 `permission.rejected` 和反馈正文。这限定于已读核心路径，不推断每个 UI/SDK 都提供同样入口，也不把该固定快照当作当前最新实现。
 
-Sprig 的 `ApprovalScreen` 已有 `approval-task` 输入：Enter 发送更正、停止待确认提案，随后走持久化引导和安全边界；不能写成完全没有拒绝后调整。当前 CLI `approve` 则只将 y/yes 视为批准，其他输入一律拒绝，不把拒绝说明递送给模型。可补的具体差距是 CLI 的说明入口，验收应保持只有布尔 `True` 能授权、默认拒绝和非交互拒绝，说明作为有界的新用户引导，沿用脱敏、保存与去重，不自动重放旧提案或增加请求预算。本节只记录差距和验收条件，没有实现该入口。
+Sprig 的 `ApprovalScreen` 已有 `approval-task` 输入：Enter 发送更正、停止待确认提案，随后走持久化引导和安全边界；不能写成完全没有拒绝后调整。调研时的 Sprig 提交 `72a0301` 中，CLI `approve` 只将 y/yes 视为批准，其他输入一律拒绝，不把拒绝说明递送给模型。当时的具体差距是 CLI 的说明入口，验收应保持只有布尔 `True` 能授权、默认拒绝和非交互拒绝，说明作为有界的新用户引导，沿用脱敏、保存与去重，不自动重放旧提案或增加请求预算。
 
 同日 [mini Flash-2 参考运行](../live-evaluation-mini-flash2-20261023.md)中，通用拒绝之后重复提出错误目录，直到获批命令返回原生路径错误才调整。mini 最终仍为 639/642，近期 Sprig 为另一提交上的 640/642；批准轨迹和工具不同，不能用这个样本证明说明入口会提高成功率。它提供待验证的交互问题，后续仍应检查完整编码及验收修复过程。
+
+后续实现补充：[CLI 拒绝反馈](../rejection-feedback.md)现在以 `n: 正文` 收存单行 4 KiB 引导，复用原有 ID、私有会话和递送链，不返回结构化真值代替布尔批准。存储状态不确定时保持当前确认、阻止 y，重试同文复用 ID；最后一轮输入保留等待明确恢复。本地管理确认不转发反馈，模型切换和历史分支重绑定当前保存位置。三协议回环、真实私有文件和新安装包的验证见[机器记录](../benchmarks/cli-rejection-feedback-20261023.json)。这里没有运行 OpenCode 或新增外部模型测试，不从交互可用性推断编码成功率提高。
