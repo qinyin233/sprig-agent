@@ -172,6 +172,10 @@ class Agent:
                     "check_total": len(self.config.checks) if check else 0}
         self._event("tool", **metadata)
         self._check_cancelled()
+        if self._running and name in TOOL_NAMES and not any(schema["function"]["name"] == name for schema in self.schemas):
+            # Batch preflight may bypass dispatch. Track unavailable model tools
+            # at their shared boundary without changing execution diagnostics.
+            self.had_rejected_action = True
         observe = (self.tools.observe_actions(lambda outcome: self._event(
             "tool" if outcome == "running" else "approval", outcome, **metadata))
                    if isinstance(self.tools, Tools) else nullcontext())
@@ -591,10 +595,6 @@ class Agent:
             raise KeyboardInterrupt
 
     def _execute_model_tool(self, name, arguments):
-        if self._running and name in TOOL_NAMES and not any(schema["function"]["name"] == name for schema in self.schemas):
-            # Keep the execution layer's original diagnostic and enforcement.
-            # An unavailable model tool still pauses explicitly queued work.
-            self.had_rejected_action = True
         if name == "read_history":
             try:
                 if not isinstance(arguments, dict):

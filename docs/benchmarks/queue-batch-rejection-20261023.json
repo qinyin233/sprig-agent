@@ -1,0 +1,84 @@
+{
+  "scope": "keep queued work paused after configured tool rejection during independent edit-batch preflight; not a model-performance result",
+  "base_commit": "81347a64c24fe5b33906dffd3dd9c23ac1bcf43a",
+  "source_manifest": {
+    "src/sprig_agent": {
+      "files": 66,
+      "sha256": "f890b76958068d3b61c5ff4ca3e9bb22cbd634e6eb105a6f0933fc90c3f28e36"
+    },
+    "tests": {
+      "files": 88,
+      "sha256": "1910e23ad03e64725848be69c8b8820145869e7b88d2f103cdd69503f902c475"
+    },
+    "tests/fixtures": {
+      "files": 2,
+      "sha256": "8d85c1704599d29f45db0dbb3c1278557cce9be44a004366dd969217c3a40718"
+    }
+  },
+  "manifest_algorithm": "sorted relative path + NUL + SHA256(LF-normalized bytes) hex + newline",
+  "local_suites": [
+    {
+      "platform": "native Windows Python 3.13.0",
+      "tests": 1316,
+      "passed": 1297,
+      "skipped": 19,
+      "seconds": 578.561
+    },
+    {
+      "platform": "local WSL Python 3.13.14",
+      "tests": 1316,
+      "passed": 1293,
+      "skipped": 23,
+      "seconds": 407.2
+    },
+    {
+      "platform": "native Windows Python 3.11 editable; task queue, paste, inbox, management and chat",
+      "tests": 97,
+      "passed": 97,
+      "skipped": 0,
+      "seconds": 57.714
+    }
+  ],
+  "parent_negative_control": {
+    "tests": 2,
+    "expected_failures": 2,
+    "errors": 0,
+    "parent_agent_sha256": "9ed6b9b0a97afd05d534667c2d34a8e3ef30c709414e43e55690608d3c87c89c",
+    "baseline": "HEAD agent.py in isolated runtime copy; current regression tests; CLI and TUI incorrectly advance to a third scripted request"
+  },
+  "installed_wheel": {
+    "tests": 27,
+    "skipped": 0,
+    "source_files_checked": 66,
+    "imported_installed_modules": 60,
+    "sdist_changed_source_matches": true
+  },
+  "regressions": [
+    "80x24 TUI: disabled tool preflight performs no writes and retains later queued task",
+    "read-only batch remains blocked without approval",
+    "saved CLI queue pauses at two scripted requests instead of three",
+    "original disabled-tool error, batch-preflight and skipped-result fields preserved",
+    "existing single-tool rejection, cancellation, diagnostics and sequential budget behavior retained"
+  ],
+  "other_checks": [
+    "four uv lock files",
+    "schema and example TOML",
+    "compileall",
+    "CLI help",
+    "sdist and wheel build",
+    "local document links",
+    "credential-shaped staged additions"
+  ],
+  "external_model_requests": 0,
+  "ci": {
+    "triggered": false,
+    "status": "pending; frozen before 2026-11-01 Asia/Singapore; verify account restriction and prior gate afterwards"
+  },
+  "limits": [
+    "platform skips are not passes; WSL is not native Ubuntu CI",
+    "no OS backend or protocol adapter change",
+    "does not alter runtime diagnostics or tool authorization enforcement",
+    "without configured checks, model replies remain unverified",
+    "no new real model success-rate, cost or throughput evidence; mini SDK not rerun for this internal dispatch change"
+  ]
+}

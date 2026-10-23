@@ -339,6 +339,31 @@ class QueueTuiTests(unittest.IsolatedAsyncioTestCase):
             self.assertEqual(app.pending_state()['pending'][0]['delivery'], 'queue')
             self.assertEqual(app.agent.provider.calls, [])
 
+    async def test_preflight_rejected_unavailable_batch_pauses_later_tasks(self):
+        original = self.config
+        for options in ({'read_only': True}, {'disabled_tools': ('edit_file',)}):
+            with self.subTest(options=options):
+                self.config = replace(original, **options)
+                batch = ui.call('blocked-one', 'edit_file', {'path': 'one.txt', 'old': '', 'new': 'one'})
+                batch['tool_calls'].append(ui.call('blocked-two', 'edit_file', {'path': 'two.txt', 'old': '', 'new': 'two'})['tool_calls'][0])
+                provider = ui.ScriptedProvider([batch, ui.response('Batch cannot run'), ui.response('Later task must wait')])
+                app = ui.TuiTests.app(self, provider)
+                async with app.run_test(size=(80, 24)) as pilot:
+                    await self.send(pilot, '/queue first')
+                    await self.send(pilot, '/queue second')
+                    await self.send(pilot, '/queue run')
+                    await self.until(pilot, lambda: not app.busy)
+                    self.assertEqual(len(provider.calls), 2)
+                    self.assertEqual(app.pending_tasks, ['second'])
+                    self.assertEqual(app.last_status, 2)
+                    self.assertFalse(app._queue_running)
+                    self.assertFalse((self.root / 'one.txt').exists())
+                    self.assertFalse((self.root / 'two.txt').exists())
+                    results = [json.loads(row['content']) for row in app.messages if row['role'] == 'tool']
+                    self.assertEqual(results[0]['batch_preflight'], 'failed')
+                    self.assertIn('error', results[0])
+                    self.assertTrue(results[1]['skipped'])
+
     async def test_budget_failure_releases_unreceived_item_for_editing(self):
         self.config = replace(self.config, max_context_bytes=16384)
         app = ui.TuiTests.app(self, ui.ScriptedProvider([]))
@@ -477,6 +502,23 @@ class QueueChatTests(unittest.TestCase):
         saved = json.loads((self.sessions / 'chat.json').read_text('utf-8'))
         self.assertEqual([row['text'] for row in saved['input_inbox']['pending']], ['second'])
         self.assertFalse((self.case.root / 'target.txt').exists())
+
+    def test_cli_preflight_disabled_batch_pauses_queue_without_replacing_error_contract(self):
+        self.case.path = self.case.parent / 'disabled.toml'
+        self.case.write('provider="p"\n[providers.p]\nmodel="fixture"\napi_key="fixture-api-key"\n[tools]\nedit_file=false\n')
+        batch = ui.call('blocked-one', 'edit_file', {'path': 'one.txt', 'old': '', 'new': 'one'})
+        batch['tool_calls'].append(ui.call('blocked-two', 'edit_file', {'path': 'two.txt', 'old': '', 'new': 'two'})['tool_calls'][0])
+        replies = iter([batch, ui.response('Batch cannot run'), ui.response('Later task must wait')])
+        result, count = self.invoke(['/queue first', '/queue second', '/queue run', '/exit'], lambda *args, **kwargs: next(replies))
+        self.assertEqual(count, 2, result)
+        self.assertEqual(result[0], 2, result)
+        saved = json.loads((self.sessions / 'chat.json').read_text('utf-8'))
+        self.assertEqual([row['text'] for row in saved['input_inbox']['pending']], ['second'])
+        results = [json.loads(row['content']) for row in saved['messages'] if row['role'] == 'tool']
+        self.assertIn('disabled by configuration', results[0]['error'])
+        self.assertEqual(results[0]['batch_writes_completed'], 0)
+        self.assertFalse((self.case.root / 'one.txt').exists())
+        self.assertFalse((self.case.root / 'two.txt').exists())
 
     def test_cli_resume_only_queue_never_autoruns(self):
         _, count = self.invoke(['/queue retained', '/exit'], lambda *args, **kwargs: self.fail('enqueue cannot call a model'))
