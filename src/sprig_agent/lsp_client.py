@@ -240,12 +240,13 @@ class Client:
                 pass
             raise
 
-    def initialize(self, budget):
+    def initialize(self, budget, *, require_sync=True):
         result = self.exchange("initialize", {"processId": os.getpid(), "rootUri": self.root_uri,
             "workspaceFolders": [{"uri": self.root_uri, "name": "workspace"}],
             "clientInfo": {"name": "sprig-agent", "version": "0.1.0"},
             "capabilities": {"general": {"positionEncodings": ["utf-16"]}, "offsetEncoding": ["utf-16"],
-                "workspace": {"applyEdit": False, "configuration": False, "didChangeWatchedFiles": {"dynamicRegistration": False}},
+                "workspace": {"applyEdit": False, "configuration": False, "didChangeWatchedFiles": {"dynamicRegistration": False},
+                    "symbol": {"dynamicRegistration": False, "symbolKind": {"valueSet": list(range(1, 27))}}},
                 "window": {"workDoneProgress": False},
                 "textDocument": {"synchronization": {"dynamicRegistration": False, "didSave": False},
                     "definition": {"dynamicRegistration": False, "linkSupport": True},
@@ -263,10 +264,14 @@ class Client:
         sync = self.capabilities.get("textDocumentSync")
         self.sync_kind = sync if type(sync) is int else sync.get("change", 0) if isinstance(sync, dict) else 0
         if self.sync_kind not in (1, 2) or isinstance(sync, dict) and sync.get("openClose") is not True:
-            raise LspError("LSP requires document open/close and full or incremental synchronization")
+            self.sync_kind = 0
+            if require_sync:
+                raise LspError("LSP requires document open/close and full or incremental synchronization")
         self.notify("initialized", {}, budget)
 
     def sync(self, document, language, budget):
+        if self.sync_kind not in (1, 2):
+            raise LspError("LSP requires document open/close and full or incremental synchronization")
         uri = document["uri"]
         previous = self.documents.get(uri)
         if previous is None and len(self.documents) >= 4:

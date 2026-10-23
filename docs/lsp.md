@@ -1,6 +1,6 @@
 # 语言服务器语义查询
 
-Sprig 可通过明确配置的本地 LSP stdio 服务器查询定义、引用、实现、悬停说明、文件符号和诊断。语法地图仍适合快速浏览；LSP 的结果由所选语言服务器提供，能够依据类型、命名空间和项目设置解析符号。没有安装器、自动发现或自动启动。
+Sprig 可通过明确配置的本地 LSP stdio 服务器查询定义、引用、实现、悬停说明、文件/工作区符号和诊断。语法地图仍适合快速浏览；LSP 的结果由所选语言服务器提供，能够依据类型、命名空间和项目设置解析符号。没有安装器、自动发现或自动启动。
 
 ## 配置与终端入口
 
@@ -32,12 +32,23 @@ TUI 和 `--chat` 均提供本地入口，不请求模型：
 /lsp implementation cpp "src/main.cpp" 12 8
 /lsp hover cpp "src/main.cpp" 12 8
 /lsp symbols cpp "src/main.cpp"
+/lsp workspace_symbols cpp "choose"
 /lsp diagnostics cpp "src/main.cpp"
 /lsp result lsp-<ID> 0
 /lsp disconnect cpp
 ```
 
-行、列均从 1 开始，列按 Unicode 字符计算；内部协商 UTF-16 并处理代理对和 CR/LF 换行。模型工具 `lsp` 提供相同操作，三种模型协议共用后端；模型可以省略 server，只有后缀恰好匹配一个启用服务器时才自动选择。默认无服务器时不向模型提供该工具。
+行、列均从 1 开始，列按 Unicode 字符计算；内部协商 UTF-16 并处理代理对和 CR/LF 换行。模型工具 `lsp` 提供相同操作，三种模型协议共用后端；文件查询可以省略 server，只有后缀恰好匹配一个启用服务器时才自动选择。工作区查询必须明确 server 和 query，不接受 path 或行列。默认无服务器时不向模型提供该工具。
+
+## 跨工作区查找符号
+
+`/lsp workspace_symbols cpp "choose"` 与模型工具的 `action="workspace_symbols", server="cpp", query="choose"` 使用标准 `workspace/symbol`。查询最多 256 个 Unicode 字符/1024 个 UTF-8 字节，拒绝控制字符和已配置凭据；`""` 可以请求全部符号，仍受结果数量和总时限限制。模糊匹配、排序与索引覆盖由服务器决定，不自动放宽或重试查询。
+
+这项操作不需要预先选择文件。首次批准涵盖启动已配置的服务器、初始化和本次工作区查询；已有连接只刷新至多四份先前明确打开的文档，并在批准前列出这些快照。不会为了查询自动遍历或向服务器同步整个仓库。仅支持工作区符号、没有文档同步能力的服务器也可查询，文件级操作仍要求同步能力。
+
+结果返回名称、种类、容器说明、允许读取的工作区相对路径、转换后的行列和实际文件字节摘要。容器说明不重建层级。私有、越界、非文件 URI、非法位置、缺少位置范围等记录被省略，不输出对应名称；服务器附带的任意 data、命令和链接不转发执行。后续编辑必须重新读取当前源码，摘要不是 read_id 或批准。
+
+客户端声明静态符号查询及支持的种类，不声明延迟 `resolveSupport`。依 [LSP 3.17 规范](https://github.com/microsoft/language-server-protocol/blob/gh-pages/_specifications/lsp/3.17/workspace/symbol.md)，服务器此时应返回带完整位置范围的结果；客户端不隐式追加 `workspaceSymbol/resolve`。同时接受带范围的 `SymbolInformation` 和 `WorkspaceSymbol`，未知种类回退为 null。无匹配项不证明整个项目不存在该符号，所有结果保持 `complete_project_index=false`。
 
 ## 批准、同步和结果
 
@@ -49,11 +60,11 @@ TUI 和 `--chat` 均提供本地入口，不请求模型：
 
 支持静态 pull diagnostics，以及版本匹配的 push diagnostics。过期版本丢弃；无版本报告标明 version_confirmed=false。没有收到报告会标为未知或超时，不能把缺少诊断当作检查通过。诊断及服务器说明都是外部数据，不能代替 Sprig 的固定验收命令。
 
-服务器请求的编辑、命令和动态注册均拒绝；workspace/configuration 只返回空值，progress/create 返回空响应。结果中的 Markdown、命令、链接和数据字段均不执行。没有 rename、formatting、code action、executeCommand、动态能力注册、工作区文件监视、调用层级和工作区符号查询；服务要求这些能力时可能不可用。尚无语义检索数据库或完整调用图。
+服务器请求的编辑、命令和动态注册均拒绝；workspace/configuration 只返回空值，progress/create 返回空响应。结果中的 Markdown、命令、链接和数据字段均不执行。没有 rename、formatting、code action、executeCommand、动态能力注册、工作区文件监视、调用层级和延迟符号解析；服务要求这些能力时可能不可用。尚无语义检索数据库或完整调用图。
 
 ## 限额、取消和恢复
 
-Content-Length 按 UTF-8 字节解析；单帧 1 MiB、头 8 KiB，每次最多 256 条通知/服务端请求，连接 stdout 共 32 MiB、stderr 共 8 MiB，原始 stderr 丢弃。整次批准后的初始化/同步/查询共用 deadline，持续输出不能重置总期限。失败、断流或超限关闭受管进程，不重试或重放。
+Content-Length 按 UTF-8 字节解析；单帧 1 MiB、头 8 KiB，每次最多 256 条通知/服务端请求，连接 stdout 共 32 MiB、stderr 共 8 MiB，原始 stderr 丢弃。一次最多 512 条位置/符号记录、64 份目标文档。整次批准后的初始化/同步/查询、结果规范化及首次分页共用 deadline，持续输出不能重置总期限。失败、断流或超限关闭受管进程，不重试或重放。
 
 结果只存内存，最多八个 1 MiB 快照，JSON 页不超过 min(max_output,16384)，查询要求 max_output>=1024。offset 是 UTF-8 字节位置；分页不请求服务器，每次复查文件隐私与凭据保护，历史快照明确标注 historical。旧结果不是新的读取授权或验收。
 
@@ -66,3 +77,5 @@ uv run --locked python scripts/verify-lsp-clangd.py --clangd <已安装的可执
 ```
 
 该显式选项仅批准脚本硬编码的六个临时 fixture 查询，不安装程序或调用模型。[本批记录](benchmarks/lsp-20261022.json)区分真实 clangd、协议 fixture、本地平台与远端 CI；按用户要求，2026-11-01 前所有 CI 暂停。
+
+追加 `--workspace-symbols` 会再批准一次第二文件的符号查询和一次跨文件查询，共八次固定操作。本机实测找到两个文件、三个命名空间中的同名函数，并继续验证修改后的第二版类型错误；不推断完整仓库覆盖或模型编码收益。工作区扩展的 14 项新增回归还覆盖三种模型协议的查找→读取→版本编辑→独立检查、80×24 TUI 的 Enter/拒绝/重新批准和本地 CLI 无模型调用，完整范围见[本批记录](benchmarks/lsp-workspace-20261023.json)。

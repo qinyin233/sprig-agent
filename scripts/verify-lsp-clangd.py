@@ -15,6 +15,7 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--clangd", required=True, type=Path, help="explicit already installed clangd executable")
     parser.add_argument("--approve-disposable", action="store_true", help="approve each listed query on this script's temporary fixture")
+    parser.add_argument("--workspace-symbols", action="store_true", help="also open a second fixture file and query project-wide symbols")
     args = parser.parse_args()
     executable = args.clangd.resolve(strict=True)
     if not executable.is_file() or not args.approve_disposable:
@@ -48,17 +49,33 @@ def main():
             assert "left" in observed["hover"]["content"], observed
             assert any(row.get("name") == "choose" and row.get("parent") == "left" for row in observed["symbols"]["results"]), observed
             assert observed["diagnostics"]["available"] and not observed["diagnostics"]["diagnostics"], observed
+            workspace = None
+            if args.workspace_symbols:
+                other = root / "other.cpp"
+                other.write_text('namespace third { int choose(int value) { return value + 3; } }\n', encoding="utf-8")
+                page = tools.execute("lsp", {"action": "symbols", "server": "cpp", "path": "other.cpp"})
+                assert "error" not in page and page["complete"], page
+                page = tools.execute("lsp", {"action": "workspace_symbols", "server": "cpp", "query": "choose"})
+                assert "error" not in page and page["complete"], page
+                symbols = json.loads(page["content"])
+                assert {row["path"] for row in symbols["results"]} == {"main.cpp", "other.cpp"}, symbols
+                assert len(symbols["results"]) == 3 and all(row["name"] == "choose" for row in symbols["results"]), symbols
+                assert symbols["complete_project_index"] is False, symbols
+                workspace = {"symbols": 3, "files": 2, "containers": [row["container"] for row in symbols["results"]],
+                             "scope_limited": symbols["scope_limited"], "complete_project_index": False}
             path.write_text(source.replace("left::choose(2)", 'left::choose("bad")'), encoding="utf-8")
             page = tools.execute("lsp", {"action": "diagnostics", "server": "cpp", "path": "main.cpp"})
             assert "error" not in page and page["complete"], page
             changed = json.loads(page["content"])
             assert changed["available"] and changed["version_confirmed"] and changed["source"]["version"] == 2, changed
             assert any(row["severity"] == 1 and row["start_line"] == 3 for row in changed["diagnostics"]), changed
-            assert len(approvals) == 6
+            assert len(approvals) == (8 if args.workspace_symbols else 6)
             result = {"passed": True, "executable_sha256": hashlib.sha256(executable.read_bytes()).hexdigest(),
                       "approved_queries": len(approvals), "definition_lines": [1], "reference_lines": [1, 3],
                       "changed_document_version": 2, "changed_diagnostics": changed["diagnostics"],
                       "no_model_requests": True, "scope": "disposable C++ fixture; no general agent performance claim"}
+            if workspace is not None:
+                result["workspace_symbols"] = workspace
         print(json.dumps(result, ensure_ascii=True, indent=2))
 
 

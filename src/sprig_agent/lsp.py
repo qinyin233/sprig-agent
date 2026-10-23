@@ -18,10 +18,11 @@ METHODS = {"definition": ("textDocument/definition", "definitionProvider"),
            "hover": ("textDocument/hover", "hoverProvider"),
            "symbols": ("textDocument/documentSymbol", "documentSymbolProvider")}
 LSP_SCHEMA = {"type": "function", "function": {"name": "lsp",
-    "description": "Approved configured language servers: definition/references/implementation/hover/symbols/diagnostics. Relative path; 1-based line/Unicode column. Current-source observations, not edits/acceptance. status/disconnect manage clients; result_id+offset pages cached data without RPC or replay.",
+    "description": "Approved configured language servers: definition/references/implementation/hover/symbols/diagnostics by relative path; 1-based Unicode positions. workspace_symbols: explicit server + query, no path. Observations, not edits/acceptance. result_id+offset pages cached data without RPC/replay.",
     "parameters": {"type": "object", "properties": {
-        "action": {"enum": ["status", "definition", "references", "implementation", "hover", "symbols", "diagnostics", "disconnect", "result"]},
+        "action": {"enum": ["status", "definition", "references", "implementation", "hover", "symbols", "workspace_symbols", "diagnostics", "disconnect", "result"]},
         "server": {"type": "string", "maxLength": 64}, "path": {"type": "string", "maxLength": 4096},
+        "query": {"type": "string", "maxLength": 256},
         "line": {"type": "integer", "minimum": 1, "maximum": 1000000},
         "column": {"type": "integer", "minimum": 1, "maximum": 1000000},
         "result_id": {"type": "string", "maxLength": 40}, "offset": {"type": "integer", "minimum": 0, "maximum": MAX_FRAME}},
@@ -95,7 +96,7 @@ class LanguageServers:
             raise LspError("LSP file URI is not absolute")
         return path.relative_to(self.config.workdir).as_posix()
 
-    def control(self, action="status", server=None, path=None, line=None, column=None, result_id=None, offset=0):
+    def control(self, action="status", server=None, path=None, line=None, column=None, query=None, result_id=None, offset=0):
         if not self.operation.acquire(blocking=False):
             raise LspError("another LSP operation is active; wait or cancel it")
         epoch = self.epoch
@@ -108,15 +109,26 @@ class LanguageServers:
             if not self.config.tool_enabled("lsp"):
                 raise LspError("LSP tool is disabled")
             if action == "status":
-                if any(value is not None for value in (server, path, line, column, result_id)) or offset:
+                if any(value is not None for value in (server, path, line, column, query, result_id)) or offset:
                     raise LspError("LSP status has no query parameters")
                 return self._save(self.status(), (), check)
             if action == "result":
-                if any(value is not None for value in (server, path, line, column)):
+                if any(value is not None for value in (server, path, line, column, query)):
                     raise LspError("LSP result accepts only result_id and offset")
                 return self._page(result_id, offset, check)
-            if result_id is not None or offset or action not in {*METHODS, "diagnostics", "disconnect"}:
+            workspace = action == "workspace_symbols"
+            if result_id is not None or offset or action not in {*METHODS, "diagnostics", "disconnect", "workspace_symbols"}:
                 raise LspError("invalid LSP action or query parameters")
+            if workspace:
+                if not isinstance(server, str) or any(value is not None for value in (path, line, column)):
+                    raise LspError("workspace_symbols requires an explicit server and query; no path or line/column")
+                if (not isinstance(query, str) or len(query) > 256 or len(query.encode("utf-8")) > 1024
+                        or any(ord(char) < 32 or ord(char) == 127 for char in query)):
+                    raise LspError("workspace symbol query must be at most 256 characters without controls; empty requests all symbols")
+                if any(secret in query for secret in self.config.credential_secrets):
+                    raise LspError("LSP queries must not contain configured credentials")
+            elif query is not None:
+                raise LspError("query is only valid for workspace_symbols")
             if self.config.read_only:
                 raise LspError("read-only mode blocks language-server execution and RPCs")
             if self.config.max_output < 1024:
@@ -140,12 +152,14 @@ class LanguageServers:
                         client.close()
                         self.clients.pop(selected.name, None)
                 return {"approved": True, "disconnected": True, "server": selected.name}
-            if not isinstance(path, str):
+            if not self.config.tool_enabled("read_file"):
+                raise LspError("LSP queries require the read_file tool")
+            if not workspace and not isinstance(path, str):
                 raise LspError("LSP query requires a workspace-relative file path")
             suffixes = {suffix.lower(): language for suffix, language in selected.languages}
-            if Path(path).suffix.lower() not in suffixes:
+            if not workspace and Path(path).suffix.lower() not in suffixes:
                 raise LspError("file suffix is not declared for the selected language server")
-            primary = self.document(path)
+            primary = None if workspace else self.document(path)
             point = position(primary["text"], line, column) if action in {"definition", "references", "implementation", "hover"} else None
             if point is None and (line is not None or column is not None):
                 raise LspError("this LSP operation does not use line/column")
@@ -158,9 +172,12 @@ class LanguageServers:
                     client = None
                 # Refresh only explicitly opened documents; cap four snapshots.
                 try:
-                    opened = list(client.documents.values())[-3:] if client and primary["uri"] not in client.documents else list(client.documents.values()) if client else []
+                    opened = list(client.documents.values()) if client else []
+                    if primary is not None and client and primary["uri"] not in client.documents:
+                        opened = opened[-3:]
                     prepared = {row["uri"]: self.document(row["path"]) for row in opened}
-                    prepared[primary["uri"]] = primary
+                    if primary is not None:
+                        prepared[primary["uri"]] = primary
                 except BaseException:
                     if client is not None:
                         client.close()
@@ -174,7 +191,8 @@ class LanguageServers:
             text = (f"LSP {action} via {selected.name}\n" + ("START " if client is None else "REUSE ") + json.dumps(list(selected.command))
                     + "\ncwd: " + json.dumps(str(directory)) + "\nEnvironment names: " + json.dumps([key for key, _ in (*selected.env, *selected.env_from)])
                     + "\nSynchronize current UTF-8 source snapshots: " + json.dumps(listing, ensure_ascii=False)
-                    + "\nPosition: " + json.dumps(point) + f"; idle {selected.timeout:g}s; total {selected.deadline:g}s."
+                    + ("\nQuery: " + json.dumps(query, ensure_ascii=False) if workspace else "\nPosition: " + json.dumps(point))
+                    + f"; idle {selected.timeout:g}s; total {selected.deadline:g}s."
                     + "\nExternal server has current-user filesystem/network authority; NOT an OS sandbox and may act before queries or while idle."
                     + "\nOnly semantic queries and document synchronization; server-driven edits/commands are denied, configuration replies are empty. No installation, automatic restart or replay. Results are observations, not approval, read_id or fixed acceptance.")
             if self.approve(redact(text, self.config.secrets)) is not True:
@@ -192,10 +210,10 @@ class LanguageServers:
                     self.clients[selected.name] = client
             try:
                 if not client.capabilities:
-                    client.initialize(budget)
+                    client.initialize(budget, require_sync=bool(prepared))
                 for document in prepared.values():
                     client.sync(document, suffixes.get(Path(document["path"]).suffix.lower(), "plaintext"), budget)
-                params = {"textDocument": {"uri": primary["uri"]}}
+                params = {"query": query} if workspace else {"textDocument": {"uri": primary["uri"]}}
                 if point is not None:
                     params["position"] = point
                 if action == "references":
@@ -209,18 +227,24 @@ class LanguageServers:
                     else:
                         raw = client.pushed_diagnostics(primary["uri"], budget)
                 else:
-                    method, capability = METHODS[action]
-                    if client.capabilities.get(capability) in (None, False):
+                    method, capability = ("workspace/symbol", "workspaceSymbolProvider") if workspace else METHODS[action]
+                    provider = client.capabilities.get(capability)
+                    if provider is not True and not isinstance(provider, dict):
                         raise LspError("language server does not advertise this semantic operation")
                     raw = client.exchange(method, params, budget)
                 budget.check()
                 for document in prepared.values():
                     if self.document(document["path"])["sha256"] != document["sha256"]:
                         raise LspError("LSP source changed during the query; stale results discarded")
-                value, paths = self._normalize(action, raw, primary)
-                value.update(server=selected.name, action=action, source={"path": path, "sha256": primary["sha256"],
-                    "version": client.documents[primary["uri"]]["version"]}, not_authorization=True, not_acceptance=True)
-                return self._save(value, tuple(dict.fromkeys((path, *paths))), check, approved=True)
+                value, paths = self._normalize(action, raw, primary, check=budget.check)
+                budget.check()
+                value.update(server=selected.name, action=action, not_authorization=True, not_acceptance=True)
+                if workspace:
+                    value.update(query=query, synchronized_documents=[{"path": row["path"], "sha256": row["sha256"],
+                        "version": client.documents[row["uri"]]["version"]} for row in prepared.values()])
+                else:
+                    value["source"] = {"path": path, "sha256": primary["sha256"], "version": client.documents[primary["uri"]]["version"]}
+                return self._save(value, tuple(dict.fromkeys((*[row["path"] for row in prepared.values()], *paths))), budget.check, approved=True)
             except BaseException:
                 with self.lock:
                     if self.clients.get(selected.name) is client:
@@ -233,10 +257,12 @@ class LanguageServers:
         finally:
             self.operation.release()
 
-    def _normalize(self, action, raw, primary):
+    def _normalize(self, action, raw, primary, *, check=None):
+        check = check or self.check
         paths, omitted = set(), 0
-        docs = {primary["path"]: primary}
+        docs = {primary["path"]: primary} if primary is not None else {}
         def doc(path):
+            check()
             if path not in docs:
                 if len(docs) >= 64:
                     raise LspError("LSP target document limit exceeded")
@@ -284,12 +310,14 @@ class LanguageServers:
                     omitted += 1
             return {"available": True, "diagnostics": result, "version_confirmed": raw.get("version") is not None,
                     "mode": "pull" if raw.get("pull") else "push", "omitted": omitted, "scope_limited": True}, paths
+        if action == "workspace_symbols" and raw is not None and not isinstance(raw, list):
+            raise LspError("workspace symbols must be an array or null")
         rows = [] if raw is None else raw if isinstance(raw, list) else [raw]
         if len(rows) > 512:
             raise LspError("LSP result exceeds 512 entries")
         result, queue = [], [(row, None, 0) for row in rows]
         while queue:
-            self.check()
+            check()
             row, parent, depth = queue.pop(0)
             if len(result) + len(queue) > 512 or depth > 24:
                 raise LspError("LSP symbol tree exceeds bounds")
@@ -297,19 +325,29 @@ class LanguageServers:
                 omitted += 1
                 continue
             try:
+                if action == "workspace_symbols" and not isinstance(row.get("location"), dict):
+                    raise LspError("workspace symbol requires a location")
                 if action == "symbols" and "location" not in row:
                     where = place(primary["uri"], row.get("selectionRange", row.get("range")))
                 else:
                     location = row.get("location", row)
                     where = place(location.get("targetUri", location.get("uri")), location.get("targetSelectionRange", location.get("range")))
-                if action == "symbols":
+                if action in {"symbols", "workspace_symbols"}:
                     if not isinstance(row.get("name"), str) or len(row["name"]) > 1024:
                         raise LspError("invalid symbol name")
-                    where.update(name=row["name"], kind=row.get("kind") if type(row.get("kind")) is int else None, parent=parent)
-                    children = row.get("children", [])
-                    if not isinstance(children, list):
-                        raise LspError("invalid LSP symbol children")
-                    queue.extend((child, row["name"], depth + 1) for child in children)
+                    kind = row.get("kind")
+                    where.update(name=row["name"], kind=kind if type(kind) is int and 1 <= kind <= 26 else None)
+                    if action == "workspace_symbols":
+                        container = row.get("containerName")
+                        if container is not None and (not isinstance(container, str) or len(container) > 1024):
+                            raise LspError("invalid workspace symbol container")
+                        where["container"] = container
+                    else:
+                        where["parent"] = parent
+                        children = row.get("children", [])
+                        if not isinstance(children, list):
+                            raise LspError("invalid LSP symbol children")
+                        queue.extend((child, row["name"], depth + 1) for child in children)
                 result.append(where)
             except (OSError, ValueError, AttributeError):
                 omitted += 1
@@ -343,6 +381,7 @@ class LanguageServers:
             raw, paths = self.results[identity]
         try:
             for path in paths:
+                check()
                 self.document(path)
             if redact(raw.decode("utf-8"), self.config.secrets).encode("utf-8") != raw:
                 raise LspError("LSP result expired after credential policy changed")
@@ -386,8 +425,10 @@ def local_arguments(text):
         return {"action": "result", "result_id": parts[1], "offset": int(parts[2]) if len(parts) == 3 else 0}
     if parts[0] == "disconnect" and len(parts) == 2:
         return {"action": "disconnect", "server": parts[1]}
+    if parts[0] == "workspace_symbols" and len(parts) == 3:
+        return {"action": parts[0], "server": parts[1], "query": parts[2]}
     if parts[0] in {"symbols", "diagnostics"} and len(parts) == 3:
         return {"action": parts[0], "server": parts[1], "path": parts[2]}
     if parts[0] in {"definition", "references", "implementation", "hover"} and len(parts) == 5:
         return {"action": parts[0], "server": parts[1], "path": parts[2], "line": int(parts[3]), "column": int(parts[4])}
-    raise LspError("Use /lsp, /lsp ACTION SERVER PATH [LINE COLUMN], /lsp result ID [OFFSET], or /lsp disconnect SERVER")
+    raise LspError("Use /lsp, /lsp ACTION SERVER PATH [LINE COLUMN], /lsp workspace_symbols SERVER QUERY, /lsp result ID [OFFSET], or /lsp disconnect SERVER")

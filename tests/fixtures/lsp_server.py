@@ -78,15 +78,19 @@ while True:
     if method == "initialize":
         capabilities = {"textDocumentSync": {"openClose": True, "change": 1 if active == "full_sync" else 2},
                         "definitionProvider": True, "referencesProvider": True, "implementationProvider": True,
-                        "hoverProvider": True, "documentSymbolProvider": True}
+                        "hoverProvider": True, "documentSymbolProvider": True, "workspaceSymbolProvider": True}
         if active == "pull":
             capabilities["diagnosticProvider"] = {}
         if active == "utf8":
             capabilities["positionEncoding"] = "utf-8"
         if active == "no_sync":
             capabilities["textDocumentSync"] = 0
+        if active == "workspace_only":
+            capabilities["textDocumentSync"] = 0
         if active == "no_capability":
             capabilities.pop("definitionProvider")
+        if active == "no_workspace":
+            capabilities.pop("workspaceSymbolProvider")
         result = {"capabilities": capabilities}
     elif method in {"textDocument/didOpen", "textDocument/didChange"}:
         doc = params["textDocument"]
@@ -99,6 +103,20 @@ while True:
     elif method == "textDocument/didClose":
         documents.pop(params["textDocument"]["uri"], None)
         continue
+    elif method == "workspace/symbol":
+        if active == "waiting":
+            continue
+        if active == "pause":
+            while not (state / "release").exists():
+                time.sleep(.005)
+        if active == "drip":
+            while True:
+                send({"jsonrpc": "2.0", "method": "window/logMessage", "params": {"message": "activity"}})
+                time.sleep(.02)
+        fixture = state / "workspace.json"
+        result = json.loads(fixture.read_text(encoding="utf-8")) if fixture.exists() else [
+            {"name": "symbol", "kind": 12, "containerName": "fixture", "location": {
+                "uri": Path(os.getcwd(), "main.cpp").as_uri(), "range": span()}, "data": {"command": "not executable"}}]
     elif method and method.startswith("textDocument/"):
         if active == "waiting":
             continue

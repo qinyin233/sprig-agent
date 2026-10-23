@@ -1435,7 +1435,7 @@ class SprigApp(App[int]):
                         "/mcp（本地状态） /mcp connect|disconnect|tools|resources|templates|prompts SERVER（逐次确认请求）\n"
                         "/web（本地缓存） /web URL（逐次批准公开网页） /web result ID [UTF8偏移]（缓存分页）\n"
                         "/jobs /job start {\"argv\":[\"程序\",\"参数\"]}（新批准） /job status|output|wait|cancel ID\n"
-                        "/lsp（本地状态） /lsp definition|references|implementation|hover SERVER PATH 行 列；symbols|diagnostics SERVER PATH\n"
+                        "/lsp（本地状态） /lsp definition|references|implementation|hover SERVER PATH 行 列；symbols|diagnostics SERVER PATH；workspace_symbols SERVER QUERY\n"
                         "/continue /new /files /add 文件路径 /ref 文件路径 /unref 文件路径 /refs [clear]\n"
                         "/map [名称或路径查询] /git /diff /compact\n"
                         "/summary（本地预览） /summary create [END]（逐次确认额外请求） /summary clear\n"
