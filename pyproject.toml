@@ -1,5 +1,5 @@
 [build-system]
-requires = ["setuptools>=61", "wheel"]
+requires = ["setuptools>=64", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
@@ -40,6 +40,12 @@ classifiers = [
 
 [project.scripts]
 sprig = "sprig_agent.cli:main"
+
+# Use setuptools' editable import hook rather than a locale-sensitive source
+# path in .pth (not portable from Python 3.13 to Windows Python 3.11).
+[tool.setuptools.package-dir]
+"" = "src"
+sprig_agent = "src/sprig_agent"
 
 [tool.setuptools.packages.find]
 where = ["src"]

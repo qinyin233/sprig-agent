@@ -1,0 +1,218 @@
+{
+  "scope": "editable installation and source import portability; no model-quality claim",
+  "base_commit": "5a2db942a9af2b5b5c7747b2be85727249b826a6",
+  "source_manifest": {
+    "src/sprig_agent": {
+      "files": 65,
+      "sha256": "0874856b308808fc88385fd9993faa903ac21e74e835cbab3d0ce6948d5a7a6a"
+    },
+    "tests": {
+      "files": 84,
+      "sha256": "32177dae28eaa2ecc4993a9a13c5c394a13dce09a57614ec75afe51eef5d6f57"
+    },
+    "tests/fixtures": {
+      "files": 2,
+      "sha256": "3ad5a955740a3aee2fe792e30bf2b17bc6ab2945392584a173cbc668369beb79"
+    },
+    "packaging": {
+      "files": 4,
+      "sha256": "9864d1baaa96864cf203e3b150a59323974784bf35736c98d3809b67444c0f34"
+    }
+  },
+  "manifest_algorithm": "sorted relative path + NUL + SHA256(LF-normalized bytes) hex + newline",
+  "application_python_unchanged": true,
+  "negative_control": {
+    "passed": false,
+    "platform": "win32",
+    "editable_pth_ascii": false,
+    "source_files": 65,
+    "source_files_unchanged": true,
+    "generator": "setuptools (84.2.1)",
+    "producer": {
+      "initial": {
+        "python": "3.13.0",
+        "utf8_mode": 0,
+        "source_imports": true,
+        "sibling_hidden": false,
+        "value": "first"
+      },
+      "console_help": true,
+      "source_update_visible": true
+    },
+    "consumer": {
+      "initial": {
+        "startup_or_import_failed": true,
+        "gbk_startup_failure": true
+      },
+      "console_help": false,
+      "source_update_visible": false
+    },
+    "model_requests": 0
+  },
+  "full_package_checks": {
+    "windows_cross_version": {
+      "passed": true,
+      "platform": "win32",
+      "editable_pth_ascii": true,
+      "source_files": 65,
+      "source_files_unchanged": true,
+      "generator": "setuptools (84.2.1)",
+      "producer": {
+        "initial": {
+          "python": "3.13.0",
+          "utf8_mode": 0,
+          "source_imports": true,
+          "sibling_hidden": true,
+          "value": "first"
+        },
+        "console_help": true,
+        "source_update_visible": true
+      },
+      "consumer": {
+        "initial": {
+          "python": "3.11.14",
+          "utf8_mode": 0,
+          "source_imports": true,
+          "sibling_hidden": true,
+          "value": "first"
+        },
+        "console_help": true,
+        "source_update_visible": true
+      },
+      "model_requests": 0
+    },
+    "windows_311_default": {
+      "passed": true,
+      "platform": "win32",
+      "editable_pth_ascii": true,
+      "source_files": 65,
+      "source_files_unchanged": true,
+      "generator": "setuptools (84.2.1)",
+      "producer": {
+        "initial": {
+          "python": "3.11.14",
+          "utf8_mode": 0,
+          "source_imports": true,
+          "sibling_hidden": true,
+          "value": "first"
+        },
+        "console_help": true,
+        "source_update_visible": true
+      },
+      "consumer": {
+        "initial": {
+          "python": "3.11.14",
+          "utf8_mode": 0,
+          "source_imports": true,
+          "sibling_hidden": true,
+          "value": "first"
+        },
+        "console_help": true,
+        "source_update_visible": true
+      },
+      "model_requests": 0
+    },
+    "wsl_default": {
+      "passed": true,
+      "platform": "linux",
+      "editable_pth_ascii": true,
+      "source_files": 65,
+      "source_files_unchanged": true,
+      "generator": "setuptools (84.2.1)",
+      "producer": {
+        "initial": {
+          "python": "3.13.14",
+          "utf8_mode": 0,
+          "source_imports": true,
+          "sibling_hidden": true,
+          "value": "first"
+        },
+        "console_help": true,
+        "source_update_visible": true
+      },
+      "consumer": {
+        "initial": {
+          "python": "3.13.14",
+          "utf8_mode": 0,
+          "source_imports": true,
+          "sibling_hidden": true,
+          "value": "first"
+        },
+        "console_help": true,
+        "source_update_visible": true
+      },
+      "model_requests": 0
+    }
+  },
+  "local_suites": [
+    {
+      "platform": "native Windows",
+      "tests": 1256,
+      "passed": 1237,
+      "skipped": 19,
+      "seconds": 493.875
+    },
+    {
+      "platform": "WSL Ubuntu local",
+      "tests": 1256,
+      "passed": 1233,
+      "skipped": 23,
+      "seconds": 358.171
+    },
+    {
+      "platform": "Windows Python 3.11 editable",
+      "tests": 129,
+      "passed": 129,
+      "skipped": 0,
+      "seconds": 103.02
+    },
+    {
+      "platform": "Windows mini SDK",
+      "tests": 25,
+      "passed": 25,
+      "skipped": 0,
+      "seconds": 51.985
+    },
+    {
+      "platform": "WSL mini SDK",
+      "tests": 25,
+      "passed": 25,
+      "skipped": 0,
+      "seconds": 167.246
+    }
+  ],
+  "live_model_requests": 0,
+  "wheel_validation": {
+    "installed_wheel_tests": 18,
+    "skipped": 0,
+    "imported_installed_modules": 58,
+    "wheel_source_files_checked": 65
+  },
+  "real_checkout_python311": {
+    "python": "3.11.14",
+    "utf8_mode": 0,
+    "editable_source": true
+  },
+  "other_checks": [
+    "four uv lock files",
+    "configuration schema and TOML example",
+    "compileall",
+    "root CLI help",
+    "future workflow syntax only",
+    "wheel and sdist build",
+    "local links and credential shapes"
+  ],
+  "setuptools_reference": "https://setuptools.pypa.io/en/latest/userguide/development_mode.html",
+  "ci": {
+    "triggered": false,
+    "future_matrix_step_added": true,
+    "status": "pending; freeze before 2026-11-01 Asia/Singapore; verify account restriction afterwards"
+  },
+  "limits": [
+    "no native Ubuntu or macOS CI on this commit",
+    "skips are not passes",
+    "setuptools 84.2.1 observed; future mechanism guarded by integration check",
+    "already broken environments require fresh-venv migration; no automatic deletion",
+    "not cross-machine or cross-OS relocation of absolute editable paths"
+  ]
+}

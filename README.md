@@ -44,7 +44,7 @@ uv run python -m unittest discover -s tests -v
 
 `.python-version` 固定开发主版本为 3.13，`.venv` 由 uv 管理，`uv.lock` 提交到 Git；包仍支持 Python 3.11+。`--managed-python` 使用 uv 管理的 CPython，避免选择 Microsoft Store 应用别名。无需手动激活环境或使用 pip 安装。Textual、Tree-sitter、所需语法包与 RE2 正则引擎由 uv 锁定安装，工具只加载已安装的本地包；模型传输、会话和命令核心使用标准库。构建由 uv 管理隔离的 `setuptools` / `wheel` 环境，离线使用需预先准备依赖和构建缓存。
 
-Windows 中文路径下若必须使用 Python 3.11，请在 `uv sync` 和 `uv run` 上都加 `--no-editable`，避开旧版 Python 对 editable `.pth` 路径的编码限制。默认的 3.13 开发环境无需此选项。
+Windows 中文路径的 Python 3.11 editable 安装已通过完整包验证，无需 `--no-editable`。若旧环境已在启动时因 `.pth` 的 GBK 解码失败，请保留旧目录并新建 uv 环境，见[安装修复与验证](docs/editable-install.md)。
 
 在同一 Windows/WSL 共享检出中，请为 WSL 使用独立环境，避免替换 Windows 的 `.venv`：
 
