@@ -384,3 +384,9 @@ Sprig 的 `ApprovalScreen` 已有 `approval-task` 输入：Enter 发送更正、
 Sprig 已有显式分离预算和可选私有日志，但旧默认仍会在 16 KB 输出处停止普通命令。隔离父版本复现长日志末尾丢失，三协议及 TUI 一致。现在[默认采集 1 MiB、展示保持原预算](../command-output.md)，继续使用现有首尾解码/脱敏和进程后端，超过硬采集上限仍终止；不复制自动落盘、无限后台期限或持久通配授权。0 可明确保留旧策略，历史会话不会在无说明的情况下切换预算；命令仍须新批准。回归及限制见[本地记录](../benchmarks/output-defaults-20261024.json)。这是普通开发日志的可用性修正；最近 Click 的固定检查正文很短，不用这个改动解释其未完成状态，更不以脚本化修复回环宣布真实编码能力达标。
 
 默认切换还要求区分“给模型看的预览”和“应用必须完整解析的元数据”：新候选中实际复现 Git 配置省略隐藏 include，补上完整性门槛后在工作树创建前停止。评测工厂则显式固定原采集预算；没有靠扩大竞品或 Sprig 的执行资源制造新成绩。
+
+## 19. 用户本地操作与模型轮次分离（2026-10-24）
+
+重新核对同一只读副本的 prompt 实现及固定 HEAD。已有会话的 shell 模式中，`usesModel` 为 false；新增会话另有前置选择检查。[判断位置](https://github.com/anomalyco/opencode/blob/9d90d892dcbfc52b47e95b2ea31b8aba877128fd/packages/tui/src/component/prompt/index.tsx#L1170-L1171)。提交分支直接调用 `client.api.session.shell` 并回到 normal 模式。[分支](https://github.com/anomalyco/opencode/blob/9d90d892dcbfc52b47e95b2ea31b8aba877128fd/packages/tui/src/component/prompt/index.tsx#L1311-L1319)。这是已读 UI 层的分流事实，本批没有运行上游或据此推断完整后端权限。
+
+Sprig 之前可由模型结束触发固定验收，也有编辑后检查，但没有供用户独立运行同一组 checks 的终端命令。现在接入[本地固定检查](../manual-verification.md)：原 argv 和逐次批准保持，chat/TUI `/verify` 的观察进入当前历史，一次性 `--verify` 无需模型凭据；应用不自动请求模型或递送下一条队列任务。结束前新引导和保存不确定不能被通过状态覆盖，旧意图也不会重放。它是固定验收工作流的补齐，未复制通用 shell 模式、扩张权限或宣称编码性能改善；实际本地范围见[记录](../benchmarks/manual-verification-20261024.json)。

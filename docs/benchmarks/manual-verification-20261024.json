@@ -1,0 +1,134 @@
+{
+  "schema": 1,
+  "scope": "explicit local fixed-check workflow in one-shot CLI, chat and TUI; no automatic model query or queue drain",
+  "base_commit": "32fb9040baa6b2dbf1d1f59ca945567e63b686aa",
+  "frozen_functional_files": 207,
+  "frozen_raw_bytes_manifest_sha256": "c2539f7f7bbb127d65c209c81219211b05eaee9c967e21cd7c6843781a885118",
+  "source_manifest": {
+    "src/sprig_agent": {
+      "files": 67,
+      "sha256": "a085deb3a07286837a120d97129a65d90f2d74913300c16eb16dd516bfebae8d"
+    },
+    "tests": {
+      "files": 92,
+      "sha256": "7b21e66c6ed9816a8f1a509b39215e833cf7bb98192951ac49ccfdcd78d808ba"
+    }
+  },
+  "manifest_algorithm": "sorted relative path + NUL + SHA256(LF-normalized bytes) hex + newline",
+  "changed_source_tests_sha256": {
+    "src/sprig_agent/agent.py": "aa8bcb6b94436a0d17fc0cd529a39346cbe0152a14b39af4fc6e07a5dc48e2a5",
+    "src/sprig_agent/cli.py": "91059fb8df991e26ce016218485cb4720c055f5df4171bea1cfe916916f3ac6d",
+    "src/sprig_agent/completion.py": "ba2072e9e388188de37033ee65f84581513bacbf24d64e55c841b5154c505cc4",
+    "src/sprig_agent/tui.py": "299ec1757b2d7a0cae10cc3ea724cdc5ecfacb4ecc9e44611bb75250102c8689",
+    "tests/test_manual_verification.py": "c13846064347fc52dca3106cb6fb8648171813bfdde40fab81c9ef381006e8f1",
+    "tests/test_manual_verification_ui.py": "1ac8a2b10864762d6f993b338ee159df0048fd47e61eda692dd8d1f207950104"
+  },
+  "local_suites": [
+    {
+      "platform": "native Windows Python 3.13.0",
+      "tests": 1365,
+      "passed": 1346,
+      "skipped": 19,
+      "seconds": 559.911,
+      "log_sha256": "a22ec435c6fe5e6fd409243716e10ee6bb07a4f04d25bf2df724f1d0b432c5c6"
+    },
+    {
+      "platform": "local WSL Python 3.13.14",
+      "tests": 1365,
+      "passed": 1342,
+      "skipped": 23,
+      "seconds": 397.761,
+      "log_sha256": "c1f0724b000b73c51f3faf3bc9c39db6091699559c05c4bbf964023c2c02b6ce"
+    },
+    {
+      "platform": "native Windows Python 3.11.14, new regressions",
+      "tests": 17,
+      "passed": 17,
+      "skipped": 0,
+      "seconds": 10.718,
+      "log_sha256": "b23d03531d9ce3a8006d11be5807e865698c7e649af759f3051ac37927993f98"
+    }
+  ],
+  "sdk_suites": [
+    {
+      "platform": "native Windows Python 3.12.12, mini 2.4.6 SDK",
+      "tests": 25,
+      "passed": 25,
+      "skipped": 0,
+      "seconds": 42.537,
+      "log_sha256": "07add593602d4980ba2967c074119e71add0746ad432eab22d56cf27a4d88b62"
+    },
+    {
+      "platform": "local WSL Python 3.12.13, mini 2.4.6 SDK",
+      "tests": 25,
+      "passed": 25,
+      "skipped": 0,
+      "seconds": 174.997,
+      "log_sha256": "da8bc5c740e58a786c7624d416e7447904af2ad54ca3ea483260176286995f1c"
+    }
+  ],
+  "installed_wheel": {
+    "tests": 17,
+    "skipped": 0,
+    "wheel_source_modules_matching": 67,
+    "imported_installed_modules": 60,
+    "sdist_changed_source_tests_matching": 6,
+    "wheel_sha256": "c113da7f79e31a86e71c97e4ae5ce8d591044363f47d5ce52322f57db0320755",
+    "sdist_sha256": "56bb0c399d1628512e10494c71f887cc0c41764ffeff2939b3f757796e70c97c",
+    "scope": "new 17 regressions loaded from copied tests; every imported application module verified under installed target; final validation JSON not claimed present in this sdist"
+  },
+  "isolated_parent_finish_policy_negative": {
+    "tests": 1,
+    "expected_failures": 1,
+    "errors": 0,
+    "scripted_model_queries": 1,
+    "external_model_queries": 0,
+    "parent_commit": "32fb9040baa6b2dbf1d1f59ca945567e63b686aa",
+    "parent_finished_sha256": "19b243755352fe04c25571a71a744c87b35f2f268357d236e5e7ed8a7aefe9c4",
+    "scope": "current feature and frozen late-guidance test with only parent SprigApp.finished policy, patched in an isolated process; one undesired scripted query"
+  },
+  "regressions": [
+    "real failed check then passed rerun, each independently approved and saved",
+    "empty checks, read-only and disabled run rejected; non-TTY approval refused",
+    "integer exit status and reliable approved result required; active jobs defer verification",
+    "intent save failure executes nothing; result save failure never reports a pass or replays the check",
+    "old pending intents closed by history validation, never executed",
+    "cancel, approval feedback and new guidance remain local until explicit continuation",
+    "one-shot CLI bypasses model credentials and default TUI without constructing Provider or SessionStore",
+    "normal chat entry persists n: feedback without executing its rejected command or querying a model",
+    "80x24 Enter flow, future queue untouched, late-guidance race, result save failure and pending recovery",
+    "three actual loopback protocols: zero requests during verify, two each on explicit repair continuation"
+  ],
+  "document_checks": {
+    "files": 5,
+    "local_file_targets": 213,
+    "missing": 0,
+    "remote_urls_and_fragment_anchors_checked": false
+  },
+  "checks": [
+    "four uv lock files",
+    "schema equals generated schema; example TOML validates",
+    "compileall",
+    "CLI help includes --verify",
+    "offline wheel/sdist build",
+    "new regressions run against installed wheel",
+    "frozen functional bytes rechecked before record creation",
+    "local document targets checked separately"
+  ],
+  "external_model_requests": 0,
+  "model_tool_schema_or_budget_expansion": false,
+  "os_backend_or_protocol_adapter_changes": false,
+  "remote_ci": {
+    "status": "pending",
+    "triggered": false,
+    "freeze_before": "2026-11-01 Asia/Singapore",
+    "resume_requires": "verify account restriction and prior required gate"
+  },
+  "limits": [
+    "local WSL is not native GitHub Actions evidence; platform skips are not passes",
+    "check success describes selected commands at that time, not complete requirement coverage",
+    "approved check programs can access network or outside files; no new OS sandbox guarantee",
+    "loopback replies are scripted, not live model coding-performance evidence",
+    "previous Click and diagnostic real-model results unchanged"
+  ]
+}

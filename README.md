@@ -182,6 +182,7 @@ sprig [TASK] [--workdir PATH] [--file RELATIVE_PATH ...] [--model MODEL] [--base
 | `--chat` | 可选；在同一上下文中连续输入任务，须在交互式终端运行 |
 | `--tui` | 全屏终端界面，自动启用流式输出；标准输入和输出都须连接终端 |
 | `--check JSON_ARGV` | 可重复指定固定验收命令，最多 16 条；每次执行都需要确认 |
+| `--verify` | [仅运行固定检查](docs/manual-verification.md)，不需要模型凭据，不调用模型或保存对话；chat/TUI 内使用 `/verify` |
 | `--check-before-task` | 可选的任务前基线；要求非空 `checks`，每条命令仍需新批准 |
 | `--check-after-edit` | 可选的[编辑后固定检查](docs/edit-checks.md)；每批文件编辑后反馈结果，不增加模型请求预算，不替代最终验收 |
 | `--save-session NAME` | 显式启用会话保存 |
@@ -375,6 +376,8 @@ PowerShell：
 命令意图在执行前保存，结果在执行后保存；中断恢复不会重放它们。验收命令也绑定到保存的会话，恢复时必须提供相同的 `--check` 参数，避免静默丢失用户的验收条件。它们使用工作根目录、全局超时和输出上限。
 
 验收标准由你负责定义；返回 0 只证明这些命令在该次运行中通过。没有指定 `--check` 时，模型正常结束的退出码 0 不表示代码已通过测试。命令没有沙箱，验收也仍需检查并批准。
+
+可随时在空闲 chat/TUI 中输入 `/verify` 独立重跑固定检查；观察进入会话，但不调用模型或自动启动排队任务。需要修复时再明确 `/continue`。一次性入口 `uv run --locked sprig --verify --check JSON_ARGV` 不需要模型凭据，也不保存对话。拒绝、更正、取消或保存失败都不会留下通过状态，详见[本地检查](docs/manual-verification.md)。
 
 ## 保存与恢复
 

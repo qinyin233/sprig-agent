@@ -770,7 +770,7 @@ class SprigApp(App[int]):
                 approved = approved is True
                 answer[0] = approved
                 self.approval = None
-                if approved and self.local_action in {"run", "job", "worktree-create", "worktree-list", "mcp", "lsp"}:
+                if approved and self.local_action in {"run", "job", "worktree-create", "worktree-list", "mcp", "lsp", "verify"}:
                     # Even a viewing command can invoke Git helpers. Treat its
                     # workspace effects conservatively, including cancellation.
                     self.invalidate_task()
@@ -813,7 +813,7 @@ class SprigApp(App[int]):
     def start(self, task=None, local=None, *, context_files=(), preflight=False):
         if self.busy:
             return
-        if (self.recovered_inputs["pending"] or self._input_retry or self._input_inbox.blocked) and (not local or local[0] in {"model-switch", "conversation-fork", "summary"}):
+        if (self.recovered_inputs["pending"] or self._input_retry or self._input_inbox.blocked) and (not local or local[0] in {"model-switch", "conversation-fork", "summary", "verify"}):
             self.reject_input("请先用 /pending apply 或 /pending discard 处理已恢复的要求；未请求模型。")
             return
         if not local and not task and not self.messages and not self.pending_tasks:
@@ -829,6 +829,8 @@ class SprigApp(App[int]):
         self.local_command_approved = False
         if not local:
             self.set_task_result(2, "任务进行中，等待本轮结果")
+        elif local[0] == "verify":
+            self.set_task_result(2, "固定检查进行中；尚未取得当前结果")
         self.set_busy(True)
         self.set_state("处理中")
         if task:
@@ -862,7 +864,13 @@ class SprigApp(App[int]):
         try:
             if local:
                 name, arguments = local
-                if name == "pending":
+                if name == "verify":
+                    if self.messages is None:
+                        self.messages = []  # Keep intent/results on checkpoint errors.
+                    self.messages, result = self.agent.verify(self.messages)
+                    status = 0 if result["verification"] == "passed" else 2
+                    message = "固定检查通过；未请求模型" if status == 0 else "固定检查未通过或未完成；未请求模型，未自动继续"
+                elif name == "pending":
                     action = arguments["action"]
                     if action == "apply":
                         if self._input_inbox.blocked:
@@ -948,7 +956,8 @@ class SprigApp(App[int]):
                     result = worktree_action(self.config, self.confirm, cancel_event=self.cancel_event, **arguments)
                 else:
                     result = self.tools.execute(name, arguments)
-                self.emit(("[显式摘要；不执行任务]\n" if name == "summary" else "[本地操作结果，不自动上传]\n")
+                self.emit(("[固定检查观察；下次明确请求模型时发送]\n" if name == "verify" else
+                           "[显式摘要；不执行任务]\n" if name == "summary" else "[本地操作结果，不自动上传]\n")
                           + json.dumps(result, ensure_ascii=False, indent=2))
                 if "error" in result or result.get("approved") is False or result.get("returncode", 0) != 0:
                     status, message = 2, "本地操作未完成"
@@ -999,7 +1008,7 @@ class SprigApp(App[int]):
                     self.agent._steer(self.messages)
             except (OSError, SessionError, RuntimeError) as recovery_error:
                 message += "；会话恢复或保存失败: " + self.safe(recovery_error)
-        if local and self.local_command_approved:
+        if local and self.local_command_approved and local[0] != "verify":
             try:
                 self.tools.read_versions.clear()
                 self.tools.index.clear()
@@ -1020,13 +1029,16 @@ class SprigApp(App[int]):
 
     def finished(self, status, message):
         self.flush_output()
+        verification = self.local_action == "verify"
+        if verification and (self._input_inbox.batch(delivery="steer") or self._input_retry or self._input_inbox.blocked):
+            status, message = 2, "检查后有新要求或保存待确认；未请求模型，请明确继续或处理 /pending"
         if self._queue_running and self.agent.had_rejected_action and status == 0:
             status, message = 2, "本项有操作被拒绝；排队任务已暂停，结果待确认"
         if self.local_action is not None:
             self.last_operation_status = status
         if status != 0 or self.agent.had_rejected_action or self.cancel_event.is_set() or self._input_retry or self._input_inbox.blocked:
             self._queue_running = False
-        if self._input_inbox.batch(delivery="steer") and not self._input_retry and not self._input_inbox.blocked and status in (0, 2) and not self.cancel_event.is_set():
+        if not verification and self._input_inbox.batch(delivery="steer") and not self._input_retry and not self._input_inbox.blocked and status in (0, 2) and not self.cancel_event.is_set():
             self.local_action = None
             self.set_task_result(2, "新要求待处理，等待更新后的结果")
             self.set_state(f"继续处理 {len(self.pending_tasks)} 条新要求")
@@ -1037,7 +1049,7 @@ class SprigApp(App[int]):
             self.set_task_result(2, "按明确请求继续下一条排队任务")
             return True
         self._queue_running = False
-        if self.local_action is None:
+        if self.local_action is None or verification:
             self.set_task_result(status, message)
         self.local_action = None
         self.set_busy(False)
@@ -1539,6 +1551,7 @@ class SprigApp(App[int]):
                         "/jobs /job start {\"argv\":[\"程序\",\"参数\"]}（新批准） /job status|output|wait|cancel ID\n"
                         "/lsp（本地状态） /lsp definition|references|implementation|hover SERVER PATH 行 列；symbols|diagnostics SERVER PATH；workspace_symbols SERVER QUERY\n"
                         "/continue /new /files /add 文件路径 /ref 文件路径 /unref 文件路径 /refs [clear]\n"
+                        "/verify（仅固定检查；逐次批准，观察进入会话；不调用模型或自动继续）\n"
                         "/map [名称或路径查询] /git /diff /compact\n"
                         "/summary（本地预览） /summary create [END]（逐次确认额外请求） /summary clear\n"
                         "/logs（当前会话日志） /log ID [OFFSET]（本地回查） /logs clear（逐次确认清理）\n"
@@ -1613,6 +1626,14 @@ class SprigApp(App[int]):
         if command == "/refs" and not argument:
             self.append("\n[当前文件引用；准备记录不是已发送证明]\n" + json.dumps(
                 redact(self.agent.reference_state(), self.config.secrets), ensure_ascii=False, indent=2) + "\n")
+            return
+        if command == "/verify":
+            if argument:
+                self.notify("/verify 不接受命令参数；请用 --check 或 [agent].checks 配置固定 argv", severity="warning")
+            elif self.busy:
+                self.notify("请等待当前操作结束，或先取消；/verify 不会替换当前操作", severity="warning")
+            else:
+                self.start(local=("verify", {}))
             return
         if command == "/config":
             details = {"provider": self.config.provider_name,

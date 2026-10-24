@@ -800,7 +800,10 @@ class Agent:
         self._event("check", "failed", check=phase, check_index=len(self.config.checks), check_total=len(self.config.checks))
         return "failed"
 
-    def run(self, task=None, messages=None, *, context_files=(), preflight=False):
+    @contextmanager
+    def _execution(self):
+        if self._running:
+            raise ValueError("another task or verification is already running")
         self._run_id, self._sequence, self._step, self._action = uuid.uuid4().hex, 0, 0, 0
         self._stop_reason = None
         self.work_progress = WorkProgress()
@@ -808,24 +811,7 @@ class Agent:
         self._running = True
         try:
             self._event("starting")
-            if context_files:
-                self._context_files, _ = self._file_snapshots(context_files)
-            if context_files or preflight:
-                # Fail before changing history, checkpointing or running baseline
-                # commands. Retrying the draft rereads files and repeats policy.
-                candidate = validate_history(messages) if messages else [{"role": "system", "content": self._prompt()}]
-                if task:
-                    candidate.append({"role": "user", "content": redact(task, self.config.secrets)})
-                self._refresh_instructions(candidate)
-                _, budget = prepare_context(self.config, self._request_messages(candidate, 1), self.schemas,
-                                            self.compact_context, check_cancelled=self._check_cancelled)
-                if not budget["within_budget"]:
-                    raise ProviderError(("selected files exceed" if context_files else "task exceeds")
-                                        + " the request context budget; no request sent")
-            history, complete = self._run(task, messages)
-            outcome = "passed" if complete and self.config.checks else "unverified" if complete else "incomplete"
-            self._event("finished", outcome, reason=self._stop_reason)
-            return history, complete
+            yield
         except BaseException as error:
             if isinstance(error, KeyboardInterrupt) and isinstance(self.tools, Tools):
                 self.tools.jobs.request_cancel_all()
@@ -845,6 +831,58 @@ class Agent:
             self._context_files = []
             self._current_history = None
             self._running = False
+
+    def run(self, task=None, messages=None, *, context_files=(), preflight=False):
+        with self._execution():
+            if context_files:
+                self._context_files, _ = self._file_snapshots(context_files)
+            if context_files or preflight:
+                # Fail before changing history, checkpointing or running baseline
+                # commands. Retrying the draft rereads files and repeats policy.
+                candidate = validate_history(messages) if messages else [{"role": "system", "content": self._prompt()}]
+                if task:
+                    candidate.append({"role": "user", "content": redact(task, self.config.secrets)})
+                self._refresh_instructions(candidate)
+                _, budget = prepare_context(self.config, self._request_messages(candidate, 1), self.schemas,
+                                            self.compact_context, check_cancelled=self._check_cancelled)
+                if not budget["within_budget"]:
+                    raise ProviderError(("selected files exceed" if context_files else "task exceeds")
+                                        + " the request context budget; no request sent")
+            history, complete = self._run(task, messages)
+            outcome = "passed" if complete and self.config.checks else "unverified" if complete else "incomplete"
+            self._event("finished", outcome, reason=self._stop_reason)
+            return history, complete
+
+    def verify(self, messages=None):
+        """Explicit fixed checks only; observations persist, no provider is called."""
+        if not self.config.checks:
+            raise ValueError("no fixed checks configured; use --check or [agent].checks")
+        if messages is not None and not isinstance(messages, list):
+            raise ValueError("verification history must be a list")
+        with self._execution():
+            self._check_cancelled()
+            messages = [] if messages is None else messages
+            if messages:
+                messages[:] = validate_history(messages)  # Close old intents without replay.
+            else:
+                messages.append({"role": "system", "content": self._prompt()})
+            messages.append({"role": "user", "content": (
+                "Application local verification requested by the user. Run only the configured fixed checks, "
+                "with fresh approval for each command. Results are observations of the workspace at this time, "
+                "not proof that every requested requirement is implemented. No model request is made by this "
+                "operation; these observations remain in the conversation for explicit continuation.")})
+            self._current_history = messages
+            self._checkpoint(messages)
+            seen_ids = {call["id"] for message in messages for call in message.get("tool_calls", [])}
+            try:
+                status = self._verify(messages, seen_ids)
+            finally:
+                if isinstance(self.tools, Tools):
+                    self.tools.read_versions.clear()
+                    self.tools.index.clear()
+            outcome = "passed" if status == "passed" else "failed" if status == "failed" else "incomplete"
+            self._event("finished", outcome, reason=self._stop_reason)
+            return messages, {"verification": status, "checks": len(self.config.checks), "model_requested": False}
 
     def _run(self, task=None, messages=None):
         self.baseline_status = "not_run"

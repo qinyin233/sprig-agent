@@ -122,6 +122,19 @@ def chat(agent, task, messages, emit, *, autostart=True, model_selection=None, s
         except (OSError, ValueError, ChangeError, ProviderError, SessionError) as error:
             recover(False, error)
 
+    def verify():
+        nonlocal messages, status
+        status = 2
+        if pending() or not history_ready:
+            emit("Resolve saved /pending inputs or invalid history before /verify. No check or model request sent.")
+            return
+        if messages is None:
+            messages = []  # Retain intent/results even if a checkpoint fails.
+        with feedback_scope(terminal_inputs):
+            messages, result = agent.verify(messages)
+        status = 0 if result["verification"] == "passed" else 2
+        emit("Local fixed verification; observations retained for explicit continuation: " + json.dumps(result))
+
     @contextmanager
     def local_command():
         """Observe actual approval, including commands that never return a result."""
@@ -214,6 +227,7 @@ def chat(agent, task, messages, emit, *, autostart=True, model_selection=None, s
                 emit("/mcp shows local server state; /mcp connect|disconnect|tools|resources|templates|prompts SERVER asks fresh approval for remote requests; /mcp result ID [OFFSET] reads retained local data without replay.")
                 emit("/skills lists configured skill metadata; /skill NAME [PATH [OFFSET PAGE_SHA256]] previews local UTF-8 guidance without a model call or script execution. Quote resource paths containing spaces.")
                 emit("/summary previews an optional lossy checkpoint; /summary create [END] makes one extra model request after approval; /summary clear restores the full request view. /history MESSAGE [OFFSET] locally pages original data.")
+                emit("/verify runs only configured fixed checks with fresh approval for each; observations enter this conversation. No model request or automatic continuation.")
                 emit("/logs lists this conversation's retained command output; /log ID [OFFSET] pages historical text; /logs clear requires fresh deletion approval. Retention is opt-in via --command-log-dir or storage.command_log_dir.")
                 emit("/ref PATH adds a live file reference; /unref PATH removes it; /refs lists metadata; /refs clear removes all. No model request is sent. Small complete files refresh before requests; larger files provide path/size only.")
                 emit("/worktrees lists local checkouts; /worktree PATH creates a detached checkout after fresh approvals. All remaining text is the path; the current conversation stays in this workspace.")
@@ -272,6 +286,10 @@ def chat(agent, task, messages, emit, *, autostart=True, model_selection=None, s
                 paths = () if operation == "clear" else [task.partition(" ")[2].strip()]
                 messages, result = agent.update_references(paths, operation=operation, messages=messages)
                 emit(json.dumps(redact(result, agent.config.secrets), ensure_ascii=False))
+            elif task == "/verify":
+                verify()
+            elif task.startswith("/verify "):
+                emit("Use /verify without arguments; commands must be configured with --check or [agent].checks.")
             elif task == "/continue":
                 if messages and len(messages) >= 2:
                     run(None)
@@ -427,6 +445,7 @@ def main(argv=None):
     group.add_argument("--save-session", metavar="NAME")
     group.add_argument("--resume", metavar="NAME")
     group.add_argument("--list-sessions", action="store_true", help="list local session metadata without contacting a model")
+    group.add_argument("--verify", action="store_true", help="only run configured fixed checks with fresh approvals; no model credentials, request or saved transcript")
     group.add_argument("--delete-session", metavar="NAME", help="delete one local session after confirmation")
     group.add_argument("--prune-sessions", action="store_true", help="apply configured retention to idle sessions, each deletion requires confirmation")
     group.add_argument("--init-config", action="store_true", help="confirm creation of a private TOML template; never overwrite an existing file")
@@ -463,6 +482,8 @@ def main(argv=None):
             raise ValueError("Sprig requires Linux/macOS or Windows 10+")
         if (manage_sessions or local_configuration) and (args.task or args.file or args.interface in {"chat", "tui"} or args.checks or args.resume):
             raise ValueError("local management cannot be combined with tasks or interactive interfaces")
+        if args.verify and (args.task or args.file or args.interface in {"chat", "tui"}):
+            raise ValueError("--verify cannot be combined with a task, file attachments, --chat or --tui; use /verify inside chat or TUI")
         config_path = args.config or os.environ.get("SPRIG_CONFIG")
         if args.config_schema:
             from .configuration_schema import configuration_schema
@@ -481,12 +502,12 @@ def main(argv=None):
             if args.no_config:
                 raise ValueError("--project-config cannot be combined with --no-config")
             settings = settings.with_project(args.project_config)
-        selected_interface = settings.selection(vars(args), os.environ)[2]
+        selected_interface = "cli" if args.verify else settings.selection(vars(args), os.environ)[2]
         if selected_interface is None:
             selected_interface = "tui" if not (args.task or args.resume or manage_sessions or local_configuration) and sys.stdin.isatty() and sys.stdout.isatty() else "cli"
         args.chat, args.tui = selected_interface == "chat", selected_interface == "tui"
-        if not (manage_sessions or local_configuration or args.resume or args.task or args.chat or args.tui):
-            raise ValueError("provide a task, --chat, --tui, or --resume NAME")
+        if not (manage_sessions or local_configuration or args.verify or args.resume or args.task or args.chat or args.tui):
+            raise ValueError("provide a task, --chat, --tui, --verify, or --resume NAME")
         if not local_configuration and args.chat and not sys.stdin.isatty():
             raise ValueError("--chat requires an interactive terminal")
         if not local_configuration and args.tui and (not sys.stdin.isatty() or not sys.stdout.isatty()):
@@ -495,7 +516,7 @@ def main(argv=None):
         if args.tui:
             options["stream"] = True
             options["_tui_stream"] = True
-        if manage_sessions or args.models or args.list_models or args.list_skills or args.list_mcp or manage_worktrees:
+        if manage_sessions or args.models or args.list_models or args.list_skills or args.list_mcp or manage_worktrees or args.verify:
             options["_manage_sessions"] = not args.list_models
             if args.list_models and not args.model:
                 options["model"] = "model-catalog"
@@ -552,6 +573,14 @@ def main(argv=None):
             else:
                 return 2
             return 0
+        if args.verify:
+            emit = lambda text: print(terminal_text(redact(text, key)), flush=True)
+            emit("Local fixed verification only; no model request or saved transcript. Each command requires fresh approval.")
+            tools = Tools(config, lambda text: approve(redact(text, key)))
+            agent = Agent(config, None, tools, emit)
+            _, result = agent.verify()
+            emit(json.dumps(result))
+            return 0 if result["verification"] == "passed" else 2
         if not config.api_key and config.base_url.startswith("https://api.openai.com/"):
             raise ValueError("set SPRIG_API_KEY or OPENAI_API_KEY (AGNES_API_KEY also works at the Agnes HTTPS origin)")
         if args.tui:
