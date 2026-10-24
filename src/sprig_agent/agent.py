@@ -31,6 +31,7 @@ from .web_fetch import WEB_SCHEMA
 from .jobs import JOB_SCHEMA
 from .lsp import LSP_SCHEMA
 from .tools import TOOL_SCHEMAS, Tools
+from .attachments import snapshots as file_snapshots
 
 
 def tool_arguments(function):
@@ -382,25 +383,7 @@ class Agent:
                            "snapshot_in_history": False, "network_contacted": False}
 
     def _file_snapshots(self, paths):
-        if not isinstance(paths, (list, tuple)) or not 1 <= len(paths) <= 16:
-            raise ValueError("attach between 1 and 16 workspace files at a time")
-        snapshots, summary, size = [], [], 0
-        for path in paths:
-            self._check_cancelled()
-            # Ranged reading validates the entire bounded file, including text
-            # outside the output cap. Never upload a silently partial attachment.
-            result = self.tools.execute("read_file", {"path": path, "offset": 1, "limit": 10000, "line_numbers": False})
-            if "error" in result:
-                raise ValueError("cannot attach file: " + result["error"])
-            length = len(result["content"].encode("utf-8"))
-            if result.get("truncated") or length > 32768:
-                raise ValueError("attachment must be complete and at most 32 KiB; max-output also applies. Use targeted model reads for larger files")
-            size += length
-            if size > 131072:
-                raise ValueError("file attachments exceed the 128 KiB batch limit")
-            snapshots.append({"path": result["path"], "content": result["content"]})
-            summary.append({"path": result["path"], "bytes": length})
-        return snapshots, summary
+        return file_snapshots(self.config, self.tools, paths, self._check_cancelled)
 
     def attach_files(self, paths, messages=None):
         """Add explicit user-selected snapshots, atomically and without HTTP."""

@@ -390,3 +390,9 @@ Sprig 已有显式分离预算和可选私有日志，但旧默认仍会在 16 K
 重新核对同一只读副本的 prompt 实现及固定 HEAD。已有会话的 shell 模式中，`usesModel` 为 false；新增会话另有前置选择检查。[判断位置](https://github.com/anomalyco/opencode/blob/9d90d892dcbfc52b47e95b2ea31b8aba877128fd/packages/tui/src/component/prompt/index.tsx#L1170-L1171)。提交分支直接调用 `client.api.session.shell` 并回到 normal 模式。[分支](https://github.com/anomalyco/opencode/blob/9d90d892dcbfc52b47e95b2ea31b8aba877128fd/packages/tui/src/component/prompt/index.tsx#L1311-L1319)。这是已读 UI 层的分流事实，本批没有运行上游或据此推断完整后端权限。
 
 Sprig 之前可由模型结束触发固定验收，也有编辑后检查，但没有供用户独立运行同一组 checks 的终端命令。现在接入[本地固定检查](../manual-verification.md)：原 argv 和逐次批准保持，chat/TUI `/verify` 的观察进入当前历史，一次性 `--verify` 无需模型凭据；应用不自动请求模型或递送下一条队列任务。结束前新引导和保存不确定不能被通过状态覆盖，旧意图也不会重放。它是固定验收工作流的补齐，未复制通用 shell 模式、扩张权限或宣称编码性能改善；实际本地范围见[记录](../benchmarks/manual-verification-20261024.json)。
+
+## 20. 附件读取与请求展示分别约束（2026-10-24）
+
+读取固定副本的 [local-attachment.ts](https://github.com/anomalyco/opencode/blob/9d90d892dcbfc52b47e95b2ea31b8aba877128fd/packages/tui/src/component/prompt/local-attachment.ts#L1-L96)：本地附件有独立的 20 MiB 读取预算，先检查文件元数据，再最多取预算加一个字节并检查实际读取量。该分支的文本类型是 SVG，其他支持的类型转成 data URI；不能把它当作普通源码文本上传、全请求上限或已验证的二进制权限隔离。本批未运行上游。
+
+Sprig 的既有完整文本快照复用了模型 `read_file` 的展示页，导致默认约 16 KB 即拒绝，并受 10000 行与 32 KiB 硬门槛影响。现在改用[显式有界快照读取](../file-snapshots.md)，单文件 1 MiB、整批 2 MiB，实际转义后的请求预算继续独立检查；批末还重查所有文件版本及隐私。用户选择完整正文与模型分页结果分别处理，实时引用原有刷新门槛保持。三协议 JSON/SSE 和 TUI 证据为离线夹具，不代表新的模型性能或图片支持。

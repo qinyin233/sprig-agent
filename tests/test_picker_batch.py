@@ -273,15 +273,15 @@ class BatchPickerTests(unittest.IsolatedAsyncioTestCase):
             await self.choose(pilot, "a.txt")
             await self.choose(pilot, "b.txt")
             entered, release = threading.Event(), threading.Event()
-            execute = app.tools.execute
-            def block(name, arguments):
-                result = execute(name, arguments)
-                if name == "read_file" and arguments.get("path") == "a.txt":
+            decode = app.tools._decode
+            def block(raw):
+                result = decode(raw)
+                if result == "BATCH_BODY_a.txt":
                     entered.set()
                     release.wait(10)
                 return result
             try:
-                with patch.object(app.tools, "execute", side_effect=block):
+                with patch.object(app.tools, "_decode", side_effect=block):
                     await self.click(pilot, "#picker-add")
                     await self.until(pilot, entered.is_set)
                     app.action_cancel()

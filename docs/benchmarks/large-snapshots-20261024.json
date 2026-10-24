@@ -1,0 +1,244 @@
+{
+  "schema": 1,
+  "scope": "complete explicit UTF-8 file snapshots, independent of tool display windows; bounded local reads and unchanged full-request admission",
+  "base_commit": "77dd178f37dc31d2fa0a654a3c340160de08ea17",
+  "frozen_functional_files": 210,
+  "frozen_raw_bytes_manifest_sha256": "08cd568988d2c4052836e7aa490a9a760519c6a2b969a36aa638e00718cdab35",
+  "source_manifest": {
+    "src/sprig_agent": {
+      "files": 68,
+      "sha256": "fa8f3564561592e97b9f7650d9e7f96c66503fd952edf60c3245e6de05822d34"
+    },
+    "tests": {
+      "files": 94,
+      "sha256": "1efbf8a086e3117e7516158b0e0ee0898b80e0c62398e9582835f2c846bc0625"
+    }
+  },
+  "manifest_algorithm": "sorted relative path + NUL + SHA256(LF-normalized bytes) hex + newline",
+  "changed_source_tests_sha256": {
+    "src/sprig_agent/agent.py": "eaa1d831c31bfa2d36c9977b78f8f14af184443e7e6259d52a1e3a65d05098db",
+    "src/sprig_agent/attachments.py": "9019fe0957e01cb83de408e2ea0fe8e5bed61c4a7ffecf9e5541a0362b820d26",
+    "tests/test_attachments.py": "9caca5615d814c5dbd58fa4c4c85bd43571f74831ac0a128ba98ff3fe81ff235",
+    "tests/test_attachment_snapshots.py": "2afc8c70995a3ee59676cf12db723da548d5bfd15501361550f2a24142424f41",
+    "tests/test_attachment_snapshots_ui.py": "65ec275c4fb6cb294f002ed831bd84e748bf69bed12d83c1973f2a8037c52dfd",
+    "tests/test_picker_batch.py": "a7a4b44fbd2200f84c11df8da25c30e1bf8f139d98d6bd2d2be8e5de98af7248"
+  },
+  "local_suites": [
+    {
+      "platform": "native Windows Python 3.13.0",
+      "tests": 1380,
+      "passed": 1361,
+      "skipped": 19,
+      "failures": 0,
+      "seconds": 561.675,
+      "log_sha256": "0cc9808051dc8cb0fe3f40074167c3e83db9a372ab62baf8a3179f6ede1bfdf0"
+    },
+    {
+      "platform": "local WSL Python 3.13.14",
+      "tests": 1380,
+      "passed": 1357,
+      "skipped": 23,
+      "failures": 0,
+      "seconds": 400.912,
+      "log_sha256": "44b37d72f96e682cadd2125abcfde962aa8b9bef46b409c02022e6a1110cf4f7"
+    }
+  ],
+  "minimum_python_suites": [
+    {
+      "platform": "native Windows Python 3.11.14, attachment suites",
+      "tests": 21,
+      "passed": 21,
+      "skipped": 0,
+      "failures": 0,
+      "seconds": 10.428,
+      "log_sha256": "2855daa447dfe65c3936775a1a86b6de03304e066dd13fefbdec38effa9415b0"
+    },
+    {
+      "platform": "native Windows Python 3.11.14, adapted picker suite",
+      "tests": 7,
+      "passed": 7,
+      "skipped": 0,
+      "failures": 0,
+      "seconds": 31.082,
+      "log_sha256": "0c91a4637297f756f6c534bc8bb256ca33a8147c902031798f3fc1afb414e0c2"
+    }
+  ],
+  "sdk_suites": [
+    {
+      "platform": "native Windows Python 3.12.12, mini 2.4.6 SDK",
+      "tests": 25,
+      "passed": 25,
+      "skipped": 0,
+      "failures": 0,
+      "seconds": 25.34,
+      "log_sha256": "babf7b5eb3c76acfd51fa8810f81665a8a5b9effb031c7514d24a599cb2dfe1e"
+    },
+    {
+      "platform": "local WSL Python 3.12.13, mini 2.4.6 SDK",
+      "tests": 25,
+      "passed": 25,
+      "skipped": 0,
+      "failures": 0,
+      "seconds": 174.43,
+      "log_sha256": "c39d2e8e352e5a8d8ce758ec9dc96851f235df54b9809092297cd94de95c6a7d"
+    }
+  ],
+  "related_suites": [
+    {
+      "platform": "native Windows, attachment suites",
+      "tests": 21,
+      "passed": 21,
+      "skipped": 0,
+      "failures": 0,
+      "seconds": 11.899,
+      "log_sha256": "cf9c62b1f8d437431ef5cf3b5e79a1004daa9f1b522855acb1da79a0557fc9af"
+    },
+    {
+      "platform": "native Windows, mentions",
+      "tests": 16,
+      "passed": 16,
+      "skipped": 0,
+      "failures": 0,
+      "seconds": 10.112,
+      "log_sha256": "9351abdb94c95f0da468bc5d31aee591ba2b3433b93dfa887b06cee881f9189b"
+    },
+    {
+      "platform": "native Windows, live references",
+      "tests": 28,
+      "passed": 27,
+      "skipped": 1,
+      "failures": 0,
+      "seconds": 5.99,
+      "log_sha256": "f89ceeb56c0ee84cf8064096be104ac7e12a8b3f85863f6b28ef91364ca13e39"
+    },
+    {
+      "platform": "native Windows, adapted picker",
+      "tests": 7,
+      "passed": 7,
+      "skipped": 0,
+      "failures": 0,
+      "seconds": 31.144,
+      "log_sha256": "15020a74b3cf4a146c943517d71a79b6481d39d503016e2ad05d788ef828cd15"
+    },
+    {
+      "platform": "local WSL, adapted picker",
+      "tests": 7,
+      "passed": 7,
+      "skipped": 0,
+      "failures": 0,
+      "seconds": 26.539,
+      "log_sha256": "e1937136e3b97540801a22930423a9a5ea674a1b61d187ff7a6915240c751ffc"
+    }
+  ],
+  "sdk_and_attachment_evidence_scope": "SDK and attachment checks preceded the final picker test hook adaptation; initial and final seals differ only in tests/test_picker_batch.py; application, fixtures, SDK and attachment tests are identical",
+  "initial_full_attempts": {
+    "excluded_from_success": true,
+    "runs": [
+      {
+        "platform": "native Windows, obsolete picker hook",
+        "tests": 1380,
+        "passed": 1360,
+        "skipped": 19,
+        "failures": 1,
+        "seconds": 558.96,
+        "log_sha256": "50b0db0f323ba5f7660f1d761dfe8bd97ac3420e93e4ecd637a381a08d0550d5"
+      },
+      {
+        "platform": "local WSL, obsolete picker hook",
+        "tests": 1380,
+        "passed": 1356,
+        "skipped": 23,
+        "failures": 1,
+        "seconds": 407.723,
+        "log_sha256": "f154e88a4990886bbb1cb9e504e2a0623dc022917299aedc6da7de8e6d35c3ed"
+      }
+    ],
+    "reason": "one existing cancellation test intercepted Tools.execute, which the new snapshot reader no longer calls",
+    "correction": "inject cancellation at actual Tools._decode boundary; retain original cancellation, no-commit, no-request and draft assertions; rerun both complete suites",
+    "only_change_after_initial_seal": [
+      "tests/test_picker_batch.py"
+    ]
+  },
+  "installed_wheel": {
+    "tests": 28,
+    "skipped": 0,
+    "wheel_source_modules_matching": 68,
+    "imported_installed_modules": 61,
+    "sdist_changed_source_tests_matching": 6,
+    "wheel_sha256": "341b82b4397ae17bb9c482ee3069533afaf82b5d7c3cc60ca9f27de8493e7b19",
+    "sdist_sha256": "24c02305575575db21f4982709988999d7d9cb031ff97598ba222b8f8ab6b62e",
+    "scope": "28 attachment and picker regressions loaded from copied tests; every imported application module verified under installed target; final validation JSON not claimed present in this sdist"
+  },
+  "isolated_parent_reader_negative": {
+    "tests": 2,
+    "expected_size_errors": 12,
+    "expected_privacy_failures": 1,
+    "skipped": 0,
+    "provider_complete_calls": 0,
+    "parent_commit": "77dd178f37dc31d2fa0a654a3c340160de08ea17",
+    "parent_reader_sha256": "b6852f0aa575947bf4e943540ac474fa8d28f2f6bf2abbd12e570c60a131bf74",
+    "scope": "isolated parent _file_snapshots with current frozen tests and unchanged tool/backend modules; all 12 larger inputs rejected, later privacy revocation missed; no external model request"
+  },
+  "fixture": {
+    "bytes": 132030,
+    "lines": 12002,
+    "sha256": "3e70cf7e3b5753cae58c7ece030cf453c15b996d625a8865e07b431102fd7480",
+    "content": "synthetic BOM, CRLF, Chinese, emoji, quotes, backslashes and final marker",
+    "positive_loopback_cases": 12,
+    "matrix": "history/run-only x Chat Completions/Messages/Responses x JSON/SSE",
+    "case_assertions": "one actual request per matrix case; exact whole decoded body; actual serialized bytes <= 1 MiB configured request budget; model read preview remains <= 256 bytes"
+  },
+  "new_test_methods": 15,
+  "regressions": [
+    "large inline snapshots via history, run-only context, one-shot CLI and 80x24 TUI",
+    "scripted loopback response validates complete body then edits actual file; edit and fixed SHA acceptance each freshly approved",
+    "stat rejects oversized input before body read; batch remaining budget rejects third body",
+    "64 KiB chunk cancellation; disabled tool and closed root before policy filesystem reads",
+    "complete credential, NUL and invalid UTF-8 suffix checks; configured secret redaction in body and receipt",
+    "batch rereads privacy/version observations after all file bodies; reject ordinary changes and revoked earlier path",
+    "escaped full request failure before history, baseline check or HTTP; TUI retains draft and selection, retries current content",
+    "run-only body absent from saved history and cleared after task; explicit /add persists only in private history"
+  ],
+  "limits": {
+    "max_files": 16,
+    "file_raw_bytes": 1048576,
+    "batch_raw_bytes": 2097152,
+    "chunk_bytes": 65536,
+    "explicit_local_read_caps_expanded": true,
+    "default_request_budget_expanded": false,
+    "live_reference_thresholds_changed": false,
+    "model_tool_schema_changed": false,
+    "os_backend_or_protocol_adapter_changes": false,
+    "multimodal_backend_added": false
+  },
+  "checks": [
+    "four uv lock files",
+    "schema equals generated schema; example TOML validates",
+    "targeted compileall of src, tests and scripts; CLI help",
+    "offline wheel/sdist build",
+    "28 copied regression tests against installed wheel; all imported application modules inside install target",
+    "final frozen functional bytes rechecked",
+    "local document file targets checked separately"
+  ],
+  "external_model_requests": 0,
+  "new_model_performance_conclusion": false,
+  "remote_ci": {
+    "status": "pending",
+    "triggered": false,
+    "freeze_before": "2026-11-01 Asia/Singapore",
+    "resume_requires": "verify account restriction and prior required gate"
+  },
+  "evidence_limits": [
+    "local WSL is not native GitHub Actions; platform skips are not passes",
+    "scripted loopback protocols and edit are implementation evidence, not real model coding performance",
+    "file version/privacy observations are not an atomic multi-file lock or permanent filesystem guarantee",
+    "text stays inline in context and private saved snapshots; file upload service and image/PDF/audio backend remain unsupported",
+    "wheel/sdist source and tests matched before final evidence JSON and later documentation edits; no claim of their inclusion in those artifacts",
+    "earlier real-model benchmark results unchanged"
+  ],
+  "document_checks": {
+    "files": 8,
+    "local_file_targets": 264,
+    "scope": "local file targets, not remote URLs or fragment anchors"
+  }
+}

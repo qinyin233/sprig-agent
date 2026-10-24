@@ -158,7 +158,7 @@ sprig [TASK] [--workdir PATH] [--file RELATIVE_PATH ...] [--model MODEL] [--base
 | --- | --- |
 | `TASK` | 新会话必填；使用 `--chat`、`--tui` 或恢复会话时可省略 |
 | `--workdir` | `.`，文件工具的工作根目录 |
-| `--file RELATIVE_PATH` | 可重复；发送任务前附加完整文件快照，仍检查隐私、大小、路径及上下文预算；TUI 也可 `/add 路径` |
+| `--file RELATIVE_PATH` | 可重复；附加[完整 UTF-8 快照](docs/file-snapshots.md)，单文件 1 MiB、整批 2 MiB 读取上限，仍受实际请求预算约束；TUI 也可 `/add 路径` |
 | `--ref-file PATH` | 可重复，别名 `--reference-file`；小文件在每次请求前刷新，大文件只发送路径和大小；TUI/chat 用 `/ref`、`/unref`、`/refs clear` 管理 |
 | `--config PATH` / `--no-config` | 显式可信 TOML 路径 / 禁用文件；默认用户 `~/.sprig/config.toml`，不搜索仓库 |
 | `--provider` | 选择命名提供商；否则 `SPRIG_PROVIDER` 或配置默认提供商 |

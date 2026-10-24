@@ -73,15 +73,16 @@ class AttachmentTests(unittest.TestCase):
         self.provider.complete.assert_not_called()
         self.approve.assert_not_called()
 
-    def test_large_partial_or_secret_suffixes_never_become_partial_attachments(self):
+    def test_display_limit_does_not_clip_snapshots_and_secret_suffixes_remain_blocked(self):
         limited = replace(self.config, max_output=256)
         tools = Tools(limited, self.approve)
         self.addCleanup(tools.close)
         agent = Agent(limited, self.provider, tools, lambda _: None)
         (self.root / "large").write_text("x" * 300, encoding="utf-8")
         (self.root / "secret-suffix").write_text("x\n" * 10000 + "sk-" + "x" * 32, encoding="utf-8")
-        with self.assertRaisesRegex(ValueError, "complete"):
-            agent.attach_files(["large"])
+        messages, result = agent.attach_files(["large"])
+        self.assertIn("x" * 300, messages[-1]["content"])
+        self.assertEqual(result["attached"], [{"path": "large", "bytes": 300}])
         with self.assertRaisesRegex(ValueError, "credentials"):
             agent.attach_files(["secret-suffix"])
         self.provider.complete.assert_not_called()
