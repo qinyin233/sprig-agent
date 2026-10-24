@@ -1,0 +1,170 @@
+{
+  "schema": 1,
+  "scope": "typed local application observations preserve actual human requests in timeline, summary projections and TUI draft retries; no text-prefix inference",
+  "base_commit": "e8452d5010b8a85ea51075db8bd2711e237e5796",
+  "frozen_functional_files": 216,
+  "frozen_raw_bytes_manifest_sha256": "72e44adaaa12596924a21de53c51180536d02c5ec754dab34fdf11e3b79a04cb",
+  "source_manifest": {
+    "src/sprig_agent": {
+      "files": 70,
+      "sha256": "61a34cabcffb3622e3d608a0f62d43a6710871edceb589ce81dad0d45ff85d43"
+    },
+    "tests": {
+      "files": 98,
+      "sha256": "6b279de7237c527558fdaa195aec4f868ee1cf96a85e8b25ecb75b820de01933"
+    }
+  },
+  "manifest_algorithm": "sorted relative path + NUL + SHA256(LF-normalized bytes) hex + newline",
+  "changed_source_tests_sha256": {
+    "src/sprig_agent/agent.py": "36511baf8b3ad953df94c2cbd686db7275c37154b24a6fa37f7f86c79776383b",
+    "src/sprig_agent/attachments.py": "aa3afc078d21ac130071a7d010a8b6bb32e87bc5ceb6d464427f5858ff339fe4",
+    "src/sprig_agent/context.py": "1b4ac7546d1c0e1e1bf5277d063ce6e1ecff2c1fa710ba46a66908e00f640b0f",
+    "src/sprig_agent/conversation_fork.py": "cd2ee8f646e042e6c11f60ce0ad5c07afc6406619216471bf5d45246a1c2bf46",
+    "src/sprig_agent/native_protocols.py": "bfea5ac74420f395c307b49f6532bc629043f7e6ac1140d46fcf896f294a8be6",
+    "src/sprig_agent/session.py": "f26b77f96bb60cfeb9df49533940fdc1474d80cb4cbd7b0ab5c768e6a374009c",
+    "src/sprig_agent/summary.py": "b0f8699fb5d340c3e7bb6f780deb9b9429eeef043eb64c6544ec41245a8eb441",
+    "src/sprig_agent/tui.py": "b30efb71ff124ef5001168c52b27a48b0254a2e86b7adb874f44f750b0ff2d50",
+    "src/sprig_agent/message_origin.py": "58053eef7de098d428abbde89accb630fef362ca5b3469a660eded2ba30e4d75",
+    "tests/test_message_origin.py": "6e8b640b0999d25bd5aa73548caf2831f5c708b78ff56f979bfb66fbd54c8c20",
+    "tests/test_message_origin_ui.py": "279d27cfa26e5ff53397169c48503f45d53ad94f47b0610880d06bcf0b07fa65"
+  },
+  "local_suites": [
+    {
+      "platform": "native Windows Python 3.13.0",
+      "tests": 1415,
+      "passed": 1396,
+      "skipped": 19,
+      "seconds": 594.524,
+      "log_sha256": "23c69a9d6471169e44efe626b4ebde5d5946e08560636e8520bb1573e6b6b03e"
+    },
+    {
+      "platform": "local WSL Python 3.13.14",
+      "tests": 1415,
+      "passed": 1392,
+      "skipped": 23,
+      "seconds": 426.644,
+      "log_sha256": "7e180ebd97d7fca5b80fc577baf552f8d5082256d11f78975f70078e268caef7"
+    },
+    {
+      "platform": "native Windows Python 3.11.14, new regressions",
+      "tests": 12,
+      "passed": 12,
+      "skipped": 0,
+      "seconds": 5.722,
+      "log_sha256": "1fa6d365b4a1f6f0427b8165d2ef40ca23078f71ad09affac7586971b434f0d1"
+    }
+  ],
+  "sdk_suites": [
+    {
+      "platform": "native Windows Python 3.12.12, mini SDK 2.4.6",
+      "tests": 25,
+      "passed": 25,
+      "skipped": 0,
+      "seconds": 39.546,
+      "log_sha256": "ba803f457e80c5a1342561241ef17f3412ca59e22bf0fa9d9ba3e12a43bb8246"
+    },
+    {
+      "platform": "local WSL Python 3.12.13, mini SDK 2.4.6",
+      "tests": 25,
+      "passed": 25,
+      "skipped": 0,
+      "seconds": 170.347,
+      "log_sha256": "2114a88f363425705b1bf6abf15f79ca720d302b92612b7a7a1c2ac69bdcbeb1"
+    }
+  ],
+  "related_suites": [
+    {
+      "platform": "native Windows, provenance and existing summary/fork/verification",
+      "tests": 49,
+      "passed": 49,
+      "skipped": 0,
+      "seconds": 29.716,
+      "log_sha256": "98480eabb3580210c7dff4a8bd4080750c7d5179f0fe37d921d965a5cd5be290"
+    },
+    {
+      "platform": "local WSL, new regressions",
+      "tests": 12,
+      "passed": 12,
+      "skipped": 0,
+      "seconds": 3.948,
+      "log_sha256": "d7024c605324e8d3fbd3d63702a319a06a4e66b17cbbabb347ba8202042cb383"
+    }
+  ],
+  "installed_wheel": {
+    "tests": 35,
+    "skipped": 0,
+    "wheel_source_modules_matching": 70,
+    "imported_installed_modules": 63,
+    "sdist_changed_source_tests_matching": 11,
+    "wheel_sha256": "aa7a05b97f7b353d816fcfc30a7436fa4f1bb4fad07d8c6d9089fa4935ba23f2",
+    "sdist_sha256": "bf96600d2a7e22f643bb6e3a6242593dd87f33065e4cb0fdf4410358f8cf0d43",
+    "scope": "35 message provenance and image input regressions loaded from copied tests; every imported application module verified under installed target; final validation JSON not claimed present in this sdist"
+  },
+  "original_regressions": {
+    "tests": 2,
+    "expected_failures": 2,
+    "log_sha256": "fb0c3167b56f16c0cf0ed002ddf77b2c0e715245732104002947ee1dd5f4b73e",
+    "scope": "before consumer fixes: explicit application notice replaces actual request in summary and creates extra timeline turn"
+  },
+  "isolated_old_tui_selector": {
+    "tests": 1,
+    "expected_failures": 1,
+    "errors": 0,
+    "skipped": 0,
+    "scope": "isolated old role-only predicate in current TUI; failed-save retry appends duplicate real task; actual approvals and local checks, scripted provider only"
+  },
+  "new_test_methods": 12,
+  "actual_protocol_cases": 3,
+  "protocol_case_assertions": "origin absent from native request fields; exact bytes equal the same text with origin metadata removed",
+  "regressions": [
+    "source-bound summary keeps exact real request instead of newer application notice",
+    "timeline and local fork keep observations with the real human turn and preserve original message indices",
+    "literal notice-looking human input and legacy unmarked histories stay human; no text-prefix migration",
+    "actual failed baseline and final acceptance remain failed while originating no extra human task",
+    "private save/load preserves origin; malformed or redaction-conflicting origin refuses overwrite and load",
+    "three actual native protocol requests remove internal origin metadata without changing body bytes",
+    "unknown/invalid roles, marker types and mixed delivery or native identities refuse before HTTP",
+    "attachment-only context is not a task or branch point; local verification stays observational and makes no query",
+    "output-token limit, background completion and workspace-change notices retain observation provenance",
+    "80x24 TUI failed-save retry via Enter retains one request; each local baseline and acceptance command freshly approved",
+    "TUI restored history labels context separately while preserving literal human text"
+  ],
+  "compatibility": "new observations are tagged; legacy user-role records without provenance are not reclassified; marker cannot grant approval, current read versions or acceptance",
+  "checks": [
+    "four uv lock files",
+    "schema equals generated schema; example TOML validates",
+    "compileall src/tests/scripts",
+    "CLI help",
+    "offline wheel/sdist build",
+    "35 installed-wheel provenance/image regressions; all imported application modules under installed target",
+    "70 wheel application modules and 11 changed source/test files match",
+    "frozen functional digest checked",
+    "local document file targets"
+  ],
+  "document_checks": {
+    "files": 5,
+    "local_file_targets": 168,
+    "deferred_links": 0,
+    "scope": "local file targets, not remote URLs or fragment anchors"
+  },
+  "external_model_requests": 0,
+  "model_tool_schema_or_default_budget_expansion": false,
+  "os_backend_changes": false,
+  "new_dependencies": false,
+  "new_model_performance_conclusion": false,
+  "remote_ci": {
+    "status": "pending",
+    "triggered": false,
+    "freeze_before": "2026-11-01 Asia/Singapore",
+    "resume_requires": "verify account restriction and prior required gate"
+  },
+  "evidence_limits": [
+    "local WSL is not native GitHub Actions; platform skips are not passes",
+    "source metadata is local type information, not fresh side-effect approval or scientific evidence of authorship",
+    "legacy unmarked application notices can still appear as user turns; no unsafe text-based retroactive migration",
+    "summary remains lossy; retaining the latest real request does not prove all requirements survive",
+    "scripted replies and actual disposable commands prove workflow implementation, not improved real model task performance",
+    "no new Click result or external model request; previous incomplete benchmarks unchanged",
+    "final evidence JSON and later doc wording not claimed present in the earlier tested sdist"
+  ]
+}

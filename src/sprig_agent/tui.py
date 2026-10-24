@@ -27,6 +27,7 @@ from .composer import DraftPastes, MAX_PASTE_BYTES, paste_text
 from .mentions import DraftFiles, mention_query
 from .model_selection import ModelSwitch
 from .conversation_fork import ConversationFork, timeline_page, turn_catalog
+from .message_origin import application_origin, user_request
 from .provider import Provider
 from .picker import PickerScreen
 from .question_ui import QuestionScreen
@@ -1170,7 +1171,7 @@ class SprigApp(App[int]):
             raise ValueError("分支已取消或被新要求取代；原对话和草稿保留")
         old_store, pending_draft = self.store, self._draft_submission
         self.agent, self.messages, self.store, self.session_name = candidate.commit(self.session_dir)
-        latest_user = next((row for row in reversed(self.messages) if row["role"] == "user"), {})
+        latest_user = next((row for row in reversed(self.messages) if user_request(row)), {})
         self._draft_submission = pending_draft if pending_draft is not None and latest_user.get("content") == redact(pending_draft[2], self.config.secrets) else None
         self.query_one("#session-name", Input).value = self.session_name or ""
         self.refresh_plan()
@@ -1197,7 +1198,7 @@ class SprigApp(App[int]):
         pending_draft = self._draft_submission
         self.agent, self.messages, self.store, self.session_name = candidate.commit(self.session_dir)
         self.config = self.agent.config
-        latest_user = next((row for row in reversed(self.messages or []) if row.get("role") == "user"), {})
+        latest_user = next((row for row in reversed(self.messages or []) if user_request(row)), {})
         self._draft_submission = pending_draft if pending_draft is not None and latest_user.get("content") == redact(pending_draft[2], self.config.secrets) else None
         self.query_one("#session-name", Input).value = self.session_name or ""
         self.query_one("#context", Static).update(self.safe(
@@ -1310,7 +1311,7 @@ class SprigApp(App[int]):
                     self.start()
         else:
             previous = self._draft_submission
-            latest_user = next((message for message in reversed(self.messages or []) if message.get("role") == "user"), {})
+            latest_user = next((message for message in reversed(self.messages or []) if user_request(message)), {})
             retry = previous is not None and previous[2] == task and latest_user.get("content") == redact(task, self.config.secrets)
             self._draft_submission = (event.editor.id, event.draft, task)
             self.start(None if retry else task, context_files=event.files, preflight=event.preflight)
@@ -1422,7 +1423,7 @@ class SprigApp(App[int]):
         return self.store
 
     def show_history(self):
-        self.append("".join("\n" + message["role"] + "> " + message["content"] + "\n"
+        self.append("".join("\n" + ("context" if application_origin(message) else message["role"]) + "> " + message["content"] + "\n"
                             for message in self.messages or []
                             if message["role"] in {"user", "assistant"} and message.get("content")))
         self.event("已加载对话内容；未发起模型请求，未重放工具")

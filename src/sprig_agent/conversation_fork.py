@@ -9,6 +9,7 @@ from .context import prepare_context
 from .json_budget import encoded_size
 from .session import MAX_SESSION, SessionStore, validate_history
 from .summary import fingerprint
+from .message_origin import user_request
 
 
 def turn_catalog(messages, secrets=(), check=lambda: None):
@@ -16,7 +17,7 @@ def turn_catalog(messages, secrets=(), check=lambda: None):
         return []
     encoded_size(messages, max_bytes=MAX_SESSION, check_cancelled=check)
     clean = validate_history(messages)
-    starts = [i for i, row in enumerate(clean) if row["role"] == "user"]
+    starts = [i for i, row in enumerate(clean) if user_request(row)]
     rows = []
     for position, index in enumerate(starts):
         check()
@@ -55,7 +56,7 @@ class ConversationFork:
             raise ValueError("wait for an idle, valid conversation before branching")
         encoded_size(messages, max_bytes=MAX_SESSION, check_cancelled=original._check_cancelled)
         clean = validate_history(messages)
-        if not any(row["role"] == "user" for row in clean):
+        if not any(user_request(row) for row in clean):
             raise ValueError("no user turn is available to branch")
         if target == "current":
             end = len(clean)

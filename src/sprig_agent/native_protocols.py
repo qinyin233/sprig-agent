@@ -147,6 +147,7 @@ def payload(config, messages, tools, *, check_cancelled=None):
     """Build the exact wire payload used both for counting and sending."""
     protocol = config.wire_api
     from .image_inputs import wire_content
+    from .message_origin import application_origin
     definitions, history, system = [], [], []
     for tool in tools:
         function = tool["function"]
@@ -157,6 +158,7 @@ def payload(config, messages, tools, *, check_cancelled=None):
             definitions.append({"type": "function", "name": function["name"], "description": function.get("description", ""),
                                 "parameters": function["parameters"], "strict": False})
     for message in messages:
+        application_origin(message)
         role = message["role"]
         content = wire_content(message, protocol, config.secrets, check_cancelled or (lambda: None))
         if protocol == "messages" and role == "system":

@@ -22,6 +22,7 @@ from .summary import summary_state
 from .command_logs import log_state
 from .input_inbox import INPUT_ID, UserInput, InputChanged, delivered_inputs, input_state, remaining_inputs, input_revision
 from .image_inputs import IMAGE_KEY, images
+from .message_origin import ORIGIN, application_origin
 
 _PRESERVE_INPUTS = object()
 
@@ -80,6 +81,7 @@ def validate_history(messages):
             raise SessionError("invalid session message")
         role, content = message.get("role"), message.get("content")
         try:
+            is_application = application_origin(message)
             image_rows = images(message)
         except ValueError as error:
             raise SessionError(str(error)) from None
@@ -110,6 +112,8 @@ def validate_history(messages):
             if (role == "system") != (index == 0):
                 raise SessionError("session must start with one system message")
             row = {"role": role, "content": content}
+            if is_application:
+                row[ORIGIN] = "application"
             if image_rows:
                 row[IMAGE_KEY] = image_rows
             if INPUT_ID in message:
@@ -293,6 +297,11 @@ class SessionStore:
                 payload["file_references"] = selected
         payload = redact(payload, self.config.secrets)
         for row in payload["messages"] if isinstance(payload.get("messages"), list) else ():
+            if isinstance(row, dict) and ORIGIN in row:
+                try:
+                    application_origin(row)
+                except ValueError:
+                    raise SessionError("invalid application origin; no data was overwritten") from None
             if isinstance(row, dict) and IMAGE_KEY in row:
                 try:
                     images(row, self.config.secrets)
@@ -385,9 +394,10 @@ class SessionStore:
         history = redact(validate_history(saved.get("messages")), self.config.secrets)
         for row in history:
             try:
+                application_origin(row)
                 images(row, self.config.secrets)
             except ValueError:
-                raise SessionError("invalid or redaction-conflicting saved image; no history sent") from None
+                raise SessionError("invalid saved message metadata or image; no history sent") from None
         try:
             selected = reference_state(saved.get("file_references"))
             checkpoint = summary_state(saved.get("summary_checkpoint"), history, binding=self.config.binding())

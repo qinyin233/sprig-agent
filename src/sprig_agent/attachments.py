@@ -4,6 +4,7 @@ import os
 from .config import redact
 from .tools import ToolError
 from .image_inputs import IMAGE_KEY, MAX_IMAGE_BATCH_BYTES, encode_image, is_image
+from .message_origin import application_message
 
 MAX_FILE_BYTES = 1024 * 1024
 MAX_BATCH_BYTES = 2 * 1024 * 1024
@@ -93,7 +94,7 @@ def snapshot_message(frames, prefix, secrets):
             data.append({key: value for key, value in image.items() if key != "data"})
         else:
             data.append(row)
-    message = {"role": "user", "content": redact(prefix + "\n" + json.dumps(data, ensure_ascii=False), secrets)}
+    message = application_message(redact(prefix + "\n" + json.dumps(data, ensure_ascii=False), secrets))
     if selected:
         message[IMAGE_KEY] = selected
     return message
