@@ -162,8 +162,16 @@ def chat(agent, task, messages, emit, *, autostart=True, model_selection=None, s
     while True:
         try:
             task = input("sprig> ")
+            from .prompt_templates import expand_prompt
+            expanded = expand_prompt(agent.config, task)
+            if expanded is not None:
+                run(expanded)
+                continue
             if task.lstrip().split(None, 1)[:1] != ["/queue"]:
                 task = task.strip()
+        except ValueError as error:
+            emit("Prompt not sent: " + redact(str(error), agent.config.secrets))
+            continue
         except EOFError:
             return status
         except KeyboardInterrupt:
@@ -216,7 +224,11 @@ def chat(agent, task, messages, emit, *, autostart=True, model_selection=None, s
                     if action == "apply" and result.get("applied_inputs"):
                         status = 2
                     emit(json.dumps(result, ensure_ascii=False))
+            elif task == "/prompts" or task.startswith("/prompts "):
+                from .prompt_templates import prompt_catalog
+                emit(json.dumps(prompt_catalog(agent.config, int(task[9:].strip()) if task[9:].strip() else 0), ensure_ascii=False))
             elif task == "/help":
+                emit("/prompts [OFFSET] lists configured task templates; /NAME arguments sends an expanded ordinary task. Expansion never runs commands or changes the model. Numbered arguments use quotes with literal backslashes; $$ escapes a dollar.")
                 emit('/queue TEXT only stores a queued task; /queue add "JSON text" preserves whitespace; /queue run explicitly starts sequential model calls with a fresh per-item step limit. Ctrl+C pauses subsequent items. /pending delivery ID steer|queue changes mode after fresh confirmation.')
                 emit('/pending lists local inputs and IDs; show ID [CHAR_OFFSET] pages full text; edit ID "JSON text", drop ID, move ID POSITION or delivery ID steer|queue asks fresh local approval. manage opens the --tui manager. apply delivers guidance locally and retains queued items, discard confirms removal; /continue resumes current work, /queue run explicitly starts queued work.')
                 emit('/lsp shows configured servers without startup; /lsp definition|references|implementation|hover SERVER PATH LINE COLUMN, symbols|diagnostics SERVER PATH, or workspace_symbols SERVER QUERY asks fresh approval; /lsp result ID [OFFSET] reads a local page. Positions are 1-based Unicode columns. Servers cannot apply edits or commands through this client.')
@@ -452,6 +464,7 @@ def main(argv=None):
     group.add_argument("--show-config", action="store_true", help="show effective settings with credential values withheld; no model request")
     group.add_argument("--doctor", action="store_true", help="check configuration, workspace privacy rules and dependencies offline")
     group.add_argument("--models", action="store_true", help="list configured model aliases offline; no provider request")
+    group.add_argument("--list-prompts", nargs="?", const=0, type=int, metavar="OFFSET", help="list a bounded page of configured prompt metadata offline; no credentials or model request")
     group.add_argument("--list-skills", action="store_true", help="inspect explicitly configured skill metadata offline; no model or script execution")
     group.add_argument("--list-mcp", action="store_true", help="show configured MCP endpoints offline; no connection or model credentials required")
     group.add_argument("--list-models", action="store_true", help="explicit GET /models on the selected provider; no chat completion")
@@ -477,7 +490,7 @@ def main(argv=None):
             raise ValueError("--worktree-ref requires --create-worktree")
         if args.dry_run and not args.prune_sessions:
             raise ValueError("--dry-run requires --prune-sessions")
-        local_configuration = args.init_config or args.show_config or args.doctor or args.models or args.list_models or args.config_schema or args.list_skills or args.list_mcp or manage_worktrees
+        local_configuration = args.init_config or args.show_config or args.doctor or args.models or args.list_models or args.config_schema or args.list_skills or args.list_mcp or args.list_prompts is not None or manage_worktrees
         if os.name not in {"posix", "nt"}:
             raise ValueError("Sprig requires Linux/macOS or Windows 10+")
         if (manage_sessions or local_configuration) and (args.task or args.file or args.interface in {"chat", "tui"} or args.checks or args.resume):
@@ -516,16 +529,25 @@ def main(argv=None):
         if args.tui:
             options["stream"] = True
             options["_tui_stream"] = True
-        if manage_sessions or args.models or args.list_models or args.list_skills or args.list_mcp or manage_worktrees or args.verify:
+        if manage_sessions or args.models or args.list_models or args.list_skills or args.list_mcp or args.list_prompts is not None or manage_worktrees or args.verify:
             options["_manage_sessions"] = not args.list_models
             if args.list_models and not args.model:
                 options["model"] = "model-catalog"
         config, details = settings.resolve(options, os.environ)
         details["interface"] = selected_interface
+        if args.task:
+            from .prompt_templates import expand_prompt
+            expanded_task = expand_prompt(config, args.task)
+            if expanded_task is not None:
+                args.task = expanded_task
         key = config.secrets
         show_metrics = config.show_metrics
         session_dir = config.session_dir or Path.home() / ".local/state/sprig-agent/sessions"
         change_dir = config.change_history_dir
+        if args.list_prompts is not None:
+            from .prompt_templates import prompt_catalog
+            print(terminal_text(json.dumps(prompt_catalog(config, args.list_prompts), ensure_ascii=False)))
+            return 0
         if manage_worktrees:
             from .worktrees import worktree_action
             result = worktree_action(config, approve, path=args.create_worktree,

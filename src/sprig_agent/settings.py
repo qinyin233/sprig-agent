@@ -60,6 +60,11 @@ enabled = false # opt-in public HTTP(S) documents; every fetch needs fresh appro
 # [tui.keybindings]
 # help = ["f1"]
 # toggle_sidebar = ["ctrl+b"]
+
+# Optional reusable task text; /review ARGUMENTS sends an ordinary task.
+# [prompts.review]
+# description = "Review a change"
+# template = "Review the code and suggest checks: $ARGUMENTS"
 '''
 
 
@@ -127,6 +132,7 @@ GROUP_FIELDS = {
     "mcp": {"servers"},
     "lsp": {"servers"},
     "web": {"enabled"},
+    "prompts": set(),
 }
 TUI_FIELDS = {"theme": "tui_theme", "sidebar": "tui_sidebar", "editor_height": "tui_editor_height",
               "steering_mode": "steering_mode", "metrics": "show_metrics", "keybindings": "tui_keybindings"}
@@ -188,6 +194,9 @@ def _flatten(layer, directory):
         values["lsp_servers"] = parse_lsp(layer["lsp"]["servers"])
     if "enabled" in layer.get("web", {}):
         values["web_enabled"] = layer["web"]["enabled"]
+    if "prompts" in layer:
+        from .prompt_templates import parse_templates
+        values["prompt_templates"] = parse_templates(layer["prompts"])
     for name, value in layer.get("storage", {}).items():
         if name.endswith("_dir"):
             value = Path(value).expanduser()
@@ -200,6 +209,10 @@ def _flatten(layer, directory):
 
 def _validate_layer(layer, directory):
     for name, fields in GROUP_FIELDS.items():
+        if name == "prompts":
+            from .prompt_templates import parse_templates
+            parse_templates(layer.get(name, {}))
+            continue
         entry = _table(layer.get(name, {}), fields, name)
         if name == "tools" and any(type(value) is not bool for value in entry.values()):
             raise ValueError("tool settings must be booleans")
@@ -270,8 +283,8 @@ def _validate(data, directory, *, project=False):
     if project:
         # An explicit repository file may tune requests and tighten tool policy.
         # It cannot route credentials, inject environment, or persist transcripts.
-        if set(data) & {"execution", "storage", "skills", "mcp", "web", "lsp"}:
-            raise ValueError("project configuration cannot change execution environment, storage, skill roots, MCP/LSP servers or web opt-in")
+        if set(data) & {"execution", "storage", "skills", "mcp", "web", "lsp", "prompts"}:
+            raise ValueError("project configuration cannot change execution environment, storage, skill roots, MCP/LSP servers, web opt-in or trusted prompts")
         if "keybindings" in data.get("tui", {}):
             raise ValueError("project configuration cannot change trusted keyboard shortcuts")
         if any(data.get("agent", {}).get(name) for name in ("inherit_env", "checks")):
@@ -460,8 +473,13 @@ class Settings:
         sources = {name: "default" for name in {*AGENT_DEFAULTS, *GENERATION_FIELDS, *TRANSPORT_FIELDS,
                     *TUI_FIELDS.values(), "instruction_files", "response_language", "excluded_paths",
                     "session_dir", "change_history_dir", "command_log_dir", "auto_save_session", "env_allowlist", "command_env",
-                    "session_max_age_days", "session_max_count", "command_output_limit", "background_enabled", "background_timeout", *CONTEXT_FIELDS.values()}}
+                    "session_max_age_days", "session_max_count", "command_output_limit", "background_enabled", "background_timeout", "prompt_templates", *CONTEXT_FIELDS.values()}}
         def apply(entries, label):
+            if "prompt_templates" in entries:
+                merged_prompts = {row.name: row for row in values.get("prompt_templates", ())}
+                merged_prompts.update((row.name, row) for row in entries["prompt_templates"])
+                sources.update({"prompts." + row.name: label for row in entries["prompt_templates"]})
+                entries = {**entries, "prompt_templates": tuple(merged_prompts.values())}
             if "tui_keybindings" in entries:
                 merged = dict(values.get("tui_keybindings", ()))
                 merged.update(entries["tui_keybindings"])
@@ -597,6 +615,8 @@ def public_config(config, metadata):
             "files": {"exclude": config.excluded_paths},
             "instructions": {"files": config.instruction_files, "response_language": config.response_language},
             "skills": {"dirs": [str(path) for path in config.skill_dirs]},
+            "prompts": [{"name": row.name, "description": row.description, "template_bytes": len(row.template.encode("utf-8"))}
+                        for row in config.prompt_templates],
             "web": {"enabled": config.web_enabled, "direct_only": True, "persistent_cache": False},
             "background": {"enabled": config.background_enabled, "timeout": config.background_timeout, "persistent": False},
             "mcp": {"servers": [server.public() for server in config.mcp_servers]},

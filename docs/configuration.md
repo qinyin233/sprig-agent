@@ -111,6 +111,8 @@ TUI 内也可输入 `/add src/main.py`；路径有空格时整段作为一个相
 
 模型也可用[`read_file(image=true)`](model-image-reads.md)提出查看工作区图片，逐次确认发送像素，当前调用内有界保留；不增加模型工具名或配置开关。`[tools].read_file=false` 同时禁止文本和图片读取；只读模式仍可在确认后查看图片，命令和写入继续禁止。
 
+常用任务可放在用户/profile 的 [`[prompts.NAME]`](prompt-templates.md)，配置 `template` 和可选 `description`，用 `/NAME 参数` 作为普通任务或执行中引导发送。支持完整参数、编号参数和字面美元符号，不执行 shell/读文件/环境替换，不改模型或批准策略。`/prompts [OFFSET]`、`--list-prompts [OFFSET]` 离线分页列出元数据；模板正文只在实际调用后进入会话。显式项目层不能添加模板。
+
 需要后续修改自动刷新的文件时，用 `/ref PATH` 或启动参数 `--ref-file PATH`，配置为 `[context].files = ["src/main.py"]`。每次请求前刷新完整小文件，较大文件只提供路径和大小，按需读取；正文不因引用本身复制到保存历史。引用集合随会话保存与恢复，新建对话清空。配置是新会话的初始选择；恢复会话沿用已保存选择，显式 CLI 标志再合并。完整范围、Windows 路径和隐私说明见[实时文件引用](live-file-references.md)。TUI 也支持 `@关键词` 后按 Tab 选择[仅本轮使用的文件](tui-mentions.md)，主输入框 Enter 发送；手动粘贴同样的标记不会自动附加正文。
 
 超长单行可由文件工具使用版本绑定的字节游标继续读取；附件仍要求完整文件。TUI 单条发送文本和待处理引导分别受 UTF-8 字节限制，超限保留草稿；具体上限、续读行为和传输格式见[文件与大文本](text-transfer.md)。

@@ -18,6 +18,7 @@ from textual.widgets import Button, Footer, Header, Input, RichLog, Static, Tabb
 from textual.worker import get_current_worker
 
 from .agent import Agent
+from .prompt_templates import expand_prompt, prompt_catalog
 from .input_inbox import (InputInbox, UserInput, InputChanged, input_state, input_preview, new_input,
                           change_inputs, check_input_growth, input_change_prompt, input_page, input_revision, pending_command)
 from .input_inbox import delivered_inputs, queue_command
@@ -220,7 +221,7 @@ class TaskInput(TextArea):
     def action_send(self):
         self.pastes.sync(self.text)
         queued = self.text.lstrip().split(None, 1)[:1] == ["/queue"]
-        text = self.pastes.expanded() if self.verbatim_paste or queued else self.text.strip()
+        text = self.pastes.expanded() if self.verbatim_paste or queued or self.text.lstrip().startswith("/") else self.text.strip()
         if text.strip() and not getattr(self, "_sending", False):
             self._sending = True
             self.post_message(self.Submitted(self, text, self.text))
@@ -1257,7 +1258,12 @@ class SprigApp(App[int]):
                 isinstance(self.screen, ApprovalScreen) and self.screen.allow_steering):
             return
         limit = self.config.max_context_bytes
+        templated = False
         try:
+            if not event.literal:
+                expanded = expand_prompt(self.config, task)
+                if expanded is not None:
+                    task, templated = expanded, True
             if len(task) > limit or len(task.encode("utf-8")) > limit:
                 raise ValueError(f"单条输入超过 {limit} UTF-8 字节；请缩短或保存到工作区文件后按范围读取。")
         except UnicodeEncodeError:
@@ -1266,7 +1272,7 @@ class SprigApp(App[int]):
         except ValueError as error:
             self.reject_input(str(error))
             return
-        command = task.strip()
+        command = "" if templated else task.strip()
         queue_mode = getattr(event, 'queue_paste_mode', None)
         if command.split(None, 1)[:1] == ['/queue'] and (not event.literal or queue_mode is not None):
             if event.files:
@@ -1314,7 +1320,7 @@ class SprigApp(App[int]):
             latest_user = next((message for message in reversed(self.messages or []) if user_request(message)), {})
             retry = previous is not None and previous[2] == task and latest_user.get("content") == redact(task, self.config.secrets)
             self._draft_submission = (event.editor.id, event.draft, task)
-            self.start(None if retry else task, context_files=event.files, preflight=event.preflight)
+            self.start(None if retry else task, context_files=event.files, preflight=event.preflight or templated)
 
     def queue_guidance(self, task, *, delivery="steer"):
         if self._input_inbox.blocked:
@@ -1565,12 +1571,19 @@ class SprigApp(App[int]):
                         "/queue 正文 仅收存下一项；/queue add JSON字符串 保留空白；/queue run 明确顺序请求模型，/queue pause 暂停后续项。\n"
                         "/pending delivery ID steer|queue 逐次确认切换模式；管理窗口也可使用“模式”按钮。\n"
                         "/worktrees /worktree 新目录路径（完整剩余文本作为路径；不会切换当前对话）\n"
+                        "/prompts [OFFSET] 列出任务模板；/模板名 参数直接发送展开任务，执行中作为引导；模板不执行本地操作。\n"
                         "执行中可输入普通消息调整引导。// 开头发送以 / 开头的普通消息。\n"
                         "Tab 补全本地命令或 /add、/ref 的文件参数；普通消息 @关键词 + Tab 选择本轮文件。\n"
                         "选择不会发送任务；Enter 发送时读取文件，修改/删除标记撤销选择；/ref 用于后续轮次实时引用。\n"
                         "长粘贴只折叠显示；F4 或“展开粘贴”查看编辑，完整正文仍计入请求预算。\n"
                         "/model 打开配置模型选择；/model 提供商/别名 或 @startup 明确切换，需确认且不发送请求。恢复仍校验绑定。\n"
                         "/timeline 或 /fork 选择历史轮次；/fork current 或 消息号 明确建立分支。文件不回滚，草稿保留，Enter 才请求模型。\n")
+            return
+        if command == "/prompts":
+            try:
+                self.append("\n" + json.dumps(prompt_catalog(self.config, int(argument) if argument else 0), ensure_ascii=False) + "\n")
+            except ValueError as error:
+                self.reject_input(str(error))
             return
         if command == "/keys":
             self.append("\n[快捷键] Enter 发送；Shift+Enter / Ctrl+J 换行；F4 展开粘贴；Ctrl+C 取消；Ctrl+Q 退出；Ctrl+L 输入。审批默认拒绝。\n"

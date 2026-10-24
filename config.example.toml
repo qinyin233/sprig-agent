@@ -205,3 +205,16 @@ timeout = 15
 deadline = 60
 # env = { NODE_ENV = "production" }
 # env_from = { API_TOKEN = "LSP_LOCAL_TOKEN" }
+
+# Explicit reusable task text, from trusted user/profile settings only.
+# /review ARGUMENTS sends the expanded task; Tab only completes the name.
+[prompts.review]
+description = "Review a change and propose checks"
+template = """Review the current code for correctness and missing tests.
+Scope: $ARGUMENTS
+Read the relevant files first; explain findings and propose changes."""
+
+# Numbered arguments use quotes for spaces; backslashes remain literal.
+[prompts.explain]
+description = "Explain one named file or concept"
+template = "Explain $1, with concrete examples."

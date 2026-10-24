@@ -668,6 +668,87 @@
       },
       "additionalProperties": false
     },
+    "prompts": {
+      "type": "object",
+      "maxProperties": 32,
+      "propertyNames": {
+        "pattern": "^[a-z][a-z0-9_-]{0,31}$",
+        "not": {
+          "enum": [
+            "add",
+            "cancel",
+            "changes",
+            "compact",
+            "config",
+            "context",
+            "continue",
+            "delete",
+            "diff",
+            "discard-history",
+            "exit",
+            "files",
+            "fork",
+            "git",
+            "help",
+            "history",
+            "job",
+            "jobs",
+            "keys",
+            "log",
+            "logs",
+            "lsp",
+            "map",
+            "mcp",
+            "model",
+            "models",
+            "new",
+            "pending",
+            "plan",
+            "prompts",
+            "prune",
+            "queue",
+            "redo",
+            "ref",
+            "refs",
+            "restore",
+            "save",
+            "sessions",
+            "skill",
+            "skills",
+            "status",
+            "summary",
+            "timeline",
+            "undo",
+            "unref",
+            "usage",
+            "verify",
+            "web",
+            "worktree",
+            "worktrees"
+          ]
+        }
+      },
+      "additionalProperties": {
+        "type": "object",
+        "properties": {
+          "template": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 16384,
+            "description": "Literal task text, at most 16 KiB UTF-8. $ARGUMENTS or contiguous $1..$9, $$ for a literal dollar. No shell, file or environment interpolation."
+          },
+          "description": {
+            "type": "string",
+            "maxLength": 160
+          }
+        },
+        "additionalProperties": false,
+        "required": [
+          "template"
+        ]
+      },
+      "description": "Trusted user/profile prompt library, at most 48 KiB UTF-8 total; project settings cannot define prompts."
+    },
     "tui": {
       "type": "object",
       "properties": {
@@ -1759,6 +1840,87 @@
               }
             },
             "additionalProperties": false
+          },
+          "prompts": {
+            "type": "object",
+            "maxProperties": 32,
+            "propertyNames": {
+              "pattern": "^[a-z][a-z0-9_-]{0,31}$",
+              "not": {
+                "enum": [
+                  "add",
+                  "cancel",
+                  "changes",
+                  "compact",
+                  "config",
+                  "context",
+                  "continue",
+                  "delete",
+                  "diff",
+                  "discard-history",
+                  "exit",
+                  "files",
+                  "fork",
+                  "git",
+                  "help",
+                  "history",
+                  "job",
+                  "jobs",
+                  "keys",
+                  "log",
+                  "logs",
+                  "lsp",
+                  "map",
+                  "mcp",
+                  "model",
+                  "models",
+                  "new",
+                  "pending",
+                  "plan",
+                  "prompts",
+                  "prune",
+                  "queue",
+                  "redo",
+                  "ref",
+                  "refs",
+                  "restore",
+                  "save",
+                  "sessions",
+                  "skill",
+                  "skills",
+                  "status",
+                  "summary",
+                  "timeline",
+                  "undo",
+                  "unref",
+                  "usage",
+                  "verify",
+                  "web",
+                  "worktree",
+                  "worktrees"
+                ]
+              }
+            },
+            "additionalProperties": {
+              "type": "object",
+              "properties": {
+                "template": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 16384,
+                  "description": "Literal task text, at most 16 KiB UTF-8. $ARGUMENTS or contiguous $1..$9, $$ for a literal dollar. No shell, file or environment interpolation."
+                },
+                "description": {
+                  "type": "string",
+                  "maxLength": 160
+                }
+              },
+              "additionalProperties": false,
+              "required": [
+                "template"
+              ]
+            },
+            "description": "Trusted user/profile prompt library, at most 48 KiB UTF-8 total; project settings cannot define prompts."
           },
           "tui": {
             "type": "object",

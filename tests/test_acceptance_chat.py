@@ -117,7 +117,7 @@ class AcceptanceTests(unittest.TestCase):
 class ChatTests(unittest.TestCase):
     def test_turns_keep_history_and_slash_commands_do_not_call_model(self):
         agent, emitted = Mock(), []
-        agent.config = Mock(model="test", checks=())
+        agent.config = Mock(model="test", checks=(), prompt_templates=())
         agent.runtime_snapshot.return_value = None
         first = [{"role": "assistant", "content": "first"}]
         second = first + [{"role": "assistant", "content": "second"}]
@@ -138,6 +138,7 @@ class ChatTests(unittest.TestCase):
 
     def test_continue_without_history_and_interrupting_input_do_not_call_model(self):
         agent, emitted = Mock(), []
+        agent.config.prompt_templates = ()
         with patch("builtins.input", side_effect=[KeyboardInterrupt(), "/continue", "/exit"]):
             self.assertEqual(cli.chat(agent, None, None, emitted.append), 0)
         agent.run.assert_not_called()
@@ -165,6 +166,7 @@ class ChatTests(unittest.TestCase):
 
     def test_incomplete_turn_preserves_exit_status(self):
         agent = Mock()
+        agent.config.prompt_templates = ()
         agent.run.return_value = ([], False)
         with patch("builtins.input", return_value="/exit"):
             self.assertEqual(cli.chat(agent, "start", None, lambda _: None), 2)

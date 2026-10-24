@@ -75,6 +75,8 @@ uv run --locked sprig
 
 逐次确认后在 `~/.sprig/config.toml` 创建私有配置，预设 `agnes-3.0-flash`，引用现有 `AGNES_API_KEY`，不写入真实密钥。已存在的配置不会覆盖。最后一条命令打开 TUI；Enter 发送，执行中可继续输入引导，`/help` 查看本地操作，`/keys` 查看快捷键。配置文件、附加规则/语言、profile、键位和设置来源见[配置与首次启动](docs/configuration.md)，完整示例见 [config.example.toml](config.example.toml)，Codex/OpenCode/Aider/Pi 的设置对照及未实现后端见[配置调研](docs/configuration-comparison.md)。
 
+常用任务可定义为[配置中的斜杠模板](docs/prompt-templates.md)：`[prompts.review]` 配置正文，`/review 范围` 按 Enter 发送，执行中同样可发送引导；Tab 只补全，操作仍逐次批准。`--list-prompts` 无需密钥即可离线列出模板元数据。
+
 ### 独立任务工作目录
 
 ```sh

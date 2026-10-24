@@ -184,9 +184,12 @@ class Config:
     web_enabled: bool = False
     background_enabled: bool = False
     background_timeout: float = 300
+    prompt_templates: tuple = field(default=(), repr=False)
     _runtime_credentials: RuntimeCredentials = field(default_factory=RuntimeCredentials, init=False, repr=False, compare=False)
 
     def __post_init__(self):
+        from .prompt_templates import validate_templates
+        validate_templates(self.prompt_templates)
         if type(self.background_enabled) is not bool:
             raise ValueError("execution.background must be a boolean")
         if (type(self.background_timeout) not in (int, float) or not math.isfinite(self.background_timeout)

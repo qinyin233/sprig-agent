@@ -414,3 +414,9 @@ Sprig 的实际反例是检查失败通知在时间线中多出一轮，并在�
 读取固定副本 [`tool/plugin/read.ts`](https://github.com/anomalyco/opencode/blob/9d90d892dcbfc52b47e95b2ea31b8aba877128fd/packages/core/src/tool/plugin/read.ts#L174-L187) 的 `toModelContent`：二进制媒体结果由说明文字和包含数据 URI/MIME/name 的 file 内容组成。前面的读取链检查 `MEDIA_MIMES`，也经访问授权与附近 AGENTS.md 发现；这些代码说明有媒体执行后端，不能只把用户附件入口当成模型已能查看图片的证据。本次未运行上游。
 
 Sprig 原有 `read_file` 确实只接受 UTF-8，即使用户可手动附图，模型仍不能查看刚生成的截图。现补[显式图片读取模式](../model-image-reads.md)，每次像素发送单独确认，不把用户附件授权扩大为模型任意读图。复用现有规范化与三协议编码，模型回执只含有界元数据；缓存受当前调用/新引导约束，恢复不重放。六条脚本化协议链使用另行批准的命令生成图片后再读取，未据此宣布真实视觉模型成功率提高。
+
+## 24. 常用任务命令需要进入实际发送流程（2026-10-24）
+
+重读固定 `dev@9d90d892dcbfc52b47e95b2ea31b8aba877128fd` 的 [`config/plugin/command.ts`](https://github.com/anomalyco/opencode/blob/9d90d892dcbfc52b47e95b2ea31b8aba877128fd/packages/core/src/config/plugin/command.ts#L87-L142)：上游从配置/目录建立命令，执行时求模板正文，并经 session prompt 按 delivery 发送；还可指定模型/agent 或子任务。其 [`evaluateTemplate`](https://github.com/anomalyco/opencode/blob/9d90d892dcbfc52b47e95b2ea31b8aba877128fd/packages/core/src/config/plugin/command.ts#L189-L244) 支持完整参数、编号参数、无占位时追加参数以及 shell 插值。这里只确认这些固定源码路径，未运行上游或推广到所有版本。
+
+Sprig 原有 slash 表只有内置控制，没有可复用任务正文。现接入[私有用户/profile 任务模板](../prompt-templates.md)，提供直接斜杠调用、Tab 补全、Enter、运行中引导和无需密钥的元数据列表。模板按名称合并并标记来源，展开一次后沿普通任务/批准链路发送与保存；不注入未调用的库正文，不解析环境/文件/shell，不切换模型或创建代理，显式项目层不能定义。编号参数保留 Windows 反斜杠，缺参/多参拒绝以免静默丢要求；六条成功和六条拒绝的真实回环 CLI 协议路径验证边界，未新增真实模型质量成绩。

@@ -1,0 +1,165 @@
+{
+  "schema": 1,
+  "scope": "explicit trusted user/profile prompt templates in actual CLI/TUI submission; no automatic execution, model switching, hidden library injection or resume expansion",
+  "base_commit": "0f577c3f65ddfc93061e012d40bea79d86bb2e3a",
+  "frozen_functional_files": 223,
+  "frozen_raw_bytes_manifest_sha256": "5898d51d2980ed17841cdedf9a9f6bfec359c2b036839f885505b5763298f0d1",
+  "source_manifest": {
+    "src/sprig_agent": {
+      "files": 73,
+      "sha256": "0fe044f5efbb89c7313e5d9a930dd356532e376e8cb3cdd48793272e8ecf2984"
+    },
+    "tests": {
+      "files": 104,
+      "sha256": "24cbddce991c92e304fb2e8aeb260663e4f17d60e4ac786e60cadc0ad6ff8f6e"
+    }
+  },
+  "manifest_algorithm": "sorted relative path + NUL + SHA256(LF-normalized bytes) hex + newline",
+  "changed_functional_sha256": {
+    "src/sprig_agent/cli.py": "962c53ef4867dae2e0da9a431a1a37e839b8f603bed5352b8e3216cd7ff8aa35",
+    "src/sprig_agent/completion.py": "2dde7223392cefb348f91486fbb8992e29e5da279f7f57249526dd711fe1d494",
+    "src/sprig_agent/config.py": "b19b5bc4939fd94f244e76cb603826b83d2f8bca8e3055ffc1e81ed6a54e9b12",
+    "src/sprig_agent/configuration_schema.py": "6dfded77fb8911f69bee665514801d05f37cf95392f10bf21a04df3ec002b353",
+    "src/sprig_agent/picker.py": "24095e44c413700d661e446e86a4b0b70014a27da96c44d513c0f879c21dfab2",
+    "src/sprig_agent/settings.py": "c976e01f95f1dd74a72c4f11713846dc11aa0f4c4a92a9e7834c796cedcb045c",
+    "src/sprig_agent/tui.py": "055b72ce86cd3636405b2aab274f84bc4560ab9667638862efdf3f528b4b27f8",
+    "src/sprig_agent/local_commands.py": "1a6418a43234b3ce6a0a82a5b7780b16c00088740de7ec5891804fa814f9cbe6",
+    "src/sprig_agent/prompt_templates.py": "f3c2fd6332a7aef7350b4f21c57c7689d04f55858717cfc71256111d8be2893c",
+    "tests/test_prompt_templates.py": "b96bafed7abac067aec76d20f1c15c5c8284c41f34710b3041c5a247b741bfc9",
+    "tests/test_prompt_templates_ui.py": "0da5958293d514649770d6100ab89544d103aa9182ce391446b644023fb9c170",
+    "config.example.toml": "03fd7f49e638f13cb82482efd9dc2008107c9de664eb2eee358aa46a575f5f0d",
+    "config.schema.json": "acdf2f99a324046c773047d6c19df1f31daf030007a80f99c94c8047a28aa12e",
+    "tests/test_acceptance_chat.py": "cf1223e4ebf2e647ec802a3e1ee3e516ef4bfeec3975819e9547d701804009af"
+  },
+  "local_suites": [
+    {
+      "platform": "native Windows Python 3.13.0",
+      "tests": 1451,
+      "passed": 1432,
+      "skipped": 19,
+      "seconds": 688.306,
+      "log_sha256": "0892156cb3e3451bed676b22ba4fc02f34dcac989037938477c9b1abad277db9"
+    },
+    {
+      "platform": "local WSL Python 3.13.14",
+      "tests": 1451,
+      "passed": 1428,
+      "skipped": 23,
+      "seconds": 474.362,
+      "log_sha256": "01405e3d4af0da7ea2bb1de411bb62ff1aa4ab13f96a579a45f059dbb9b76229"
+    },
+    {
+      "platform": "native Windows Python 3.11.14, 21 new and 6 existing chat regressions",
+      "tests": 27,
+      "passed": 27,
+      "skipped": 0,
+      "seconds": 16.717,
+      "log_sha256": "cc6f46ee9744c4bd2a3b315245871493a39cafa7cbc5312aa6e1f86d3b782eb6"
+    }
+  ],
+  "sdk_suites": [
+    {
+      "platform": "native Windows Python 3.12.12, mini SDK",
+      "tests": 25,
+      "passed": 25,
+      "skipped": 0,
+      "seconds": 50.858,
+      "log_sha256": "1fc1a01f47ce6340326575ec2444f480f35e2d9a0a35beaeeb1c36ce00534023"
+    },
+    {
+      "platform": "local WSL Python 3.12.13, mini SDK, separate uv environment",
+      "tests": 25,
+      "passed": 25,
+      "skipped": 0,
+      "seconds": 202.811,
+      "log_sha256": "9a07078dedc3dd73ddaa4fc9ea10615b6a9806d04d4f90dfdf7e2195cc76afe2"
+    }
+  ],
+  "installed_wheel": {
+    "tests": 27,
+    "skipped": 0,
+    "wheel_source_modules_matching": 73,
+    "imported_installed_modules": 68,
+    "sdist_changed_source_tests_matching": 12,
+    "wheel_sha256": "72adf25adb3efcbceb033c7998276e2ad9a19dbcd8dc9b76f26b5092fe94295f",
+    "sdist_sha256": "f5778a9b9d8cf0eeff9bc4d595d81184ea72a9f886033d53cf70203b40f3b92c",
+    "scope": "21 new template and 6 existing chat regressions loaded from copied tests; every imported application module verified under installed target; final validation JSON not claimed present in this sdist"
+  },
+  "isolated_parent_cli": {
+    "tests": 1,
+    "subcases": 6,
+    "expected_failures": 6,
+    "errors": 0,
+    "skipped": 0,
+    "parent_commit": "0f577c3f65ddfc93061e012d40bea79d86bb2e3a",
+    "parent_cli_sha256": "536abdb023f0482f269ae9ecf6a61d60a3da2fe0d19744aea1ba33d52d3ce87f",
+    "scope": "isolated original CLI main sends slash invocation instead of template body; six loopback JSON/SSE cases still perform freshly approved fixture edits and fixed checks; no external models or source changes"
+  },
+  "isolated_initial_expander": {
+    "tests": 1,
+    "expected_failures": 1,
+    "errors": 0,
+    "skipped": 0,
+    "initial_staged_template_module_sha256": "1f2a83916a8cf56628c5089580a4ffe2b002ee5b8022ceead990c4d48eed5789",
+    "scope": "isolated initial uncommitted expander allocates over 8 MiB for 400000-byte input repeated 32 times under a 1 MiB task limit; fixed implementation checks bytes before joining; no providers or source edits"
+  },
+  "documentation": {
+    "schema_and_example": "passed",
+    "document_files": 6,
+    "local_links_checked": 272,
+    "deferred_validation_record_links": 0,
+    "scope": "local file targets; remote URLs and fragment anchors not validated"
+  },
+  "new_test_methods": 21,
+  "actual_protocol_cases": {
+    "successful_read_edit_check": 6,
+    "declined_edit": 6,
+    "protocols": [
+      "chat_completions",
+      "messages",
+      "responses"
+    ],
+    "transport_each": [
+      "JSON",
+      "SSE"
+    ],
+    "scripted_loopback_http_requests": 24,
+    "success_approvals_per_case": 2,
+    "decline_approvals_per_case": 1
+  },
+  "regressions": [
+    "real private TOML loading, named profile merge and per-template sources; explicit project templates refused",
+    "reserved names, unknown fields, controls, UTF-8 template/library caps and numbered argument consistency",
+    "full arguments preserve whitespace, Unicode and CRLF; quoted positional arguments preserve Windows backslashes",
+    "single-pass dollars and insertion; no shell, file, environment or recursive slash dispatch",
+    "21 new tests include actual CLI protocols plus 80x24 TUI completion, Enter and approval-time steering",
+    "ordinary action denial still prevents edits; success requires fresh edit and independent fixed-check approval",
+    "expanded input cap and full actual packet preflight preserve TUI invocation draft without bad history",
+    "checkpoint failure retries same expanded human request once; literal slash and paste stay data",
+    "catalog pages and completion redact credentials and omit private template bodies; offline CLI needs no model credentials",
+    "uninvoked templates absent from requests; invoked text persists as normal history; library itself is not a session replay instruction",
+    "repeated 400000-byte argument and 16 MiB raw input under a 1 MiB task budget refuse before materializing output/copying arguments; traced additional peak below 8 MiB"
+  ],
+  "earlier_checks_excluded_from_final": {
+    "superseded_full_runs": "live suites interrupted when allocation/input prechecks changed; one prior WSL suite completed with three missing-default Mock errors; final exact-byte full suites rerun",
+    "old_chat_fixtures": "three existing Mock configurations now declare the real empty prompt_templates default; original assertions unchanged; six ChatTests rerun",
+    "initial_python311_and_wheel": "earlier 20/21-test artifacts superseded by 27 tests on final app and chat fixture bytes",
+    "initial_negative_control": "temporary parent-CLI fixture used stale approval binding; corrected proxy before accepting wire-body failures",
+    "scope": "early fixture errors and superseded preliminary passes are not final validation"
+  },
+  "checks": [
+    "four uv locks",
+    "generated schema equality and example TOML validation",
+    "compileall src/tests/scripts",
+    "CLI help",
+    "offline wheel/sdist build and isolated installed regressions",
+    "local documentation targets",
+    "git diff --check"
+  ],
+  "default_model_tool_definition_bytes": 4930,
+  "defaults_and_security": "no added model tool, default prompt injection, dependency, request-budget increase or OS backend change; all writes/commands keep fresh explicit approval; no shell/file/environment interpolation; queue bodies remain literal",
+  "artifact_scope": "wheel app modules and twelve changed app/test files in sdist verified; later final validation JSON and documentation text are not claimed present in these artifacts",
+  "external_model_calls": 0,
+  "performance_claim": "none; scripted protocol and local execution evidence does not prove coding or visual model quality, cost savings or parity with top agents",
+  "remote_ci": "pending; no dispatch/rerun/CI-enabled push before 2026-11-01 Asia/Singapore; commit uses [skip ci]; verify account restriction and prior gate before resuming; WSL is local evidence"
+}

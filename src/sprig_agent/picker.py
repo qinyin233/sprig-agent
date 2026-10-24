@@ -133,13 +133,14 @@ class PickerScreen(ModalScreen[tuple[str, str | tuple[str, ...]] | None]):
         self.query_one("#picker-options", OptionList).clear_options()
         if self.commands:
             query = query.removeprefix("/").strip().casefold()
-            choices = [("/" + name, "/" + name + "  " + text) for name, text in COMMANDS.items() if query in name] if self.local_choices is None else [
+            available = {**COMMANDS, **{row.name: "任务模板：" + row.description for row in self.app.config.prompt_templates}}
+            choices = [("/" + name, "/" + name + "  " + text) for name, text in available.items() if query in name] if self.local_choices is None else [
                 (key, label) for key, label in self.local_choices if query in label.casefold()]
             limited = len(choices) > 20
             choices = choices[:20]
             self.values = [key for key, _ in choices]
             self.query_one("#picker-options", OptionList).add_options(
-                [label for _, label in choices])
+                [self.app.safe(label) for _, label in choices])
             self.query_one("#picker-status", Static).update(("选择后进入明确确认；不请求模型" + ("；最多显示 20 条，请细化查询" if limited else "")) if self.local_choices is not None else
                                                           "只补全输入；选择不会执行命令")
             self.query_one("#picker-options", OptionList).highlighted = 0 if self.values else None

@@ -1,6 +1,8 @@
 """Editor assistance for the TOML configuration; runtime validation is authoritative."""
 
 from .config import RESERVED_BODY_FIELDS, TOOL_NAMES, SHORTCUT_ACTIONS
+from .local_commands import COMMANDS
+from .prompt_templates import NAME_PATTERN
 
 
 def configuration_schema():
@@ -77,6 +79,12 @@ def configuration_schema():
             "env_from": {"type": "object", "maxProperties":32, "propertyNames":environment, "additionalProperties":environment},
         }, required=["command", "languages"])}}),
         "web": obj({"enabled": {**boolean, "description": "Opt-in public HTTP(S) documents. Each GET needs approval; no proxies, auth, redirects, retries or persistent cache. Project configuration cannot enable it."}}),
+        "prompts": {"type": "object", "maxProperties": 32,
+                    "propertyNames": {"pattern": "^" + NAME_PATTERN + "$", "not": {"enum": sorted(COMMANDS)}},
+                    "additionalProperties": obj({"template": {"type": "string", "minLength": 1, "maxLength": 16384,
+                        "description": "Literal task text, at most 16 KiB UTF-8. $ARGUMENTS or contiguous $1..$9, $$ for a literal dollar. No shell, file or environment interpolation."},
+                        "description": {"type": "string", "maxLength": 160}}, required=["template"]),
+                    "description": "Trusted user/profile prompt library, at most 48 KiB UTF-8 total; project settings cannot define prompts."},
         "tui": obj({"theme": {"enum": ["textual-dark", "textual-light", "nord", "gruvbox", "dracula", "monokai", "tokyo-night", "solarized-dark", "solarized-light"]},
                     "sidebar": boolean, "editor_height": integer(3, 12), "steering_mode": {"enum": ["all", "one-at-a-time"]}, "metrics": boolean,
                     "keybindings": obj({action: {"type": "array", "maxItems": 4, "items": {"type": "string",
