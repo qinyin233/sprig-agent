@@ -224,7 +224,7 @@ class Provider:
         config = self.config
         from .context import request_body
         try:
-            body = request_body(config, messages, tools, max_bytes=config.max_context_bytes)
+            body = request_body(config, messages, tools, max_bytes=config.max_context_bytes, check_cancelled=check_cancelled)
         except JsonBudgetExceeded:
             raise ProviderError("context byte budget exceeded; request was not sent", code="request_budget") from None
         except (TypeError, ValueError, RecursionError):

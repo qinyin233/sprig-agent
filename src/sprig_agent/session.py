@@ -21,6 +21,7 @@ from .references import reference_state
 from .summary import summary_state
 from .command_logs import log_state
 from .input_inbox import INPUT_ID, UserInput, InputChanged, delivered_inputs, input_state, remaining_inputs, input_revision
+from .image_inputs import IMAGE_KEY, images
 
 _PRESERVE_INPUTS = object()
 
@@ -78,6 +79,10 @@ def validate_history(messages):
         if not isinstance(message, dict):
             raise SessionError("invalid session message")
         role, content = message.get("role"), message.get("content")
+        try:
+            image_rows = images(message)
+        except ValueError as error:
+            raise SessionError(str(error)) from None
         if not isinstance(role, str):
             raise SessionError("invalid session role")
         if role == "tool":
@@ -105,6 +110,8 @@ def validate_history(messages):
             if (role == "system") != (index == 0):
                 raise SessionError("session must start with one system message")
             row = {"role": role, "content": content}
+            if image_rows:
+                row[IMAGE_KEY] = image_rows
             if INPUT_ID in message:
                 try:
                     if role != "user":
@@ -285,6 +292,12 @@ class SessionStore:
                     raise SessionError("configured credentials cannot appear in saved file reference paths")
                 payload["file_references"] = selected
         payload = redact(payload, self.config.secrets)
+        for row in payload["messages"] if isinstance(payload.get("messages"), list) else ():
+            if isinstance(row, dict) and IMAGE_KEY in row:
+                try:
+                    images(row, self.config.secrets)
+                except ValueError:
+                    raise SessionError("invalid or redaction-conflicting image snapshot; no data was overwritten") from None
         try:
             inputs = remaining_inputs(redact(inputs, self.config.secrets), payload["messages"])
             if inputs["pending"] or delivered_inputs(payload["messages"]) or previous and previous.get("version") == 2:
@@ -370,6 +383,11 @@ class SessionStore:
     def _load(self, filename):
         saved = self._read_document(filename)
         history = redact(validate_history(saved.get("messages")), self.config.secrets)
+        for row in history:
+            try:
+                images(row, self.config.secrets)
+            except ValueError:
+                raise SessionError("invalid or redaction-conflicting saved image; no history sent") from None
         try:
             selected = reference_state(saved.get("file_references"))
             checkpoint = summary_state(saved.get("summary_checkpoint"), history, binding=self.config.binding())

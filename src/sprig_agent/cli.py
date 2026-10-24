@@ -381,7 +381,7 @@ def main(argv=None):
     parser.add_argument("task", nargs="?", help="task; optional when resuming")
     parser.add_argument("--version", action="version", version=__version__)
     parser.add_argument("--workdir", default=".")
-    parser.add_argument("--file", action="append", default=[], metavar="RELATIVE_PATH", help="attach a complete workspace text snapshot before the task; repeatable, privacy and context limits apply")
+    parser.add_argument("--file", action="append", default=[], metavar="RELATIVE_PATH", help="attach a complete workspace text or image snapshot before the task; repeatable, privacy and context limits apply")
     parser.add_argument("--reference-file", "--ref-file", dest="reference_files", action="append", metavar="PATH",
                         help="explicit live workspace file reference; refresh small complete files, attach path/size only for larger files")
     configuration = parser.add_mutually_exclusive_group()

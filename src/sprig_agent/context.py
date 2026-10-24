@@ -8,6 +8,7 @@ from .planning import plan_result, validate_plan
 from .revisions import valid_read_id
 from .session import application_check
 from .input_inbox import INPUT_ID
+from .image_inputs import IMAGE_KEY, wire_content
 
 MAX_READ_METADATA_CHARS = 32768
 
@@ -19,6 +20,8 @@ def provider_messages(config, messages, *, check_cancelled=None):
         if check_cancelled:
             check_cancelled()
         message = messages[index]
+        if IMAGE_KEY in message and any(key in message for key in (INPUT_ID, "sprig_check")):
+            raise ValueError("image snapshots cannot carry input or fixed-check identities; no request sent")
         if "sprig_check" in message and config.check_history_format == "observations":
             phase = application_check(message)
             call = message["tool_calls"][0]
@@ -49,9 +52,12 @@ def request_payload(config, messages, tools, *, check_cancelled=None):
     selected = provider_messages(config, messages, check_cancelled=check_cancelled)
     if config.wire_api != "chat_completions":
         from .native_protocols import payload
-        return redact(payload(config, selected, tools), config.secrets)
+        return redact(payload(config, selected, tools, check_cancelled=check_cancelled), config.secrets)
     if any("native_state" in message for message in selected):
         raise ValueError("native protocol history cannot be sent through Chat Completions")
+    selected = [{**{key: value for key, value in message.items() if key != IMAGE_KEY},
+                 "content": wire_content(message, "chat_completions", config.secrets, check_cancelled or (lambda: None))}
+                if IMAGE_KEY in message else message for message in selected]
     payload = {"model": config.model, "messages": redact(selected, config.secrets)}
     if tools:
         payload.update(tools=tools, tool_choice="auto")
@@ -63,9 +69,9 @@ def request_payload(config, messages, tools, *, check_cancelled=None):
     return payload
 
 
-def request_body(config, messages, tools, *, max_bytes=None):
+def request_body(config, messages, tools, *, max_bytes=None, check_cancelled=None):
     try:
-        payload = request_payload(config, messages, tools)
+        payload = request_payload(config, messages, tools, check_cancelled=check_cancelled)
         if max_bytes is not None:
             encoded_size(payload, max_bytes=max_bytes)
         return json.dumps(payload, **JSON_OPTIONS).encode("utf-8")

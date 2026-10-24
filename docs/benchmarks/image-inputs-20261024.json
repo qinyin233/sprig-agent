@@ -1,0 +1,207 @@
+{
+  "schema": 1,
+  "scope": "explicit native still image inputs through CLI/chat/TUI, protocol-neutral private history, full request byte admission; no model capability claim",
+  "base_commit": "a1c6528a55253acb44b14f5ad48fc99dc98c4758",
+  "frozen_functional_files": 213,
+  "frozen_raw_bytes_manifest_sha256": "8c62d3e87d10191866a16009aa86b0ac19ae4d76ce0c39eed9556c45c1976ed8",
+  "pre_review_manifest_sha256": "2c6e3f35f1ad1271212ecd8f38ad266b5655e1155d4f222272ec51786cd6781e",
+  "source_manifest": {
+    "src/sprig_agent": {
+      "files": 69,
+      "sha256": "fccf0989ac1bbc686a5400cca446a2284f17306f4229dd927fadc62cee1688d0"
+    },
+    "tests": {
+      "files": 96,
+      "sha256": "e6b6ecbfef21c8206cf2bffa0b13d3a9cc8848527c6dc416a9d9da4b97b038e9"
+    }
+  },
+  "manifest_algorithm": "sorted relative path + NUL + SHA256(LF-normalized bytes) hex + newline",
+  "changed_functional_sha256": {
+    "src/sprig_agent/agent.py": "8c837e18567e88f5e97f0439d5a6965eafba526f005daacaf552e01b94aa4649",
+    "src/sprig_agent/attachments.py": "36631eaf927b0d98ba90faf22317ed8287e747b49a1e7e34c0f290377288ff42",
+    "src/sprig_agent/context.py": "7c3f2c8660ff6983cacb34c98e51d289ca55937250fbe3033c1592265813be96",
+    "src/sprig_agent/native_protocols.py": "9bfcba8272518674de3e534ffe9a33098e4caa1cf840b10e8bd6ba5414586861",
+    "src/sprig_agent/provider.py": "6e6d13c3a04c913a5487c36cb6359109e32604a809e4c5ab3ccf65f5f43ec350",
+    "src/sprig_agent/session.py": "dd6a8d47452288681875566f5716e889771d2c06ba41fc77052f1b47d328f200",
+    "src/sprig_agent/summary.py": "21033e9b5dd661f81d48ca86da88ea1c584dad3666e59ec8c8ff184aa10a8e17",
+    "src/sprig_agent/image_inputs.py": "7c3bf3e79055526b176ec6413ada8b20dee2bd5d972b7dab4368490d2dec1ca1",
+    "src/sprig_agent/cli.py": "d76c15a21daad2f0c1527ae3f5f563c933307b1da06ade7f0a89b9e1a5d46c29",
+    "tests/test_image_inputs.py": "f917980e144fcc6562ac78470221b66c0588461b2743b3bce0bbbdfeca7e6ab3",
+    "tests/test_image_inputs_ui.py": "0a61b20f70a89c2459b2f908ed2e5f86f5d4b1d62ceb7a78a4e91554651c40db",
+    "pyproject.toml": "0eddd9071f63e3082f75e98b5487b3ae9c9e939d84499c1336250bc4c434cc31",
+    "uv.lock": "22e2647115dc49fc2e9df21ffbc1e6694be61ef8eccb349d59ae320b6243bddd",
+    "benchmarks/repositories/click/uv.lock": "b04f8515898adaf101aeacc850d16eaf22d7470819969d90f02abedc1a9ed43d"
+  },
+  "local_suites": [
+    {
+      "platform": "native Windows Python 3.13.0",
+      "tests": 1403,
+      "passed": 1384,
+      "skipped": 19,
+      "seconds": 511.109,
+      "log_sha256": "efd6202a4970f780f330fdd0726cf1835c8a362bf0f177a36ac0a42f3ac7ebbc"
+    },
+    {
+      "platform": "local WSL Python 3.13.14",
+      "tests": 1403,
+      "passed": 1380,
+      "skipped": 23,
+      "seconds": 389.368,
+      "log_sha256": "847c699c94f584a89b4d272c4c902cf98bc5e91a635abcb9e198a68b03713af2"
+    },
+    {
+      "platform": "native Windows Python 3.11.14, new regressions",
+      "tests": 23,
+      "passed": 23,
+      "skipped": 0,
+      "seconds": 10.855,
+      "log_sha256": "bd6068acb85d93d87272827cbb2a5b80b0f3bdcaea0c705f3a176f70551a0312"
+    }
+  ],
+  "sdk_suites": [
+    {
+      "platform": "native Windows Python 3.12.12, isolated mini SDK 2.4.6",
+      "tests": 25,
+      "passed": 25,
+      "skipped": 0,
+      "seconds": 31.075,
+      "log_sha256": "70e52e2e81b544b8a3a676530c2677189159177a473503f3fbf681517fafcea2"
+    },
+    {
+      "platform": "local WSL Python 3.12.13, isolated mini SDK 2.4.6",
+      "tests": 25,
+      "passed": 25,
+      "skipped": 0,
+      "seconds": 122.445,
+      "log_sha256": "c8f21cd7396d29abc1878fac43e2ddac0706809bcfaffd6e6ccb9acf84fda389"
+    }
+  ],
+  "installed_wheel": {
+    "tests": 44,
+    "skipped": 0,
+    "wheel_source_modules_matching": 69,
+    "imported_installed_modules": 62,
+    "sdist_changed_source_tests_matching": 11,
+    "wheel_sha256": "a37ecb32e10d83107cacb4a0a808e09bb4ad15d01dc1c8ae974b98cde3bab818",
+    "sdist_sha256": "ef1bc822bdf4bd6e026a4c39243e8b3ed5dc92e9f3c1c4315ea6f25e1c2caef7",
+    "scope": "44 native image and existing text attachment regressions loaded from copied tests; every imported application module verified under installed target; final validation JSON not claimed present in this sdist",
+    "sdist_dependency_metadata_matching": 3,
+    "pillow_requirement": "Requires-Dist: pillow<14,>=12.2"
+  },
+  "full_suite_scope": {
+    "all_functional_bytes_identical_to_final": true,
+    "started_after_final_security_seal": true,
+    "pre_review_to_final_changes": [
+      "benchmarks/repositories/click/uv.lock",
+      "src/sprig_agent/cli.py",
+      "src/sprig_agent/image_inputs.py",
+      "tests/test_image_inputs.py"
+    ],
+    "pre_review_checks_excluded_from_final_success": true,
+    "additional_repository_checks": {
+      "uv_lock_check": "passed",
+      "related_repository_regressions": 19,
+      "passed": 19,
+      "seconds": 1.139
+    },
+    "final_artifacts_rebuilt_after_lock_help_and_security_updates": true
+  },
+  "superseded_checks": {
+    "earlier_completed_full_tests": 1402,
+    "interrupted_full_attempts": 2,
+    "reason": "final CLI help check was interrupted after actual PNG critical-chunk smuggling counterexamples; final complete suites rerun after all fixes",
+    "included_in_final_success": false
+  },
+  "png_critical_tail_negative": {
+    "tests": 1,
+    "expected_failures_before_fix": 3,
+    "variants": [
+      "IHDR extra bytes",
+      "IDAT unused deflate tail",
+      "IEND extra bytes"
+    ],
+    "checksum_and_digest_recomputed": true,
+    "fixed_protocol_request_refusals": 9,
+    "log_sha256": "b0d86a88316c581e921211f606f1c26ea57c7538824f3fe7689c39f2718ee212"
+  },
+  "excluded_sdk_attempts": {
+    "success_claimed": false,
+    "reason": "first concurrent WSL SDK command reused Windows .venv; Windows run had 13 import errors and subsequent uv cleanup hit Linux lib64 symlink",
+    "correction": "both old handles terminal; remove only verified task-created misplaced Linux environment from WSL with path/identity/live-process checks; recreate native Windows .venv with uv; use separate .venv-mini-wsl; final independent suites passed",
+    "application_or_test_changes_required": false
+  },
+  "new_test_methods": 23,
+  "positive_loopback_matrix_cases": 12,
+  "matrix": "history/run-only x Chat Completions/Messages/Responses x JSON/SSE; complete normalized PNG bytes compared",
+  "isolated_parent_reader_negative": {
+    "tests": 2,
+    "expected_attachment_errors": 16,
+    "skipped": 0,
+    "provider_complete_calls": 0,
+    "parent_commit": "a1c6528a55253acb44b14f5ad48fc99dc98c4758",
+    "parent_attachment_module_sha256": "9019fe0957e01cb83de408e2ea0fe8e5bed61c4a7ffecf9e5541a0362b820d26",
+    "scope": "same current regression cases with only parent text-only snapshots reader substituted; four formats and twelve protocol/lifetime/stream cases rejected before provider contact"
+  },
+  "regressions": [
+    "four actual formats and sniffed bytes independent of extension; EXIF orientation and metadata-free canonical PNG",
+    "RGBA and palette transparency; reject animation, dimensions >4096 or pixels >4 Mi before full pixel loading",
+    "bounded normalized output and normalized batch independent from small compressed source bytes",
+    "mixed text/image atomic admission; privacy and disabled read before decoder; cancel after decoding and during request projection",
+    "actual Base64 request budget stops before history, baseline commands or HTTP",
+    "private restore after source deletion without filesystem reread; malformed/foreign roles, metadata, CRC, damaged pixel stream and identities refused",
+    "fixed-size canonical RGB(A) header and empty IEND; 64 KiB bounded deflate output exactly matches scanlines, reaches EOF and has no unused bytes; recomputed SHA/CRC cannot smuggle extra data",
+    "input/check identities rejected before provider metadata projection; invalid-request codes distinguish refusal from connection failures",
+    "configured secret collisions in Base64, URI or image block refuse outbound; storage collision does not overwrite saved transcript",
+    "summary and history pages retain metadata but omit Base64; deterministic context keeps user image input",
+    "scripted service inspects actual pixels, proposes actual file edit; fresh edit approval and independent fixed check approval; run-only image retained across both requests but absent from history",
+    "one-shot CLI and 80x24 TUI Enter; private /add, ephemeral @, budget/invalid draft preservation and replaced image retry"
+  ],
+  "limits": {
+    "raw_file_bytes": 1048576,
+    "raw_batch_bytes": 2097152,
+    "files": 16,
+    "image_pixels": 4194304,
+    "image_dimension": 4096,
+    "normalized_image_bytes": 1048576,
+    "normalized_batch_bytes": 2097152,
+    "default_context_budget_increased": false,
+    "model_tool_schema_expanded": false,
+    "os_backend_changes": false,
+    "protocol_image_encoding_added": true
+  },
+  "dependency": "Pillow 13.0.0 in root and Click uv locks; decoder imports deferred for text-only runtime and comparison clients",
+  "checks": [
+    "four uv lock files",
+    "schema equals generated schema; example TOML validates",
+    "targeted compileall src/tests/scripts",
+    "CLI help advertises text and image snapshots",
+    "offline wheel/sdist build",
+    "44 installed-wheel regressions and 69 application modules matching current source",
+    "sdist final three dependency metadata files matching current files",
+    "final frozen source/test/lock digest rechecked"
+  ],
+  "document_checks": {
+    "files": 8,
+    "local_file_targets": 267,
+    "deferred_links": 0,
+    "scope": "local file targets, not remote URLs or fragment anchors"
+  },
+  "external_model_requests": 0,
+  "new_model_performance_conclusion": false,
+  "remote_ci": {
+    "status": "pending",
+    "triggered": false,
+    "freeze_before": "2026-11-01 Asia/Singapore",
+    "resume_requires": "verify account restriction and prior required gate"
+  },
+  "evidence_limits": [
+    "local WSL is not native GitHub Actions; platform skips are not passes",
+    "fixtures validate native protocol and application behavior, not visual understanding or coding performance of a real model",
+    "pixels are not OCR-scanned or credential-redacted; metadata stripping does not sanitize visible image content",
+    "normalization may change color space/bit depth; no implicit resize or animation first-frame fallback",
+    "bounded individual codec calls cannot be interrupted per pixel; no new OS sandbox guarantee",
+    "no external image URL fetch, clipboard bitmap, file upload service, PDF/audio, image generation or image editing backend",
+    "final validation JSON and later documentation wording not claimed present in earlier built sdist",
+    "overall top-agent objective and remote CI remain incomplete"
+  ]
+}

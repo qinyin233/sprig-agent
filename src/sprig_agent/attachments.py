@@ -3,6 +3,7 @@ import os
 
 from .config import redact
 from .tools import ToolError
+from .image_inputs import IMAGE_KEY, MAX_IMAGE_BATCH_BYTES, encode_image, is_image
 
 MAX_FILE_BYTES = 1024 * 1024
 MAX_BATCH_BYTES = 2 * 1024 * 1024
@@ -11,7 +12,7 @@ MAX_BATCH_BYTES = 2 * 1024 * 1024
 def snapshots(config, tools, paths, check_cancelled):
     if not isinstance(paths, (list, tuple)) or not 1 <= len(paths) <= 16:
         raise ValueError("attach between 1 and 16 workspace files at a time")
-    frames, summary, versions = [], [], []
+    frames, summary, versions, image_bytes = [], [], [], 0
     # This is an I/O bound. Redaction and JSON escaping can change the wire
     # size; the existing full-request preflight decides model admission.
     remaining = MAX_BATCH_BYTES
@@ -46,11 +47,21 @@ def snapshots(config, tools, paths, check_cancelled):
                     raise ValueError("attachment changed while reading; retry the selection")
             # Inspect the complete file, including credential/binary/UTF-8
             # failures past the tool's display window or 10,000-line page.
-            text = tools._decode(raw)
+            if is_image(raw):
+                image = encode_image(bytes(raw), ready)
+                image_bytes += 3 * (len(image["data"]) // 4) - image["data"].count("=")
+                if image_bytes > MAX_IMAGE_BATCH_BYTES:
+                    raise ValueError("normalized image batch exceeds 2 MiB")
+                frame = {"path": path, "image": image}
+                receipt = {"path": path, "bytes": len(raw), "media_type": image["media_type"],
+                           "width": image["width"], "height": image["height"]}
+            else:
+                frame = {"path": path, "content": tools._decode(raw)}
+                receipt = {"path": path, "bytes": len(raw)}
             ready()
             remaining -= len(raw)
-            frames.append({"path": path, "content": text})
-            summary.append({"path": path, "bytes": len(raw)})
+            frames.append(frame)
+            summary.append(receipt)
             versions.append((path, parts, revision))
 
         # Ordinary edits, replacements and privacy revocations during another
@@ -70,3 +81,19 @@ def snapshots(config, tools, paths, check_cancelled):
     except (OSError, ToolError, ValueError) as error:
         raise ValueError("cannot attach file: " + redact(str(error), config.secrets)) from None
     return frames, summary
+
+
+def snapshot_message(frames, prefix, secrets):
+    import json
+    data, selected = [], []
+    for row in frames:
+        if "image" in row:
+            image = {"path": row["path"], **row["image"]}
+            selected.append(image)
+            data.append({key: value for key, value in image.items() if key != "data"})
+        else:
+            data.append(row)
+    message = {"role": "user", "content": redact(prefix + "\n" + json.dumps(data, ensure_ascii=False), secrets)}
+    if selected:
+        message[IMAGE_KEY] = selected
+    return message

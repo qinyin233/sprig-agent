@@ -92,7 +92,12 @@ def closed_end(messages, keep_recent, end=None, previous=None):
 
 
 def public_message(row):
-    return {key: value for key, value in row.items() if key not in {"native_state", "reasoning_content", "sprig_input_id"}}
+    from .image_inputs import IMAGE_KEY
+    result = {key: value for key, value in row.items() if key not in {"native_state", "reasoning_content", "sprig_input_id", IMAGE_KEY}}
+    if IMAGE_KEY in row:
+        result[IMAGE_KEY] = [{key: value for key, value in image.items() if key != "data"} for image in row[IMAGE_KEY]]
+        result["image_pixels_omitted"] = True
+    return result
 
 
 def latest_failure(messages, end):

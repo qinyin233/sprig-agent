@@ -143,9 +143,10 @@ def parse_response(protocol, data):
     return result
 
 
-def payload(config, messages, tools):
+def payload(config, messages, tools, *, check_cancelled=None):
     """Build the exact wire payload used both for counting and sending."""
     protocol = config.wire_api
+    from .image_inputs import wire_content
     definitions, history, system = [], [], []
     for tool in tools:
         function = tool["function"]
@@ -157,6 +158,7 @@ def payload(config, messages, tools):
                                 "parameters": function["parameters"], "strict": False})
     for message in messages:
         role = message["role"]
+        content = wire_content(message, protocol, config.secrets, check_cancelled or (lambda: None))
         if protocol == "messages" and role == "system":
             system.append({"type": "text", "text": message["content"]})
             continue
@@ -169,7 +171,7 @@ def payload(config, messages, tools):
             elif state is not None:
                 blocks = state["output"]
             else:
-                blocks = [{"type": "text", "text": message["content"]}] if message.get("content") else []
+                blocks = (content if isinstance(content, list) else [{"type": "text", "text": content}]) if content else []
                 for call in message.get("tool_calls", []):
                     arguments = json.loads(call["function"]["arguments"])
                     _require(isinstance(arguments, dict))
@@ -185,7 +187,7 @@ def payload(config, messages, tools):
             history.extend(state["output"])
         else:
             if message.get("content"):
-                history.append({"role": role, "content": message["content"]})
+                history.append({"role": role, "content": content})
             for call in message.get("tool_calls", []):
                 history.append({"type": "function_call", "call_id": call["id"], **call["function"]})
     body = {"model": config.model}
