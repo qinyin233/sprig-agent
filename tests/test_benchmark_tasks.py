@@ -160,6 +160,111 @@ class BenchmarkTests(unittest.TestCase):
                 benchmark.main()
             run.assert_not_called()
 
+    def test_batch_preflight_keeps_private_previews_and_fresh_write_approvals(self):
+        case = suite.cases()["py-pagination"]
+        for mode in ("accepted", "rejected", "invalid"):
+            with self.subTest(mode=mode):
+                asks, observed, received = [], [], []
+
+                class BatchProvider:
+                    def __init__(self, config):
+                        self.config, self.calls = config, 0
+
+                    def complete(self, messages, tools, on_text=None):
+                        self.calls += 1
+                        if self.calls == 1:
+                            calls = []
+                            for index, name in enumerate(case["files"]):
+                                old = "missing-private-edit-marker" if mode == "invalid" and index == 1 else case["files"][name]
+                                calls.append({"id": str(index), "type": "function", "function": {
+                                    "name": "edit_file", "arguments": json.dumps({"path": name, "old": old,
+                                                                                 "new": case["reference"][name]})}})
+                            return {"role": "assistant", "content": None, "tool_calls": calls}
+                        observed.append({name: (self.config.workdir / name).read_text(encoding="utf-8")
+                                         for name in case["files"]})
+                        received.extend(json.loads(message["content"]) for message in messages
+                                        if message.get("role") == "tool")
+                        return {"role": "assistant", "content": "Done"}
+
+                report = benchmark.run_case(case, {"model": "offline", "max_steps": 2},
+                                            provider_factory=BatchProvider,
+                                            confirm=lambda prompt: asks.append(prompt) or mode == "accepted")
+                self.assertEqual(report["acceptance_passed"], mode == "accepted", report)
+                self.assertEqual(observed, [case["reference"] if mode == "accepted" else case["files"]])
+                previews = report["edit_preflight"]
+                self.assertEqual(len(previews), 2)
+                self.assertEqual([row["ready"] for row in previews], [True, mode != "invalid"])
+                self.assertTrue(all(set(row) == {"tool", "active_ms", "ready"} and row["active_ms"] >= 0 for row in previews))
+                self.assertTrue(all(type(row["result_bytes"]) is int for row in report["tools"]))
+                self.assertEqual([prompt.split()[0] for prompt in asks],
+                                 ["WRITE", "WRITE", "RUN"] if mode == "accepted" else
+                                 ["WRITE", "RUN"] if mode == "rejected" else ["RUN"])
+                if mode != "accepted":
+                    self.assertTrue(any(row.get("skipped") for row in received))
+                encoded = json.dumps(report)
+                self.assertNotIn("missing-private-edit-marker", encoded)
+                for field in ("revision", "before", "after", "rules", "parts"):
+                    self.assertTrue(all(field not in row for row in previews))
+
+    def test_preflight_verifier_change_blocks_writes_and_invalidates_the_run(self):
+        case = suite.cases()["py-pagination"]
+        asks, observed = [], []
+
+        class BatchProvider:
+            def __init__(self, config):
+                self.config, self.calls = config, 0
+
+            def complete(self, messages, tools, on_text=None):
+                self.calls += 1
+                if self.calls == 1:
+                    return {"role": "assistant", "content": None, "tool_calls": [
+                        {"id": str(index), "type": "function", "function": {"name": "edit_file", "arguments": json.dumps({
+                            "path": name, "old": case["files"][name], "new": case["reference"][name]})}}
+                        for index, name in enumerate(case["files"])]}
+                observed.append({name: (self.config.workdir / name).read_text(encoding="utf-8") for name in case["files"]})
+                return {"role": "assistant", "content": "Done"}
+
+        original = benchmark.Tools.edit_file
+        def tampered_preview(tools, **arguments):
+            result = original(tools, **arguments)
+            if tools._edit_preview:
+                verifier = tools.config.workdir.parent / "verification/benchmarks/coding/suite.py"
+                verifier.write_bytes(verifier.read_bytes() + b"\n# changed\n")
+            return result
+
+        with patch.object(benchmark.Tools, "edit_file", tampered_preview):
+            report = benchmark.run_case(case, {"model": "offline", "max_steps": 2}, provider_factory=BatchProvider,
+                                        confirm=lambda text: asks.append(text) or True)
+        self.assertEqual(asks, [])
+        self.assertEqual(observed, [case["files"]])
+        self.assertFalse(report["verifier_intact"])
+        self.assertFalse(report["acceptance_passed"])
+        self.assertEqual(report["outcome"], "verifier_modified")
+        self.assertEqual([row["ready"] for row in report["edit_preflight"]], [False])
+
+    def test_benchmark_requires_literal_true_before_baseline_or_model_contact(self):
+        class Truthy:
+            def __bool__(self):
+                raise AssertionError("approval must not coerce callback values")
+
+        class UnreachableProvider:
+            def __init__(self, config):
+                pass
+
+            def complete(self, *args, **kwargs):
+                raise AssertionError("unapproved baseline must stop before model contact")
+
+        for value in (1, "yes", [True], Truthy(), False, None):
+            with self.subTest(kind=type(value).__name__):
+                report = benchmark.run_case(suite.cases()["py-interval"],
+                                            {"model": "offline", "max_steps": 1, "check_before_task": True},
+                                            provider_factory=UnreachableProvider, confirm=lambda _: value)
+                self.assertFalse(report["acceptance_passed"])
+                self.assertEqual(report["approvals"]["accepted"], 0)
+                self.assertEqual(report["approvals"]["rejected"], 1)
+                self.assertEqual(report["baseline_status"], "blocked")
+                self.assertFalse(report["tools"][0]["diagnostics"]["approved"])
+
     def test_invalid_request_controls_stop_before_key_or_fixture_access(self):
         for option, value, parser_error in (("--request-interval", "nan", False),
                                             ("--request-interval", "61", False),

@@ -23,6 +23,7 @@ import suite
 from sprig_agent.agent import Agent
 from sprig_agent.cli import approve
 from sprig_agent.config import Config, environment_api_key, redact, terminal_text
+from sprig_agent.edit_batch import EditPreview
 from request_pacing import PacedProvider, RequestPacer
 from tool_diagnostics import ToolDiagnostics
 from sprig_agent.provider import Provider, ProviderError
@@ -142,7 +143,7 @@ def run_case(case, config_options, *, provider_factory=Provider, confirm=approve
         provider = PacedProvider(provider_factory(config), pacer)
         history = suite.synthetic_history(case)
         approvals = {"requests": 0, "accepted": 0, "rejected": 0, "wait_ms": 0.0}
-        tool_records = []
+        tool_records, edit_preflight = [], []
         diagnostics = ToolDiagnostics()
 
         def fresh_approval(description):
@@ -150,7 +151,7 @@ def run_case(case, config_options, *, provider_factory=Provider, confirm=approve
                 return False
             started = time.perf_counter()
             try:
-                answer = bool(confirm(redact(description, key)))
+                answer = confirm(redact(description, key)) is True
             finally:
                 approvals["wait_ms"] += (time.perf_counter() - started) * 1000
                 approvals["requests"] += 1
@@ -161,6 +162,20 @@ def run_case(case, config_options, *, provider_factory=Provider, confirm=approve
             def execute(self, name, arguments):
                 if not intact():
                     return {"error": "benchmark verifier changed; run is invalid"}
+                if self._edit_preview:
+                    # Internal snapshots are not JSON/model results. Retain only
+                    # timing and readiness; never serialize paths, revisions or rules.
+                    started = time.perf_counter()
+                    record = {"tool": name, "active_ms": None, "ready": False}
+                    try:
+                        result = super().execute(name, arguments)
+                        if not intact():
+                            return {"error": "benchmark verifier changed; run is invalid"}
+                        record["ready"] = isinstance(result, EditPreview)
+                        return result
+                    finally:
+                        record["active_ms"] = round((time.perf_counter() - started) * 1000, 3)
+                        edit_preflight.append(record)
                 started = time.perf_counter()
                 before = approvals["wait_ms"]
                 try:
@@ -212,7 +227,8 @@ def run_case(case, config_options, *, provider_factory=Provider, confirm=approve
                   "outcome": outcome if valid else "verifier_modified", "acceptance_passed": completed and valid,
                   "elapsed_ms": round(elapsed, 3), "active_ms": round(max(0, elapsed - approvals["wait_ms"]), 3),
                   "approvals": {**approvals, "wait_ms": round(approvals["wait_ms"], 3)},
-                  "tools": tool_records, "requests": agent.usage_report(), "request_pacing": pacer.report(),
+                  "tools": tool_records, "edit_preflight": edit_preflight,
+                  "requests": agent.usage_report(), "request_pacing": pacer.report(),
                   "tool_diagnostics": diagnostics.metadata()}
         if case_adapter is not None:
             report.update(scope="one repository Sprig task; no overall performance or competitor ranking claim",

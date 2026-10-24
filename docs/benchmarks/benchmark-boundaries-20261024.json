@@ -1,0 +1,139 @@
+{
+  "schema": 1,
+  "scope": "benchmark wrappers: internal edit preflight measurement and literal-True approvals; application and OS/protocol modules unchanged",
+  "base_commit": "91b7d615610baed690d17a831c8ba58d24931cff",
+  "frozen_functional_files": 205,
+  "frozen_raw_bytes_manifest_sha256": "c8a5259917dee56965f54286b75fbdb98d64ce2408ae737b0e2ac4e3fd96f02c",
+  "normalized_source_manifest": {
+    "src/sprig_agent": {
+      "files": 67,
+      "sha256": "fdca742093cad9acd060ccff672fef7b6b1b274b81960414e555d9a7d51675cb"
+    },
+    "tests": {
+      "files": 90,
+      "sha256": "2af7770efa7fa619dbcc2f8169ddd645139866bd055ab7f4a9b9e1339b1572ba"
+    },
+    "scripts": {
+      "files": 10,
+      "sha256": "295901eae61815472f4f2c65af42219cbcec1e6c99fbc0456a6db1c64c414a73"
+    },
+    "benchmarks/clients": {
+      "files": 8,
+      "sha256": "5bd2945b331092d01ce5b4d2755b6bf2b756ac862bd952269efd505da4a08669"
+    }
+  },
+  "manifest_algorithm": "sorted relative path + NUL + SHA256(LF-normalized bytes) hex + newline",
+  "changed_drivers_tests_sha256": {
+    "scripts/benchmark-tasks.py": "0f4121e98dd6a34cbbb5254d3ae694e8b9827aab52efc16b45ed0ed517b1279b",
+    "benchmarks/clients/mini_environment.py": "f78fa9246e06aee92b25070aa2d93f7793691eba57c200a3c49a615e22b6654b",
+    "tests/test_benchmark_tasks.py": "5136f2b0a77bf779a27ab5ae71b4ef37ff93dd9180c00cdf9ff38fd00de113ac",
+    "tests/test_mini_environment.py": "2ebc4bb2e5579f2b9abb4f3606dc69f1d69d8d5aaeeaef6205d57810e3112e59"
+  },
+  "local_suites": [
+    {
+      "platform": "native Windows Python 3.13.0",
+      "tests": 1348,
+      "passed": 1329,
+      "skipped": 19,
+      "seconds": 556.073,
+      "log_sha256": "a5ea7956638b003d6b12d11dcf295eed7092bb73d5e387e1807e6aa571a52eed"
+    },
+    {
+      "platform": "local WSL Python 3.13.14",
+      "tests": 1348,
+      "passed": 1325,
+      "skipped": 23,
+      "seconds": 393.848,
+      "log_sha256": "60cb532e3bc0044a4d5205752e0b684ff84670311a90f03344763fff443ca145"
+    },
+    {
+      "platform": "native Windows Python 3.11.14, coding benchmark",
+      "tests": 16,
+      "passed": 16,
+      "skipped": 0,
+      "seconds": 20.892,
+      "log_sha256": "2e1c02dbace13b3449b851d6bfc0888bf98d66e3386073383c6cc9f14b8b49a8"
+    },
+    {
+      "platform": "native Windows Python 3.11.14, mini approved environment",
+      "tests": 9,
+      "passed": 9,
+      "skipped": 0,
+      "seconds": 5.784,
+      "log_sha256": "335717fd714e6b22bf87a71f66e5a656b2ace68900908c302ae4e99f114b618d"
+    }
+  ],
+  "sdk_suites": [
+    {
+      "platform": "native Windows Python 3.12.12, mini 2.4.6 SDK",
+      "tests": 25,
+      "passed": 25,
+      "skipped": 0,
+      "seconds": 42.814,
+      "log_sha256": "1923495b830d0cf8c26dd9c23ce4787d1ba6fe65729a163ea2acecbc8082d1cf"
+    },
+    {
+      "platform": "local WSL Python 3.12.13, mini 2.4.6 SDK",
+      "tests": 25,
+      "passed": 25,
+      "skipped": 0,
+      "seconds": 177.036,
+      "log_sha256": "6237163f91accfd7cf19d6287c0a51af6dfa9950c85e8d5eedb19e25c7ce8e91"
+    }
+  ],
+  "parent_negative_control": {
+    "tests": 4,
+    "expected_failure_observations": 8,
+    "expected_serialization_errors": 4,
+    "skipped": 0,
+    "parent_commit": "91b7d615610baed690d17a831c8ba58d24931cff",
+    "parent_wrapper_sha256": {
+      "scripts/benchmark-tasks.py": "42c9f6d0551d1a639ff95841bd1d1028e0a12d3fd192fb50a5b680057e70ed57",
+      "benchmarks/clients/mini_environment.py": "ae31650206ace29185eec82d0e125acb9a43001700e96da06da9725cab9f4b96"
+    },
+    "scope": "current four frozen methods against git parent wrappers loaded in an isolated process; current unchanged application modules; no remote model requests"
+  },
+  "distribution": {
+    "wheel_application_modules_matching": 67,
+    "sdist_changed_drivers_tests_matching": 4,
+    "wheel_sha256": "ab6d312a9923824152b80dc5a8c335d0729c22cb2c4abf438e0dc691e64bbafe",
+    "sdist_sha256": "d6e6f81c8d82f8ff0151eed40b951c8b52fc1da1b4f691f0bda3f48b103790cf",
+    "scope": "distribution source-byte matching; no new installed-wheel test claim; later validation JSON not claimed present in this sdist"
+  },
+  "local_document_links": {
+    "files": 4,
+    "checked": 123,
+    "missing": 0
+  },
+  "checks": [
+    "four uv locks",
+    "changed Python files compile",
+    "both benchmark entry-point help",
+    "offline wheel and sdist build",
+    "wheel application modules and four changed sdist driver/test files match",
+    "local doc links checked; validation-record target added after suites",
+    "frozen source, fixture, lock and test bytes rechecked before record creation"
+  ],
+  "regressions": [
+    "two independent file edits pass normal fixed acceptance with separate new approvals",
+    "first write rejected: next edit remains skipped and files unchanged",
+    "invalid second preflight: no batch writes or write approval",
+    "verifier changes during preflight: no write/approval and run invalid",
+    "truthy non-bool values never authorize a Sprig baseline or mini shell side effect",
+    "preflight contains only tool/timing/readiness and never serializes private snapshot objects"
+  ],
+  "model_evidence": "three complete runs and one harness crash before this fix, separately recorded; no real model rerun after fix",
+  "remote_ci": {
+    "status": "pending",
+    "triggered": false,
+    "freeze_before": "2026-11-01 Asia/Singapore",
+    "resume_requires": "verify account restriction and prior required gate; date alone is insufficient"
+  },
+  "limits": [
+    "local WSL is not native GitHub Actions validation",
+    "platform skips are not passes",
+    "no new installed-wheel tests; wheel byte matching only",
+    "distribution hash identifies the built artifact; later validation JSON is not claimed present in that sdist",
+    "no coding-performance or top-agent parity conclusion"
+  ]
+}

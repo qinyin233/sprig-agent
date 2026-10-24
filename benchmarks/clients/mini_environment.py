@@ -48,7 +48,7 @@ class ApprovedEnvironment:
         self._valid()
         started = time.perf_counter()
         try:
-            answer = bool(self.confirm(redact(description, self.config.api_key)))
+            answer = self.confirm(redact(description, self.config.api_key)) is True
         finally:
             self.approvals["requests"] += 1
             self.approvals["wait_ms"] += (time.perf_counter() - started) * 1000

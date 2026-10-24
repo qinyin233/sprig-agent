@@ -59,6 +59,21 @@ class MiniEnvironmentTests(unittest.TestCase):
         env.execute({"command": "pwd"}, cwd=str(self.root.parent))
         self.assertEqual(len(self.descriptions), 2)
 
+    def test_only_literal_true_can_authorize_a_shell_side_effect(self):
+        class Truthy:
+            def __bool__(self):
+                raise AssertionError("approval must not coerce callback values")
+
+        for index, value in enumerate((1, "yes", [True], Truthy(), False, None)):
+            with self.subTest(kind=type(value).__name__):
+                env = self.environment(lambda _: value)
+                filename = "candidate-" + str(index) + ".txt"
+                result = env.execute({"command": "echo forbidden > " + filename})
+                self.assertFalse((self.root / filename).exists())
+                self.assertEqual(result["exception_info"], "Action rejected")
+                self.assertEqual(env.approvals["accepted"], 0)
+                self.assertEqual(env.approvals["rejected"], 1)
+
     def test_credentials_are_not_in_templates_or_approved_command_environment(self):
         env = self.environment(lambda _: True, api_key="fixture-private-marker")
         with patch.dict(os.environ, {"OPENAI_API_KEY": "fixture-private-marker", "OTHER_SECRET": "fixture-private-marker"}):
