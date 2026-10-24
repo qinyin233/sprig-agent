@@ -232,10 +232,11 @@ def worktree_action(config, approve, *, path=None, ref="HEAD", cancel_event=None
             if result.get("approved") is False:
                 raise _Stopped({"approved": False, "error": "worktree command rejected; no remaining commands executed"})
             if ("error" in result or result.get("returncode") != 0 or result.get("timed_out")
-                    or result.get("output_limited") or result.get("outcome")):
+                    or result.get("output_limited") or result.get("output_truncated") or result.get("outcome")):
                 raise _Stopped({"approved": result.get("approved", False),
                     "error": "worktree command did not complete reliably; inspect Git state before retrying",
-                    "timed_out": bool(result.get("timed_out")), "output_limited": bool(result.get("output_limited"))})
+                    "timed_out": bool(result.get("timed_out")), "output_limited": bool(result.get("output_limited")),
+                    **({"output_truncated": True} if result.get("output_truncated") else {})})
             if "[REDACTED]" in result["output"] or "\ufffd" in result["output"]:
                 raise _Stopped({"approved": True,
                     "error": "Git metadata was masked or could not be decoded exactly; command sequence stopped"})

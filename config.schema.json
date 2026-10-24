@@ -260,9 +260,14 @@
         },
         "output_limit": {
           "type": "integer",
-          "minimum": 256,
+          "minimum": 0,
           "maximum": 8388608,
-          "description": "Raw command output kill limit; defaults to max_output. Higher values use bounded redacted head/tail display."
+          "not": {
+            "minimum": 1,
+            "maximum": 255
+          },
+          "default": 1048576,
+          "description": "Raw command output kill limit; defaults to 1 MiB. 0 restores stopping at max_output. Higher values use bounded redacted head/tail display."
         },
         "env_allowlist": {
           "type": "array",
@@ -1347,9 +1352,14 @@
               },
               "output_limit": {
                 "type": "integer",
-                "minimum": 256,
+                "minimum": 0,
                 "maximum": 8388608,
-                "description": "Raw command output kill limit; defaults to max_output. Higher values use bounded redacted head/tail display."
+                "not": {
+                  "minimum": 1,
+                  "maximum": 255
+                },
+                "default": 1048576,
+                "description": "Raw command output kill limit; defaults to 1 MiB. 0 restores stopping at max_output. Higher values use bounded redacted head/tail display."
               },
               "env_allowlist": {
                 "type": "array",

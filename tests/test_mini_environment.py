@@ -68,7 +68,7 @@ class MiniEnvironmentTests(unittest.TestCase):
             self.assertNotIn("fixture-private-marker", json.dumps(env.serialize()))
 
     def test_output_limit_stops_flood_and_marks_it_for_the_reference_model(self):
-        env = self.environment(lambda _: True, max_output=256)
+        env = self.environment(lambda _: True, max_output=256, command_output_limit=256)
         result = env.execute({"command": self.command("print('x' * 1000000)")})
         self.assertLessEqual(len(result["output"].encode()), 256)
         self.assertEqual(result["exception_info"], "Command output limit exceeded")

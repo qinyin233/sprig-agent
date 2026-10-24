@@ -134,7 +134,7 @@ class CommandCaptureTests(unittest.TestCase):
             self.assertIn("output cap: 262144 bytes", self.prompts[-1])
             self.assertIn("displayed output cap: 512 bytes", self.prompts[-1])
 
-    def test_default_still_kills_at_max_output_and_has_no_new_result_fields(self):
+    def test_legacy_none_still_kills_at_max_output_and_has_no_new_result_fields(self):
         result = self.run_command("print('x'*50000)", replace(self.config, command_output_limit=None))
         self.assertTrue(result["output_limited"])
         self.assertEqual(len(result["output"].encode()), 512)
@@ -216,7 +216,7 @@ class CommandCaptureTests(unittest.TestCase):
         self.assertIn("[REDACTED]", result["output"])
         self.assertEqual("".join(self.output), terminal_text(result["output"]))
 
-    def test_loopback_verbose_baseline_repair_stage_and_independent_final_checks(self):
+    def test_loopback_default_verbose_baseline_repair_stage_and_independent_final_checks(self):
         (self.root / "target.txt").write_bytes(b"broken\n")
         checker = self.parent / "fixed-check.py"
         checker.write_text("from pathlib import Path\nprint('progress'*10000)\n"
@@ -231,7 +231,7 @@ class CommandCaptureTests(unittest.TestCase):
             self.assertIn("ACTUAL_FAILURE_AT_END", checks[0]["output"])
             return response(edit("repair", "broken", "fixed", "target.txt"))
         with replies([repair, DONE], captured) as url:
-            config = replace(self.config, base_url=url, proxy="direct", max_steps=2, max_output=1024,
+            config = Config(self.root, "offline", base_url=url, proxy="direct", timeout=5, max_steps=2, max_output=1024,
                              max_context_bytes=16384, check_before_task=True, check_after_edit=True,
                              checks=((sys.executable, "-I", "-B", str(checker)),))
             tools = self.tools(config)
@@ -273,11 +273,11 @@ class CommandOutputConfigurationTests(unittest.TestCase):
         self.assertEqual(status, 0)
         self.assertEqual(json.loads(output)["execution"]["output_limit"], 32768)
 
-    def test_default_matches_existing_output_cap_and_schema_tracks_runtime(self):
+    def test_default_separates_output_cap_and_schema_tracks_runtime(self):
         self.write('[agent]\nmax_output=1024\n')
         config, details = self.resolve(load_settings(self.path), model="fixture")
-        self.assertIsNone(config.command_output_limit)
-        self.assertEqual(public_config(config, details)["execution"]["output_limit"], 1024)
+        self.assertEqual(config.command_output_limit, 1048576)
+        self.assertEqual(public_config(config, details)["execution"]["output_limit"], 1048576)
         from sprig_agent.configuration_schema import configuration_schema
         schema = configuration_schema()
         self.assertEqual(schema["properties"]["execution"]["properties"]["output_limit"]["maximum"], 8388608)

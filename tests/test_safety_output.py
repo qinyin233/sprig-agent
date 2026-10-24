@@ -133,12 +133,12 @@ class SafetyOutputTests(unittest.TestCase):
         self.assertEqual(result["content"], filler + "[REDACTED]")
         self.assertNotIn(prefix, result["content"])
 
-    def test_actual_command_cap_masks_key_prefix_in_display_and_result(self):
+    def test_legacy_command_cap_masks_key_prefix_in_display_and_result(self):
         prefix = self.config.api_key[:12]
         filler = "x" * (self.config.max_output - len(prefix))
         (self.root / "payload.bin").write_bytes((filler + self.config.api_key).encode("utf-8"))
         displayed = []
-        tools = self.tools(emit_output=displayed.append)
+        tools = self.tools(replace(self.config, command_output_limit=0), emit_output=displayed.append)
         result = tools.execute("run", {"argv": [sys.executable, "-c", "import sys; from pathlib import Path; sys.stdout.buffer.write(Path('payload.bin').read_bytes()); sys.stdout.buffer.flush()"]})
         self.assertTrue(result["output_limited"])
         self.assertEqual(result["output"], filler + "[REDACTED]")

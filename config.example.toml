@@ -117,9 +117,9 @@ exclude = ["private/", "*.local.json"] # additive with .sprigignore
 [execution]
 background = false # opt-in noninteractive owned commands; never restart on restore
 background_timeout = 300 # independent background cap, >0..3600 seconds
-# Optional raw command-output kill limit (256..8388608 bytes).
-# Omit to retain max_output as the kill limit. Higher values keep bounded head/tail display.
-# output_limit = 1048576
+# Raw command-output kill limit (default 1 MiB; 256..8388608 bytes).
+# 0 restores stopping at max_output, including legacy sessions. Larger limits keep head/tail display.
+output_limit = 1048576
 env_allowlist = [] # additional named variables; model credentials always removed
 # env = { BUILD_MODE = "debug" } # trusted literal values, no substitutions/commands
 

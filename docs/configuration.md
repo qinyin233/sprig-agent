@@ -201,7 +201,7 @@ uv run --locked sprig --config-schema
 
 `[storage].command_log_dir` 或 `--command-log-dir PATH` 显式启用专用私有命令日志目录，绑定会话，默认不保留。每次命令批准包含存储与候选淘汰；每份最多 8 MiB、专用 journal 最多 16 MiB/16 条，七天后不可读，磁盘清理仍需获批操作。模型 `read_log` 和本地 `/logs`、`/log ID [OFFSET]` 支持回查，`/logs clear` 新批准后只清理当前会话；不提高原始输出上限，不替代验收，详见[日志回查与隔离边界](command-logs.md)。
 
-长测试日志可显式设置 `[execution].output_limit`，将原始总输出上限与 `max_output` 展示预算分开：例如 `output_limit=1048576` 允许至多 1 MiB 输出，展示仍保留有界首尾。范围 256–8388608，默认沿用 `max_output`，CLI 为 `--command-output-limit`，显式值绑定会话。首尾展示的 `output_truncated` 与进程被停止的 `output_limited` 含义不同，见[命令输出与验收边界](command-output.md)。
+长测试日志默认采集至多 1 MiB，`max_output` 展示预算仍独立（默认 16000 字节），超出展示预算保留有界首尾。用户或 profile 可设置 `[execution].output_limit`，范围 0 或 256–8388608，CLI 为 `--command-output-limit`；0 明确恢复在 `max_output` 处停止的旧策略，不表示无限输出。新默认及显式采集上限均绑定会话；没有旧采集上限绑定的历史会话须使用 0 及原来的展示预算恢复，不静默迁移。首尾展示的 `output_truncated` 与进程被停止的 `output_limited` 含义不同，见[命令输出与验收边界](command-output.md)。
 
 ## 后台命令
 

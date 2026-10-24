@@ -1,0 +1,159 @@
+{
+  "scope": "bounded 1 MiB default raw command capture with existing small head/tail display; explicit zero retains legacy stop-at-display behavior",
+  "base_commit": "d7509e15fc79c444b75df38fd24e5adbde67065d",
+  "source_manifest": {
+    "src/sprig_agent": {
+      "files": 67,
+      "sha256": "fdca742093cad9acd060ccff672fef7b6b1b274b81960414e555d9a7d51675cb"
+    },
+    "tests": {
+      "files": 90,
+      "sha256": "a2208eb44a263c0cc3f3d9725eeb32695844049c8e0334363b6591f8202da6fa"
+    },
+    "tests/fixtures": {
+      "files": 2,
+      "sha256": "8d85c1704599d29f45db0dbb3c1278557cce9be44a004366dd969217c3a40718"
+    },
+    "benchmarks/context": {
+      "files": 1,
+      "sha256": "6bc03c6b0b8db2e27b931cac310c91348ca74e5eda50e3fff6afed3c42b61801"
+    },
+    "benchmarks/clients": {
+      "files": 8,
+      "sha256": "2a2a50b20537d1634cc0f105f10f1a5ac95078a1763d6ab3ec83e3e8d2fee4f7"
+    },
+    "benchmarks/clients/tests": {
+      "files": 2,
+      "sha256": "39323085c0d70dba056438275ccad8518561cd8409bae2acca59696b5d39bab2"
+    },
+    "scripts": {
+      "files": 10,
+      "sha256": "91cf6d8cec2b21981347ada90dab46656cc0ec1f2e30eb93921a64909159aa29"
+    },
+    "config.schema.json": {
+      "sha256": "cd992a8c771f4fc4ccc6541d9fb523eb0049b953ca1ae8010d1c24c5fd4c7979"
+    },
+    "config.example.toml": {
+      "sha256": "4c30fa1024ca1b2daa2e9306e09812e54f63a8fcb4180edd44530f40bf7d69ee"
+    }
+  },
+  "manifest_algorithm": "sorted relative path + NUL + SHA256(LF-normalized bytes) hex + newline",
+  "local_suites": [
+    {
+      "platform": "native Windows Python 3.13.0",
+      "tests": 1344,
+      "passed": 1325,
+      "skipped": 19,
+      "seconds": 502.121
+    },
+    {
+      "platform": "local WSL Python 3.13.14",
+      "tests": 1344,
+      "passed": 1321,
+      "skipped": 23,
+      "seconds": 375.049
+    },
+    {
+      "platform": "native Windows Python 3.11.14 editable; 23 related modules including output, worktrees, provider and benchmark compatibility",
+      "tests": 373,
+      "passed": 359,
+      "skipped": 14,
+      "seconds": 90.059
+    }
+  ],
+  "mini_sdk_suites": [
+    {
+      "platform": "native Windows mini-SWE-agent 2.4.6 SDK",
+      "tests": 25,
+      "passed": 25,
+      "skipped": 0,
+      "seconds": 48.247
+    },
+    {
+      "platform": "local WSL mini-SWE-agent 2.4.6 SDK",
+      "tests": 25,
+      "passed": 25,
+      "skipped": 0,
+      "seconds": 154.711
+    }
+  ],
+  "parent_negative_control": {
+    "tests": 4,
+    "expected_failure_observations": 6,
+    "errors": 0,
+    "base_commit": "d7509e15fc79c444b75df38fd24e5adbde67065d",
+    "scope": "isolated parent config/settings/schema/CLI/session; current four regression methods; three protocol subtests; default loses final output and legacy binding cannot detect new policy"
+  },
+  "worktree_review_negative": {
+    "tests": 1,
+    "expected_failures": 1,
+    "scope": "uncommitted new-default candidate before completeness gate created a fixture worktree despite a local include hidden by sampled output",
+    "pre_gate_application_sha256": "9021c301513b848510ebf7f0a946bcc55e0350c109661575bb3ed6641afea511",
+    "fixed_behavior": "stop before parsing incomplete Git metadata; no checkout"
+  },
+  "verification_notes": [
+    "first full candidate had five failures and one error on each platform; updated default-binding snapshots, explicit legacy-prefix capture and benchmark caps, and added fail-closed Git metadata handling; final full suites rerun on sealed sources",
+    "earlier interrupted runs with missing handles and incomplete logs were excluded",
+    "passing Python 3.11 related run emitted a loopback fixture ConnectionAbortedError; retained in its log and not counted as a test failure"
+  ],
+  "installed_wheel": {
+    "tests": 10,
+    "skipped": 0,
+    "source_files_checked": 67,
+    "sdist_changed_source_tests_fixture_config_docs_match": true
+  },
+  "regressions": [
+    "verbose default command reaches final failure; redaction precedes sampling",
+    "1 MiB + 1 byte flood stops owned command tree; display remains bounded",
+    "zero option restores legacy stop and schema/settings/provenance agree",
+    "legacy absent output binding rejects before model contact; explicit zero can resume",
+    "three protocol loopbacks and 80x24 TUI retain final output after fresh approval",
+    "default verbose baseline failure, approved repair, edit check and independent final acceptance use the original request budget",
+    "Git worktree management refuses sampled metadata before local include parsing or checkout",
+    "existing context replay and Sprig/mini benchmark factories keep original raw caps and exact approval proposals"
+  ],
+  "retained_click_audit": {
+    "source_commit": "e635e0c9c65844d143812ba31ad30364ef27685a",
+    "model_replies": 12,
+    "application_check_output_bytes": [
+      789,
+      615,
+      283
+    ],
+    "checks_after_request": [
+      0,
+      11,
+      12
+    ],
+    "later_model_replies": [
+      12,
+      1,
+      0
+    ],
+    "any_output_limited": false,
+    "private_session_unchanged": true,
+    "scope": "read-only retained transcript audit; no wire-body or new model-behavior claim"
+  },
+  "other_checks": [
+    "four uv lock files",
+    "schema and complete TOML example",
+    "compileall and CLI help",
+    "offline sdist and wheel build",
+    "local document links",
+    "credential-shaped staged additions"
+  ],
+  "external_model_requests": 0,
+  "ci": {
+    "triggered": false,
+    "status": "pending; frozen before 2026-11-01 Asia/Singapore; verify account restriction and prior gate afterwards"
+  },
+  "limits": [
+    "platform skips are not passes; WSL is not native Ubuntu CI",
+    "process backends and protocol adapters unchanged; default execution policy changed",
+    "hard output limit and per-command fresh approval remain; commands are not sandboxed",
+    "middle output remains omitted unless explicit private command logging is configured",
+    "legacy resume also needs the original max-output value; no silent session migration",
+    "scripted completion without configured checks remains unverified",
+    "no new real-model success-rate, cost or throughput result; Click remains incomplete"
+  ]
+}

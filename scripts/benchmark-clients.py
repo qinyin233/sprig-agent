@@ -57,7 +57,7 @@ def invocation(client):
 def probe(argv, expected_version, flags, repeat, *, version_argv=None, runtime_name=None):
     """Only fixed --version / --help calls; never constructs a model provider."""
     with task_bench.disposable() as root:
-        tools = Tools(Config(root, "client-probe", timeout=30, max_output=65536), lambda _: True)
+        tools = Tools(Config(root, "client-probe", timeout=30, max_output=65536, command_output_limit=65536), lambda _: True)
         records = []
         runtime = None
         try:

@@ -128,7 +128,8 @@ def run_case(case, config_options, *, provider_factory=Provider, confirm=approve
         files = case_adapter.files if case_adapter is not None else suite.fixture_files(case)
         suite.seed(root, files)
         argv, signature, intact = (case_adapter.bundle(parent, case) if case_adapter is not None else bundle(parent, case))
-        config = Config(root, checks=(argv,), **config_options)
+        # Preserve the benchmark's declared raw cap across product defaults.
+        config = Config(root, checks=(argv,), **({"command_output_limit": config_options.get("max_output", 16000)} | config_options))
         lock_signature = hashlib.sha256((REPO / "uv.lock").read_bytes()).hexdigest()
         driver_signature = hashlib.sha256(Path(__file__).read_bytes()).hexdigest()
         node_version = None

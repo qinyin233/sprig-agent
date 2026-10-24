@@ -113,7 +113,8 @@ class ReasoningProtocolTests(unittest.TestCase):
         # Windows runners can expose TEMP through an 8.3 alias before the
         # workspace exists. Config binds its canonical, existing directory.
         self.assertTrue(self.config.workdir.samefile(self.root))
-        self.assertEqual(self.config.binding(), {"model": "fixture", "base_url": self.config.base_url, "workdir": str(self.config.workdir)})
+        self.assertEqual(self.config.binding(), {"model": "fixture", "base_url": self.config.base_url,
+                                                "workdir": str(self.config.workdir), "command_output_limit": 1048576})
         self.assertEqual(validate_message(done()), {"role": "assistant", "content": "Done"})
         payload = json.loads(request_body(self.config, [done()], []))
         self.assertNotIn("reasoning_content", payload["messages"][0])

@@ -245,7 +245,7 @@ class ToolTests(unittest.TestCase):
         self.assertTrue(result["timed_out"])
         self.assertIn("start", result["output"])
         self.assertLess(time.monotonic() - started, 2)
-        result = self.call("run", argv=[sys.executable, "-c", "print('x' * 1000000)"])
+        result = self.call("run", argv=[sys.executable, "-c", "print('x' * (2 * 1024 * 1024))"])
         self.assertTrue(result["output_limited"])
         self.assertEqual(len(result["output"].encode()), 1024)
 

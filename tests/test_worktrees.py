@@ -310,12 +310,31 @@ class WorktreeTests(unittest.TestCase):
         self.root.rename(longer)
         self.root = longer
         self.config = replace(self.config, workdir=longer, max_output=256)
+        for hard_limit in (False, True):
+            if hard_limit:
+                self.config = replace(self.config, command_output_limit=256)
+            self.approve.reset_mock()
+            result = self.create()
+            self.assertIn("error", result)
+            self.assertIs(result["output_limited"], hard_limit)
+            self.assertIs(result.get("output_truncated", False), not hard_limit)
+            self.assertFalse(result["created"])
+            self.assertFalse(self.target.exists())
+            self.assertEqual(self.approve.call_count, 1)
+
+    def test_sampled_config_listing_cannot_hide_rejected_local_include(self):
+        self.config = replace(self.config, max_output=1024)
+        with (self.root / '.git/config').open('a', encoding='utf-8') as stream:
+            stream.write('\n[sprigfixture]\n' + ''.join('before' + str(i) + ' = value\n' for i in range(80)))
+            stream.write('[include]\npath = unused-config\n[sprigfixture]\n')
+            stream.write(''.join('after' + str(i) + ' = value\n' for i in range(80)))
         result = self.create()
-        self.assertIn("error", result)
-        self.assertTrue(result["output_limited"])
-        self.assertFalse(result["created"])
+        self.assertIn('error', result)
+        self.assertTrue(result['output_truncated'])
+        self.assertFalse(result['output_limited'])
+        self.assertFalse(result['created'])
         self.assertFalse(self.target.exists())
-        self.assertEqual(self.approve.call_count, 1)
+        self.assertEqual(self.approve.call_count, 2)
 
     def test_git_binary_inside_workspace_is_rejected_before_any_process(self):
         executable = self.root / "git.exe"

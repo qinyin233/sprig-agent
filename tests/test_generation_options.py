@@ -78,7 +78,7 @@ class GenerationOptionsTests(unittest.TestCase):
         self.assertEqual(with_tools["tools"], TOOL_SCHEMAS)
         self.assertEqual(with_tools["tool_choice"], "auto")
         self.assertEqual(self.config.binding(), {"model": "fixture", "base_url": "https://api.openai.com/v1",
-                                                "workdir": str(self.root.resolve())})
+                                                "workdir": str(self.root.resolve()), "command_output_limit": 1048576})
         for value in (1, 65536):
             self.assertEqual(replace(self.config, max_tokens=value).generation_options(), {"max_tokens": value})
         for value in (0, -1, 65537, True, 1.5, "2048", float("nan")):

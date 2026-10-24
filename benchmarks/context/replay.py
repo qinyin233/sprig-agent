@@ -66,7 +66,7 @@ def run(parent, *, compact=True):
         check = (sys.executable, "-I", "-c",
                  "from pathlib import Path; assert all(Path(f'file-{i}.txt').read_bytes() == b'y'*20000 for i in range(6))")
         config = Config(root, "offline-http-fixture", base_url=f"http://127.0.0.1:{server.server_port}/v1",
-                        max_output=65536, max_steps=10, checks=(check,), compact_context=compact)
+                        max_output=65536, command_output_limit=65536, max_steps=10, checks=(check,), compact_context=compact)
         approved_edits, approved_checks = [], []
         expected = {f'WRITE "file-{index}.txt"\n' + Tools._diff(f"file-{index}.txt", before, after)
                     for index in range(EDIT_COUNT)}

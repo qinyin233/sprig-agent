@@ -207,7 +207,7 @@ def measure(source, fixture, repeat, *, line_edits=False):
             workspace = parent / 'workspace'
             bench.suite.seed(workspace, base)
             approved = []
-            tools = Tools(Config(workspace, 'offline', max_output=1000000), lambda prompt: approved.append(True) or True)
+            tools = Tools(Config(workspace, 'offline', max_output=1000000, command_output_limit=1000000), lambda prompt: approved.append(True) or True)
             multiple = 'edits' in inspect.signature(tools.edit_file).parameters
             calls, elapsed, payload = 0, 0.0, 0
             read_calls, read_ms, read_bytes = 0, 0.0, 0
@@ -268,7 +268,7 @@ def worker(fixture, *, source=None, repeat=1, candidate=None, line_edits=False):
             argv += ['--source', str(source), '--repeat', str(repeat)]
         # Only this fixed validation worker is launched, on pinned disposable
         # inputs. No model is present and no product auto-approval mode is added.
-        tools = Tools(Config(parent, 'offline', timeout=120, max_output=65536), lambda _: True)
+        tools = Tools(Config(parent, 'offline', timeout=120, max_output=65536, command_output_limit=65536), lambda _: True)
         try:
             relay = REPO / 'benchmarks/clients/probe_child.py'
             result = tools.run([sys.executable, '-I', '-B', str(relay), str(parent / 'profile'), *argv], timeout=120)

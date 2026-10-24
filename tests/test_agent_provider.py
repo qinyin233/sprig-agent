@@ -63,7 +63,7 @@ class ConfigTests(ConfigCase):
         self.assertEqual(config.base_url, "https://api.example/v1")
         self.assertEqual(config.binding(), {
             "workdir": str(self.root.resolve()), "model": "offline-test",
-            "base_url": "https://api.example/v1"})
+            "base_url": "https://api.example/v1", "command_output_limit": 1048576})
         self.assertNotIn("known-secret", repr(config))
         self.assertNotIn("api_key", config.binding())
 

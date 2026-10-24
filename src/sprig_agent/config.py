@@ -29,6 +29,7 @@ RESERVED_BODY_FIELDS = {"model", "messages", "tools", "tool_choice", "stream", "
                         "prompt", "system", "input", "instructions", "api_key", "headers", "base_url",
                         "store", "previous_response_id", "conversation", "background", "include", "max_output_tokens"}
 ENV_NAME = re.compile(r"[A-Za-z_][A-Za-z0-9_]{0,127}")
+DEFAULT_COMMAND_OUTPUT_LIMIT = 1024 * 1024
 HEADER_NAME = re.compile(r"[!#$%&'*+.^_`|~0-9A-Za-z-]{1,64}")
 FORBIDDEN_HEADERS = {"host", "content-length", "content-type", "transfer-encoding", "connection", "upgrade",
                      "cookie", "set-cookie", "proxy-authorization", "authorization", "accept", "user-agent"}
@@ -172,7 +173,7 @@ class Config:
     response_language: str | None = None
     tui_keybindings: tuple = ()
     setting_sources: tuple = field(default=(), repr=False, compare=False)
-    command_output_limit: int | None = None
+    command_output_limit: int | None = DEFAULT_COMMAND_OUTPUT_LIMIT
     reference_files: tuple = ()
     preserve_reasoning: bool = False
     check_history_format: str = "tool_calls"
@@ -228,9 +229,11 @@ class Config:
             raise ValueError("timeout must be greater than 0 and at most 120 seconds")
         if not isinstance(self.max_output, int) or isinstance(self.max_output, bool) or not 256 <= self.max_output <= 1000000:
             raise ValueError("max-output must be between 256 and 1000000 bytes")
+        if type(self.command_output_limit) is int and self.command_output_limit == 0:
+            object.__setattr__(self, "command_output_limit", None)
         if self.command_output_limit is not None and (type(self.command_output_limit) is not int
                 or not 256 <= self.command_output_limit <= 8 * 1024 * 1024):
-            raise ValueError("command-output-limit must be between 256 and 8388608 bytes")
+            raise ValueError("command-output-limit must be 0 (stop at max-output) or between 256 and 8388608 bytes")
         if not isinstance(self.api_key, str) or any(ord(c) < 32 for c in self.api_key):
             raise ValueError("API key contains control characters")
         if not isinstance(self.stream, bool):

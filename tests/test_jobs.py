@@ -132,7 +132,7 @@ class JobTests(unittest.TestCase):
         row = tools.run(argv("import time; time.sleep(10)"), background=True)
         self.assertTrue(self.done(tools, row["job_id"])["timed_out"])
         tools = self.tools(max_output=1200)
-        row = tools.run(argv("print('x'*10000)"), background=True)
+        row = tools.run(argv("print('x'*(2*1024*1024))"), background=True)
         self.assertTrue(self.done(tools, row["job_id"])["output_limited"])
         row = tools.run(argv("raise SystemExit(7)"), background=True)
         self.assertEqual(self.done(tools, row["job_id"])["returncode"], 7)

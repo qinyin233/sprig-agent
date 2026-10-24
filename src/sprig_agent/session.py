@@ -352,7 +352,12 @@ class SessionStore:
                 or saved["version"] not in (1, 2)
                 or saved["version"] == 2 and not isinstance(saved.get("input_inbox"), dict)):
             raise SessionError("unsupported session format")
-        if saved.get("binding") != self.config.binding():
+        binding = self.config.binding()
+        if saved.get("binding") != binding:
+            legacy_binding = {key: value for key, value in binding.items() if key != "command_output_limit"}
+            if "command_output_limit" in binding and saved.get("binding") == legacy_binding:
+                raise SessionError("session uses the legacy command-output stopping policy; resume with --command-output-limit 0 "
+                                   "and the original --max-output value, or start a new session. No history was sent")
             raise SessionError("session endpoint/model/workdir changed; history will not be sent. Resume with the original settings or start a new session")
         try:
             if saved["version"] == 1 and ("input_inbox" in saved or delivered_inputs(saved.get("messages"))):

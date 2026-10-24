@@ -126,7 +126,8 @@ def run_case(case, options, *, model_factory=None, confirm=approve, emit=None, c
         bench.suite.seed(root, files)
         acceptance, verifier_signature, verifier_intact = (
             case_adapter.bundle(parent, case) if case_adapter is not None else bench.bundle(parent, case))
-        config = Config(root, checks=(acceptance,), **options)
+        # Match Sprig's benchmark raw cap, independent of interactive defaults.
+        config = Config(root, checks=(acceptance,), **({"command_output_limit": options.get("max_output", 16000)} | options))
         source_signature, sdk_intact = sdk_snapshot()
         protected = {path: (path.resolve(), path.read_bytes()) for path in (
             Path(__file__), REPO / "benchmarks/clients/mini_environment.py", REPO / "benchmarks/clients/bash_command.py",

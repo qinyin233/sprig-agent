@@ -45,7 +45,7 @@ def self_test(adapter, fixture):
             argv, _, intact = adapter.bundle(parent, adapter.case)
             # --self-test authorizes this exact fixed calibration, not model
             # actions. No approval bypass is exposed by the live task entry.
-            tools = Tools(Config(root, "offline-calibration", max_output=65536), lambda _: intact())
+            tools = Tools(Config(root, "offline-calibration", max_output=65536, command_output_limit=65536), lambda _: intact())
             try:
                 outcome = tools.run(list(argv), timeout=30)
             finally:
