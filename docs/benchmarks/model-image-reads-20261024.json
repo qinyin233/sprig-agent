@@ -1,0 +1,146 @@
+{
+  "schema": 1,
+  "scope": "freshly approved model-requested raster reads via existing read_file(image=true); native run-only pixels, metadata-only saved receipts",
+  "base_commit": "c5d893276ae8a62131ee922574a5474ee948cb27",
+  "frozen_functional_files": 219,
+  "frozen_raw_bytes_manifest_sha256": "459b5f358ea4f4befed4a695be96177a712fca5b13bcb04df31b379c86978834",
+  "source_manifest": {
+    "src/sprig_agent": {
+      "files": 71,
+      "sha256": "5f03488eedf0f04f1b0c827f2a9e770d85895956d7472712480400b7998d7eb6"
+    },
+    "tests": {
+      "files": 102,
+      "sha256": "c068c2aa061b8594757910f0188232d252509afd4417514239b9bd5b9dec815f"
+    }
+  },
+  "manifest_algorithm": "sorted relative path + NUL + SHA256(LF-normalized bytes) hex + newline",
+  "changed_source_tests_sha256": {
+    "src/sprig_agent/agent.py": "a9c5edc13059c23a99febe5f7ed52c35a642d5287b3d250a12a6f58f2115f0aa",
+    "src/sprig_agent/image_reads.py": "17d3eeb388c6fb057fb608c408d6fdff91aa7f0c423eee6ef27a066451b845b1",
+    "src/sprig_agent/tools.py": "8280f218cd9bd8b1fd55ff943a2d256e1e7e82994e87cb664b27e50e01ddb535",
+    "tests/test_image_reads.py": "f75c862ebd54ff7de242f16ddb7f6573d0987e88e43150e5fbd06c894ddf1c27",
+    "tests/test_image_reads_ui.py": "5a8c33f73c362ca3de433be6d56a7430a000dc5368ebe704ac2d86a70a4f7928"
+  },
+  "local_suites": [
+    {
+      "platform": "native Windows Python 3.13.0",
+      "tests": 1430,
+      "passed": 1411,
+      "skipped": 19,
+      "seconds": 567.196,
+      "log_sha256": "a3520f05cf0ecac00bef5975550fa04f018983232508630a248de4302fba3b31"
+    },
+    {
+      "platform": "local WSL Python 3.13.14",
+      "tests": 1430,
+      "passed": 1407,
+      "skipped": 23,
+      "seconds": 427.667,
+      "log_sha256": "3c65ece2f88aab949a056df8f37e0b52794a107639a8fab1fe2eb46f3f707089"
+    },
+    {
+      "platform": "native Windows Python 3.11.14, 15 new regressions plus unchanged schema footprint assertion",
+      "tests": 16,
+      "passed": 16,
+      "skipped": 0,
+      "seconds": 7.488,
+      "log_sha256": "21bbd56c881ccf052738a97107898fb6e13d75aa40d275aa21f555f41c18a19b"
+    }
+  ],
+  "sdk_suites": [
+    {
+      "platform": "native Windows Python 3.12.12, mini SDK",
+      "tests": 25,
+      "passed": 25,
+      "skipped": 0,
+      "seconds": 40.409,
+      "log_sha256": "a99c105e6544ec73784927b2d0bf1d5cd2109161f4b9189a59401c3970d9db77"
+    },
+    {
+      "platform": "local WSL Python 3.12.13, mini SDK, separate uv environment",
+      "tests": 25,
+      "passed": 25,
+      "skipped": 0,
+      "seconds": 166.265,
+      "log_sha256": "91ccd32d3e8268c262b27fc6ae8e6251e64dbfa47bca770cb314098405034ead"
+    }
+  ],
+  "installed_wheel": {
+    "tests": 38,
+    "skipped": 0,
+    "wheel_source_modules_matching": 71,
+    "imported_installed_modules": 64,
+    "sdist_changed_source_tests_matching": 5,
+    "wheel_sha256": "9354ae6b2ca1b90335aa2e28d5897acc1a88a9f19024defd177c243006a1ba32",
+    "sdist_sha256": "28511c2a880fcd3fff5543a3081979a73deeb5a301037e1a5eeab957dcac4b99",
+    "scope": "38 model image read and explicit image input regressions loaded from copied tests; every imported application module verified under installed target; final validation JSON not claimed present in this sdist"
+  },
+  "documentation": {
+    "schema_and_example": "passed",
+    "document_files": 5,
+    "local_links_checked": 200,
+    "deferred_validation_record_links": 0,
+    "scope": "local file targets, not remote URLs or fragment anchors"
+  },
+  "isolated_parent_read_file": {
+    "tests": 1,
+    "expected_failures": 1,
+    "errors": 0,
+    "skipped": 0,
+    "approval_calls": 0,
+    "parent_commit": "c5d893276ae8a62131ee922574a5474ee948cb27",
+    "parent_tools_sha256": "8317bb6d6760307f53d09e550661466980e32b7ad24e09a065246347815cc855",
+    "scope": "isolated original read_file rejects image argument; current regression cannot obtain native image result; no provider calls"
+  },
+  "new_test_methods": 15,
+  "actual_protocol_cases": 6,
+  "scripted_loopback_http_requests": 24,
+  "protocol_case_assertions": "Chat Completions/Messages/Responses each JSON and SSE; four requests and four fresh approvals per case: generate PNG command, read/send image, edit based on captured actual pixel color, independent fixed check",
+  "regressions": [
+    "fresh literal-True image-send approval; declining and truthy non-booleans never prepare pixels",
+    "privacy, source revision, delivered instructions, model configuration, resource lifetime and cancellation rechecked",
+    "read-only supports approved viewing; disabled read_file stops before decoding or asking",
+    "text mode unchanged; explicit image flag rejects mixed text options and unsupported input",
+    "metadata-only tool JSON/repr bounded by max_output; no Base64 or edit read_id",
+    "same canonical path replaces snapshot; cache refuses above 16 paths or 2 MiB normalized data without evicting old snapshots",
+    "delivered human guidance, invocation exit/error/cancellation and reset clear model-read pixels",
+    "private history save/load retains receipts without native pixel blocks or approval replay",
+    "80x24 TUI Enter waits for approval; accept and reject flows expose no Base64 in terminal or saved messages",
+    "original full request-byte limit rejects oversized actual native image request before next HTTP call"
+  ],
+  "tool_definition_bytes": {
+    "final": 4930,
+    "unchanged_existing_ceiling": 4932,
+    "scope": "compact serialized TOOL_SCHEMAS, not the complete model request"
+  },
+  "earlier_attempts_excluded_from_final_passes": {
+    "initial_full_runs": {
+      "tests_each": 1430,
+      "windows_failures": 1,
+      "wsl_failures": 1,
+      "reason": "tool definition 4972 bytes exceeded unchanged 4932-byte assertion"
+    },
+    "intermediate_targeted_failure": {
+      "tool_definition_bytes": 4936,
+      "reason": "same unchanged ceiling"
+    },
+    "final_change": "only tools.py descriptor compacted to 4930; final full suites, SDK suites, Python 3.11 and installed wheel checked after final seal; tests and budgets unchanged"
+  },
+  "checks": [
+    "four uv lock files",
+    "schema equals generated schema; example TOML validates",
+    "compileall src/tests/scripts",
+    "CLI help",
+    "offline final wheel/sdist build",
+    "38 installed-wheel regressions; 71 app modules and five changed source/test files match",
+    "local documentation file targets",
+    "git diff --check"
+  ],
+  "artifact_scope": "final wheel/sdist checked for application/test bytes; later final validation record and documentation updates are not claimed present in these artifacts",
+  "compatibility": "no new tool name, configuration switch, dependency, default request-budget increase, OS backend or protocol-adapter change; requires a vision-capable configured model",
+  "safety_scope": "pixels are not OCR-scanned or credential-redacted; metadata stripped; each model image read freshly approved for current model/endpoint and subsequent requests in current invocation; saved normal model text/command arguments/native state retain existing policies",
+  "external_model_calls": 0,
+  "model_quality_claim": "none; loopback protocol/execution evidence does not demonstrate real visual understanding, coding success improvements or parity with other agents",
+  "remote_ci": "pending; no dispatch/rerun/CI-enabled push before 2026-11-01 Asia/Singapore; commits use [skip ci]; account restriction and prior gate must be verified before resumption; local WSL is not native CI"
+}

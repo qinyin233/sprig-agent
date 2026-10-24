@@ -408,3 +408,9 @@ Sprig 选择沿既有文本快照入口补齐[静态图片的实际三协议后�
 重读固定副本 `compaction.ts` 第 797–811 行的 [recentUserMessages](https://github.com/anomalyco/opencode/blob/9d90d892dcbfc52b47e95b2ea31b8aba877128fd/packages/core/src/session/compaction.ts#L797-L811)：上游先选内部 `type === user` 消息，再转成模型消息并处理能力/图片预算，而不是从最终协议的 user 角色倒推全部都是人类请求。这是该函数直接可见的区分，未运行上游或据注释宣称所有来源都已正确识别。
 
 Sprig 的实际反例是检查失败通知在时间线中多出一轮，并在摘要后代替真实用户任务。现加入[应用来源标记](../message-origin.md)，覆盖程序通知、附件与本地检查；历史保存后保留，协议投影前校验并移除。TUI 的草稿重试也采用同一判断，旧选择器会在实际保存失败后重复任务。标记不授予权限，不按文本迁移旧会话，也没有增加模型调用或完成率结论。
+
+## 23. 模型读图与用户附件分别取得同意（2026-10-24）
+
+读取固定副本 [`tool/plugin/read.ts`](https://github.com/anomalyco/opencode/blob/9d90d892dcbfc52b47e95b2ea31b8aba877128fd/packages/core/src/tool/plugin/read.ts#L174-L187) 的 `toModelContent`：二进制媒体结果由说明文字和包含数据 URI/MIME/name 的 file 内容组成。前面的读取链检查 `MEDIA_MIMES`，也经访问授权与附近 AGENTS.md 发现；这些代码说明有媒体执行后端，不能只把用户附件入口当成模型已能查看图片的证据。本次未运行上游。
+
+Sprig 原有 `read_file` 确实只接受 UTF-8，即使用户可手动附图，模型仍不能查看刚生成的截图。现补[显式图片读取模式](../model-image-reads.md)，每次像素发送单独确认，不把用户附件授权扩大为模型任意读图。复用现有规范化与三协议编码，模型回执只含有界元数据；缓存受当前调用/新引导约束，恢复不重放。六条脚本化协议链使用另行批准的命令生成图片后再读取，未据此宣布真实视觉模型成功率提高。

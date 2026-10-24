@@ -39,6 +39,7 @@ from .edit_batch import EditPreview, digest, preflight
 from .line_edits import replace_lines, validate_edits
 from .search import FileGlob, RegexBudgetExceeded, RegexMatcher, matching_lines
 from .syntax import IndexUnavailable
+from .image_reads import ImageReadResult, read_image
 
 MAX_FILE = 512 * 1024
 MAX_READ = 8 * 1024 * 1024
@@ -62,11 +63,11 @@ STRING = {"type": "string"}
 TOOL_SCHEMAS = [
     schema("list_files", "List one directory; no symlinks/protected files.",
            {"path": STRING}),
-    schema("read_file", "UTF-8 ranges: range_complete covers window; truncated may mean later lines. symbol_complete: exact <=512KiB span. cursor='start'/next_cursor byte pages; scan<=8MiB. Partial lines lack read_id.",
+    schema("read_file", "UTF-8 window: range_complete; truncated may mean later lines. symbol_complete <=512KiB. cursor='start'/next_cursor scan<=8MiB. Partial lines: no read_id. image=true: approve run-only pixels; no text options/read_id.",
            {"path": STRING, "offset": {"type": "integer", "minimum": 1, "maximum": 1000000},
             "limit": {"type": "integer", "minimum": 1, "maximum": 10000}, "line_numbers": {"type": "boolean"},
             "cursor": {"type": "string", "maxLength": 80},
-            "symbol": {"type": "string", "minLength": 1, "maxLength": 1024}}, ["path"]),
+            "symbol": {"type": "string", "minLength": 1, "maxLength": 1024}, "image": {"type": "boolean"}}, ["path"]),
     schema("grep", "RE2 regex default; literal=true: exact text. No lookaround/backrefs; ASCII \\w/\\d/\\b; 1MiB/cooperative 1s. ignore_case: full literal/simple folding RE2. files/count: context=0, physical CR/LF lines. Check truncated/timed_out/skipped.",
            {"pattern": {"type": "string", "minLength": 1, "maxLength": 1000}, "path": STRING,
             "glob": {"type": "string", "minLength": 1, "maxLength": 256},
@@ -335,7 +336,7 @@ class Tools:
             result = method(**arguments)
         except (OSError, ToolError, ChangeError, TypeError, ValueError) as exc:
             result = {"error": str(exc)}
-        if isinstance(result, EditPreview):
+        if isinstance(result, (EditPreview, ImageReadResult)):
             return result
         if batch is not None:
             batch.finish(arguments, result)
@@ -424,8 +425,14 @@ class Tools:
                 entries.append({"name": entry.name, "type": kind})
         return {"entries": sorted(entries, key=lambda item: item["name"]), "truncated": truncated}
 
-    def read_file(self, path, offset=1, limit=None, *, line_numbers=_MISSING, cursor=_MISSING, symbol=_MISSING):
+    def read_file(self, path, offset=1, limit=None, *, line_numbers=_MISSING, cursor=_MISSING, symbol=_MISSING, image=False):
         self._require_tool("read_file")
+        if type(image) is not bool:
+            raise ToolError("image must be a boolean")
+        if image:
+            if offset != 1 or type(offset) is not int or limit is not None or any(value is not _MISSING for value in (line_numbers, cursor, symbol)):
+                raise ToolError("image=true cannot be combined with text range, symbol or formatting options")
+            return read_image(self, path)
         if type(offset) is not int or not 1 <= offset <= 1000000:
             raise ToolError("offset must be an integer from 1 to 1000000 (1-based line number)")
         if limit is not None and (type(limit) is not int or not 1 <= limit <= 10000):
