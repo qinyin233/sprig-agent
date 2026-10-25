@@ -2,6 +2,8 @@
 
 此入口使用锁定的 mini-SWE-agent 2.4.6 `DefaultAgent`、`LitellmModel` 与原始 `mini.yaml` 模板，让参考 agent 决定自己的 Bash 操作顺序。它没有换成 Sprig 的行动循环，也不使用帮助探测的 DummyInput / DummyOutput。默认 Bash 环境替换为逐动作批准、外部验收和数值测量的适配层，因此这是有明确适配的 SDK 参考运行，不等同官方榜单配置或完整交互式 mini TUI。
 
+比较项目显式依赖本地 Sprig 包，`uv sync --locked` 同时安装其完整运行依赖；同一环境运行 Sprig 入口时，搜索、九语言解析和图片能力仍需可用。依赖约束、实际工具检查及历史环境限制见[比较环境](comparison-runtime.md)。不要只安装 SDK 后就推断 Sprig 工具完整。
+
 ## 运行
 
 先安装独立 uv 环境，Windows 需要 Git Bash，POSIX 需要 Bash，JavaScript 任务还需要 Node：

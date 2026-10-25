@@ -1,0 +1,330 @@
+{
+  "schema": 1,
+  "scope": "complete declared Sprig runtime in the locked mini comparison environment; environment correction, not an application behavior or model-score change",
+  "base_commit": "3ba77d4bb0a1edb1db6d352e521c5de91ddbf396",
+  "frozen_functional_files": 235,
+  "frozen_raw_bytes_manifest_sha256": "49d3a4c3ae5e5d691670fda5035d274395761a43eb923a981d8d3b7362b375b5",
+  "changed_functional_sha256": {
+    "benchmarks/clients/mini/pyproject.toml": "c4c5cd06d0ea69cf83a7ff6af957d60481494d94f7da953d3a4cc14a25ce1a60",
+    "benchmarks/clients/mini/uv.lock": "c5fe2838e48a2cde4ef8faeba56ba71b80776e397adbe465914639669e21658a"
+  },
+  "application_source_unchanged_from_parent": {
+    "files": 77,
+    "sha256": "431df08becb5abc02794fee99d7c41ad2cd7c4fa926e22c7ba80b619f2d85a53"
+  },
+  "local_full_suites": [
+    {
+      "platform": "native Windows Python 3.13.0, root locked environment",
+      "tests": 1530,
+      "passed": 1511,
+      "skipped": 19,
+      "seconds": 686.685,
+      "log_sha256": "3b689ddf35edeb789294c2bb36a3eb337daed69947e8e4ff44e9e692f3128925"
+    },
+    {
+      "platform": "local WSL Python 3.13.14, root locked environment; explicit loopback proxy bypass",
+      "tests": 1530,
+      "passed": 1507,
+      "skipped": 23,
+      "seconds": 504.705,
+      "log_sha256": "f1e1414d01288398d53ff9dee73874ffd6e34619758367312a128da98fb426a3"
+    }
+  ],
+  "comparison_environment_suites": [
+    {
+      "platform": "native Windows Python 3.12.12, common mini uv environment, SDK tests",
+      "tests": 25,
+      "passed": 25,
+      "skipped": 0,
+      "seconds": 48.955,
+      "log_sha256": "971c73b4545e229a0367e4254aa707428d04535d15203e3534428cd58cf0e6a7"
+    },
+    {
+      "platform": "local WSL Python 3.12.13, common mini uv environment, SDK tests",
+      "tests": 25,
+      "passed": 25,
+      "skipped": 0,
+      "seconds": 192.259,
+      "log_sha256": "8cd2dd29013caedbe752424010c975c9e132537f0184d4c5ad9c2659f446f0f1"
+    },
+    {
+      "platform": "native Windows Python 3.12.12, common mini uv environment, existing grep/syntax/image tests",
+      "tests": 40,
+      "passed": 40,
+      "skipped": 0,
+      "seconds": 12.806,
+      "log_sha256": "9894265c37a1ad07c3ea2cbe831eb66ade7bcce7040b3f8ab907c80716a60e2c"
+    },
+    {
+      "platform": "local WSL Python 3.12.13, common mini uv environment, existing grep/syntax/image tests",
+      "tests": 40,
+      "passed": 40,
+      "skipped": 0,
+      "seconds": 10.784,
+      "log_sha256": "b9a4672c724756be8e9b095abe128366a1f332ca482287b90479c4056eb18684"
+    }
+  ],
+  "runtime_metadata": {
+    "windows": {
+      "python": "3.12.12",
+      "platform": "Windows",
+      "sprig_required_dependencies": {
+        "google-re2": {
+          "version": "1.1.20251105",
+          "specifier": "==1.1.20251105"
+        },
+        "jsonschema": {
+          "version": "4.26.0",
+          "specifier": ">=4.26"
+        },
+        "pillow": {
+          "version": "13.0.0",
+          "specifier": "<14,>=12.2"
+        },
+        "pyyaml": {
+          "version": "6.0.3",
+          "specifier": ">=6.0.3"
+        },
+        "textual": {
+          "version": "8.2.8",
+          "specifier": ">=8.2.8"
+        },
+        "tree-sitter": {
+          "version": "0.25.2",
+          "specifier": "==0.25.2"
+        },
+        "tree-sitter-c": {
+          "version": "0.24.2",
+          "specifier": "==0.24.2"
+        },
+        "tree-sitter-cpp": {
+          "version": "0.23.4",
+          "specifier": "==0.23.4"
+        },
+        "tree-sitter-go": {
+          "version": "0.25.0",
+          "specifier": "==0.25.0"
+        },
+        "tree-sitter-java": {
+          "version": "0.23.5",
+          "specifier": "==0.23.5"
+        },
+        "tree-sitter-javascript": {
+          "version": "0.25.0",
+          "specifier": "==0.25.0"
+        },
+        "tree-sitter-rust": {
+          "version": "0.24.2",
+          "specifier": "==0.24.2"
+        },
+        "tree-sitter-typescript": {
+          "version": "0.23.2",
+          "specifier": "==0.23.2"
+        }
+      },
+      "all_required_dependencies_satisfied": true,
+      "mini_version": "2.4.6",
+      "sprig_version": "0.1.0",
+      "existing_mini_locked_versions_unchanged": 86,
+      "added_locked_packages": {
+        "tree-sitter-go": "0.25.0",
+        "tree-sitter-typescript": "0.23.2",
+        "google-re2": "1.1.20251105",
+        "sprig-agent": "0.1.0",
+        "tree-sitter-javascript": "0.25.0",
+        "tree-sitter": "0.25.2",
+        "tree-sitter-java": "0.23.5",
+        "tree-sitter-cpp": "0.23.4",
+        "pillow": "13.0.0",
+        "tree-sitter-c": "0.24.2",
+        "tree-sitter-rust": "0.24.2"
+      },
+      "installed_distributions": 96,
+      "installed_distribution_manifest_sha256": "7072149c119e0ffb8d72876e8c05e6e2455fcc85ced269c976e927e75aca0899",
+      "application_modules": 77,
+      "application_lf_manifest_sha256": "431df08becb5abc02794fee99d7c41ad2cd7c4fa926e22c7ba80b619f2d85a53",
+      "root_lock_sha256": "22e2647115dc49fc2e9df21ffbc1e6694be61ef8eccb349d59ae320b6243bddd",
+      "mini_lock_sha256": "c5fe2838e48a2cde4ef8faeba56ba71b80776e397adbe465914639669e21658a",
+      "scope": "common comparison uv environment; root declared constraints satisfied; its resolved transitive graph follows the mini lock and is not claimed bit-identical to the root lock"
+    },
+    "wsl": {
+      "python": "3.12.13",
+      "platform": "Linux",
+      "sprig_required_dependencies": {
+        "google-re2": {
+          "version": "1.1.20251105",
+          "specifier": "==1.1.20251105"
+        },
+        "jsonschema": {
+          "version": "4.26.0",
+          "specifier": ">=4.26"
+        },
+        "pillow": {
+          "version": "13.0.0",
+          "specifier": "<14,>=12.2"
+        },
+        "pyyaml": {
+          "version": "6.0.3",
+          "specifier": ">=6.0.3"
+        },
+        "textual": {
+          "version": "8.2.8",
+          "specifier": ">=8.2.8"
+        },
+        "tree-sitter": {
+          "version": "0.25.2",
+          "specifier": "==0.25.2"
+        },
+        "tree-sitter-c": {
+          "version": "0.24.2",
+          "specifier": "==0.24.2"
+        },
+        "tree-sitter-cpp": {
+          "version": "0.23.4",
+          "specifier": "==0.23.4"
+        },
+        "tree-sitter-go": {
+          "version": "0.25.0",
+          "specifier": "==0.25.0"
+        },
+        "tree-sitter-java": {
+          "version": "0.23.5",
+          "specifier": "==0.23.5"
+        },
+        "tree-sitter-javascript": {
+          "version": "0.25.0",
+          "specifier": "==0.25.0"
+        },
+        "tree-sitter-rust": {
+          "version": "0.24.2",
+          "specifier": "==0.24.2"
+        },
+        "tree-sitter-typescript": {
+          "version": "0.23.2",
+          "specifier": "==0.23.2"
+        }
+      },
+      "all_required_dependencies_satisfied": true,
+      "mini_version": "2.4.6",
+      "sprig_version": "0.1.0",
+      "existing_mini_locked_versions_unchanged": 86,
+      "added_locked_packages": {
+        "tree-sitter-javascript": "0.25.0",
+        "tree-sitter-c": "0.24.2",
+        "google-re2": "1.1.20251105",
+        "tree-sitter-java": "0.23.5",
+        "tree-sitter": "0.25.2",
+        "tree-sitter-go": "0.25.0",
+        "pillow": "13.0.0",
+        "sprig-agent": "0.1.0",
+        "tree-sitter-cpp": "0.23.4",
+        "tree-sitter-typescript": "0.23.2",
+        "tree-sitter-rust": "0.24.2"
+      },
+      "installed_distributions": 94,
+      "installed_distribution_manifest_sha256": "c1dbb1e6c4ebd66f23abed78ec529144cc856c179a25b17fa816361beab34d02",
+      "application_modules": 77,
+      "application_lf_manifest_sha256": "431df08becb5abc02794fee99d7c41ad2cd7c4fa926e22c7ba80b619f2d85a53",
+      "root_lock_sha256": "22e2647115dc49fc2e9df21ffbc1e6694be61ef8eccb349d59ae320b6243bddd",
+      "mini_lock_sha256": "c5fe2838e48a2cde4ef8faeba56ba71b80776e397adbe465914639669e21658a",
+      "scope": "common comparison uv environment; root declared constraints satisfied; its resolved transitive graph follows the mini lock and is not claimed bit-identical to the root lock"
+    }
+  },
+  "isolated_original_environment": {
+    "base_commit": "3ba77d4bb0a1edb1db6d352e521c5de91ddbf396",
+    "isolated_old_project_sha256": {
+      "pyproject.toml": "540fb932569226060d46838c6969f2b6d4eb2f8359a17261ab815df303211881",
+      "uv.lock": "1ceaddc62ff07567631b9d281a6124ff1afd720cbe173c81f6a711a8b41df805"
+    },
+    "missing": [
+      "google-re2",
+      "pillow",
+      "tree-sitter",
+      "tree-sitter-c",
+      "tree-sitter-cpp",
+      "tree-sitter-go",
+      "tree-sitter-java",
+      "tree-sitter-javascript",
+      "tree-sitter-rust",
+      "tree-sitter-typescript"
+    ],
+    "mini_version": "2.4.6",
+    "tests": 3,
+    "expected_errors": 3,
+    "log_sha256": "d5d781b2b565c31ef037305ce49e199f1eb728906ba77758681d2db51bac9996",
+    "helper_sha256": "5c1b1fb55571529297b7a2f5c61815e7eedda7d916d2c0dc9d67c4008665e080",
+    "scope": "fresh uv environment created from original comparison pyproject/lock; existing functional tests fail without installing any extra dependency; not proof of historical run environment",
+    "external_model_calls": 0
+  },
+  "calibration": {
+    "scope": "oracle self-test; no model requests or coding-agent score",
+    "success": true,
+    "cases": [
+      {
+        "case": "py-interval",
+        "checks": 6,
+        "baseline_rejected": true,
+        "reference_passed": true
+      },
+      {
+        "case": "py-pagination",
+        "checks": 7,
+        "baseline_rejected": true,
+        "reference_passed": true
+      },
+      {
+        "case": "py-grouping",
+        "checks": 3,
+        "baseline_rejected": true,
+        "reference_passed": true
+      },
+      {
+        "case": "py-lru",
+        "checks": 4,
+        "baseline_rejected": true,
+        "reference_passed": true
+      },
+      {
+        "case": "py-late-router",
+        "checks": 5,
+        "baseline_rejected": true,
+        "reference_passed": true
+      },
+      {
+        "case": "py-long-history",
+        "checks": 4,
+        "baseline_rejected": true,
+        "reference_passed": true
+      },
+      {
+        "case": "js-stable-unique",
+        "checks": 4,
+        "baseline_rejected": true,
+        "reference_passed": true
+      },
+      {
+        "case": "js-search",
+        "checks": 4,
+        "baseline_rejected": true,
+        "reference_passed": true
+      }
+    ]
+  },
+  "checks": [
+    "four uv locks",
+    "both uv pip checks",
+    "compileall",
+    "schema/example",
+    "local document targets",
+    "git diff --check"
+  ],
+  "package_scope": "add local editable sprig-agent and ten missing dependencies; all 86 original mini lock versions retained; all 13 declared root constraints satisfied; transitive graph follows mini lock, not claimed byte-identical to root lock",
+  "test_scope": "no new test methods or weakened assertions; original three focused checks fail in a fresh environment from original comparison pyproject/lock, and full existing feature groups pass after dependency correction; calibration is not a model task score",
+  "historical_scope": "current reused environment and fresh original-lock negative control do not prove the exact dependencies present during older live runs; older scores/crash remain unchanged and their missing runtime manifests remain a limitation",
+  "install_scope": "initial offline sync stopped because Pillow cp312 wheel was not cached on either platform; subsequent locked sync downloaded matching wheels with normal TLS; no version workaround or unlocked install",
+  "defaults_and_scope": "application Python sources, normal tool definitions, model loop/prompt, request budgets, task inputs, acceptance and client approval rules unchanged",
+  "operating_system_scope": "no native filesystem/process/backend change; actual Windows and local WSL dependency imports and tools tested; platform skips are not passes and WSL is not remote native CI",
+  "external_model_calls": 0,
+  "performance_claim": "none; runtime availability and offline oracle checks do not establish coding quality or improve historical model scores",
+  "remote_ci": "pending; all pushes use [skip ci], no Actions before 2026-11-01 Asia/Singapore; account restriction and prior gate must be checked before resumption"
+}
