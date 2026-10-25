@@ -1,0 +1,175 @@
+{
+  "schema": 1,
+  "scope": "read-only retained file-tool edit comparisons, current-file observation and paged TUI/chat inspection; no model request or renewed task verification",
+  "base_commit": "37a11cb0f8c16ac5cf1806e85aac362d1372f8cf",
+  "frozen_functional_files": 233,
+  "frozen_raw_bytes_manifest_sha256": "f71c35575153962ebff0180bf4f4c07bdcc62a46fdff1e6c8d32d06814134d82",
+  "source_manifest": {
+    "src/sprig_agent": {
+      "files": 77,
+      "sha256": "2fb64af606a5136ae954494a1b5ed8c10cd43f67b76e92c7d7d685237c55ebde"
+    },
+    "tests": {
+      "files": 110,
+      "sha256": "fc4357bd4ae48d9bf1816acd7d548f998907f609c8fb5ff1b32b4fad2d6a42c0"
+    }
+  },
+  "manifest_algorithm": "sorted relative path + NUL + SHA256(LF-normalized bytes) hex + newline",
+  "changed_functional_sha256": {
+    "src/sprig_agent/change_review.py": "c6f76d4643bf7472f45ee3a100bcd6e7ac19006080f547365681e400db358aef",
+    "src/sprig_agent/change_review_ui.py": "bf2ef32ce434eee32bb36fda368aba5a84723c40ad0e3c7279e62603eb604816",
+    "src/sprig_agent/cli.py": "6ffacf7ca04bfceb5851c678646e689d1e6537ec8a21237b5aad1b653d36a113",
+    "src/sprig_agent/local_commands.py": "aa421ff23a84f432511d40d7fe0db2c2438da7451acf45eec4631e1caef7980a",
+    "src/sprig_agent/tools.py": "37eaf983ab9e7572a3e8bbe22955ad200fa412782d9395bf19dcc6c5068b7df2",
+    "src/sprig_agent/tui.py": "0557e760a054bf7cc0781af175d0ffbc6405203831db550fe19796d643fbe386",
+    "tests/test_change_review.py": "97bbd0061d3de13ca84419f276ee0885e0025a2fbaddd23a91e4d7dad14ccccb",
+    "tests/test_change_review_ui.py": "3aaca5949e7f9a19c969bf738a8f4bdcbe3a029abea814b9a26a951550eb5a96"
+  },
+  "local_suites": [
+    {
+      "platform": "native Windows Python 3.13.0",
+      "tests": 1513,
+      "passed": 1494,
+      "skipped": 19,
+      "seconds": 690.957,
+      "log_sha256": "e922c344781c56949287b3a8210c5b0665669e8adc5f2ff4b12cb6fd6feb99fd"
+    },
+    {
+      "platform": "local WSL Python 3.13.14; explicit NO_PROXY/no_proxy for localhost/127.0.0.1/::1",
+      "tests": 1513,
+      "passed": 1490,
+      "skipped": 23,
+      "seconds": 505.488,
+      "log_sha256": "8c6412cf489b41b23c4eb5b50df475446bd29470015c6b1ae26ecc0877fb9253"
+    },
+    {
+      "platform": "native Windows Python 3.11.14; 18 new plus existing changes/resources/manual verification",
+      "tests": 41,
+      "passed": 41,
+      "skipped": 0,
+      "seconds": 19.339,
+      "log_sha256": "8ede9a1581b8975a119f71a9a266e8d7c0398c37ea824e1e5b98cd9c5e7647d6"
+    }
+  ],
+  "sdk_suites": [
+    {
+      "platform": "native Windows Python 3.12.12; mini SDK",
+      "tests": 25,
+      "passed": 25,
+      "skipped": 0,
+      "seconds": 44.355,
+      "log_sha256": "29e8a8a8655f1257ee4a0eda2ad0bcd45eda1837c111c10a6dd53a546bea6ec7"
+    },
+    {
+      "platform": "local WSL Python 3.12.13; mini SDK; separate uv environment",
+      "tests": 25,
+      "passed": 25,
+      "skipped": 0,
+      "seconds": 167.04,
+      "log_sha256": "2a8f385d2e175af216bcc3a67a76866a8726d06b4fe0dfddd19ef0ed653d04bc"
+    }
+  ],
+  "installed_wheel": {
+    "tests": 41,
+    "skipped": 0,
+    "wheel_source_modules_matching": 77,
+    "imported_installed_modules": 71,
+    "sdist_changed_source_tests_matching": 8,
+    "wheel_sha256": "590ea633b6e07ff203ae90397f32789e4900db1d35654995ec9143e4e84b3c3c",
+    "sdist_sha256": "d05420f6c7c658e333ccf655c1775b8d37ee40273732d67a823ecf064be37885",
+    "scope": "18 new plus existing change-history, resource and manual-verification tests; copied tests; all imported application modules under installed target; later final docs/evidence not claimed included in these artifacts",
+    "seconds": 19.764
+  },
+  "isolated_negative_controls": {
+    "original_chat": {
+      "tests": 1,
+      "subcases": 6,
+      "expected_failures": 6,
+      "errors": 0,
+      "source_sha256": "b9b8cf1585794953e983727daf4f73cb27b17f533fd6fef258469e8c7a8790af",
+      "scope": "old CLI completes fixture edits/undo/redo/checks but has no historical review pages; six page-state assertions fail; no additional model requests"
+    },
+    "initial_live_state_hash": {
+      "tests": 1,
+      "subcases": 5,
+      "expected_failures": 1,
+      "errors": 0,
+      "scope": "reintroduce initial hash-of-live-state strategy; in-place mutation between copied snapshot and hash is accepted; final hash binds the copied state and refuses"
+    },
+    "redaction_only_after_diff_formatting": {
+      "tests": 1,
+      "expected_failures": 1,
+      "errors": 0,
+      "scope": "whole multiline credential no longer matches after +/- prefixes split it; late-only masking leaks fixture fragments; final masks snapshots before formatting and pages"
+    },
+    "implicit_guidance_dispatch": {
+      "tests": 1,
+      "expected_failures": 1,
+      "errors": 0,
+      "scope": "remove review local-only boundary; queued guidance queries the scripted provider behind the open modal; final waits for explicit Continue"
+    },
+    "external_model_calls": 0,
+    "production_files_changed": false
+  },
+  "scripted_protocol_paths": {
+    "protocols": [
+      "chat_completions",
+      "messages",
+      "responses"
+    ],
+    "delivery": [
+      "JSON",
+      "SSE"
+    ],
+    "cases": 6,
+    "http_requests_per_case": 3,
+    "http_requests": 18,
+    "approvals_per_case": 5,
+    "approvals": 30,
+    "scope": "actual CLI reads and edits a disposable file, lists/reviews, freshly approves undo and redo, then explicitly runs independent fixed verification; local review adds no model query and is absent from saved model history"
+  },
+  "regressions": [
+    "18 new methods: 10 core, 1 actual CLI with 6 protocol subcases, 7 real 80x24 Textual",
+    "historical selected-record diff remains separate from later same-path changes; exact bytes/journal/history/approval count unchanged by review",
+    "empty create/delete, applied/undone states and pending uncertainty explicitly distinguished",
+    "current state compares exact bytes and file identity to latest recorded path state; external edits and same-content replacement detected; blocked undo remains blocked",
+    "root/store closed, cancellation, disabled read_file and foreign workspace history refuse before display",
+    "copied-state digest and fresh state/config/conversation/privacy/credential checks refuse mutations during capture and rendering; current file observed again before return",
+    "protected paths/identifiers hidden; full snapshots redacted before diff prefixes and pages; terminal controls/CR/Tab/BOM/bidi visibly escaped",
+    "actual UTF-8 JSON page envelope bounded by min(max_output,16384); character offsets and snapshot tokens; stale pages rejected and old TUI text cleared",
+    "bounded parser, corrupt records and tiny output budget refuse without an oversized error response",
+    "150 seeded independent splice reconstructions and 50000 repetitive lines; cancellation within matching",
+    "five ordinary LF diff cases checked independently with git apply --check: multiple hunks, missing final newline, create, delete and Unicode U+2028 content",
+    "physical display lines split only on LF; unique anchors plus LIS and exact ambiguous-gap replacement avoid quadratic LCS; valid display need not be minimal",
+    "TUI record selection and next/previous/refresh, readonly Enter and close preserve main composer/files/folded paste and parent session bytes",
+    "dynamic privacy and changed source clear stale view; cancellation leaves no save/recovery write",
+    "guidance arriving during review waits for explicit Continue; diff fixture text is not sent to model; empty viewer creates no implicit task"
+  ],
+  "preliminary_checks": {
+    "core_fixtures": "three initial failures were exact LF fixture expectations written through Windows newline translation; changed fixtures to write_bytes, retained strict edit byte matching",
+    "initial_capture_strategy": "uncommitted hash-of-live-state strategy accepted a capture mutation; final digest binds copied state, isolated reintroduction fails the race test",
+    "scope": "preliminary focused checks are not substituted for final sealed full suites; no full suite interrupted or superseded this batch"
+  },
+  "checks": [
+    "four uv locks",
+    "compileall src/tests/scripts",
+    "CLI help",
+    "generated schema equality and example TOML validation",
+    "offline wheel/sdist build and installed regressions",
+    "local documentation targets",
+    "git diff --check"
+  ],
+  "documentation_checks": {
+    "documents": 4,
+    "local_document_targets": 245,
+    "schema_and_example": "pass"
+  },
+  "default_model_tool_definition_bytes": 4930,
+  "defaults_and_scope": "no new model tool, dependency, protocol adapter or default model-request budget; retained backups at most 16 entries/4MiB total/512KiB per file; safe view at most 8MiB characters; no command/Git snapshot, split view, message-level rollback or automatic verification",
+  "operating_system_scope": "native filesystem/process backends unchanged; readonly feature exercised locally on Windows and WSL; skips are not passes and WSL is not native remote CI",
+  "upstream_source": "fixed OpenCode dev@9d90d892dcbfc52b47e95b2ea31b8aba877128fd packages/tui/src/feature-plugins/system/diff-viewer.tsx lines 44-95 and 146-173; mode/source declarations and loading calls read, no upstream execution/latest claim",
+  "artifact_scope": "77 wheel app modules and 8 changed source/test files in sdist match sealed source; later final documentation/evidence not claimed present in these earlier artifacts",
+  "external_model_calls": 0,
+  "performance_claim": "none; offline fixtures establish program behavior, not real coding quality, latency or parity with leading agents",
+  "remote_ci": "pending; no dispatch/rerun/CI-enabled push before 2026-11-01 Asia/Singapore; commit uses [skip ci]; verify account restriction and prior gate before resuming"
+}

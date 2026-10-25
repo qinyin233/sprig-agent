@@ -241,6 +241,7 @@ def chat(agent, task, messages, emit, *, autostart=True, model_selection=None, s
                 emit("/skills lists configured skill metadata; /skill NAME [PATH [OFFSET PAGE_SHA256]] previews local UTF-8 guidance without a model call or script execution. Quote resource paths containing spaces.")
                 emit("/summary previews an optional lossy checkpoint; /summary create [END] makes one extra model request after approval; /summary clear restores the full request view. /history MESSAGE [OFFSET] locally pages original data.")
                 emit("/verify runs only configured fixed checks with fresh approval for each; observations enter this conversation. No model request or automatic continuation.")
+                emit("/changes review lists retained file-edit comparisons; /changes show ID|latest [OFFSET SNAPSHOT] pages the historical diff locally. Read-only TUI viewer preserves the composer; review is not a new verification result.")
                 emit("/logs lists this conversation's retained command output; /log ID [OFFSET] pages historical text; /logs clear requires fresh deletion approval. Retention is opt-in via --command-log-dir or storage.command_log_dir.")
                 emit("/ref PATH adds a live file reference; /unref PATH removes it; /refs lists metadata; /refs clear removes all. No model request is sent. Small complete files refresh before requests; larger files provide path/size only.")
                 emit("/worktrees lists local checkouts; /worktree PATH creates a detached checkout after fresh approvals. All remaining text is the path; the current conversation stays in this workspace.")
@@ -377,6 +378,15 @@ def chat(agent, task, messages, emit, *, autostart=True, model_selection=None, s
                 emit(json.dumps(preview, ensure_ascii=False, indent=2))
                 if approve(f"Enable configured request-only compaction? Complete historical reads may survive within the byte caps; closed old inspections may be folded if still oversized. User instructions, failures, refusals and the last {agent.config.context_keep_recent_messages} messages are preserved; saved history is unchanged.") is True:
                     agent.compact_context = True
+            elif task.startswith("/changes "):
+                from .change_review import command as review_command
+                try:
+                    identity, offset, snapshot = review_command(task[len('/changes '):])
+                    emit(json.dumps(agent.tools.review_changes(identity, offset, snapshot), ensure_ascii=False))
+                except KeyboardInterrupt:
+                    emit("Change review cancelled; conversation and workspace retained. No model request sent.")
+                except ValueError as error:
+                    emit(redact(str(error), agent.config.secrets))
             elif task in {"/changes", "/undo", "/redo", "/discard-history"}:
                 result = agent.tools.change_action(task[1:])
                 if result.get("changed") or result.get("outcome") == "uncertain":

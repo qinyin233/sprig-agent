@@ -30,6 +30,8 @@ from .model_selection import ModelSwitch
 from .conversation_fork import ConversationFork, timeline_page, turn_catalog
 from .conversation_revision import RevisionSource, revision_command
 from .revision_ui import RevisionScreen
+from .change_review import command as review_command
+from .change_review_ui import ChangeReviewScreen
 from .message_origin import application_origin, user_request
 from .provider import Provider
 from .picker import PickerScreen
@@ -354,6 +356,7 @@ class SprigApp(App[int]):
         self._draft_submission = None
         self._revision_editor = None
         self._revision_ready = False
+        self._change_review_screen = None
         if self.session_name:
             self.store = SessionStore(self.session_dir, config)
             try:
@@ -445,6 +448,7 @@ class SprigApp(App[int]):
                             yield Button("查看请求统计", id="usage")
                             yield Button("压缩旧工具记录", id="compact")
                             yield Button("查看修改记录", id="changes")
+                            yield Button("审阅文件修改", id="review-changes")
                             yield Button("撤销最近文件编辑", id="undo", disabled=self.config.read_only)
                             yield Button("重做文件编辑", id="redo", disabled=self.config.read_only)
                             yield Button("清除修改备份", id="discard-history")
@@ -600,7 +604,7 @@ class SprigApp(App[int]):
 
     def set_busy(self, busy):
         self.busy = busy
-        for identity in ("files", "continue", "new", "diff", "git", "map", "context-budget", "usage", "compact", "changes", "undo", "redo", "discard-history", "save", "restore", "sessions", "fork", "revise", "delete", "session-name"):
+        for identity in ("files", "continue", "new", "diff", "git", "map", "context-budget", "usage", "compact", "changes", "review-changes", "undo", "redo", "discard-history", "save", "restore", "sessions", "fork", "revise", "delete", "session-name"):
             self.query_one("#" + identity).disabled = busy or (self.config.read_only and identity in {"diff", "git", "undo", "redo"})
         self.query_one("#cancel", Button).disabled = not busy
         self.query_one("#model", Button).disabled = busy or self.model_selection is None
@@ -915,6 +919,18 @@ class SprigApp(App[int]):
                     result = self.get_store().prune(self.confirm, cancel_event=self.cancel_event, **arguments)
                     if result.get("declined") or result.get("skipped"):
                         status, message = 2, "会话清理未全部执行，详见本地结果"
+                elif name == "change-review":
+                    catalog = self.tools.review_changes()
+                    target = arguments.get("identity")
+                    if target is None and catalog.get("records"):
+                        target = catalog["records"][-1]["id"]
+                    page = (self.tools.review_changes(target, arguments.get("offset", 0), arguments.get("snapshot"))
+                            if target is not None and "error" not in catalog else None)
+                    self.ui_call(self.show_change_review, {"catalog": catalog, "page": page}, arguments.get("screen"))
+                    result = {"review_opened": True, "network_contacted": False}
+                    if "error" in catalog or page and "error" in page:
+                        result["error"] = catalog.get("error") or page["error"]
+                    message = "历史文件差异审阅；主草稿保留，未重新验收"
                 elif name in {"changes", "undo", "redo", "discard-history"}:
                     result = self.tools.change_action(name)
                     if result.get("changed") or result.get("outcome") == "uncertain":
@@ -1014,7 +1030,7 @@ class SprigApp(App[int]):
                     message = "问题未回答；等待新输入，旧提案未执行 / 未验收"
         except KeyboardInterrupt:
             status, message = 130, "已取消；待定操作不会重放"
-            if local and local[0] in {"conversation-revise", "model-catalog-refresh"}:
+            if local and local[0] in {"conversation-revise", "model-catalog-refresh", "change-review"}:
                 return status, message  # Local preparation must not recopy history or deliver guidance.
             try:
                 if self.messages:
@@ -1028,7 +1044,7 @@ class SprigApp(App[int]):
                 status, message = 1, "已取消，但会话保存失败: " + self.safe(error)
         except Exception as error:
             status, message = 1, "错误: " + self.safe(error)
-            if local and local[0] in {"conversation-revise", "model-catalog-refresh"}:
+            if local and local[0] in {"conversation-revise", "model-catalog-refresh", "change-review"}:
                 return status, message  # Failed local preparation leaves history and pending guidance intact.
             # Keep the in-memory conversation usable after a failed checkpoint or action.
             try:
@@ -1076,7 +1092,8 @@ class SprigApp(App[int]):
                 self.exit(self.last_status)
             return False
         verification = self.local_action == "verify"
-        local_only = verification or self.local_action == "model-catalog-refresh"
+        reviewing = self.local_action == "change-review"
+        local_only = verification or self.local_action in {"model-catalog-refresh", "change-review"}
         if verification and (self._input_inbox.batch(delivery="steer") or self._input_retry or self._input_inbox.blocked):
             status, message = 2, "检查后有新要求或保存待确认；未请求模型，请明确继续或处理 /pending"
         if self._queue_running and self.agent.had_rejected_action and status == 0:
@@ -1100,6 +1117,8 @@ class SprigApp(App[int]):
             self.set_task_result(status, message)
         self.local_action = None
         self.set_busy(False)
+        if reviewing and self._change_review_screen is not None:
+            self._change_review_screen.operation_finished(status == 0)
         if self.pending_tasks:
             queued = len(self._input_inbox.batch(delivery="queue"))
             message += f"；{queued} 条排队未执行，/queue run 启动" if queued else f"；{len(self.pending_tasks)} 条引导待处理，点击继续"
@@ -1171,6 +1190,26 @@ class SprigApp(App[int]):
                 self.start(local=("references", {"paths": list(value) if isinstance(value, tuple) else [value], "operation": "add"}))
 
         self.push_screen(PickerScreen(commands=commands, query=query, complete_only=editor is not None), selected)
+
+    def choose_change_review(self, identity=None, offset=0, snapshot=None):
+        if self.busy or isinstance(self.screen, ModalScreen):
+            self.notify("请等待当前操作结束后审阅修改", severity="warning")
+            return
+        self.start(local=("change-review", {"identity": identity, "offset": offset, "snapshot": snapshot}))
+
+    def show_change_review(self, payload, screen=None):
+        if self._closed or self._unmounted:
+            return
+        if screen is not None:
+            if screen is self._change_review_screen and screen.is_mounted:
+                screen.show_payload(payload)
+            return
+        screen = ChangeReviewScreen(self, payload)
+        self._change_review_screen = screen
+        def closed(_):
+            if self._change_review_screen is screen:
+                self._change_review_screen = None
+        self.push_screen(screen, closed)
 
     def refresh_models(self):
         if self.busy or isinstance(self.screen, ModalScreen):
@@ -1646,6 +1685,7 @@ class SprigApp(App[int]):
                         "/logs（当前会话日志） /log ID [OFFSET]（本地回查） /logs clear（逐次确认清理）\n"
                         "/history 消息编号 [字符偏移]（本地分页原文，系统提示与推理元数据不展示）\n"
                         "/changes /undo /redo /discard-history /sessions /prune [--dry-run]\n"
+                        "/changes review 打开只读差异；/changes show ID|latest [字符偏移 快照] 分页，不请求模型或重新验收。\n"
                         "/save [名称] /restore [名称] /delete [名称]\n"
                         "/pending 查看；/pending manage 管理；show ID [字符偏移] 查看原文；edit ID JSON字符串、drop ID、move ID 位置逐次确认。\n"
                         "/pending apply 仅将引导加入对话，保留排队项；/pending discard 逐次确认全部丢弃。\n"
@@ -1758,6 +1798,12 @@ class SprigApp(App[int]):
                 return
             catalog = self.model_selection.catalog() if self.model_selection is not None else self.config.model_catalog
             self.append("\n[配置中的模型；未联网]\n" + json.dumps(catalog, ensure_ascii=False, indent=2) + "\n")
+            return
+        if command == "/changes" and argument:
+            try:
+                self.choose_change_review(*review_command(argument))
+            except ValueError as error:
+                self.notify(self.safe(error), severity="warning")
             return
         if command == "/model":
             self.choose_model(argument)
@@ -1977,6 +2023,8 @@ class SprigApp(App[int]):
                 self.start(local=("sessions", {}))
             elif identity in {"changes", "undo", "redo", "discard-history"}:
                 self.start(local=(identity, {}))
+            elif identity == "review-changes":
+                self.choose_change_review()
             elif identity == "context-budget":
                 self.append("\n[上下文预算；本地预览]\n" + json.dumps(self.agent.context_preview(self.messages), ensure_ascii=False, indent=2) + "\n")
             elif identity == "usage":

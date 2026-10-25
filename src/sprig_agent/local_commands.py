@@ -11,7 +11,7 @@ COMMANDS = {
     "refs": "查看或清空实时引用", "unref": "移除实时引用", "map": "项目地图",
     "continue": "继续对话", "new": "新建对话", "cancel": "取消任务", "exit": "退出",
     "git": "查看 Git 状态", "diff": "查看 Git diff", "compact": "压缩旧工具记录",
-    "changes": "查看修改记录", "undo": "撤销文件编辑", "redo": "重做文件编辑",
+    "changes": "修改记录；review 审阅差异，show ID 按快照分页", "undo": "撤销文件编辑", "redo": "重做文件编辑",
     "summary": "预览摘要；create 会逐次确认一次额外模型请求", "history": "本地分页回查原对话",
     "timeline": "查看历史轮次；选择完整轮次建立分支", "fork": "明确确认后建立当前或历史轮次分支",
     "logs": "查看或逐次确认清理当前会话的命令日志", "log": "按日志句柄分页回查命令输出",

@@ -16,7 +16,7 @@ import sys
 import time
 import uuid
 
-from .config import TOOL_NAMES, redact
+from .config import TOOL_NAMES, redact, terminal_text
 from .changes import ChangeError, ChangeHistory, unpack
 from .filesystem import Directory, is_link
 from .index import SymbolIndex, language_for
@@ -896,6 +896,19 @@ class Tools:
                 except FileNotFoundError:
                     pass
         fd.sync()
+
+    def review_changes(self, identity=None, offset=0, snapshot=None):
+        """User-local read-only inspection; not a model tool or workspace action."""
+        from .change_review import catalog, page
+        try:
+            if identity is None and (type(offset) is not int or offset != 0 or snapshot is not None):
+                raise ValueError("catalog inspection does not accept a page offset or snapshot")
+            return catalog(self) if identity is None else page(self, identity, offset, snapshot)
+        except (OSError, ToolError, ChangeError, ValueError, TypeError, RuntimeError, RecursionError) as error:
+            result = {"error": terminal_text(redact(str(error), self.config.secrets)), "network_contacted": False}
+            if len(json.dumps(result, ensure_ascii=False).encode("utf-8")) > min(self.config.max_output, 16384):
+                return {"error": "change review exceeds the output budget"}
+            return result
 
     def change_action(self, action):
         """Local user controls only; deliberately absent from model tool schemas."""
