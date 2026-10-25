@@ -236,7 +236,7 @@ def chat(agent, task, messages, emit, *, autostart=True, model_selection=None, s
                 emit("/web shows local snapshot status; /web URL approves one public HTTP(S) GET; /web result ID [OFFSET] pages retained text without refetch. Enable with [web] enabled=true or --web. No auth, redirects, proxy, scripts or automatic replay.")
                 emit("/timeline [OFFSET] lists local user turns; /fork current or /fork MESSAGE confirms a new branch through that whole turn. Workspace files are not rolled back and actions are not replayed. Only the next task or /continue requests the model.")
                 emit('/revise MESSAGE "JSON replacement text" confirms a branch before that request, then sends the edited literal text. Use --tui for the independent editor. The original session is preserved, workspace files stay current, and new actions require fresh approval.')
-                emit("/models lists the configured snapshot; /model KEY explicitly confirms a local model change. @startup restores startup model settings. It retains conversation text, removes old reasoning metadata and forks enabled private saves; no request is sent until the next task.")
+                emit("/models lists the configured snapshot; /models reload rereads the original private configuration and process credential snapshot without changing the active model. /model KEY explicitly confirms a local model change; @startup restores original startup settings. No request is sent until the next task.")
                 emit("/mcp shows local server state; /mcp connect|disconnect|tools|resources|templates|prompts SERVER asks fresh approval for remote requests; /mcp result ID [OFFSET] reads retained local data without replay.")
                 emit("/skills lists configured skill metadata; /skill NAME [PATH [OFFSET PAGE_SHA256]] previews local UTF-8 guidance without a model call or script execution. Quote resource paths containing spaces.")
                 emit("/summary previews an optional lossy checkpoint; /summary create [END] makes one extra model request after approval; /summary clear restores the full request view. /history MESSAGE [OFFSET] locally pages original data.")
@@ -245,6 +245,18 @@ def chat(agent, task, messages, emit, *, autostart=True, model_selection=None, s
                 emit("/ref PATH adds a live file reference; /unref PATH removes it; /refs lists metadata; /refs clear removes all. No model request is sent. Small complete files refresh before requests; larger files provide path/size only.")
                 emit("/worktrees lists local checkouts; /worktree PATH creates a detached checkout after fresh approvals. All remaining text is the path; the current conversation stays in this workspace.")
                 emit("Enter a task to continue the same conversation. /continue explicitly continues retained history without adding a duplicate request; /status shows local context; /plan shows model-reported progress, never approval or acceptance; /context previews the request budget; /usage shows local numeric request measurements and unknown token counts; /compact confirms request-only elision; /changes lists exact edit backups; /undo and /redo require diff approval; /discard-history confirms removal of backups; /diff and /git show Git changes with approval; /exit closes chat.")
+            elif task == "/models reload":
+                if model_selection is None:
+                    emit("Model catalog refresh is unavailable for this startup; no model request sent.")
+                else:
+                    try:
+                        emit(json.dumps(model_selection.refresh(agent), ensure_ascii=False))
+                    except KeyboardInterrupt:
+                        emit("Model catalog refresh cancelled; no model request sent.")
+                    except (OSError, ValueError, RecursionError) as error:
+                        emit("Model catalog refresh failed: " + redact(str(error), agent.config.secrets))
+            elif task.startswith("/models "):
+                emit("Use /models or /models reload; no model request sent.")
             elif task == "/models" or task == "/model":
                 emit(json.dumps({"models": model_selection.catalog() if model_selection else agent.config.model_catalog,
                                  "network_contacted": False}, ensure_ascii=False))
@@ -626,8 +638,8 @@ def main(argv=None):
             save_name = args.save_session or ("auto-" + uuid.uuid4().hex if config.auto_save_session and not args.resume else None)
             return run_tui(config, args.task, session_dir, save_name, args.resume,
                            change_dir=change_dir, show_metrics=show_metrics, files=args.file, model_selection=model_selection)
-        emit = lambda text: print(terminal_text(redact(text, key)), flush=True)
-        confirm = lambda text: approve(redact(text, key))
+        emit = lambda text: print(terminal_text(redact(text, config.secrets)), flush=True)
+        confirm = lambda text: approve(redact(text, config.secrets))
         emit_delta = lambda text: print(terminal_text(text), end="", flush=True)
         messages = None
         session_name = args.resume or args.save_session or ("auto-" + uuid.uuid4().hex if config.auto_save_session else None)

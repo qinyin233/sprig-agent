@@ -119,7 +119,7 @@ class ModelSelectionTests(unittest.TestCase):
         self.provider.complete.assert_not_called()
 
     def test_missing_target_credentials_do_not_fall_back_to_ambient_keys(self):
-        settings = self.selection._settings
+        settings = self.selection._snapshot[0]
         del settings.data["providers"]["b"]["api_key_env"]
         selected = self.selection.resolve(self.config, "b/main")
         self.assertEqual(selected.api_key, "")

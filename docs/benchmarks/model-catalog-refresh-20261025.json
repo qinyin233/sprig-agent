@@ -1,0 +1,177 @@
+{
+  "schema": 1,
+  "scope": "explicit refresh of fixed private model catalog and process credential snapshot; active provider untouched until a separate freshly confirmed model switch",
+  "base_commit": "dfa493c99b5534cb2031f5d6a1ad9d93c9519850",
+  "frozen_functional_files": 229,
+  "frozen_raw_bytes_manifest_sha256": "6f98946f6429f83208799081223e02d5e9949dbed710588768adf3c3cd548cf5",
+  "source_manifest": {
+    "src/sprig_agent": {
+      "files": 75,
+      "sha256": "7dbfecfdc99842444cd5153e9c220ce00cd18b05f2eddca60e31a85e6aba3470"
+    },
+    "tests": {
+      "files": 108,
+      "sha256": "535ea762591f3865bc07328ce7ac506bcd5415e691754b19068658631e3a205a"
+    }
+  },
+  "manifest_algorithm": "sorted relative path + NUL + SHA256(LF-normalized bytes) hex + newline",
+  "changed_functional_sha256": {
+    "src/sprig_agent/cli.py": "b9b8cf1585794953e983727daf4f73cb27b17f533fd6fef258469e8c7a8790af",
+    "src/sprig_agent/config.py": "d094c5c80f77e26dfde33e1b61cd74a4b77d023903354031a342b285eeba9d34",
+    "src/sprig_agent/credentials.py": "6650511c800eee496a03f4bb2c7641ef84260f8a9daf7e9a05c79565284810df",
+    "src/sprig_agent/local_commands.py": "331ce61568b891ccdb4d96495bb9bcb159a8a11703d51d68bb679217b51540e8",
+    "src/sprig_agent/model_selection.py": "80f900cf37aaa0234905ceaf09757435c3443beb861a3b70db7b35db43d1712e",
+    "src/sprig_agent/policy.py": "40112477de73be7fa97d56ec703915abf56e26576d7e417cde6adb062240f0ce",
+    "src/sprig_agent/settings.py": "55e028eb4d000aa6a8bd5014bbfc129e6aaca466c59f9f5e88a06ab23c869596",
+    "src/sprig_agent/tui.py": "c263c3ab1fd7ab31f5b044cb5a69f3ff09f923342749cde342b2c47efab156e4",
+    "tests/test_model_catalog_refresh.py": "9afa5737aaa8ad1ae9fa41cd6e973a65bd90d8cb43b116b70beb76889417d78e",
+    "tests/test_model_catalog_refresh_ui.py": "4da435866748c61949fcb399c4208f8708c91f1db37064d3595571d3bf1dfecb",
+    "tests/test_model_selection.py": "196323fe2ddeb2c86c287ab2a4335c1d1e3baff24711d6ef51cb29a9af1a07a1"
+  },
+  "local_suites": [
+    {
+      "platform": "native Windows Python 3.13.0",
+      "tests": 1495,
+      "passed": 1476,
+      "skipped": 19,
+      "seconds": 611.213,
+      "log_sha256": "79c78dce0d1db8a4923bc68c19e4ee65f9068b02ffe2adf76a116d668d49c096"
+    },
+    {
+      "platform": "local WSL Python 3.13.14; explicit NO_PROXY/no_proxy for localhost/127.0.0.1/::1",
+      "tests": 1495,
+      "passed": 1472,
+      "skipped": 23,
+      "seconds": 461.014,
+      "log_sha256": "74b54bedc1ee6a3da5ddec286da9631038c54d431cc0e810fcbbf5c05e00eb44"
+    },
+    {
+      "platform": "native Windows Python 3.11.14; 19 new and 16 existing model selection tests",
+      "tests": 35,
+      "passed": 35,
+      "skipped": 0,
+      "seconds": 35.218,
+      "log_sha256": "de472bfda8654a39ab60b5f59df609cef2400ef9498bb3f41eacdebdc0fde384"
+    }
+  ],
+  "sdk_suites": [
+    {
+      "platform": "native Windows Python 3.12.12; mini SDK",
+      "tests": 25,
+      "passed": 25,
+      "skipped": 0,
+      "seconds": 38.997,
+      "log_sha256": "b1332791148d2d4cc57a3d02975d6c4e3828dacc320f0280d09d22bc75ba143e"
+    },
+    {
+      "platform": "local WSL Python 3.12.13; mini SDK; separate uv environment",
+      "tests": 25,
+      "passed": 25,
+      "skipped": 0,
+      "seconds": 154.383,
+      "log_sha256": "41f6023744f3004bc1f354c768603a75b5609021d579d298cfa5bbe089fd5f89"
+    }
+  ],
+  "installed_wheel": {
+    "tests": 35,
+    "skipped": 0,
+    "wheel_source_modules_matching": 75,
+    "imported_installed_modules": 68,
+    "sdist_changed_source_tests_matching": 11,
+    "wheel_sha256": "5a15141d6b7096d75f919d23fff7f237eec63ee7a39ae9be3ca1b14a3221eec3",
+    "sdist_sha256": "30b3f88cf6245be3e82a751982e6295fd2440189667cd90eb951f146a7784571",
+    "scope": "19 new and 16 existing model-selection regressions; copied tests; every imported application module under installed target; final docs/evidence not claimed present in this earlier build"
+  },
+  "isolated_negative_controls": {
+    "original_cli": {
+      "tests": 1,
+      "subcases": 6,
+      "expected_failures": 6,
+      "errors": 0,
+      "source_sha256": "ced20c10a089d9cb1f784bc0eab50257c222928f997150b069b76b881f8bc750",
+      "scope": "original chat has no reload route; newly written alias is unavailable and the six full CLI edit/check chains do not complete"
+    },
+    "original_environment_filter": {
+      "tests": 2,
+      "expected_failures": 2,
+      "errors": 0,
+      "source_sha256": "b7d5380a5f85e22141887a646ce9ddc8e1add3d32c87271f190efacf31971a9f",
+      "scope": "original filter misses dynamically declared variable names and permits an explicit override that now matches a newly discovered credential"
+    },
+    "original_proposal_preflight": {
+      "tests": 1,
+      "expected_failures": 1,
+      "errors": 0,
+      "scope": "original preflight asks approval for a proposal from an obsolete catalog; no model request or commit"
+    },
+    "original_static_credential_union": {
+      "tests": 1,
+      "expected_errors": 1,
+      "failures": 0,
+      "source_sha256": "148d271b70cca2ff7d736cf8495f3c4c587d97bcbea647e87c25d40f5d6fdd84",
+      "scope": "original resolve adapted to each current snapshot exceeds the static 128-value Config field during 132 valid rotations; final implementation retains protection in the bounded shared runtime registry"
+    },
+    "external_model_calls": 0,
+    "production_files_changed": false
+  },
+  "scripted_protocol_paths": {
+    "protocols": [
+      "chat_completions",
+      "messages",
+      "responses"
+    ],
+    "delivery": [
+      "JSON",
+      "SSE"
+    ],
+    "cases": 6,
+    "http_requests_per_case": 4,
+    "http_requests": 24,
+    "approvals_per_case": 4,
+    "scope": "initial task and fixed check; fixture writes a new private provider and externally changes workspace; refresh, fresh switch consent, current read, fresh edit and independent fixed check; original session bytes unchanged",
+    "other_new_cli_requests": 3,
+    "other_scope": "one request in failed refresh file-preservation test; two requests prove active old auth persists while new credentials are redacted before switching; no external models"
+  },
+  "regressions": [
+    "19 new tests: 10 core, 3 actual CLI, 6 real 80x24 Textual",
+    "fixed startup user/project paths; later SPRIG_CONFIG and home changes do not redirect the reader",
+    "initially absent implicit default file may be created at its original location; --no-config disables refresh",
+    "private reader and TOML/field limits reused; invalid, oversized, deleted or rejected paths keep the old snapshot",
+    "closed resources, cancellation, unrelated credential owner, running agent and changed conversation version refuse publication",
+    "settings, environment, targets and rows published as one snapshot; active Config/provider/read IDs/history/session file retained",
+    "new model aliases become selectable; non-model settings retain current policies; @startup retains original credentials/settings",
+    "old model proposal invalid before, during and after confirmation if catalog is refreshed",
+    "new credential values and declared environment names immediately protected even for inactive providers and empty references",
+    "freshly approved actual Python child verifies new credential names/values absent under inherit_env=true while ordinary data remains",
+    "explicit command-env overrides that collide with newly known credentials refuse; original argv/command permissions stay enforced",
+    "bounded atomic credential registration; capacity failures do not partly publish names or values; 132 rotations retain old protection without growing a static Config field",
+    "catalog metadata and active old provider output redact newly loaded keys; old provider headers unchanged until explicit model selection",
+    "sidebar refresh preserves main text, file selection and folded paste spans; selection decline/confirm and explicit Continue remain separate",
+    "new guidance during refresh waits for explicit Continue; failure/cancellation preserves draft and parent file; busy confirmation cannot refresh",
+    "unknown models arguments stay local, do not query the model, and TUI retains the malformed command text"
+  ],
+  "preliminary_checks": {
+    "existing_94": "one error was a test fixture accessing old private _settings storage; now uses the published snapshot; original credential/fallback assertions retained",
+    "new_core_10": "one fixture supplied command_env as an unsupported CLI option; corrected to real TOML execution.env",
+    "combined_34": "unknown /models argument reported preserved draft but cleared it; final branch restores the command text and test passes",
+    "related_135": "134 passed, 1 platform skip before final freeze; final full suites are authoritative",
+    "scope": "preliminary failures and passes are not substituted for final suites"
+  },
+  "checks": [
+    "four uv locks",
+    "compileall src/tests/scripts",
+    "CLI help",
+    "generated schema equality and example TOML validation",
+    "offline wheel/sdist build and installed regressions",
+    "local documentation targets",
+    "git diff --check"
+  ],
+  "default_model_tool_definition_bytes": 4930,
+  "defaults_and_scope": "no added model tool, dependency, default request-budget increase or protocol adapter change; manual catalog refresh only; automatic watchers and full config reload still absent",
+  "operating_system_scope": "child environment policy changed; real local Windows and WSL tests cover it; native process backends unchanged; required remote Windows/Ubuntu CI remains pending under freeze",
+  "upstream_source": "fixed OpenCode dev@9d90d892dcbfc52b47e95b2ea31b8aba877128fd config/watch.ts, config.ts reload and config/plugin/provider.ts read; no upstream execution/latest-version claim",
+  "artifact_scope": "75 wheel app modules and 11 changed source/test files in sdist match; later final documentation/evidence not claimed present in these earlier artifacts",
+  "external_model_calls": 0,
+  "performance_claim": "none; scripted fixtures and protocol behavior do not establish real coding quality, speed or parity with top agents",
+  "remote_ci": "pending; no dispatch/rerun/CI-enabled push before 2026-11-01 Asia/Singapore; commit uses [skip ci]; verify account restriction and prior gate before resuming"
+}

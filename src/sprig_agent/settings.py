@@ -359,6 +359,34 @@ def _validate(data, directory, *, project=False):
         raise ValueError("default profile is not defined")
 
 
+def credential_snapshot(data, env):
+    """Protect credentials in every provider/profile, without selecting a service."""
+    names = set()
+    secrets = {env[name] for name in ("SPRIG_API_KEY", "OPENAI_API_KEY", "AGNES_API_KEY") if env.get(name)}
+    for entry in data.get("providers", {}).values():
+        names.update(entry.get("headers_env", {}).values())
+        if entry.get("api_key_env"):
+            names.add(entry["api_key_env"])
+        secrets.update(entry.get("headers", {}).values())
+        if entry.get("api_key"):
+            secrets.add(entry["api_key"])
+    from .mcp_config import credential_parts, environment_credentials
+    for layer in (data, *data.get("profiles", {}).values()):
+        for entry in layer.get("mcp", {}).get("servers", {}).values():
+            names.update(entry.get("headers_env", {}).values())
+            names.update(entry.get("env_from", {}).values())
+            secrets.update(entry.get("headers", {}).values())
+            secrets.update(environment_credentials(entry.get("env", {}).items()))
+        for entry in layer.get("lsp", {}).get("servers", {}).values():
+            names.update(entry.get("env_from", {}).values())
+            secrets.update(environment_credentials(entry.get("env", {}).items()))
+    secrets.update(env[name] for name in names if env.get(name))
+    secrets = {part for value in secrets for part in credential_parts(value)}
+    if len(names) > 128 or len(secrets) > 128 or any(not isinstance(value, str) or len(value) > 4096 for value in secrets):
+        raise ValueError("configuration credential protection exceeds its limit; values withheld")
+    return names, secrets
+
+
 @dataclass(frozen=True)
 class Settings:
     path: Path | None = None
@@ -432,32 +460,9 @@ class Settings:
                 key = "" if configured_auth_only else environment_api_key(url, env)
                 source = "AGNES_API_KEY" if key and environment_api_key(url, {"AGNES_API_KEY": env.get("AGNES_API_KEY", "")}) else ("OPENAI_API_KEY" if key else "none")
         # All configured credentials are protected, including unused providers.
-        names = set()
-        secrets = set(value for name in ("SPRIG_API_KEY", "OPENAI_API_KEY", "AGNES_API_KEY") if (value := env.get(name)))
-        for entry in providers.values():
-            names.update(entry.get("headers_env", {}).values())
-            if entry.get("api_key_env"):
-                names.add(entry["api_key_env"])
-            secrets.update(entry.get("headers", {}).values())
-            if entry.get("api_key"):
-                secrets.add(entry["api_key"])
-        secrets.update(env[name] for name in names if env.get(name))
-        # Protect even inactive MCP credentials from model output and child processes.
-        for layer in (self.data, *self.data.get("profiles", {}).values()):
-            for entry in layer.get("mcp", {}).get("servers", {}).values():
-                names.update(entry.get("headers_env", {}).values())
-                names.update(entry.get("env_from", {}).values())
-                secrets.update(entry.get("headers", {}).values())
-                from .mcp_config import environment_credentials
-                secrets.update(environment_credentials(entry.get("env", {}).items()))
-            for entry in layer.get("lsp", {}).get("servers", {}).values():
-                from .mcp_config import environment_credentials
-                names.update(entry.get("env_from", {}).values())
-                secrets.update(environment_credentials(entry.get("env", {}).items()))
-        secrets.update(env[name] for name in names if env.get(name))
+        names, secrets = credential_snapshot(self.data, env)
         headers = dict(selected.get("headers", {}))
         from .mcp_config import credential_parts
-        secrets = {part for value in secrets for part in credential_parts(value)}
         if headers or selected.get("headers_env"):
             if url != configured_url:
                 raise ValueError("configured headers cannot follow an overridden base URL")

@@ -449,6 +449,10 @@ class Config:
         object.__setattr__(self, "reference_files", selected)
 
     @property
+    def credential_env_names(self):
+        return tuple(dict.fromkeys((*self.credential_env_vars, *self._runtime_credentials.environment_names())))
+
+    @property
     def credential_secrets(self):
         return tuple(dict.fromkeys(value for value in (self.api_key, *self.secret_values, *(value for _, value in self.headers),
                     *(value for server in self.mcp_servers for value in server.credential_values()),

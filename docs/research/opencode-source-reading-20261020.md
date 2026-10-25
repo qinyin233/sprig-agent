@@ -428,3 +428,11 @@ Sprig 原有 slash 表只有内置控制，没有可复用任务正文。现接�
 Sprig 既有 `/fork` 保留目标整轮，不能将该轮正文修改后重发。现在提供[独立历史编辑区](../conversation-revision.md)：目标限定真实用户消息，Enter 先检查完整请求，再逐次确认，在该消息之前截断并加入一次字面新正文。父会话文件、主草稿、选择文件和折叠粘贴保持；实际工作区保持当前状态，旧读取和验收失效。来源身份/指纹/工具版本变化会拒绝，保存或预算失败可保留编辑草稿重试；批准时收到新引导不能提交旧修订，网络失败也不自动再建分支或重发。
 
 本轮只重编已有用户正文，不重建未保存的本轮附件、原始输入元数据、agent/skill 选择或文件快照回滚。长正文先收起显示、保留全文，控制字符用 JSON 视图且保留可读中文；正文与完整协议请求仍各自受限。确认顺序的改进是在批准前拒绝不可能的请求，并在批准后复查；原有指令刷新已重建系统提示，不能另称修复旧提示预算问题。25 项新回归及隔离反例见[本地记录](../benchmarks/conversation-revision-20261025.json)，没有外部模型调用或编码质量结论，远程 CI 依用户要求待验证。
+
+## 26. 目录刷新与当前连接分开（2026-10-25）
+
+再次核对固定 HEAD `9d90d892dcbfc52b47e95b2ea31b8aba877128fd`，读取 [`config/watch.ts`](https://github.com/anomalyco/opencode/blob/9d90d892dcbfc52b47e95b2ea31b8aba877128fd/packages/core/src/config/watch.ts#L9-L41)：为来源目录和文件的父目录构造监视计划，包括删除/重建的观察。[`config.ts`](https://github.com/anomalyco/opencode/blob/9d90d892dcbfc52b47e95b2ea31b8aba877128fd/packages/core/src/config.ts#L297-L341) 把更新合并后重新 discover/load，以锁串行刷新，在实际变化后发布 Updated。[提供商配置插件](https://github.com/anomalyco/opencode/blob/9d90d892dcbfc52b47e95b2ea31b8aba877128fd/packages/core/src/config/plugin/provider.ts#L17-L22) 将配置条目观察接到 integration/provider reload。这里只确认固定代码路径，没有运行上游，也不据此推断它的全部凭据/会话重绑定行为。
+
+Sprig 原模型选择器持有启动目录，改配置后新别名不可选。现提供[显式手动刷新](../model-catalog-refresh.md)，继续固定启动用户/显式项目路径与命令行优先级，目录/环境快照一起发布。它更新候选目标，当前 provider 和实际鉴权保持，下一次切换仍需新确认；刷新使旧切换提案过期，不因配置编辑暗中发送保留的对话。刷新中的新引导保留等待明确继续，读取失败不改写父会话。
+
+重新读取凭据还要求扩展已有进程内保护：新值和声明的环境变量名立即进入过滤，旧值不丢失，即使尚未选择目标也不通过子进程继承泄露。动态保护按容量拒绝，不把多次轮换塞进单个静态配置的 128 值上限；当前显式命令环境与新凭据碰撞时拒绝启动。19 项新回归含实际子进程与三协议各 JSON/SSE 的刷新→确认→修改→独立检查，见[机器记录](../benchmarks/model-catalog-refresh-20261025.json)。自动监视、非模型设置热重载仍缺，没有新增真实模型效果结论，原生环境行为的远程 CI 待解禁验证。

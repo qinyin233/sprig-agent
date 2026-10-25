@@ -6,7 +6,7 @@ COMMANDS = {
     "pending": "待处理要求：manage 管理，show 分页；edit/drop/move/delivery 逐次确认，apply 递送引导",
     "help": "本地帮助", "keys": "快捷键", "status": "任务与运行状态", "plan": "模型报告的计划",
     "verify": "逐次批准后仅运行固定检查，结果进入会话；不调用模型或自动继续",
-    "config": "生效配置", "models": "配置中的模型", "model": "明确确认后切换配置模型", "context": "上下文预算", "usage": "请求统计",
+    "config": "生效配置", "models": "配置中的模型；reload 刷新目录，当前模型保持", "model": "明确确认后切换配置模型", "context": "上下文预算", "usage": "请求统计",
     "files": "选择快照或实时引用文件", "add": "附加文件快照", "ref": "添加实时文件引用",
     "refs": "查看或清空实时引用", "unref": "移除实时引用", "map": "项目地图",
     "continue": "继续对话", "new": "新建对话", "cancel": "取消任务", "exit": "退出",

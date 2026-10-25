@@ -437,6 +437,7 @@ class SprigApp(App[int]):
                             yield Button("管理待处理要求", id="pending")
                             yield Button("新建对话", id="new")
                             yield Button("切换模型", id="model", disabled=self.model_selection is None)
+                            yield Button("刷新模型目录", id="reload-models", disabled=self.model_selection is None)
                             yield Button("查看 Git diff", id="diff", disabled=self.config.read_only)
                             yield Button("查看 Git 状态", id="git", disabled=self.config.read_only)
                             yield Button("查看项目地图", id="map")
@@ -603,6 +604,7 @@ class SprigApp(App[int]):
             self.query_one("#" + identity).disabled = busy or (self.config.read_only and identity in {"diff", "git", "undo", "redo"})
         self.query_one("#cancel", Button).disabled = not busy
         self.query_one("#model", Button).disabled = busy or self.model_selection is None
+        self.query_one("#reload-models", Button).disabled = busy or self.model_selection is None
         if not busy:
             self.action_focus_task()
 
@@ -937,6 +939,11 @@ class SprigApp(App[int]):
                     result = self.tools.web.status()
                 elif name == "mcp-status":
                     result = self.tools.mcp_manager.status()
+                elif name == "model-catalog-refresh":
+                    if self.model_selection is None:
+                        raise ValueError("当前启动没有模型选择快照")
+                    result = self.model_selection.refresh(self.agent)
+                    message = "模型目录已刷新；当前模型和策略保持，选择目标后仍需确认"
                 elif name == "model-switch":
                     candidate = ModelSwitch(self.model_selection, self.agent, self.messages, arguments["target"],
                                             saving=bool(self.session_name) or self.config.auto_save_session,
@@ -1007,8 +1014,8 @@ class SprigApp(App[int]):
                     message = "问题未回答；等待新输入，旧提案未执行 / 未验收"
         except KeyboardInterrupt:
             status, message = 130, "已取消；待定操作不会重放"
-            if local and local[0] == "conversation-revise":
-                return status, message  # Do not recopy or steer history behind the bound editor source.
+            if local and local[0] in {"conversation-revise", "model-catalog-refresh"}:
+                return status, message  # Local preparation must not recopy history or deliver guidance.
             try:
                 if self.messages:
                     self.messages = validate_history(self.messages)
@@ -1021,8 +1028,8 @@ class SprigApp(App[int]):
                 status, message = 1, "已取消，但会话保存失败: " + self.safe(error)
         except Exception as error:
             status, message = 1, "错误: " + self.safe(error)
-            if local and local[0] == "conversation-revise":
-                return status, message  # Keep the editor's exact source identity for a fresh retry.
+            if local and local[0] in {"conversation-revise", "model-catalog-refresh"}:
+                return status, message  # Failed local preparation leaves history and pending guidance intact.
             # Keep the in-memory conversation usable after a failed checkpoint or action.
             try:
                 if self.messages:
@@ -1069,6 +1076,7 @@ class SprigApp(App[int]):
                 self.exit(self.last_status)
             return False
         verification = self.local_action == "verify"
+        local_only = verification or self.local_action == "model-catalog-refresh"
         if verification and (self._input_inbox.batch(delivery="steer") or self._input_retry or self._input_inbox.blocked):
             status, message = 2, "检查后有新要求或保存待确认；未请求模型，请明确继续或处理 /pending"
         if self._queue_running and self.agent.had_rejected_action and status == 0:
@@ -1077,7 +1085,7 @@ class SprigApp(App[int]):
             self.last_operation_status = status
         if status != 0 or self.agent.had_rejected_action or self.cancel_event.is_set() or self._input_retry or self._input_inbox.blocked:
             self._queue_running = False
-        if not verification and self._input_inbox.batch(delivery="steer") and not self._input_retry and not self._input_inbox.blocked and status in (0, 2) and not self.cancel_event.is_set():
+        if not local_only and self._input_inbox.batch(delivery="steer") and not self._input_retry and not self._input_inbox.blocked and status in (0, 2) and not self.cancel_event.is_set():
             self.local_action = None
             self.set_task_result(2, "新要求待处理，等待更新后的结果")
             self.set_state(f"继续处理 {len(self.pending_tasks)} 条新要求")
@@ -1163,6 +1171,14 @@ class SprigApp(App[int]):
                 self.start(local=("references", {"paths": list(value) if isinstance(value, tuple) else [value], "operation": "add"}))
 
         self.push_screen(PickerScreen(commands=commands, query=query, complete_only=editor is not None), selected)
+
+    def refresh_models(self):
+        if self.busy or isinstance(self.screen, ModalScreen):
+            self.notify("请等待当前操作结束后刷新模型目录", severity="warning")
+        elif self.model_selection is None:
+            self.notify("当前启动没有模型选择快照", severity="warning")
+        else:
+            self.start(local=("model-catalog-refresh", {}))
 
     def choose_model(self, target=""):
         if self.busy or isinstance(self.screen, ModalScreen):
@@ -1643,6 +1659,7 @@ class SprigApp(App[int]):
                         "选择不会发送任务；Enter 发送时读取文件，修改/删除标记撤销选择；/ref 用于后续轮次实时引用。\n"
                         "长粘贴只折叠显示；F4 或“展开粘贴”查看编辑，完整正文仍计入请求预算。\n"
                         "/model 打开配置模型选择；/model 提供商/别名 或 @startup 明确切换，需确认且不发送请求。恢复仍校验绑定。\n"
+                        "/models reload 或侧栏刷新模型目录：重读原私有配置，当前模型保持；新目标仍需选择确认。\n"
                         "/timeline 或 /fork 选择历史轮次；/fork current 或 消息号 明确建立分支。文件不回滚，草稿保留，Enter 才请求模型。\n"
                         "/revise [消息号] 编辑旧请求；编辑区 Enter 后确认建立该请求之前的分支并发送。主草稿保留。\n")
             return
@@ -1730,6 +1747,15 @@ class SprigApp(App[int]):
             self.append("\n[生效配置；密钥值不显示]\n" + json.dumps(public_config(self.config, details), ensure_ascii=False, indent=2) + "\n")
             return
         if command == "/models":
+            if argument:
+                if argument != "reload":
+                    editor = self.query_one("#task", TaskInput)
+                    if not editor.text and not isinstance(self.screen, ModalScreen):
+                        editor.load_text(text)
+                    self.reject_input("用 /models 列出目录，或 /models reload 刷新；未请求模型")
+                else:
+                    self.refresh_models()
+                return
             catalog = self.model_selection.catalog() if self.model_selection is not None else self.config.model_catalog
             self.append("\n[配置中的模型；未联网]\n" + json.dumps(catalog, ensure_ascii=False, indent=2) + "\n")
             return
@@ -1932,6 +1958,8 @@ class SprigApp(App[int]):
                 self.new_conversation()
             elif identity == "model":
                 self.choose_model()
+            elif identity == "reload-models":
+                self.refresh_models()
             elif identity == "fork":
                 self.choose_fork()
             elif identity == "revise":

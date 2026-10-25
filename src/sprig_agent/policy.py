@@ -13,13 +13,16 @@ ENVIRONMENT = {"PATH", "PATHEXT", "SYSTEMROOT", "WINDIR", "COMSPEC", "HOME", "US
 
 def command_environment(config, *, minimal=False):
     allowed = {name.upper() if os.name == "nt" else name for name in (() if minimal else config.env_allowlist)}
+    protected = {"SPRIG_API_KEY", "OPENAI_API_KEY", "AGNES_API_KEY", *(name.upper() for name in config.credential_env_names)}
     values = {key: value for key, value in os.environ.items()
             if (config.inherit_env and not minimal or key.upper() in ENVIRONMENT or key.upper().startswith("LC_")
                 or (key.upper() if os.name == "nt" else key) in allowed)
-            and key.upper() not in {"SPRIG_API_KEY", "OPENAI_API_KEY", "AGNES_API_KEY",
-                                    *(name.upper() for name in config.credential_env_vars)}
+            and key.upper() not in protected
             and not any(secret in value for secret in config.credential_secrets)}
     if not minimal:
+        if any(name.upper() in protected or any(secret in value for secret in config.credential_secrets)
+               for name, value in config.command_env):
+            raise ValueError("configured command environment now contains a protected credential; restart with corrected configuration")
         values.update(config.command_env)
     return values
 

@@ -15,7 +15,7 @@ TUI 和连续 chat 可以在空闲时切换启动配置中的提供商/模型，
 
 ## 配置和凭据
 
-选择器使用启动时已验证的用户/项目/profile、启动参数及凭据环境快照，不重新读取修改后的配置或环境。新增模型/变更密钥后请重启。目录包含配置别名、提供商默认项及 `@startup`，不推断费用、可用性或模型性能。
+选择器默认使用启动时已验证的用户/项目/profile、启动参数及凭据环境快照。新增模型或修改凭据后，可用 [`/models reload` 或侧栏刷新模型目录](model-catalog-refresh.md)，再选择确认；当前模型不会随刷新变化，非模型设置仍需重启。目录包含配置别名、提供商默认项及 `@startup`；后者始终保留最初启动设置，不推断费用、可用性或模型性能。
 
 切换到启动提供商时，保留其启动参数覆盖。其他提供商按自己的配置解析模型、端点、鉴权、代理、协议和生成设置，不携带启动提供商的命令行端点/传输/生成覆盖及 `SPRIG_BASE_URL` 覆盖。全局备用 API key 不会隐式转发：只有目标明确配置的 `api_key`、`api_key_env` 或头环境引用参与目标鉴权；引用变量缺失时报错，没有后备提供商。
 
@@ -39,7 +39,7 @@ TUI 和连续 chat 可以在空闲时切换启动配置中的提供商/模型，
 
 ## 验证范围
 
-对照固定 OpenCode `dev@9d90d892dcbfc52b47e95b2ea31b8aba877128fd` 的 [`dialog-model.tsx`](https://github.com/anomalyco/opencode/blob/9d90d892dcbfc52b47e95b2ea31b8aba877128fd/packages/tui/src/component/dialog-model.tsx)：上游选择配置项后更新本地 model preference，可继续选择 variant。Sprig 在现有三协议客户端上增加明确确认、凭据隔离、历史投影与私有会话分支；没有移植价格/免费标签、远程发现、收藏/最近使用、OAuth 或配置热重载。
+对照固定 OpenCode `dev@9d90d892dcbfc52b47e95b2ea31b8aba877128fd` 的 [`dialog-model.tsx`](https://github.com/anomalyco/opencode/blob/9d90d892dcbfc52b47e95b2ea31b8aba877128fd/packages/tui/src/component/dialog-model.tsx)：上游选择配置项后更新本地 model preference，可继续选择 variant。Sprig 在现有三协议客户端上增加明确确认、凭据隔离、历史投影与私有会话分支，后续提供手动模型目录刷新；没有价格/免费标签、远程发现、收藏/最近使用、OAuth、自动文件监视或全配置热重载。
 
 `tests/test_model_selection.py` 通过真实 Textual、CLI chat 和回环 HTTP/SSE 验证三协议切换后请求、私有保存/恢复绑定、旧元数据不转发、草稿重试、拒绝/取消/预算/保存失败、执行中引导、过期提案和新命令重新批准。固定回复验证程序/协议行为，不新增模型编码性能结论。平台、安装包和远程 CI 范围见[机器记录](benchmarks/model-selection-20261021.json)。
 

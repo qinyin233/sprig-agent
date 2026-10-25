@@ -2,6 +2,8 @@
 import copy
 from dataclasses import replace
 import json
+import os
+from pathlib import Path
 import uuid
 
 from .agent import Agent
@@ -10,46 +12,78 @@ from .context import prepare_context
 from .json_budget import encoded_size
 from .provider import Provider
 from .session import MAX_SESSION, SessionStore, validate_history
-from .settings import Settings, TRANSPORT_FIELDS
+from .settings import Settings, TRANSPORT_FIELDS, credential_snapshot, default_config_path, load_settings
 
 
 class ModelSelection:
     def __init__(self, settings, options, environment, initial):
-        self._settings = Settings(settings.path, copy.deepcopy(settings.data), settings.project_path, copy.deepcopy(settings.project_data))
-        self._options, self._environment, self._initial = copy.deepcopy(options), dict(environment), initial
-        self._targets, self._catalog = {}, []
-        for provider, entry in self._settings.data.get("providers", {}).items():
+        settings = Settings(settings.path, copy.deepcopy(settings.data), settings.project_path, copy.deepcopy(settings.project_data))
+        self._options, self._initial = copy.deepcopy(options), initial
+        reload_path = None if options.get("no_config") else settings.path or default_config_path()
+        self._reload_path = Path(os.path.abspath(reload_path)) if reload_path else None
+        targets, catalog = {}, []
+        for provider, entry in settings.data.get("providers", {}).items():
             for alias, model in entry.get("models", {}).items():
                 key = provider + "/" + alias
-                self._targets[key] = (provider, alias)
-                self._catalog.append({"key": key, "provider": provider, "alias": alias, "id": model["id"]})
+                targets[key] = (provider, alias)
+                catalog.append({"key": key, "provider": provider, "alias": alias, "id": model["id"]})
             if entry.get("model"):
-                self._targets[provider] = (provider, entry["model"])
+                targets[provider] = (provider, entry["model"])
                 identity = entry.get("models", {}).get(entry["model"], {}).get("id", entry["model"])
-                self._catalog.append({"key": provider, "provider": provider, "alias": "default", "id": identity})
-        self._catalog.insert(0, {"key": "@startup", "provider": initial.provider_name, "alias": "startup", "id": initial.model})
+                catalog.append({"key": provider, "provider": provider, "alias": "default", "id": identity})
+        catalog.insert(0, {"key": "@startup", "provider": initial.provider_name, "alias": "startup", "id": initial.model})
+        self._snapshot = (settings, dict(environment), targets, catalog)
 
     def catalog(self):
-        return redact(copy.deepcopy(self._catalog), self._initial.secrets)
+        return redact(copy.deepcopy(self._snapshot[3]), self._initial.secrets)
+
+    def refresh(self, original, environ=None):
+        snapshot, config, version = self._snapshot, original.config, original.tools._conversation_version
+        def fresh():
+            original.tools.root.ensure_open()
+            original._check_cancelled()
+            if (original._running or original.config is not config or original.tools.config is not config
+                    or config._runtime_credentials is not self._initial._runtime_credentials
+                    or original.tools._conversation_version != version or self._snapshot is not snapshot):
+                raise ValueError("model catalog refresh is stale; retry while idle")
+        fresh()
+        if self._reload_path is None:
+            raise ValueError("model catalog refresh is disabled by --no-config; restart with a configuration")
+        try:
+            settings = load_settings(self._reload_path, required=bool(snapshot[0].path))
+            fresh()
+            if snapshot[0].project_path:
+                settings = settings.with_project(snapshot[0].project_path)
+            environment = dict(os.environ if environ is None else environ)
+            names, secrets = credential_snapshot(settings.data, environment)
+            candidate = ModelSelection(settings, self._options, environment, self._initial)
+        except (OSError, ValueError, TypeError, RecursionError):
+            raise ValueError("cannot refresh model catalog; check the original private configuration and credential limits locally (values withheld)") from None
+        fresh()
+        config._runtime_credentials.remember_many(secrets, names)
+        self._snapshot = candidate._snapshot  # Publish settings, credentials and rows together.
+        return {"models_refreshed": True, "models": self.catalog(), "active_model_changed": False,
+                "network_contacted": False, "task_executed": False}
 
     def resolve(self, current, key):
+        settings, environment, targets, _ = self._snapshot
         if key == "@startup":
             resolved = self._initial
         else:
-            if key not in self._targets:
+            if key not in targets:
                 raise ValueError("choose an exact configured provider/model alias or @startup; no remote discovery")
-            provider, model = self._targets[key]
-            options, environment = dict(self._options), dict(self._environment)
+            provider, model = targets[key]
+            options, environment = dict(self._options), dict(environment)
             options.update(provider=provider, model=model)
             other_provider = provider != self._initial.provider_name
             if other_provider:
                 for name in (*GENERATION_FIELDS, *TRANSPORT_FIELDS, "base_url"):
                     options.pop(name, None)
                 environment.pop("SPRIG_BASE_URL", None)
-            resolved, _ = self._settings.resolve(options, environment, configured_auth_only=other_provider)
+            resolved, _ = settings.resolve(options, environment, configured_auth_only=other_provider)
         values = {name: getattr(resolved, name) for name in MODEL_CONFIG_FIELDS}
-        values["secret_values"] = tuple(dict.fromkeys((*current.credential_secrets, *resolved.credential_secrets)))
-        values["credential_env_vars"] = tuple(sorted(set(current.credential_env_vars) | set(resolved.credential_env_vars)))
+        current._runtime_credentials.remember_many((*current.credential_secrets, *resolved.credential_secrets),
+                                                   (*current.credential_env_names, *resolved.credential_env_names))
         sources = dict(current.setting_sources)
         for name in MODEL_CONFIG_FIELDS - {"secret_values", "credential_env_vars", "setting_sources"}:
             sources[name] = "model selection"
@@ -67,6 +101,7 @@ class ModelSwitch:
         original.tools.root.ensure_open()
         original._check_cancelled()
         self.original = original
+        self.selection, self.catalog_snapshot = selection, getattr(selection, "_snapshot", None)
         self.version = original.tools._conversation_version
         self.config = selection.resolve(original.config, key)
         changing = MODEL_CONFIG_FIELDS - {"secret_values", "credential_env_vars", "setting_sources"}
@@ -113,10 +148,13 @@ class ModelSwitch:
             return False
         self.ready = False
         if (self.original.tools.config is not self.original.config or self.original._running
-                or self.original.tools._conversation_version != self.version):
+                or self.original.tools._conversation_version != self.version
+                or getattr(self.selection, "_snapshot", None) is not self.catalog_snapshot):
             raise ValueError("model selection proposal is stale; select again")
         if approve(self.description(directory)) is not True:
             return False
+        if getattr(self.selection, "_snapshot", None) is not self.catalog_snapshot:
+            raise ValueError("model catalog changed during confirmation; select again")
         self.original._check_cancelled()
         history = self.history or [{"role": "system", "content": self.agent._prompt()}]
         self.agent._refresh_instructions(history)
@@ -132,7 +170,8 @@ class ModelSwitch:
         ready, self.ready = self.ready, False
         if (not self.changed or not ready or self.original._running
                 or self.original.tools._conversation_version != self.version
-                or self.original.tools.config is not self.original.config):
+                or self.original.tools.config is not self.original.config
+                or getattr(self.selection, "_snapshot", None) is not self.catalog_snapshot):
             raise ValueError("model change must pass explicit confirmation and local preflight first")
         self.original._check_cancelled()
         self.original.tools.root.ensure_open()

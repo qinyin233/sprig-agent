@@ -79,6 +79,8 @@ uv run --locked sprig
 
 `/revise` 可[编辑旧请求并重发](docs/conversation-revision.md)：独立编辑区 Enter 后确认，在该请求之前另建分支发送新正文，原会话与主草稿保持。长正文可收起显示，实际发送全文；工作区不回滚，新操作仍逐次批准。
 
+修改私有配置的提供商、模型或凭据后，用 [`/models reload`](docs/model-catalog-refresh.md) 或侧栏按钮刷新目录，再选择确认目标；当前连接保持，主草稿保留，无需为目录更新重启 TUI。
+
 ### 独立任务工作目录
 
 ```sh
