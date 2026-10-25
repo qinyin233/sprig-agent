@@ -1,0 +1,910 @@
+{
+  "schema": 1,
+  "scope": "one paired self-built cross-file search diagnostic on the same current source and complete comparison runtime; no overall agent ranking",
+  "run_specification": {
+    "schema": 1,
+    "source": {
+      "commit": "771b8a3bfa31b018f40aedaf2b20fb045b585a6f",
+      "sha256": "c366e4d34dd740ec40115d6fa9d53b1937b57e555dd4ff860bfc8075b56ba32d"
+    },
+    "model": "deepseek-flash-2",
+    "max_steps": 12,
+    "max_tokens": 2048,
+    "max_context_bytes": 131072,
+    "max_output": 16000,
+    "timeout": 120,
+    "stream": false,
+    "thinking": false,
+    "check_before_task": true,
+    "request_interval": 0,
+    "run_order": [
+      [
+        "sprig",
+        "js-search"
+      ],
+      [
+        "mini",
+        "js-search"
+      ]
+    ],
+    "limits": [
+      "small self-built diagnostics; no complex repository or ranking claim",
+      "mini retains its native 600-second wall limit, including approval wait",
+      "native tools, templates and history handling differ",
+      "no retries or manual candidate patch"
+    ],
+    "helper_sha256": "709078a008cdefd146d343eded47eb6f8346099026f72f2f60382575fc47fdbf"
+  },
+  "runtime_fix_commit": "771b8a3bfa31b018f40aedaf2b20fb045b585a6f",
+  "runtime_evidence": "comparison-runtime-20261025.json",
+  "transport": "USTC Chat Completions, direct; JSON responses; no requested thinking field or automatic retry",
+  "max_output_bytes": 16000,
+  "raw_capture_limit_bytes": 16000,
+  "supervision": "supervising assistant separately reviewed each concrete terminal approval under user authorization; built-in approve returns literal bool; no automatic approval callback, task hints or candidate patches",
+  "postcheck_scope": "one separately approved fixed command per run after its loop, excluded from native elapsed/approval totals and never returned to model",
+  "calibration": {
+    "scope": "oracle self-test; no model requests or coding-agent score",
+    "success": true,
+    "cases": [
+      {
+        "case": "py-interval",
+        "checks": 6,
+        "baseline_rejected": true,
+        "reference_passed": true
+      },
+      {
+        "case": "py-pagination",
+        "checks": 7,
+        "baseline_rejected": true,
+        "reference_passed": true
+      },
+      {
+        "case": "py-grouping",
+        "checks": 3,
+        "baseline_rejected": true,
+        "reference_passed": true
+      },
+      {
+        "case": "py-lru",
+        "checks": 4,
+        "baseline_rejected": true,
+        "reference_passed": true
+      },
+      {
+        "case": "py-late-router",
+        "checks": 5,
+        "baseline_rejected": true,
+        "reference_passed": true
+      },
+      {
+        "case": "py-long-history",
+        "checks": 4,
+        "baseline_rejected": true,
+        "reference_passed": true
+      },
+      {
+        "case": "js-stable-unique",
+        "checks": 4,
+        "baseline_rejected": true,
+        "reference_passed": true
+      },
+      {
+        "case": "js-search",
+        "checks": 4,
+        "baseline_rejected": true,
+        "reference_passed": true
+      }
+    ]
+  },
+  "calibration_sha256": "701363af765e2c573e1da3dcd9043d65d638ed4845f4edcb1dfdd14565800d25",
+  "summary": [
+    {
+      "client": "sprig",
+      "case": "js-search",
+      "outcome": "acceptance_passed",
+      "acceptance_passed": true,
+      "postcheck_passed": true,
+      "checks": 4,
+      "http_attempts": 5,
+      "http_outcomes": {
+        "success": 5,
+        "error": 0,
+        "cancelled": 0
+      },
+      "tokens": 18194,
+      "elapsed_ms": 162687.961,
+      "approval_wait_ms": 105158.932,
+      "active_ms": 57529.029,
+      "http_ms": 54112.746,
+      "accepted": 5,
+      "rejected": 0,
+      "max_request_bytes": 15724
+    },
+    {
+      "client": "mini",
+      "case": "js-search",
+      "outcome": "acceptance_passed",
+      "acceptance_passed": true,
+      "postcheck_passed": true,
+      "checks": 4,
+      "http_attempts": 6,
+      "http_outcomes": {
+        "success": 6,
+        "error": 0,
+        "cancelled": 0
+      },
+      "tokens": 15051,
+      "elapsed_ms": 596692.413,
+      "approval_wait_ms": 412793.893,
+      "active_ms": 183898.519,
+      "http_ms": 174568.389,
+      "accepted": 8,
+      "rejected": 0,
+      "max_request_bytes": 13691
+    }
+  ],
+  "runs": [
+    {
+      "client": "sprig",
+      "case": "js-search",
+      "before": {
+        "source": {
+          "commit": "771b8a3bfa31b018f40aedaf2b20fb045b585a6f",
+          "sha256": "c366e4d34dd740ec40115d6fa9d53b1937b57e555dd4ff860bfc8075b56ba32d"
+        },
+        "case": "js-search",
+        "fixture_sha256": "18a283c18fcea72a1723a43d92411d802ea1ff8601ab0db07b44764cc9b703c8",
+        "task_sha256": "0aca67b95bef28cd469a845d82edac19ea8c53f8c5991831d3ca62e42a9f0444"
+      },
+      "native_report": {
+        "schema": 1,
+        "scope": "one diagnostic Sprig task; no competitor or overall performance claim",
+        "case": "js-search",
+        "category": "cross-file-feature",
+        "language": "javascript",
+        "fixture_sha256": "18a283c18fcea72a1723a43d92411d802ea1ff8601ab0db07b44764cc9b703c8",
+        "verifier_sha256": "e61802d0ae4a9425e60511faa1fffdd23aeeeaa9875cc7e9b5a60ba68c92fcee",
+        "verifier_intact": true,
+        "task_sha256": "0aca67b95bef28cd469a845d82edac19ea8c53f8c5991831d3ca62e42a9f0444",
+        "initial_history_sha256": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+        "uv_lock_sha256": "22e2647115dc49fc2e9df21ffbc1e6694be61ef8eccb349d59ae320b6243bddd",
+        "driver_sha256": "0f4121e98dd6a34cbbb5254d3ae694e8b9827aab52efc16b45ed0ed517b1279b",
+        "python": "3.12.12",
+        "platform": "Windows-11-10.0.26300-SP0",
+        "node": "v24.11.1",
+        "request_timeout_seconds": 120,
+        "generation_options": {
+          "max_tokens": 2048
+        },
+        "model": "deepseek-flash-2",
+        "base_url": "https://api.llm.ustc.edu.cn/v1",
+        "stream": false,
+        "request_usage": false,
+        "max_steps": 12,
+        "check_before_task": true,
+        "baseline_status": "failed",
+        "max_context_bytes": 131072,
+        "compact_context": false,
+        "synthetic_history": false,
+        "outcome": "acceptance_passed",
+        "acceptance_passed": true,
+        "elapsed_ms": 162687.961,
+        "active_ms": 57529.029,
+        "approvals": {
+          "requests": 5,
+          "accepted": 5,
+          "rejected": 0,
+          "wait_ms": 105158.932
+        },
+        "tools": [
+          {
+            "tool": "run",
+            "active_ms": 519.945,
+            "result_bytes": 195,
+            "diagnostics": {
+              "error": false,
+              "approved": true,
+              "timed_out": false,
+              "output_limited": false,
+              "returncode": 1
+            }
+          },
+          {
+            "tool": "list_files",
+            "active_ms": 0.409,
+            "result_bytes": 153,
+            "diagnostics": {
+              "error": false,
+              "truncated": false,
+              "listed_entries": 3,
+              "same_output_repeats": 0
+            }
+          },
+          {
+            "tool": "read_file",
+            "active_ms": 0.679,
+            "result_bytes": 592,
+            "diagnostics": {
+              "error": false,
+              "truncated": false,
+              "content_bytes": 429,
+              "revision_available": true,
+              "read_id_available": true,
+              "same_output_repeats": 0
+            }
+          },
+          {
+            "tool": "read_file",
+            "active_ms": 0.522,
+            "result_bytes": 212,
+            "diagnostics": {
+              "error": false,
+              "truncated": false,
+              "content_bytes": 43,
+              "revision_available": true,
+              "read_id_available": true,
+              "same_output_repeats": 0
+            }
+          },
+          {
+            "tool": "read_file",
+            "active_ms": 0.592,
+            "result_bytes": 309,
+            "diagnostics": {
+              "error": false,
+              "truncated": false,
+              "content_bytes": 142,
+              "revision_available": true,
+              "read_id_available": true,
+              "same_output_repeats": 0
+            }
+          },
+          {
+            "tool": "edit_file",
+            "active_ms": 151.205,
+            "result_bytes": 288,
+            "diagnostics": {
+              "error": false,
+              "approved": true
+            }
+          },
+          {
+            "tool": "edit_file",
+            "active_ms": 122.118,
+            "result_bytes": 285,
+            "diagnostics": {
+              "error": false,
+              "approved": true
+            }
+          },
+          {
+            "tool": "run",
+            "active_ms": 554.105,
+            "result_bytes": 187,
+            "diagnostics": {
+              "error": false,
+              "approved": true,
+              "timed_out": false,
+              "output_limited": false,
+              "returncode": 0
+            }
+          },
+          {
+            "tool": "run",
+            "active_ms": 637.833,
+            "result_bytes": 187,
+            "diagnostics": {
+              "error": false,
+              "approved": true,
+              "timed_out": false,
+              "output_limited": false,
+              "returncode": 0
+            }
+          }
+        ],
+        "edit_preflight": [
+          {
+            "tool": "edit_file",
+            "active_ms": 46.779,
+            "ready": true
+          },
+          {
+            "tool": "edit_file",
+            "active_ms": 62.34,
+            "ready": true
+          }
+        ],
+        "requests": {
+          "available": true,
+          "scope": "current provider instance; not persisted or sent to the model",
+          "attempts": 5,
+          "not_attempted": 0,
+          "outcomes": {
+            "success": 5,
+            "error": 0,
+            "cancelled": 0
+          },
+          "failures": {},
+          "request_bytes": 65879,
+          "response_bytes": 4834,
+          "elapsed_ms": 54112.746,
+          "usage": {
+            "prompt_tokens": {
+              "reported_sum": 17550,
+              "known_requests": 5,
+              "unknown_requests": 0,
+              "complete_sum": 17550
+            },
+            "completion_tokens": {
+              "reported_sum": 644,
+              "known_requests": 5,
+              "unknown_requests": 0,
+              "complete_sum": 644
+            },
+            "total_tokens": {
+              "reported_sum": 18194,
+              "known_requests": 5,
+              "unknown_requests": 0,
+              "complete_sum": 18194
+            }
+          },
+          "recent_limit": 128,
+          "recent_dropped": 0,
+          "recent": [
+            {
+              "attempted": true,
+              "streamed": false,
+              "outcome": "success",
+              "http_status": 200,
+              "request_bytes": 10785,
+              "response_bytes": 668,
+              "elapsed_ms": 2495.411,
+              "first_text_ms": null,
+              "usage": {
+                "prompt_tokens": 2887,
+                "completion_tokens": 45,
+                "total_tokens": 2932
+              },
+              "finish_reason": "tool_calls",
+              "error_code": null
+            },
+            {
+              "attempted": true,
+              "streamed": false,
+              "outcome": "success",
+              "http_status": 200,
+              "request_bytes": 11283,
+              "response_bytes": 901,
+              "elapsed_ms": 14244.08,
+              "first_text_ms": null,
+              "usage": {
+                "prompt_tokens": 2997,
+                "completion_tokens": 102,
+                "total_tokens": 3099
+              },
+              "finish_reason": "tool_calls",
+              "error_code": null
+            },
+            {
+              "attempted": true,
+              "streamed": false,
+              "outcome": "success",
+              "http_status": 200,
+              "request_bytes": 13170,
+              "response_bytes": 1373,
+              "elapsed_ms": 12430.539,
+              "first_text_ms": null,
+              "usage": {
+                "prompt_tokens": 3496,
+                "completion_tokens": 243,
+                "total_tokens": 3739
+              },
+              "finish_reason": "tool_calls",
+              "error_code": null
+            },
+            {
+              "attempted": true,
+              "streamed": false,
+              "outcome": "success",
+              "http_status": 200,
+              "request_bytes": 14917,
+              "response_bytes": 938,
+              "elapsed_ms": 18346.088,
+              "first_text_ms": null,
+              "usage": {
+                "prompt_tokens": 3978,
+                "completion_tokens": 144,
+                "total_tokens": 4122
+              },
+              "finish_reason": "tool_calls",
+              "error_code": null
+            },
+            {
+              "attempted": true,
+              "streamed": false,
+              "outcome": "success",
+              "http_status": 200,
+              "request_bytes": 15724,
+              "response_bytes": 954,
+              "elapsed_ms": 6596.628,
+              "first_text_ms": null,
+              "usage": {
+                "prompt_tokens": 4192,
+                "completion_tokens": 110,
+                "total_tokens": 4302
+              },
+              "finish_reason": "stop",
+              "error_code": null
+            }
+          ]
+        },
+        "request_pacing": {
+          "interval_seconds": 0.0,
+          "backend_starts": 5,
+          "wait_ms": 0.0,
+          "source_sha256": "ce4ba23779b65e448585d1ca8413ea67a1e31974a25cd50b5810160fe8527ea6",
+          "scope": "backend invocation starts; HTTP may be blocked by validation",
+          "automatic_retries": false
+        },
+        "tool_diagnostics": {
+          "source_sha256": "d812a32ce9b40ce6eac21ef0bfd65ba131d882bff8bbe376d71e0ce6799165ed",
+          "recent_inspection_limit": 128,
+          "scope": "numeric and fixed-status tool results; repeats require identical arguments/output apart from read_id within the retained window; no inspection skipped"
+        }
+      },
+      "postcheck": {
+        "approved": true,
+        "returncode": 0,
+        "timed_out": false,
+        "output_limited": false,
+        "result": {
+          "passed": true,
+          "reason": "checked_outputs",
+          "checks": 4,
+          "failed_checks": []
+        },
+        "verifier_intact": true,
+        "source_unchanged": true,
+        "candidate_unchanged": true
+      },
+      "candidate_manifest": {
+        "normalize.cjs": {
+          "bytes": 57,
+          "sha256": "a4011d71267ab12f76b32f42eb5dd1a9607b1c30fefe61e05e1b2b5344e557df"
+        },
+        "search.cjs": {
+          "bytes": 214,
+          "sha256": "b6f76e334e969e2b9f1625f0333405b50ff5971a1f9c7b957e3ce0a23df420fd"
+        },
+        "TASK.md": {
+          "bytes": 429,
+          "sha256": "8323e6cfbd67517fb15c50f6e81e33d3a1fccc32ed98b402ea5bcb85ba735de4"
+        }
+      },
+      "native_report_sha256": "8bbfcbe818258684146e27d7fe4fad1755c3ba9cee06c30880f0fd2227d8697e",
+      "changed_files": [
+        "normalize.cjs",
+        "search.cjs"
+      ]
+    },
+    {
+      "client": "mini",
+      "case": "js-search",
+      "before": {
+        "source": {
+          "commit": "771b8a3bfa31b018f40aedaf2b20fb045b585a6f",
+          "sha256": "c366e4d34dd740ec40115d6fa9d53b1937b57e555dd4ff860bfc8075b56ba32d"
+        },
+        "case": "js-search",
+        "fixture_sha256": "18a283c18fcea72a1723a43d92411d802ea1ff8601ab0db07b44764cc9b703c8",
+        "task_sha256": "0aca67b95bef28cd469a845d82edac19ea8c53f8c5991831d3ca62e42a9f0444"
+      },
+      "native_report": {
+        "schema": 2,
+        "scope": "one diagnostic mini SDK task; no overall performance or top-agent parity claim",
+        "model_mode": "upstream_backend_transport",
+        "client": "mini",
+        "client_version": "2.4.6",
+        "sdk_sources_sha256": "0e69b25a0d648c733fbeea0084a442721d010e1457dd378d9acce66044cf16f6",
+        "client_lock_sha256": "c5fe2838e48a2cde4ef8faeba56ba71b80776e397adbe465914639669e21658a",
+        "driver_sha256": "d6881ffcdb0c74fa634f4d4d1f6777404537475388c7183eed900989118c1437",
+        "environment_sha256": "f78fa9246e06aee92b25070aa2d93f7793691eba57c200a3c49a615e22b6654b",
+        "shell_relay_sha256": "a6eadd5f8566c78e8f4dd4a04e81d0ed69d79fa3cadd9f3ce05ed90e7f076016",
+        "transport_sha256": "d8bfebe75ab1d64bf107f4279627d5a2616c0b6f411179a4212ff44a84c6d4e2",
+        "config_sha256": "b539a8965f5bf41dd0f32daafa5d2db22581923d13812fa378fd09569b9d6b0c",
+        "recorded_at_utc": "2026-10-25T09:17:33.263701+00:00",
+        "python": "3.12.12",
+        "platform": "Windows-11-10.0.26300-SP0",
+        "case": "js-search",
+        "fixture_sha256": "18a283c18fcea72a1723a43d92411d802ea1ff8601ab0db07b44764cc9b703c8",
+        "verifier_sha256": "e61802d0ae4a9425e60511faa1fffdd23aeeeaa9875cc7e9b5a60ba68c92fcee",
+        "task_sha256": "0aca67b95bef28cd469a845d82edac19ea8c53f8c5991831d3ca62e42a9f0444",
+        "verifier_intact": true,
+        "model": "deepseek-flash-2",
+        "sdk_model_route": "openai/deepseek-flash-2",
+        "base_url": "https://api.llm.ustc.edu.cn/v1",
+        "max_steps": 12,
+        "stream": false,
+        "check_before_task": true,
+        "baseline_status": "failed",
+        "model_task_sha256": "8e3384c47f938d147478e57b1710d8f849972ae9a2a41bee9fa3605daf439f3f",
+        "request_timeout_seconds": 120,
+        "generation_options": {
+          "max_tokens": 2048
+        },
+        "max_context_bytes": 131072,
+        "context_budget": "actual serialized HTTP JSON body",
+        "automatic_retries": false,
+        "cost": null,
+        "request_pacing": {
+          "interval_seconds": 0.0,
+          "backend_starts": 6,
+          "wait_ms": 0.0,
+          "source_sha256": "ce4ba23779b65e448585d1ca8413ea67a1e31974a25cd50b5810160fe8527ea6",
+          "scope": "backend invocation starts; HTTP may be blocked by validation",
+          "automatic_retries": false
+        },
+        "sdk_wall_time_limit_seconds": 600.0,
+        "model_queries": 6,
+        "requests": [
+          {
+            "backend_invocation": 1,
+            "outcome": "success",
+            "elapsed_ms": 7970.458,
+            "http_attempts": 1
+          },
+          {
+            "backend_invocation": 2,
+            "outcome": "success",
+            "elapsed_ms": 18841.042,
+            "http_attempts": 1
+          },
+          {
+            "backend_invocation": 3,
+            "outcome": "success",
+            "elapsed_ms": 30887.256,
+            "http_attempts": 1
+          },
+          {
+            "backend_invocation": 4,
+            "outcome": "success",
+            "elapsed_ms": 44388.341,
+            "http_attempts": 1
+          },
+          {
+            "backend_invocation": 5,
+            "outcome": "success",
+            "elapsed_ms": 16115.816,
+            "http_attempts": 1
+          },
+          {
+            "backend_invocation": 6,
+            "outcome": "success",
+            "elapsed_ms": 59108.896,
+            "http_attempts": 1
+          }
+        ],
+        "http_attempts": 6,
+        "request_measurements": {
+          "available": true,
+          "scope": "mini HTTP transport; complete bounded body is transport success, SDK validation is separate",
+          "attempts": 6,
+          "not_attempted": 0,
+          "outcomes": {
+            "success": 6,
+            "error": 0,
+            "cancelled": 0
+          },
+          "failures": {},
+          "request_bytes": 50991,
+          "response_bytes": 9395,
+          "elapsed_ms": 174568.389,
+          "usage": {
+            "prompt_tokens": {
+              "reported_sum": 13521,
+              "known_requests": 6,
+              "unknown_requests": 0,
+              "complete_sum": 13521
+            },
+            "completion_tokens": {
+              "reported_sum": 1530,
+              "known_requests": 6,
+              "unknown_requests": 0,
+              "complete_sum": 1530
+            },
+            "total_tokens": {
+              "reported_sum": 15051,
+              "known_requests": 6,
+              "unknown_requests": 0,
+              "complete_sum": 15051
+            }
+          },
+          "recent_limit": 128,
+          "recent_dropped": 0,
+          "recent": [
+            {
+              "attempted": true,
+              "streamed": false,
+              "outcome": "success",
+              "http_status": 200,
+              "request_bytes": 4294,
+              "response_bytes": 879,
+              "elapsed_ms": 5249.092,
+              "first_text_ms": null,
+              "usage": {
+                "prompt_tokens": 1182,
+                "completion_tokens": 92,
+                "total_tokens": 1274
+              },
+              "finish_reason": null,
+              "error_code": null,
+              "policy_failure": null
+            },
+            {
+              "attempted": true,
+              "streamed": false,
+              "outcome": "success",
+              "http_status": 200,
+              "request_bytes": 5323,
+              "response_bytes": 961,
+              "elapsed_ms": 18837.251,
+              "first_text_ms": null,
+              "usage": {
+                "prompt_tokens": 1497,
+                "completion_tokens": 115,
+                "total_tokens": 1612
+              },
+              "finish_reason": null,
+              "error_code": null,
+              "policy_failure": null
+            },
+            {
+              "attempted": true,
+              "streamed": false,
+              "outcome": "success",
+              "http_status": 200,
+              "request_bytes": 6792,
+              "response_bytes": 2019,
+              "elapsed_ms": 30883.519,
+              "first_text_ms": null,
+              "usage": {
+                "prompt_tokens": 1823,
+                "completion_tokens": 338,
+                "total_tokens": 2161
+              },
+              "finish_reason": null,
+              "error_code": null,
+              "policy_failure": null
+            },
+            {
+              "attempted": true,
+              "streamed": false,
+              "outcome": "success",
+              "http_status": 200,
+              "request_bytes": 8971,
+              "response_bytes": 2010,
+              "elapsed_ms": 44384.403,
+              "first_text_ms": null,
+              "usage": {
+                "prompt_tokens": 2313,
+                "completion_tokens": 379,
+                "total_tokens": 2692
+              },
+              "finish_reason": null,
+              "error_code": null,
+              "policy_failure": null
+            },
+            {
+              "attempted": true,
+              "streamed": false,
+              "outcome": "success",
+              "http_status": 200,
+              "request_bytes": 11920,
+              "response_bytes": 2014,
+              "elapsed_ms": 16110.706,
+              "first_text_ms": null,
+              "usage": {
+                "prompt_tokens": 3148,
+                "completion_tokens": 380,
+                "total_tokens": 3528
+              },
+              "finish_reason": null,
+              "error_code": null,
+              "policy_failure": null
+            },
+            {
+              "attempted": true,
+              "streamed": false,
+              "outcome": "success",
+              "http_status": 200,
+              "request_bytes": 13691,
+              "response_bytes": 1512,
+              "elapsed_ms": 59103.418,
+              "first_text_ms": null,
+              "usage": {
+                "prompt_tokens": 3558,
+                "completion_tokens": 226,
+                "total_tokens": 3784
+              },
+              "finish_reason": null,
+              "error_code": null,
+              "policy_failure": null
+            }
+          ],
+          "body_encoding": "identity; HTTP headers excluded"
+        },
+        "outcome": "acceptance_passed",
+        "acceptance_passed": true,
+        "elapsed_ms": 596692.413,
+        "active_ms": 183898.519,
+        "approvals": {
+          "requests": 8,
+          "accepted": 8,
+          "rejected": 0,
+          "wait_ms": 412793.893
+        },
+        "tools": [
+          {
+            "tool": "baseline",
+            "active_ms": 626.961,
+            "result_bytes": 195,
+            "approved": true,
+            "returncode": 1,
+            "timed_out": false,
+            "output_limited": false
+          },
+          {
+            "tool": "bash",
+            "active_ms": 533.992,
+            "result_bytes": 496,
+            "approved": true,
+            "returncode": 0,
+            "timed_out": false,
+            "output_limited": false
+          },
+          {
+            "tool": "bash",
+            "active_ms": 616.898,
+            "result_bytes": 819,
+            "approved": true,
+            "returncode": 0,
+            "timed_out": false,
+            "output_limited": false
+          },
+          {
+            "tool": "bash",
+            "active_ms": 521.9,
+            "result_bytes": 472,
+            "approved": true,
+            "returncode": 0,
+            "timed_out": false,
+            "output_limited": false
+          },
+          {
+            "tool": "bash",
+            "active_ms": 482.374,
+            "result_bytes": 1088,
+            "approved": true,
+            "returncode": 1,
+            "timed_out": false,
+            "output_limited": false
+          },
+          {
+            "tool": "bash",
+            "active_ms": 455.929,
+            "result_bytes": 113,
+            "approved": true,
+            "returncode": 0,
+            "timed_out": false,
+            "output_limited": false
+          },
+          {
+            "tool": "bash",
+            "active_ms": 381.44,
+            "result_bytes": 133,
+            "approved": true,
+            "returncode": 0,
+            "timed_out": false,
+            "output_limited": false
+          },
+          {
+            "tool": "acceptance",
+            "active_ms": 602.736,
+            "result_bytes": 187,
+            "approved": true,
+            "returncode": 0,
+            "timed_out": false,
+            "output_limited": false
+          }
+        ]
+      },
+      "postcheck": {
+        "approved": true,
+        "returncode": 0,
+        "timed_out": false,
+        "output_limited": false,
+        "result": {
+          "passed": true,
+          "reason": "checked_outputs",
+          "checks": 4,
+          "failed_checks": []
+        },
+        "verifier_intact": true,
+        "source_unchanged": true,
+        "candidate_unchanged": true
+      },
+      "candidate_manifest": {
+        "normalize.cjs": {
+          "bytes": 57,
+          "sha256": "a4011d71267ab12f76b32f42eb5dd1a9607b1c30fefe61e05e1b2b5344e557df"
+        },
+        "search.cjs": {
+          "bytes": 215,
+          "sha256": "2c1729c9414ee83ee35cd8f18f49f6f56bf5a20ec68fb064144c1563b4ca954f"
+        },
+        "TASK.md": {
+          "bytes": 429,
+          "sha256": "8323e6cfbd67517fb15c50f6e81e33d3a1fccc32ed98b402ea5bcb85ba735de4"
+        }
+      },
+      "native_report_sha256": "8d66ef8abdf1004bdcbd86a1e93dd21accdc0a425eaf4074c6c1bd55d6f34de2",
+      "changed_files": [
+        "normalize.cjs",
+        "search.cjs"
+      ]
+    }
+  ],
+  "initial_history": {
+    "sprig_sha256": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+    "mini_sha256": null,
+    "scope": "no synthetic history requested for this case; mini does not expose the same initial-history hash; native prompts/history construction are not claimed equal"
+  },
+  "limits": [
+    "one small self-built task and one run per client; not complex-repository or multi-run evidence",
+    "same initial files, task, verifier and nominal budgets; native tools, full prompts, histories and check policies differ",
+    "mini native 600-second wall limit includes review wait; Sprig has no identical extra wall limit",
+    "per-step clock and counters are native instrumentation, not a provider-level time limit or billing guarantee",
+    "complete model alias and usage do not establish actual backend weights or financial cost; billing unknown",
+    "mini native report does not separately capture Node version",
+    "private helper hash identifies lifecycle instrumentation, not a complete reproduction or OS sandbox",
+    "historical 20261024 crash remains recorded; this is a new trial on a different commit",
+    "no GitHub Actions triggered; remote CI pending during freeze"
+  ],
+  "initial_candidate_byte_manifest": {
+    "normalize.cjs": {
+      "bytes": 43,
+      "sha256": "26708997e79ff58a472b22bcca0a1eb194c9a2349a7cfd4bb88f465d2d83fed5"
+    },
+    "search.cjs": {
+      "bytes": 142,
+      "sha256": "278f3c7731f92d6a08627e4a05030bde733ca0fe2720a0a029daf51b3c9cb091"
+    },
+    "TASK.md": {
+      "bytes": 429,
+      "sha256": "8323e6cfbd67517fb15c50f6e81e33d3a1fccc32ed98b402ea5bcb85ba735de4"
+    }
+  },
+  "review_observations": {
+    "scope": "observed during individual terminal review; native numeric records retain the nonzero exit",
+    "mini_self_check": "one Bash/Node self-check failed because its expected prefix matches included avocado for ap; model corrected its own expectation and reran the check, with no intervening candidate edits",
+    "manual_task_hints": false,
+    "manual_candidate_patches": false
+  },
+  "totals": {
+    "http_attempts": 11,
+    "reported_total_tokens": 33245,
+    "native_fresh_approvals": 13,
+    "separate_postcheck_approvals": 2,
+    "billing": "unknown"
+  },
+  "publication_checks": {
+    "native_reports_match_private_originals": 2,
+    "fixed_and_independent_checks_each": 4,
+    "run_source_fingerprint_matches": true,
+    "schema_and_example": "pass",
+    "uv_locks_checked": 4,
+    "markdown_documents_checked": 5,
+    "local_document_targets": 154,
+    "scope": "numeric report/document validation after the two runs; repository application code remains at the recorded run commit"
+  }
+}
