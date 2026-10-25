@@ -75,7 +75,7 @@ TOOL_SCHEMAS = [
             "context": {"type": "integer", "minimum": 0, "maximum": 10},
             "limit": {"type": "integer", "minimum": 1, "maximum": 1000},
             "output_mode": {"enum": ["content", "files", "count"]}}, ["pattern"]),
-    schema("project_map", "Python/JS/TS/TSX/Rust/Go/C/C++/Java declarations, 1-based. Case-insensitive literal name/path, exact/prefix first. include_calls: syntax, not resolved references. Check flags; read source before edits.",
+    schema("project_map", "File/dir: Python/JS/TS/TSX/Rust/Go/C/C++/Java declarations, 1-based. Case-insensitive literal name/path; exact/prefix first. include_calls: syntax, not resolved refs. Check flags; read before edits.",
            {"path": STRING, "query": {"type": "string", "minLength": 1, "maxLength": 256},
             "include_calls": {"type": "boolean"}}),
     schema("edit_file", "Unique exact old/new (old='' creates) OR <=32 edits in ORIGINAL text. Parent must exist. Approved full diff, atomic write, undo; reread mismatches. Prefer edit_lines.",
@@ -762,6 +762,7 @@ class Tools:
 
     def project_map(self, path=".", query="", include_calls=False):
         self._require_tool("project_map")
+        self._check_cancelled()
         if type(include_calls) is not bool:
             raise ToolError("include_calls must be a boolean")
         if not isinstance(query, str) or len(query.encode("utf-8")) > 256 or any(ord(char) < 32 or ord(char) == 127 for char in query):
@@ -779,10 +780,64 @@ class Tools:
 
         selection = MapSelection(self.config.max_output, measure, include_calls=include_calls) if query else None
         parts = self._parts(path)
-        files, scanned, budget, size, truncated = [], 0, 8 * 1024 * 1024, 0, False
+        files, scanned, budget, truncated = [], 0, 8 * 1024 * 1024, False
+        # Reserve the complete envelope; redaction can expand short credentials.
+        size = measure({"files": [], "truncated": False})
+
+        def scan_file(directory, name, prefix):
+            nonlocal budget, size, truncated
+            record = {"path": "/".join((*prefix, name))}
+            language = language_for(name)
+            if language:
+                raw = self._read(directory, name, min(MAX_FILE, budget))
+                self._check_cancelled()
+                budget -= len(raw)
+                if len(raw) > MAX_FILE or budget < 0:
+                    truncated = True
+                    record["symbols_unavailable"] = True
+                else:
+                    try:
+                        text = self._decode(raw)
+                        if include_calls and any(secret in text for secret in self.config.secrets):
+                            raise ToolError("configured credential blocks call-site indexing")
+                        symbols = self.index.symbols(text, language, self._check_cancelled)
+                        self._check_cancelled()
+                        if symbols is None:
+                            record["symbols_unavailable"] = True
+                        else:
+                            record["symbols"] = symbols
+                            if include_calls:
+                                sites = self.index.call_sites(text, language, self._check_cancelled)
+                                if sites is None:
+                                    record["symbols_unavailable"] = True
+                                    truncated = True
+                                else:
+                                    record["symbols"] = sorted([*symbols, *(item for item in sites["calls"]
+                                        if item["name"].casefold() == query)],
+                                        key=lambda item: (item["line"], item.get("column", 0)))
+                                    truncated |= sites["unresolved"]
+                    except IndexUnavailable:
+                        truncated = True
+                        record["symbols_unavailable"] = True
+                    except (ValueError, ToolError):
+                        record["symbols_unavailable"] = True
+            if selection is not None:
+                selection.add(record, query, self._check_cancelled)
+                return True
+            record_size = measure(record) + (2 if files else 0)
+            if size + record_size > self.config.max_output:
+                # Keep a large module discoverable even when its symbol list is too big.
+                record = {"path": record["path"], "symbols_unavailable": True}
+                record_size = measure(record) + (2 if files else 0)
+                truncated = True
+            if size + record_size > self.config.max_output:
+                return False
+            files.append(record)
+            size += record_size
+            return True
 
         def walk(directory, prefix, depth):
-            nonlocal scanned, budget, size, truncated
+            nonlocal scanned, truncated
             if depth > 32:
                 truncated = True
                 return
@@ -803,60 +858,22 @@ class Tools:
                             continue
                         if not entry.is_file(follow_symlinks=False):
                             continue
-                        record = {"path": "/".join((*prefix, entry.name))}
-                        language = language_for(entry.name)
-                        if language:
-                            raw = self._read(directory, entry.name, min(MAX_FILE, budget))
-                            self._check_cancelled()
-                            budget -= len(raw)
-                            if len(raw) > MAX_FILE or budget < 0:
-                                truncated = True
-                                record["symbols_unavailable"] = True
-                            else:
-                                try:
-                                    text = self._decode(raw)
-                                    if include_calls and any(secret in text for secret in self.config.secrets):
-                                        raise ToolError("configured credential blocks call-site indexing")
-                                    symbols = self.index.symbols(text, language, self._check_cancelled)
-                                    self._check_cancelled()
-                                    if symbols is None:
-                                        record["symbols_unavailable"] = True
-                                    else:
-                                        record["symbols"] = symbols
-                                        if include_calls:
-                                            sites = self.index.call_sites(text, language, self._check_cancelled)
-                                            if sites is None:
-                                                record["symbols_unavailable"] = True
-                                                truncated = True
-                                            else:
-                                                record["symbols"] = sorted([*symbols, *(item for item in sites["calls"]
-                                                    if item["name"].casefold() == query)],
-                                                    key=lambda item: (item["line"], item.get("column", 0)))
-                                                truncated |= sites["unresolved"]
-                                except IndexUnavailable:
-                                    truncated = True
-                                    record["symbols_unavailable"] = True
-                                except (ValueError, ToolError):
-                                    record["symbols_unavailable"] = True
-                        if selection is not None:
-                            selection.add(record, query, self._check_cancelled)
-                            continue
-                        record_size = len(json.dumps(record, ensure_ascii=False).encode("utf-8")) + 2
-                        if size + record_size > self.config.max_output:
-                            # Keep a large module discoverable even when its symbol list is too big.
-                            record = {"path": record["path"], "symbols_unavailable": True}
-                            record_size = len(json.dumps(record, ensure_ascii=False).encode("utf-8")) + 2
-                            truncated = True
-                        if size + record_size > self.config.max_output:
+                        if not scan_file(directory, entry.name, prefix):
                             return
-                        files.append(record)
-                        size += record_size
                     except (OSError, ToolError):
                         truncated = True
 
-        with self._directory(parts) as directory, self.index.scan(
-                lambda: not truncated, modes=(b"\0", b"\0calls\0") if include_calls else (b"\0",)):
-            walk(directory, parts, 0)
+        with self._directory(parts[:-1]) as parent:
+            info = parent.stat(parts[-1]) if parts else None
+            if info is not None and stat.S_ISREG(info.st_mode):
+                # A file lookup is not a complete sweep: retain unrelated cache entries.
+                scan_file(parent, parts[-1], parts[:-1])
+                self._parts(path)  # Recheck privacy rules before publishing this explicit file.
+            else:
+                with self._directory(parts) as directory, self.index.scan(
+                        lambda: not truncated, modes=(b"\0", b"\0calls\0") if include_calls else (b"\0",)):
+                    walk(directory, parts, 0)
+        self._check_cancelled()
         if selection is not None:
             return selection.result(truncated, self._check_cancelled)
         return {"files": sorted(files, key=lambda item: item["path"]), "truncated": truncated}

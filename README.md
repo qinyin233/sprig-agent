@@ -277,7 +277,7 @@ CLI 与 TUI 都实时显示命令输出，保留 UTF-8 分段，遮盖跨片段�
 | `list_files(path=".")` | 列出目录内容 |
 | `read_file(path, offset=1, limit=..., line_numbers=..., cursor=...)` | UTF-8 行范围或版本绑定的字节页；范围默认显示行号，cursor 模式用于超长单行 |
 | `grep(pattern, path=".", glob=..., ignore_case=False, literal=False, context=0, limit=100)` | 搜索指定文件或目录，默认 RE2 正则；`literal=True` 使用字面字符串，可筛选文件、忽略大小写并返回上下文 |
-| `project_map(path=".", query=...)` | 返回有界文件地图和九种语言的声明名称与行号；可按路径或声明名筛选，优先保留精确匹配；不支持的语言只列路径 |
+| `project_map(path=".", query=...)` | 映射目录或单个文件，返回有界路径及九种语言的声明名称与行号；支持字面筛选，优先保留精确匹配；不支持的语言只列路径 |
 | `edit_file(path, old, new)` 或 `edit_file(path, edits=[...])` | 单片段或同文件多片段替换，展示合并 diff，经确认后一次写入 |
 | `edit_lines(path, read_id, edits=[...])` | 使用读取返回的短版本标识进行整行替换；内部核对完整摘要，仍需完整 diff 和新批准 |
 | `run(argv, cwd=".", timeout=...)` | 运行参数数组所指定的命令；可选超时不能超过全局上限 |
@@ -315,6 +315,8 @@ CLI 与 TUI 都实时显示命令输出，保留 UTF-8 分段，遮盖跨片段�
 搜索会跳过不可读文件、二进制文件、`node_modules`、`.venv`、`.venv-*` 和 `__pycache__`，最多遍历 5,000 个条目、32 层目录、读取 8 MiB；单文件编辑和搜索读取限制为 512 KiB。结果带有截断标记，但“没有匹配”不代表被跳过的文件也已检查。
 
 代码地图采用相同遍历与读取预算。Python 使用 AST，其他支持的语言使用本地 Tree-sitter 语法包，提取类、函数、方法和类型等声明；Go 方法带接收者名称，Rust 方法带 `impl` 类型名称。`.h` 按 C++ 语法处理，`.C` 表示 C++，`.c` 表示 C；JavaScript 支持 `.js/.mjs/.cjs/.jsx`，TypeScript 支持 `.ts/.mts/.cts/.tsx`。行号从 1 开始，与按行读取的 CR/LF 行号一致。
+
+`path` 可以指向具体文件，例如 `project_map(path="src/service.py", query="Service.get")`，只读取并映射这个文件，不扫描相邻文件；省略 `path` 时仍映射工作区。文件模式同样支持 `include_calls`，复用隐私检查、解析缓存和输出限制，返回前再次检查该路径的排除规则。普通地图的完整 JSON 外壳、分隔符和凭据遮盖后的大小也计入输出预算。地图不提供 `read_id`，编辑前仍须读取源码并逐次批准。实现及验证范围见[单文件地图](docs/file-scoped-map.md)。
 
 大文件的声明列表可能超过地图输出预算。此时可用 `project_map(query="Service.get")` 或指定文件名，按大小写不敏感的字面字符串筛选路径和已提取的声明名；最多 256 个 UTF-8 字节，不解释正则表达式。精确名称匹配优先于前缀和子串，同分时优先路径和行号；匹配路径会保留该文件的声明。`symbols_filtered` 表示筛选结果，`symbols_truncated` 表示匹配声明仍有省略，`matched_files` 只统计已遍历范围内匹配的文件。此模式继续扫描受限范围，以免输出先满就漏掉后部的精确匹配；保留的候选元数据和凭据遮盖后的结果大小都计入预算。解析失败或遍历、读取、输出超限会标记 `truncated`，空结果不能证明整个仓库没有该声明。
 

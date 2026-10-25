@@ -66,6 +66,8 @@ class WindowsTests(unittest.TestCase):
                                ("read_file", {"path": "link/a", "limit": 1}),
                                ("search", {"query": "secret", "path": "link/a", "context": 1}),
                                ("search", {"query": "secret", "path": "link", "glob": "*"}),
+                               ("project_map", {"path": "link/a"}),
+                               ("project_map", {"path": "link"}),
                                ("edit_file", {"path": "link/a", "old": "secret", "new": "bad"}),
                                ("run", {"argv": [sys.executable, "-V"], "cwd": "link"})):
                 self.assertIn("error", self.tools.execute(name, args))

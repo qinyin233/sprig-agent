@@ -1032,6 +1032,34 @@ class TuiTests(unittest.IsolatedAsyncioTestCase):
             self.assertIn("All user checks passed", app.transcript)
             self.assertEqual(json.loads(app.messages[-1]["content"])["returncode"], 0)
 
+    async def test_enter_file_map_read_edit_and_check_keep_separate_approvals(self):
+        from dataclasses import replace
+        file = self.root / "模块.py"
+        file.write_bytes(b"def target():\r\n return 'broken'\r\n")
+        self.config = replace(self.config, max_steps=4, checks=((sys.executable, "-I", "-B", "-c",
+            "import sys; sys.path.insert(0,'.'); from 模块 import target; assert target()=='fixed'"),))
+        provider = ScriptedProvider([
+            call("map", "project_map", {"path": "模块.py", "query": "target"}),
+            call("read", "read_file", {"path": "模块.py", "symbol": "target"}),
+            call("edit", "edit_file", {"path": "模块.py", "old": "'broken'", "new": "'fixed'"}), response(),
+        ])
+        app = self.app(provider)
+        async with app.run_test(size=(80, 24)) as pilot:
+            await self.send_text(pilot, "Repair target")
+            await self.until(pilot, lambda: isinstance(app.screen, ApprovalScreen))
+            self.assertEqual(len(provider.calls), 3)
+            mapped = json.loads(provider.calls[1][-1]["content"])
+            self.assertEqual(mapped["files"][0]["symbols"][0]["name"], "target")
+            self.assertTrue(json.loads(provider.calls[2][-1]["content"])["symbol_complete"])
+            self.assertEqual(file.read_bytes(), b"def target():\r\n return 'broken'\r\n")
+            await self.click(pilot, "#approve")
+            await self.until(pilot, lambda: isinstance(app.screen, ApprovalScreen) and len(provider.calls) == 4)
+            self.assertEqual(file.read_bytes(), b"def target():\r\n return 'fixed'\r\n")
+            await self.click(pilot, "#approve")
+            await self.until(pilot, lambda: not app.busy)
+            self.assertEqual(app.last_status, 0)
+            self.assertIn("All user checks passed", app.transcript)
+
     async def test_rejecting_acceptance_marks_task_unverified(self):
         self.config = Config(self.root, "test", base_url="http://localhost/v1", stream=True,
                              checks=((sys.executable, "-c", "raise SystemExit(99)"),))
