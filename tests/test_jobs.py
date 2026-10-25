@@ -217,7 +217,11 @@ class JobTests(unittest.TestCase):
         child = "import time; time.sleep(20)"
         for mode in ("cancel", "reset", "leader-exit"):
             path = self.root / (mode + ".pid")
-            code = "import subprocess,sys,time; from pathlib import Path; p=subprocess.Popen([sys.executable,'-c'," + repr(child) + "]); Path(" + repr(path.name) + ").write_text(str(p.pid)); " + ("pass" if mode == "leader-exit" else "time.sleep(20)")
+            # Existence is the reader's ready signal: publish only after close,
+            # rather than exposing an empty file between create and write.
+            code = ("import subprocess,sys,time; from pathlib import Path; p=subprocess.Popen([sys.executable,'-c'," + repr(child) +
+                    "]); ready=Path(" + repr(path.name + '.ready') + "); ready.write_text(str(p.pid)); ready.replace(" + repr(path.name) + "); " +
+                    ("pass" if mode == "leader-exit" else "time.sleep(20)"))
             tools = self.tools()
             row = tools.run(argv(code), background=True)
             until = time.monotonic() + 3

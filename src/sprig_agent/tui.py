@@ -40,6 +40,7 @@ from .runtime import runtime_label
 from .session import SessionError, SessionStore, validate_history
 from .settings import public_config
 from .tools import Tools
+from .edit_batch import EditPreview
 
 
 class UiRequest(Message):
@@ -373,6 +374,8 @@ class SprigApp(App[int]):
         class UiTools(Tools):
             def execute(self, name, arguments):
                 result = super().execute(name, arguments)
+                if isinstance(result, EditPreview):
+                    return result  # Private preflight state is neither a tool result nor a UI event.
                 if result.get("approved") is False and app.ui_call(lambda: bool(app._input_inbox.batch(delivery="steer"))):
                     note = ("Stopped after a workspace change; inspect current files: " if result.get("changed") or result.get("outcome")
                             else "Not executed: ")
@@ -931,9 +934,9 @@ class SprigApp(App[int]):
                     if "error" in catalog or page and "error" in page:
                         result["error"] = catalog.get("error") or page["error"]
                     message = "历史文件差异审阅；主草稿保留，未重新验收"
-                elif name in {"changes", "undo", "redo", "discard-history"}:
+                elif name in {"changes", "undo", "redo", "undo-batch", "redo-batch", "discard-history"}:
                     result = self.tools.change_action(name)
-                    if result.get("changed") or result.get("outcome") == "uncertain":
+                    if result.get("changed") or result.get("outcome") == "uncertain" or getattr(result, "uncertain", False):
                         # Invalidate before checkpointing: a failed save cannot
                         # make a successful file restoration appear verified.
                         self.ui_call(self.invalidate_task)
@@ -1684,7 +1687,7 @@ class SprigApp(App[int]):
                         "/summary（本地预览） /summary create [END]（逐次确认额外请求） /summary clear\n"
                         "/logs（当前会话日志） /log ID [OFFSET]（本地回查） /logs clear（逐次确认清理）\n"
                         "/history 消息编号 [字符偏移]（本地分页原文，系统提示与推理元数据不展示）\n"
-                        "/changes /undo /redo /discard-history /sessions /prune [--dry-run]\n"
+                        "/changes /undo /redo /undo-batch /redo-batch /discard-history /sessions /prune [--dry-run]\n"
                         "/changes review 打开只读差异；/changes show ID|latest [字符偏移 快照] 分页，不请求模型或重新验收。\n"
                         "/save [名称] /restore [名称] /delete [名称]\n"
                         "/pending 查看；/pending manage 管理；show ID [字符偏移] 查看原文；edit ID JSON字符串、drop ID、move ID 位置逐次确认。\n"
@@ -1935,7 +1938,7 @@ class SprigApp(App[int]):
             return
         actions = {"/continue": "continue", "/new": "new", "/map": "map", "/git": "git", "/diff": "diff",
                    "/context": "context-budget", "/usage": "usage", "/compact": "compact",
-                   "/changes": "changes", "/undo": "undo", "/redo": "redo", "/discard-history": "discard-history",
+                   "/changes": "changes", "/undo": "undo", "/redo": "redo", "/undo-batch": "undo-batch", "/redo-batch": "redo-batch", "/discard-history": "discard-history",
                    "/sessions": "sessions", "/save": "save", "/restore": "restore", "/delete": "delete", "/add": "attach", "/prune": "prune-sessions",
                    "/worktrees": "worktree-list", "/worktree": "worktree-create"}
         actions.update({"/ref": "references", "/unref": "references", "/refs": "references"})
@@ -1984,7 +1987,7 @@ class SprigApp(App[int]):
         self.local_control(event.button.id)
 
     def local_control(self, identity):
-        if self.config.read_only and identity in {"diff", "git", "undo", "redo"}:
+        if self.config.read_only and identity in {"diff", "git", "undo", "redo", "undo-batch", "redo-batch"}:
             self.append("\n只读模式禁止命令和文件修改。\n")
             return
         if identity == "send":
@@ -2021,7 +2024,7 @@ class SprigApp(App[int]):
                 self.restore()
             elif identity == "sessions":
                 self.start(local=("sessions", {}))
-            elif identity in {"changes", "undo", "redo", "discard-history"}:
+            elif identity in {"changes", "undo", "redo", "undo-batch", "redo-batch", "discard-history"}:
                 self.start(local=(identity, {}))
             elif identity == "review-changes":
                 self.choose_change_review()

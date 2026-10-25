@@ -5,6 +5,7 @@ from dataclasses import dataclass
 import hashlib
 import os
 from pathlib import PurePosixPath
+import uuid
 
 
 def path_key(parts):
@@ -28,8 +29,12 @@ class EditPreview:
 class EditBatch:
     def __init__(self, previews):
         self.pending = {path_key(item.parts): item for item in previews}
+        self.identity = uuid.uuid4().hex
         self.failed = False
         self.completed = 0
+
+    def backup_label(self):
+        return {"id": self.identity, "index": self.completed + 1}
 
     def stopped_result(self):
         return {"error": "Edit batch stopped after an error, refusal or uncertain outcome; "

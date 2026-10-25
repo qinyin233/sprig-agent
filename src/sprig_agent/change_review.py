@@ -75,7 +75,8 @@ def _visible(tools, record):
     tools._parts(record['path'])
     if not ID.fullmatch(record['id']):
         raise ValueError('retained change identifier is invalid')
-    if any(secret in value for secret in tools.config.secrets for value in (record['path'], record['id'])):
+    identifiers = (record['path'], record['id'], record.get('batch', {}).get('id', ''))
+    if any(secret in value for secret in tools.config.secrets for value in identifiers):
         raise ValueError('record path is protected by credential policy')
 
 
@@ -94,7 +95,8 @@ def catalog(tools):
         rows.append({'id': record['id'], 'path': path[:80], 'path_truncated': len(path) > 80,
                      'applied': None if state['pending'] and state['pending']['path'] == record['path'] else index < state['cursor'],
                      'before_bytes': None if record['before'] is None else len(unpack(record['before'])),
-                     'after_bytes': None if record['after'] is None else len(unpack(record['after']))})
+                     'after_bytes': None if record['after'] is None else len(unpack(record['after']))}
+                    | ({'batch': copy.deepcopy(record['batch'])} if 'batch' in record else {}))
     result = {'records': rows, 'hidden_records': hidden, 'pending': state['pending'] is not None,
               'historical': True, 'not_acceptance': True, 'network_contacted': False}
     fresh()
@@ -240,6 +242,8 @@ def page(tools, identity, offset=0, snapshot=None):
                 'before_bytes': None if raw_before is None else len(raw_before), 'after_bytes': None if raw_after is None else len(raw_after),
                 'current': current, 'historical': True, 'not_acceptance': True, 'network_contacted': False,
                 'offset_unit': 'characters', 'display_escaped': True}
+    if 'batch' in record:
+        metadata['batch'] = copy.deepcopy(record['batch'])
     digest = hashlib.sha256(json.dumps(metadata, sort_keys=True, ensure_ascii=False).encode())
     for start in range(0, len(body), 4096):
         tools._check_cancelled()

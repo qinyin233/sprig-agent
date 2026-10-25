@@ -510,15 +510,25 @@ class Agent:
         return {"available": False, "reason": "provider does not record numeric request measurements"}
 
     def record_workspace_change(self, messages, result):
-        if result.get("approved") is True and result.get("changed") is True and result.get("file_removed") is True and "error" not in result:
-            selected = self._references_after_file_action({"action": "delete", "path": result["path"]})
+        from .batch_restore import BatchRestoreResult
+        batch = isinstance(result, BatchRestoreResult)
+        removed = ()
+        if batch:
+            removed = result.removed_paths
+        elif result.get("approved") is True and result.get("changed") is True and result.get("file_removed") is True and "error" not in result:
+            removed = (result["path"],)
+        for path in removed:
+            selected = self._references_after_file_action({"action": "delete", "path": path})
             if selected is not None:
                 self.references.files = selected
                 self.references.observed = [row for row in self.references.observed if row["path"] in selected]
-        if messages and (result.get("changed") or result.get("outcome") == "uncertain"):
+        uncertain = result.uncertain if batch else result.get("outcome") == "uncertain"
+        if messages and (result.get("changed") or uncertain):
+            subject = (result.restore_action + f" ({result['completed']}/{result['total']} retained batch edits)" if batch
+                       else result["action"] + " of " + json.dumps(result["path"]))
             messages.append({"role": "user", ORIGIN: "application", "content": redact(
-                "User local " + result["action"] + " of " + json.dumps(result["path"]) +
-                (" has an uncertain outcome" if result.get("outcome") == "uncertain" else " changed the workspace") +
+                "User local " + subject +
+                (" has an uncertain outcome" if uncertain else " changed the workspace") +
                 ": prior conclusions and acceptance results are stale. Inspect current files and rerun the fixed acceptance checks before claiming completion.",
                 self.config.secrets)})
             self._checkpoint(messages)

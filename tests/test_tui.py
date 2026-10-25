@@ -1060,6 +1060,77 @@ class TuiTests(unittest.IsolatedAsyncioTestCase):
             self.assertEqual(app.last_status, 0)
             self.assertIn("All user checks passed", app.transcript)
 
+    async def test_enter_batch_recovery_reviews_labels_stops_on_refusal_and_invalidates_checks(self):
+        from dataclasses import replace
+        from sprig_agent.change_review_ui import ChangeReviewScreen
+        from textual.widgets import OptionList
+        for name in ('a.txt', 'b.txt'):
+            (self.root / name).write_bytes(b'old\r\n')
+        self.config = replace(self.config, max_steps=2, checks=((sys.executable, '-I', '-B', '-c',
+            "from pathlib import Path; assert all(Path(n).read_bytes()==b'new\\r\\n' for n in ('a.txt','b.txt'))"),))
+        edits = call('a', 'edit_file', {'path': 'a.txt', 'old': 'old', 'new': 'new'})
+        edits['tool_calls'] += call('b', 'edit_file', {'path': 'b.txt', 'old': 'old', 'new': 'new'})['tool_calls']
+        provider = ScriptedProvider([edits, response()])
+        app = self.app(provider)
+        async with app.run_test(size=(80, 24)) as pilot:
+            await self.send_text(pilot, 'Update both files')
+            for stage in range(3):
+                try:
+                    await self.until(pilot, lambda: isinstance(app.screen, ApprovalScreen))
+                except AssertionError:
+                    self.fail(f'batch approval {stage + 1}: {app.transcript}')
+                previous = app.screen
+                await self.click(pilot, '#approve')
+                await self.until(pilot, lambda: app.screen is not previous)
+            await self.until(pilot, lambda: not app.busy)
+            self.assertEqual(app.last_status, 0)
+            app.query_one('#task', TextArea).load_text('保留草稿')
+            app.choose_change_review()
+            await self.until(pilot, lambda: isinstance(app.screen, ChangeReviewScreen))
+            self.assertTrue(all('batch' in row for row in app.screen.rows))
+            option = app.screen.query_one('#review-records', OptionList).get_option_at_index(0)
+            self.assertIn('批次', str(option.prompt))
+            await pilot.press('escape')
+            await self.until(pilot, lambda: not isinstance(app.screen, ChangeReviewScreen) and not app.busy)
+            self.assertEqual(app.query_one('#task', TextArea).text, '保留草稿')
+            await self.send_text(pilot, '/undo-batch')
+            await self.until(pilot, lambda: isinstance(app.screen, ApprovalScreen))
+            self.assertIn('BATCH', app.screen.description)
+            previous = app.screen
+            await self.click(pilot, '#approve')
+            await self.until(pilot, lambda: isinstance(app.screen, ApprovalScreen) and app.screen is not previous)
+            await self.click(pilot, '#reject')
+            await self.until(pilot, lambda: not app.busy)
+            self.assertEqual(app.last_status, 2)
+            self.assertEqual((self.root / 'a.txt').read_bytes(), b'new\r\n')
+            self.assertEqual((self.root / 'b.txt').read_bytes(), b'old\r\n')
+            self.assertEqual(len(provider.calls), 2)
+            self.assertIn('1/2 retained batch edits', app.messages[-1]['content'])
+            await self.send_text(pilot, '/undo-batch')
+            await self.until(pilot, lambda: isinstance(app.screen, ApprovalScreen))
+            await self.click(pilot, '#approve')
+            await self.until(pilot, lambda: not app.busy)
+            self.assertTrue(all((self.root / name).read_bytes() == b'old\r\n' for name in ('a.txt', 'b.txt')))
+            self.assertEqual(len(provider.calls), 2)
+            self.assertEqual(app.last_status, 2)
+
+    async def test_multi_file_preflight_closes_invalid_batch_without_publishing_internal_previews(self):
+        for name in ('a.txt', 'b.txt'):
+            (self.root / name).write_bytes(b'old')
+        edits = call('valid', 'edit_file', {'path': 'a.txt', 'old': 'old', 'new': 'new'})
+        edits['tool_calls'] += call('invalid', 'edit_file', {'path': 'b.txt', 'old': 'absent', 'new': 'new'})['tool_calls']
+        provider = ScriptedProvider([edits, response('No edit was applied')])
+        app = self.app(provider)
+        async with app.run_test(size=(80, 24)) as pilot:
+            await self.send_text(pilot, 'Propose both changes')
+            await self.until(pilot, lambda: not app.busy)
+            self.assertEqual(len(provider.calls), 2, app.transcript)
+            results = [json.loads(row['content']) for row in app.messages if row['role'] == 'tool']
+            self.assertEqual(len(results), 2)
+            self.assertTrue(all(row.get('batch_preflight') == 'failed' or row.get('skipped') for row in results))
+            self.assertTrue(all((self.root / name).read_bytes() == b'old' for name in ('a.txt', 'b.txt')))
+            self.assertNotIn('EditPreview', app.transcript)
+
     async def test_rejecting_acceptance_marks_task_unverified(self):
         self.config = Config(self.root, "test", base_url="http://localhost/v1", stream=True,
                              checks=((sys.executable, "-c", "raise SystemExit(99)"),))

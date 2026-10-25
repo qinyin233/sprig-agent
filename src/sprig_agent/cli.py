@@ -245,7 +245,7 @@ def chat(agent, task, messages, emit, *, autostart=True, model_selection=None, s
                 emit("/logs lists this conversation's retained command output; /log ID [OFFSET] pages historical text; /logs clear requires fresh deletion approval. Retention is opt-in via --command-log-dir or storage.command_log_dir.")
                 emit("/ref PATH adds a live file reference; /unref PATH removes it; /refs lists metadata; /refs clear removes all. No model request is sent. Small complete files refresh before requests; larger files provide path/size only.")
                 emit("/worktrees lists local checkouts; /worktree PATH creates a detached checkout after fresh approvals. All remaining text is the path; the current conversation stays in this workspace.")
-                emit("Enter a task to continue the same conversation. /continue explicitly continues retained history without adding a duplicate request; /status shows local context; /plan shows model-reported progress, never approval or acceptance; /context previews the request budget; /usage shows local numeric request measurements and unknown token counts; /compact confirms request-only elision; /changes lists exact edit backups; /undo and /redo require diff approval; /discard-history confirms removal of backups; /diff and /git show Git changes with approval; /exit closes chat.")
+                emit("Enter a task to continue the same conversation. /continue explicitly continues retained history without adding a duplicate request; /status shows local context; /plan shows model-reported progress, never approval or acceptance; /context previews the request budget; /usage shows local numeric request measurements and unknown token counts; /compact confirms request-only elision; /changes lists exact edit backups; /undo and /redo require diff approval; /undo-batch and /redo-batch recover retained independent batches with fresh approval per file; /discard-history confirms removal of backups; /diff and /git show Git changes with approval; /exit closes chat.")
             elif task == "/models reload":
                 if model_selection is None:
                     emit("Model catalog refresh is unavailable for this startup; no model request sent.")
@@ -387,9 +387,9 @@ def chat(agent, task, messages, emit, *, autostart=True, model_selection=None, s
                     emit("Change review cancelled; conversation and workspace retained. No model request sent.")
                 except ValueError as error:
                     emit(redact(str(error), agent.config.secrets))
-            elif task in {"/changes", "/undo", "/redo", "/discard-history"}:
+            elif task in {"/changes", "/undo", "/redo", "/undo-batch", "/redo-batch", "/discard-history"}:
                 result = agent.tools.change_action(task[1:])
-                if result.get("changed") or result.get("outcome") == "uncertain":
+                if result.get("changed") or result.get("outcome") == "uncertain" or getattr(result, "uncertain", False):
                     status = 2
                 elif ("error" in result or result.get("approved") is False) and status == 0:
                     status = 2

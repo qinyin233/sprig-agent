@@ -50,7 +50,8 @@ class ChangeReviewScreen(ModalScreen):
         options = self.query_one('#review-records', OptionList)
         options.clear_options()
         options.add_options([(('[?] ' if row['applied'] is None else '[已应用] ' if row['applied'] else '[已撤销] ')
-                              + row['path'] + ('…' if row['path_truncated'] else '')) for row in self.rows])
+                              + row['path'] + ('…' if row['path_truncated'] else '')
+                              + (f" [批次 {row['batch']['id'][:8]} #{row['batch']['index']}]" if 'batch' in row else '')) for row in self.rows])
         if page and 'error' not in page:
             if self.navigation == 'next' and self.view:
                 self.back.append(self.view['offset'])

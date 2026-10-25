@@ -3,6 +3,9 @@ import base64
 import copy
 import hashlib
 import json
+import os
+from pathlib import PurePosixPath
+import re
 import uuid
 
 from .session import SessionStore
@@ -10,6 +13,7 @@ from .session import SessionStore
 MAX_BACKUPS = 4 * 1024 * 1024
 MAX_JOURNAL = 8 * 1024 * 1024
 MAX_RECORDS = 16
+BATCH_ID = re.compile(r"[a-f0-9]{32}")
 
 
 class ChangeError(Exception):
@@ -64,7 +68,7 @@ class ChangeHistory:
                     or type(state["cursor"]) is not int or not 0 <= state["cursor"] <= len(state["records"])
                     or not isinstance(state["anchors"], dict)):
                 raise ValueError
-            paths = set()
+            paths, batches, last_batch = set(), {}, None
             for record in state["records"]:
                 if (not isinstance(record, dict) or not isinstance(record["id"], str) or len(record["id"]) != 32
                         or not isinstance(record["path"], str) or not 0 < len(record["path"]) <= 4096
@@ -74,6 +78,21 @@ class ChangeHistory:
                 for field in ("before", "after"):
                     if record[field] is not None and (not isinstance(record[field], str) or len(unpack(record[field])) > 512 * 1024):
                         raise ValueError
+                label = record.get("batch")
+                if "batch" in record:
+                    if (not isinstance(label, dict) or set(label) != {"id", "index"}
+                            or not isinstance(label["id"], str) or not BATCH_ID.fullmatch(label["id"])
+                            or type(label["index"]) is not int or not 1 <= label["index"] <= 16):
+                        raise ValueError
+                    identity, position = label["id"], label["index"]
+                    key = tuple(part.casefold() if os.name == "nt" else part for part in PurePosixPath(record["path"]).parts)
+                    previous = batches.get(identity)
+                    if previous is not None and (last_batch != identity or position != previous[0] + 1 or key in previous[1]):
+                        raise ValueError
+                    batches[identity] = (position, (previous[1] if previous else set()) | {key})
+                    last_batch = identity
+                else:
+                    last_batch = None
                 paths.add(record["path"])
             if set(state["anchors"]) != paths or sum(map(backup_size, state["records"])) > MAX_BACKUPS:
                 raise ValueError
@@ -129,13 +148,16 @@ class ChangeHistory:
                              "applied": None if self.state["pending"] and self.state["pending"]["path"] == record["path"] else index < self.state["cursor"],
                              "before_bytes": None if record["before"] is None else len(unpack(record["before"])),
                              "after_bytes": None if record["after"] is None else len(unpack(record["after"]))}
+                            | ({"batch": copy.deepcopy(record["batch"])} if "batch" in record else {})
                             for index, record in enumerate(self.state["records"])]}
 
-    def begin_edit(self, path, before, after, mode, revision):
+    def begin_edit(self, path, before, after, mode, revision, *, batch=None):
         self._ready()
         state = copy.deepcopy(self.state)
         state["records"] = state["records"][:state["cursor"]]
         state["records"].append({"id": uuid.uuid4().hex, "path": path, "before": pack(before), "after": pack(after), "mode": mode})
+        if batch is not None:
+            state["records"][-1]["batch"] = copy.deepcopy(batch)
         while len(state["records"]) > MAX_RECORDS or sum(map(backup_size, state["records"])) > MAX_BACKUPS:
             state["records"].pop(0)
         state["cursor"] = len(state["records"])
@@ -143,7 +165,30 @@ class ChangeHistory:
         state["anchors"] = {key: value for key, value in state["anchors"].items() if key in paths}
         state["anchors"][path] = None if revision is None else list(revision)
         state["pending"] = {"action": "edit", "path": path}
+        if batch is not None:
+            self.validate(state)  # A malformed association must fail before a journal or workspace write.
         self._save(state)
+
+    def plan_batch(self, action):
+        state = self.validate(copy.deepcopy(self.state))
+        self._ready()
+        if action not in {"undo", "redo"}:
+            raise ChangeError("unknown batch restore action")
+        cursor, records = state["cursor"], state["records"]
+        index = cursor - 1 if action == "undo" else cursor
+        if not 0 <= index < len(records) or "batch" not in records[index]:
+            raise ChangeError("no retained batch at the history cursor; use individual undo/redo")
+        identity = records[index]["batch"]["id"]
+        start, stop = index, index + 1
+        while start and records[start - 1].get("batch", {}).get("id") == identity:
+            start -= 1
+        while stop < len(records) and records[stop].get("batch", {}).get("id") == identity:
+            stop += 1
+        if records[start]["batch"]["index"] != 1:
+            raise ChangeError("batch backups are incomplete after retention; use individual undo/redo")
+        selected = list(reversed(records[start:cursor])) if action == "undo" else records[cursor:stop]
+        return identity, [(record, None if state["anchors"][record["path"]] is None else tuple(state["anchors"][record["path"]]))
+                          for record in selected]
 
     def plan(self, action):
         self._ready()

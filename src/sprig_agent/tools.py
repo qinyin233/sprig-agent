@@ -941,14 +941,19 @@ class Tools:
                     self._check_cancelled()
                     self.history.discard()
                     result = {"approved": True, "discarded": True}
+            elif action in {"undo-batch", "redo-batch"}:
+                from .batch_restore import restore
+                return restore(self, action.split("-")[0])
             else:
                 result = self._restore_change(action)
             return redact(result, self.config.secrets)
         except (OSError, ToolError, ChangeError, ValueError) as exc:
             return {"error": redact(str(exc), self.config.secrets)}
 
-    def _restore_change(self, action):
+    def _restore_change(self, action, *, before_write=None, description_prefix=""):
         self._require_tool("edit_file")
+        if getattr(self, "_restoring_batch", False) and before_write is None:
+            raise ToolError("batch recovery is in progress")
         if self.config.read_only:
             return {"approved": False, "changed": False, "error": "read-only mode blocks undo/redo"}
         record, revision = self.history.plan(action)
@@ -966,8 +971,10 @@ class Tools:
             description = action.upper() + " " + json.dumps(path) + "\n" + (self._diff(path, before, after) or "(empty file create/delete)")
             if os.name == "nt" and info is None and target is not None:
                 description += "\nRe-created Windows file uses a private current-user ACL; previous shared access is not restored."
-            if not self.request_approval(description):
+            if not self.request_approval(description_prefix + description):
                 return {"approved": False, "changed": False}
+            if before_write is not None:
+                before_write()
             self._parts(path)  # File privacy rules may have changed during review.
             self._unchanged(fd, name, current, info)
             self._check_cancelled()
@@ -1137,7 +1144,8 @@ class Tools:
             self._check_cancelled()
             self.read_versions.discard(parts)
             mode = stat.S_IMODE(before_stat.st_mode) & 0o777 if before_stat else 0o600
-            self.history.begin_edit(path, before_raw, data, mode, self._revision(before_stat))
+            self.history.begin_edit(path, before_raw, data, mode, self._revision(before_stat),
+                                    batch=self._edit_batch.backup_label() if self._edit_batch is not None else None)
             self._replace(fd, name, data, mode, before_stat)
             self.history.complete(self._revision(fd.stat(name)))
         result = {"approved": True, "changed": True, "path": path}

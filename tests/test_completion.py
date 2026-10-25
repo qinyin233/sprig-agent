@@ -104,7 +104,14 @@ class FileCandidateTests(unittest.TestCase):
 
 class CompletionTuiTests(unittest.IsolatedAsyncioTestCase):
     asyncSetUp = fixture.TuiTests.asyncSetUp
-    setUp = fixture.TuiTests.setUp
+
+    def setUp(self):
+        fixture.TuiTests.setUp(self)
+        # Selection/attachment guards have a separate discovery budget. The
+        # production 250 ms cooperative bound is covered by FileCandidateTests.
+        self.enterContext(patch('sprig_agent.picker.file_candidates', side_effect=lambda config, directory, query, cancelled:
+            file_candidates(config, directory, query, cancelled, seconds=5)))
+
     app = fixture.TuiTests.app
     until = fixture.TuiTests.until
     click = fixture.TuiTests.click
@@ -241,6 +248,28 @@ class CompletionTuiTests(unittest.IsolatedAsyncioTestCase):
             self.assertEqual(app.screen.values, [])
             await pilot.press("escape")
             self.assertIsNone(app.messages)
+
+    async def test_zero_discovery_budget_shows_limit_without_selecting_or_submitting(self):
+        (self.root / 'one.txt').write_text('body', encoding='utf-8')
+        provider = fixture.ScriptedProvider([])
+        app = self.app(provider)
+        with patch('sprig_agent.picker.file_candidates', side_effect=lambda config, directory, query, cancelled:
+                   file_candidates(config, directory, query, cancelled, seconds=0)):
+            async with app.run_test(size=(110, 36)) as pilot:
+                editor = app.query_one('#task', TextArea)
+                editor.load_text('keep draft')
+                await self.click(pilot, '#files')
+                await self.until(pilot, lambda: isinstance(app.screen, PickerScreen)
+                    and '已达上限' in str(app.screen.query_one('#picker-status', Static).render()))
+                self.assertEqual(app.screen.values, [])
+                await pilot.press('enter')
+                await pilot.pause()
+                self.assertIsInstance(app.screen, PickerScreen)
+                await pilot.press('escape')
+                await self.until(pilot, lambda: not isinstance(app.screen, PickerScreen))
+                self.assertEqual(editor.text, 'keep draft')
+                self.assertIsNone(app.messages)
+                self.assertEqual(provider.calls, [])
 
     async def test_privacy_changes_after_discovery_are_rechecked_before_attachment(self):
         (self.root / "value.txt").write_text("private after selection", encoding="utf-8")
