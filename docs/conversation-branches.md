@@ -2,6 +2,8 @@
 
 TUI 和连续 chat 可以从当前会话的完整用户轮次建立新分支。原对话文件保留，当前输入草稿及待发送文件/粘贴不清空；选取、确认和本地预检不调用模型。只有下一条任务或明确“继续”才发送保留的历史。
 
+本页描述 `/fork` 的整轮分支；另有[编辑历史请求并重发](conversation-revision.md)：`/revise` 截在所选请求之前，并在独立编辑区确认后发送新正文。普通分支和修订均在确认前预检、确认后复查预算与来源。
+
 ## 操作
 
 - TUI 侧栏“从历史建立分支”，或 `/timeline`、`/fork`，打开本地选择器。可搜索消息号和最多 160 字符的预览，↑↓选择，Enter 进入确认，Esc 关闭；最多显示 20 个匹配项，更多时请细化查询。
@@ -25,7 +27,7 @@ TUI 和连续 chat 可以从当前会话的完整用户轮次建立新分支。�
 
 ## 参考与验证
 
-阅读固定 OpenCode `dev@9d90d892dcbfc52b47e95b2ea31b8aba877128fd` 的 [`dialog-fork.tsx`](https://github.com/anomalyco/opencode/blob/9d90d892dcbfc52b47e95b2ea31b8aba877128fd/packages/tui/src/routes/session/dialog-fork.tsx) 和 [`dialog-timeline.tsx`](https://github.com/anomalyco/opencode/blob/9d90d892dcbfc52b47e95b2ea31b8aba877128fd/packages/tui/src/routes/session/dialog-timeline.tsx)。上游按用户消息列出时间线，可在该消息之前分支并恢复输入；Sprig 当前明确采用保留完整用户轮次的边界，保留现有草稿。历史消息编辑重发、原始输入附件重建和文件快照回滚仍未提供，不能据本功能宣称与上游所有会话操作等同。
+阅读固定 OpenCode `dev@9d90d892dcbfc52b47e95b2ea31b8aba877128fd` 的 [`dialog-fork.tsx`](https://github.com/anomalyco/opencode/blob/9d90d892dcbfc52b47e95b2ea31b8aba877128fd/packages/tui/src/routes/session/dialog-fork.tsx) 和 [`dialog-timeline.tsx`](https://github.com/anomalyco/opencode/blob/9d90d892dcbfc52b47e95b2ea31b8aba877128fd/packages/tui/src/routes/session/dialog-timeline.tsx)。上游按用户消息列出时间线，可在该消息之前分支并恢复输入；Sprig 的 `/fork` 继续保留完整用户轮次和现有草稿，后续 `/revise` 单独提供截前修订与重发。原始输入/附件重建和文件快照回滚仍缺，不能据此宣称所有会话能力等同。
 
 `tests/test_conversation_fork.py` 覆盖本地分页、原生私有状态隔离、命令日志所有权、整轮工具闭合、过期确认、取消/拒绝/保存失败、草稿和文件选择、失败草稿重试、引导及新命令重新批准；真实 Textual 和 CLI chat 通过回环 HTTP/SSE 验证三个模型协议。固定响应不新增编码能力或模型排名结论。最终平台与安装包范围见[机器记录](benchmarks/conversation-branches-20261021.json)。
 

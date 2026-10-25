@@ -65,7 +65,7 @@ def check_argv(text):
 
 
 def chat(agent, task, messages, emit, *, autostart=True, model_selection=None, switch_model=None, fork_conversation=None,
-         pending_control=None, terminal_inputs=None):
+         pending_control=None, terminal_inputs=None, revise_conversation=None):
     """Keep context across turns; queued work also needs explicit /queue run."""
     status = 0
     history_ready = True
@@ -185,7 +185,7 @@ def chat(agent, task, messages, emit, *, autostart=True, model_selection=None, s
         if task == "/exit":
             return status
         try:
-            if queued_or_pending() and (task.startswith("/model ") or task.startswith("/fork ") or task.startswith("/summary create")):
+            if queued_or_pending() and (task.startswith("/model ") or task.startswith("/fork ") or task.startswith("/revise") or task.startswith("/summary create")):
                 emit("Resolve /pending apply or /pending discard first; no model request sent.")
                 continue
             if task.lstrip().split(None, 1)[:1] == ["/queue"]:
@@ -235,6 +235,7 @@ def chat(agent, task, messages, emit, *, autostart=True, model_selection=None, s
                 emit('/jobs lists owned tasks; /job start {"argv":["program","arg"]} approves a background command; /job status|output|wait|cancel ID observes or freshly confirms stopping it. Enable execution.background or --background. Exit/reset stops jobs; restore never restarts them.')
                 emit("/web shows local snapshot status; /web URL approves one public HTTP(S) GET; /web result ID [OFFSET] pages retained text without refetch. Enable with [web] enabled=true or --web. No auth, redirects, proxy, scripts or automatic replay.")
                 emit("/timeline [OFFSET] lists local user turns; /fork current or /fork MESSAGE confirms a new branch through that whole turn. Workspace files are not rolled back and actions are not replayed. Only the next task or /continue requests the model.")
+                emit('/revise MESSAGE "JSON replacement text" confirms a branch before that request, then sends the edited literal text. Use --tui for the independent editor. The original session is preserved, workspace files stay current, and new actions require fresh approval.')
                 emit("/models lists the configured snapshot; /model KEY explicitly confirms a local model change. @startup restores startup model settings. It retains conversation text, removes old reasoning metadata and forks enabled private saves; no request is sent until the next task.")
                 emit("/mcp shows local server state; /mcp connect|disconnect|tools|resources|templates|prompts SERVER asks fresh approval for remote requests; /mcp result ID [OFFSET] reads retained local data without replay.")
                 emit("/skills lists configured skill metadata; /skill NAME [PATH [OFFSET PAGE_SHA256]] previews local UTF-8 guidance without a model call or script execution. Quote resource paths containing spaces.")
@@ -255,6 +256,19 @@ def chat(agent, task, messages, emit, *, autostart=True, model_selection=None, s
                     if result.get("model_changed"):
                         history_ready, status = True, 2
                     emit(json.dumps(result, ensure_ascii=False))
+            elif task == "/revise" or task.startswith("/revise "):
+                from .conversation_revision import revision_command
+                target, body = revision_command(task[7:].lstrip(), agent.config.max_context_bytes)
+                if not target or body is None:
+                    emit('Use /timeline then /revise MESSAGE "JSON replacement text", or --tui for the editor. The original conversation and workspace stay intact.')
+                elif revise_conversation is None:
+                    emit("Historical request revision is unavailable for this startup; no model request sent.")
+                else:
+                    agent, messages, result = revise_conversation(target, body, messages)
+                    emit(json.dumps(result, ensure_ascii=False))
+                    if result.get("revised"):
+                        history_ready, status = True, 2
+                        run(None)
             elif task == "/timeline" or task.startswith("/timeline ") or task == "/fork":
                 from .conversation_fork import timeline_page
                 offset = int(task[10:].strip()) if task.startswith("/timeline ") else 0
@@ -716,11 +730,16 @@ def main(argv=None):
                     recovery_required = False
                     return messages, result
                 return messages, input_preview(state, min(4096, config.max_output))
-            def fork_conversation(target, messages):
+            def fork_conversation(target, messages, *, replacement=None):
                 from .conversation_fork import ConversationFork
                 nonlocal agent, store, session_name
-                candidate = ConversationFork(agent, messages, target,
-                                             saving=bool(session_name) or config.auto_save_session, source_name=session_name)
+                if replacement is None:
+                    candidate = ConversationFork(agent, messages, target,
+                                                 saving=bool(session_name) or config.auto_save_session, source_name=session_name)
+                else:
+                    from .conversation_revision import RevisionSource
+                    candidate = RevisionSource(agent, messages, target).prepare(replacement,
+                                    saving=bool(session_name) or config.auto_save_session, source_name=session_name)
                 if not candidate.preflight(confirm, session_dir):
                     return agent, messages, {"forked": False, "approved": False, "network_contacted": False}
                 old_store = store
@@ -728,6 +747,8 @@ def main(argv=None):
                 terminal_inputs.bind(agent, store, session_name, messages)
                 result = {"forked": True, "session": session_name, "through_message": candidate.through,
                           "workspace_rolled_back": False, "network_contacted": False}
+                if replacement is not None:
+                    result.update(revised=True, replaced_message=candidate.replaced)
                 if old_store is not None:
                     try:
                         old_store.close()
@@ -758,7 +779,8 @@ def main(argv=None):
                 return agent, messages, result
             return chat(agent, args.task, messages, emit, autostart=bool(args.task or args.resume),
                         model_selection=model_selection, switch_model=switch_model, fork_conversation=fork_conversation,
-                        pending_control=pending_control, terminal_inputs=terminal_inputs)
+                        pending_control=pending_control, terminal_inputs=terminal_inputs,
+                        revise_conversation=lambda target, body, history: fork_conversation(target, history, replacement=body))
         if args.resume and store.pending_inputs(session_name)["pending"]:
             emit("Saved pending inputs require explicit recovery. Resume with --chat and use /pending apply or /pending discard, then /continue. No model request sent.")
             return 2

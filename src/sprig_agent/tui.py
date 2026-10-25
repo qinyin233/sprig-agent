@@ -28,6 +28,8 @@ from .composer import DraftPastes, MAX_PASTE_BYTES, paste_text
 from .mentions import DraftFiles, mention_query
 from .model_selection import ModelSwitch
 from .conversation_fork import ConversationFork, timeline_page, turn_catalog
+from .conversation_revision import RevisionSource, revision_command
+from .revision_ui import RevisionScreen
 from .message_origin import application_origin, user_request
 from .provider import Provider
 from .picker import PickerScreen
@@ -350,6 +352,8 @@ class SprigApp(App[int]):
         self._input_retry = None
         self._job_seen = set()
         self._draft_submission = None
+        self._revision_editor = None
+        self._revision_ready = False
         if self.session_name:
             self.store = SessionStore(self.session_dir, config)
             try:
@@ -450,6 +454,7 @@ class SprigApp(App[int]):
                                 yield Button("恢复", id="restore")
                             yield Button("列出本地会话", id="sessions")
                             yield Button("从历史建立分支", id="fork")
+                            yield Button("编辑历史请求并重发", id="revise")
                             yield Button("删除指定会话", id="delete")
                     with TabPane("计划", id="plan-tab"):
                         yield Static("模型报告的进度；不代表审批或验收", markup=False)
@@ -594,7 +599,7 @@ class SprigApp(App[int]):
 
     def set_busy(self, busy):
         self.busy = busy
-        for identity in ("files", "continue", "new", "diff", "git", "map", "context-budget", "usage", "compact", "changes", "undo", "redo", "discard-history", "save", "restore", "sessions", "fork", "delete", "session-name"):
+        for identity in ("files", "continue", "new", "diff", "git", "map", "context-budget", "usage", "compact", "changes", "undo", "redo", "discard-history", "save", "restore", "sessions", "fork", "revise", "delete", "session-name"):
             self.query_one("#" + identity).disabled = busy or (self.config.read_only and identity in {"diff", "git", "undo", "redo"})
         self.query_one("#cancel", Button).disabled = not busy
         self.query_one("#model", Button).disabled = busy or self.model_selection is None
@@ -815,7 +820,7 @@ class SprigApp(App[int]):
     def start(self, task=None, local=None, *, context_files=(), preflight=False):
         if self.busy:
             return
-        if (self.recovered_inputs["pending"] or self._input_retry or self._input_inbox.blocked) and (not local or local[0] in {"model-switch", "conversation-fork", "summary", "verify"}):
+        if (self.recovered_inputs["pending"] or self._input_retry or self._input_inbox.blocked) and (not local or local[0] in {"model-switch", "conversation-fork", "conversation-revise", "summary", "verify"}):
             self.reject_input("请先用 /pending apply 或 /pending discard 处理已恢复的要求；未请求模型。")
             return
         if not local and not task and not self.messages and not self.pending_tasks:
@@ -945,6 +950,17 @@ class SprigApp(App[int]):
                 elif name == "timeline":
                     result = timeline_page(self.messages, arguments["offset"], secrets=self.config.secrets,
                                            budget=min(self.config.max_output, 8192))
+                elif name == "conversation-revise":
+                    self._revision_ready = False
+                    source = arguments["source"]
+                    if self.agent is not source.original or self.messages is not source.source:
+                        raise ValueError("历史来源已切换；编辑草稿保留，请重新选择")
+                    candidate = source.prepare(arguments["text"], saving=bool(self.session_name) or self.config.auto_save_session,
+                                               source_name=self.session_name)
+                    if candidate.preflight(self.confirm, self.session_dir):
+                        result = self.ui_call(self.commit_revision, candidate)
+                    else:
+                        result = {"approved": False, "revised": False, "network_contacted": False}
                 elif name == "conversation-fork":
                     candidate = ConversationFork(self.agent, self.messages, arguments["target"],
                                                  saving=bool(self.session_name) or self.config.auto_save_session,
@@ -991,6 +1007,8 @@ class SprigApp(App[int]):
                     message = "问题未回答；等待新输入，旧提案未执行 / 未验收"
         except KeyboardInterrupt:
             status, message = 130, "已取消；待定操作不会重放"
+            if local and local[0] == "conversation-revise":
+                return status, message  # Do not recopy or steer history behind the bound editor source.
             try:
                 if self.messages:
                     self.messages = validate_history(self.messages)
@@ -1003,6 +1021,8 @@ class SprigApp(App[int]):
                 status, message = 1, "已取消，但会话保存失败: " + self.safe(error)
         except Exception as error:
             status, message = 1, "错误: " + self.safe(error)
+            if local and local[0] == "conversation-revise":
+                return status, message  # Keep the editor's exact source identity for a fresh retry.
             # Keep the in-memory conversation usable after a failed checkpoint or action.
             try:
                 if self.messages:
@@ -1031,6 +1051,23 @@ class SprigApp(App[int]):
 
     def finished(self, status, message):
         self.flush_output()
+        if self.local_action == "conversation-revise":
+            accepted, self._revision_ready = self._revision_ready and status == 0, False
+            if self._revision_editor is not None:
+                self._revision_editor.operation_finished(accepted)
+            self.last_operation_status = status
+            self.local_action = None
+            self._queue_running = False
+            if accepted and not self.cancel_event.is_set() and not self._input_retry and not self._input_inbox.blocked:
+                self.set_task_result(2, "分支已建立，正在发送编辑后的请求；主草稿保留")
+                self.set_state("发送编辑后的请求")
+                return True
+            self.set_busy(False)
+            self.set_state(message + "；未自动请求模型，编辑区或已提交分支保留")
+            self.append("\n[" + message + "；未自动请求模型]\n")
+            if self.quit_when_idle:
+                self.exit(self.last_status)
+            return False
         verification = self.local_action == "verify"
         if verification and (self._input_inbox.batch(delivery="steer") or self._input_retry or self._input_inbox.blocked):
             status, message = 2, "检查后有新要求或保存待确认；未请求模型，请明确继续或处理 /pending"
@@ -1166,6 +1203,35 @@ class SprigApp(App[int]):
         self.push_screen(PickerScreen(commands=True, choices=choices,
                                      title="历史分支：保留到该轮结束；搜索消息号/预览，Enter 后确认，Esc 关闭"), selected)
 
+    def choose_revision(self, target="", text=None):
+        if self.busy or isinstance(self.screen, ModalScreen) or self.pending_tasks or self.recovered_inputs["pending"] or self._input_retry or self._input_inbox.blocked:
+            self.notify("请等待空闲并处理待发送要求后，再编辑历史请求", severity="warning")
+            return
+        self.cancel_event.clear()
+        try:
+            if not target:
+                choices = [(str(row["message"]), f"编辑消息 {row['message']}：{row['preview']}") for row in turn_catalog(self.messages, self.config.secrets)]
+                def selected(result):
+                    if result and not self.busy:
+                        self.choose_revision(result[1])
+                self.push_screen(PickerScreen(commands=True, choices=choices, title="选择旧请求；该请求和后续对话将被替换，工作区不回滚"), selected)
+                return
+            source = RevisionSource(self.agent, self.messages, target)
+            editor = RevisionScreen(self, source, text)
+            self._revision_editor = editor
+            def closed(_):
+                if self._revision_editor is editor:
+                    self._revision_editor = None
+            self.push_screen(editor, closed)
+        except (OSError, ValueError, SessionError) as error:
+            self.notify(self.safe(error), severity="error")
+
+    def commit_revision(self, candidate):
+        result = self.commit_fork(candidate)
+        self._draft_submission = None  # The main draft is unrelated to this editor submission.
+        self._revision_ready = True
+        return {**result, "revised": True, "replaced_message": candidate.replaced}
+
     def commit_fork(self, candidate):
         if (self._unmounted or self._closed or self.cancel_event.is_set() or self.pending_tasks or self.recovered_inputs["pending"] or self._input_retry or self._input_inbox.blocked
                 or self.agent is not candidate.original or self.messages is not candidate.source):
@@ -1180,7 +1246,7 @@ class SprigApp(App[int]):
         self.transcript = ""
         self._transcript_trimmed = False
         self.query_one("#transcript", TextArea).load_text("")
-        self.append("已建立历史分支。工作区文件保持现状，下一次 Enter 才请求模型。\n")
+        self.append("已建立历史分支。工作区文件保持现状，" + ("接下来发送已确认的编辑请求。\n" if candidate.replaced else "下一次 Enter 才请求模型。\n"))
         self.show_history()
         result = {"forked": True, "session": self.session_name, "through_message": candidate.through,
                   "workspace_rolled_back": False, "network_contacted": False}
@@ -1577,7 +1643,15 @@ class SprigApp(App[int]):
                         "选择不会发送任务；Enter 发送时读取文件，修改/删除标记撤销选择；/ref 用于后续轮次实时引用。\n"
                         "长粘贴只折叠显示；F4 或“展开粘贴”查看编辑，完整正文仍计入请求预算。\n"
                         "/model 打开配置模型选择；/model 提供商/别名 或 @startup 明确切换，需确认且不发送请求。恢复仍校验绑定。\n"
-                        "/timeline 或 /fork 选择历史轮次；/fork current 或 消息号 明确建立分支。文件不回滚，草稿保留，Enter 才请求模型。\n")
+                        "/timeline 或 /fork 选择历史轮次；/fork current 或 消息号 明确建立分支。文件不回滚，草稿保留，Enter 才请求模型。\n"
+                        "/revise [消息号] 编辑旧请求；编辑区 Enter 后确认建立该请求之前的分支并发送。主草稿保留。\n")
+            return
+        if command == "/revise":
+            try:
+                target, body = revision_command(argument, self.config.max_context_bytes)
+                self.choose_revision(target or "", body)
+            except ValueError as error:
+                self.reject_input(str(error))
             return
         if command == "/prompts":
             try:
@@ -1860,6 +1934,8 @@ class SprigApp(App[int]):
                 self.choose_model()
             elif identity == "fork":
                 self.choose_fork()
+            elif identity == "revise":
+                self.choose_revision()
             elif identity in {"diff", "git"}:
                 argv = ["git", "diff", "--", "."] if identity == "diff" else ["git", "status", "--short", "--", "."]
                 self.start(local=("run", {"argv": argv}))

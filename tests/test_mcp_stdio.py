@@ -196,7 +196,9 @@ class McpStdioTests(unittest.TestCase):
     def test_errors_partial_frames_and_floods_close_without_retry_or_model_output(self):
         for fault in ("bad_id", "invalid", "partial", "request", "flood", "stderr_flood", "duplicate"):
             self.mode(fault)
-            tools = self.tools(server=self.server(timeout=.3, deadline=.5))
+            # Include a real interpreter startup in the handshake allowance.
+            # Backpressure's tight RPC budget is tested after readiness below.
+            tools = self.tools(server=self.server(timeout=3, deadline=4))
             result = self.action(tools, "connect")
             self.assertIn("error", result, fault)
             self.assertFalse(tools.mcp_manager.clients["local"].status()["process_running"])
@@ -207,9 +209,11 @@ class McpStdioTests(unittest.TestCase):
 
     def test_backpressure_timeout_and_cancel_kill_owned_descendants(self):
         self.mode("block_input")
-        tools = self.tools(server=self.server(timeout=.3, deadline=.5))
+        tools = self.tools(server=self.server(timeout=5, deadline=6))
         self.assertTrue(self.action(tools, "connect").get("approved"))
         client = tools.mcp_manager.clients["local"]
+        self.assertTrue(client.ready)  # Approval alone does not prove connection.
+        client.server = replace(client.server, timeout=.3, deadline=.5)
         started = time.monotonic()
         with self.assertRaises(McpError):
             client.rpc("tools/list", {"padding": "x" * 60000})

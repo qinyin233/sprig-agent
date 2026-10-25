@@ -31,6 +31,8 @@ class PromptTemplateTuiTests(unittest.IsolatedAsyncioTestCase):
             editor.load_text("/rev")
             editor.focus()
             await pilot.press("tab")
+            await self.until(pilot, lambda: isinstance(app.screen, PickerScreen) and "/review" in app.screen.values)
+            app.screen.query_one("#picker-query").value = "/review"
             await self.until(pilot, lambda: isinstance(app.screen, PickerScreen) and app.screen.values == ["/review"])
             await pilot.press("enter")
             await self.until(pilot, lambda: not isinstance(app.screen, PickerScreen))
@@ -127,6 +129,8 @@ class PromptTemplateTuiTests(unittest.IsolatedAsyncioTestCase):
             editor.load_text("/rev")
             editor.focus()
             await pilot.press("tab")
+            await self.until(pilot, lambda: isinstance(app.screen, PickerScreen) and "/review" in app.screen.values)
+            app.screen.query_one("#picker-query").value = "/review"
             await self.until(pilot, lambda: isinstance(app.screen, PickerScreen) and app.screen.values == ["/review"])
             options = app.screen.query_one("#picker-options")
             self.assertNotIn(secret, str(options.get_option_at_index(0).prompt))

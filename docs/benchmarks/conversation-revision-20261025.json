@@ -1,0 +1,244 @@
+{
+  "schema": 1,
+  "scope": "history-bound user request revision; independent TUI editor and actual CLI chat resend; fresh branch consent; current workspace retained",
+  "base_commit": "c48d46e787d89bedc09809a1787ae70a90130b6d",
+  "frozen_functional_files": 227,
+  "frozen_raw_bytes_manifest_sha256": "ba7468a51992715c0627c02c60eff3d21e03f7ad1a32e15959370b6007232770",
+  "source_manifest": {
+    "src/sprig_agent": {
+      "files": 75,
+      "sha256": "7faac8b2fe1e7559034f097b08685fbef57dd4f220a9db5d9968f6ee0b0b323c"
+    },
+    "tests": {
+      "files": 106,
+      "sha256": "b12c280cdeac29d35355be9e4e7341a37163f7db9a5f16230bed0f9bba32a081"
+    }
+  },
+  "manifest_algorithm": "sorted relative path + NUL + SHA256(LF-normalized bytes) hex + newline",
+  "changed_functional_sha256": {
+    "config.schema.json": "0568d5d28d8a1cca75b942f505bc2623b9cc90b1661b7768b7cd8ea77e93c1f5",
+    "src/sprig_agent/cli.py": "ced20c10a089d9cb1f784bc0eab50257c222928f997150b069b76b881f8bc750",
+    "src/sprig_agent/conversation_fork.py": "336dce39b096011d74e69555559cfc518d1f2f9dc7df8b4d38b1bd6641f1a6ff",
+    "src/sprig_agent/conversation_revision.py": "91e1c23446f47705bc26ca78dd36a21fa8a203cb4346586be6a1b65d189899aa",
+    "src/sprig_agent/local_commands.py": "e9b4e7d8d6bbdd9e1e1c8a116a55ed862f7a7df339937e5d8dfe4f0125c0cf4d",
+    "src/sprig_agent/revision_ui.py": "3e60e4f1a0adccfa86a3a28282dee071a418284d99632bd363bad1853f77f2b4",
+    "src/sprig_agent/tui.py": "e0b074aa7ffacf5d87ec5ee6f197135de5507a6350dd8b524713b58764193256",
+    "tests/test_conversation_revision.py": "1982f79c8aa15147c15047ba2d475e7041cd6e091138137dfecd8a19c1f1a5ba",
+    "tests/test_conversation_revision_ui.py": "eeea07ae1442df1e02ccff35fc7770e56d4e42a14896742f20c17c7f85e35485",
+    "tests/test_mcp_stdio.py": "28d8795f6ec1d68cc4f4bf2287859c0207357f43122964fe618f658783a0e5be",
+    "tests/test_prompt_templates_ui.py": "ed55752ef943c0afe4b8a13830dd027f31d92ee70092ba5b82068725a3314dbd"
+  },
+  "local_suites": [
+    {
+      "platform": "native Windows Python 3.13.0",
+      "tests": 1476,
+      "passed": 1457,
+      "skipped": 19,
+      "seconds": 517.062,
+      "log_sha256": "7f8b48006ed76e9afb3d08b19c6405c80e53233843b9ccd40712f6a38554e0f2"
+    },
+    {
+      "platform": "local WSL Python 3.13.14; explicit localhost/127.0.0.1/::1 NO_PROXY and no_proxy for local fixtures",
+      "tests": 1476,
+      "passed": 1453,
+      "skipped": 23,
+      "seconds": 440.31,
+      "log_sha256": "0952eda9fcf3e7c87080924c3f5117d3004b8a9081a782bf1e7f96520e75356f"
+    },
+    {
+      "platform": "native Windows Python 3.11.14; new 25, fork 7, completion 2 and MCP timing 2",
+      "tests": 36,
+      "passed": 36,
+      "skipped": 0,
+      "seconds": 26.499,
+      "log_sha256": "a7559aae635d54bd364a91341bf60dc49722ee392adf993504a644e93c013f0f"
+    }
+  ],
+  "sdk_suites": [
+    {
+      "platform": "native Windows Python 3.12.12; mini SDK",
+      "tests": 25,
+      "passed": 25,
+      "skipped": 0,
+      "seconds": 37.806,
+      "log_sha256": "9d406d43669a133c7d97c099db3cd46cb3f2655d782a522c71a9fc99760983d1"
+    },
+    {
+      "platform": "local WSL Python 3.12.13; mini SDK; separate uv environment",
+      "tests": 25,
+      "passed": 25,
+      "skipped": 0,
+      "seconds": 171.991,
+      "log_sha256": "922883ec45be84f1e546d8e25142ca37462f9e59b1d4c7009a327af0ec7245a4"
+    }
+  ],
+  "installed_wheel": {
+    "tests": 36,
+    "skipped": 0,
+    "wheel_source_modules_matching": 75,
+    "imported_installed_modules": 69,
+    "sdist_changed_source_tests_matching": 10,
+    "wheel_sha256": "fa70f342910fe82aa99b521418aa206db917f9971d92a892ac08b823d341c037",
+    "sdist_sha256": "7021938d43ef94f66354987777eb429b0ade791653339f4285da5416bf4b1982",
+    "scope": "new regressions, original fork core, two adjusted completion and two MCP timing tests; copied tests; all imported application modules under installed target; final docs/evidence not claimed included in this earlier build"
+  },
+  "controlled_mcp_startup": {
+    "original_fixture": {
+      "tests": 2,
+      "failures": 1,
+      "errors": 1,
+      "skipped": 0
+    },
+    "final_fixture": {
+      "tests": 2,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    "startup_delay_seconds": 0.6,
+    "original_source_sha256": "5c0c50ec41fb5ebda3b57dbccf95bde6c07c52c624d97f00a2757a728ad20f43",
+    "production_source_changed": false,
+    "external_requests": 0,
+    "scope": "same real MCP backend; delayed interpreter startup reproduces two original failures; final tests give handshake time and require readiness before preserving original .3/.5 RPC budget and <2s bound; all seven malformed/flood assertions remain"
+  },
+  "isolated_negative_controls": {
+    "parent_commit": "c48d46e787d89bedc09809a1787ae70a90130b6d",
+    "original_cli": {
+      "tests": 1,
+      "subcases": 6,
+      "expected_failures": 6,
+      "errors": 0,
+      "source_sha256": "962c53ef4867dae2e0da9a431a1a37e839b8f603bed5352b8e3216cd7ff8aa35",
+      "scope": "original main supplies no revision controller; only two original loopback model requests, no new branch/edit/check"
+    },
+    "original_approval_order": {
+      "tests": 1,
+      "expected_failures": 1,
+      "errors": 0,
+      "source_sha256": "cd2ee8f646e042e6c11f60ce0ad5c07afc6406619216471bf5d45246a1c2bf46",
+      "scope": "original preflight asks confirmation before rejecting an impossible 4096-byte request; no model requests"
+    },
+    "generic_recovery_without_revision_guards": {
+      "tests": 1,
+      "expected_failures": 1,
+      "errors": 0,
+      "removed_guards": 2,
+      "model_calls": 0,
+      "source_sha256": "e0b074aa7ffacf5d87ec5ee6f197135de5507a6350dd8b524713b58764193256",
+      "scope": "generic recovery recopies parent list, so the bound editor cannot retry a shorter request"
+    },
+    "initial_json_view": {
+      "initial_staged_source_sha256": "d330dc01e0dd68b5b2d962278ec02afcccf5e73eca89a9a537e2cf028a795f3a",
+      "input_utf8_bytes": 3001,
+      "view_limit": 4096,
+      "initial_rejected": true,
+      "final_view_utf8_bytes": 3004,
+      "roundtrip_preserved": true,
+      "scope": "initial ensure_ascii=True expansion rejects readable Chinese plus a tab; final view escapes only controls"
+    },
+    "external_model_calls": 0,
+    "scope": "isolated functions and AST guard removal; production source never altered by controls; synthetic fixtures only"
+  },
+  "scripted_protocol_paths": {
+    "protocols": [
+      "chat_completions",
+      "messages",
+      "responses"
+    ],
+    "delivery": [
+      "JSON",
+      "SSE"
+    ],
+    "cases": 6,
+    "http_requests_per_case": 5,
+    "http_requests": 30,
+    "approvals_per_case": 5,
+    "scope": "two original rounds/checks; fixture externally changes workspace; branch before first request, current read, freshly approved edit and independent fixed check; parent session bytes unchanged; replacement literal and saved once"
+  },
+  "regressions": [
+    "25 new tests: 13 core/actual CLI and 12 80x24 Textual tests",
+    "exact real user message boundary; closed prefix retained; selected and later turns absent; workspace not rolled back",
+    "private parent file unchanged; new branch saves literal replacement once; restored branch stays idle",
+    "model, endpoint, protocol and current file/tool policies retained; old read IDs/check evidence and ephemeral native/process state invalidated",
+    "fresh literal True branch consent; decline, truthy non-bool, stale source, closed handle and cancellation refuse",
+    "actual packet checked before confirmation and after it; no larger default budget or silent truncation",
+    "main composer draft, file selections and collapsed paste spans preserved; editor submission independent",
+    "preflight, save and decline failure leave editor source usable for retry; genuine source mutation refuses",
+    "guidance while awaiting confirmation supersedes revision and waits for explicit action; no hidden model query behind editor",
+    "after branch commit, cancellation or model transport failure retains the new request once; explicit Continue only",
+    "long editor content collapses for display but sends full data; expand/replace-whole and partial huge paste rejection",
+    "safe JSON view roundtrips controls/astral format characters while preserving readable Chinese; byte caps reject without truncation",
+    "long confirmation omits body explicitly and binds full text by UTF-8 bytes/SHA256; not an edit read ID or acceptance proof",
+    "slash/template-looking replacement remains data; original unpersisted attachments and input metadata are not reconstructed"
+  ],
+  "earlier_observations": {
+    "wsl_first_full": {
+      "tests": 1476,
+      "seconds": 709.927,
+      "errors": 3,
+      "skipped": 23,
+      "scope": "existing work_progress loopback connection failures; not a pass"
+    },
+    "wsl_isolated_work_progress": {
+      "tests": 9,
+      "seconds": 1.722,
+      "errors": 0,
+      "skipped": 0
+    },
+    "controlled_proxy_diagnostic": {
+      "controlled_loopback_proxy": {
+        "tests": 1,
+        "errors": 3,
+        "failures": 0,
+        "skipped": 0
+      },
+      "explicit_loopback_bypass": {
+        "tests": 1,
+        "errors": 0,
+        "failures": 0,
+        "skipped": 0
+      },
+      "production_source_changed": false,
+      "external_requests": 0,
+      "scope": "existing three-protocol work_progress fixture uses ambient system proxy; unreachable local proxy reproduces connection errors and bypass passes; this does not establish the exact cause of the earlier uncontrolled run"
+    },
+    "full_before_mcp_fixture_fix": {
+      "windows": {
+        "tests": 1476,
+        "seconds": 524.439,
+        "failures": 1,
+        "errors": 1,
+        "skipped": 19
+      },
+      "wsl": {
+        "tests": 1476,
+        "seconds": 442.933,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 23
+      },
+      "scope": "two Windows MCP tests conflated .3s interpreter startup/handshake and RPC timeout; approval was not readiness; isolated original 19 passed but delayed-startup control reproduced both errors"
+    },
+    "superseded": "two older full suites interrupted when final Chinese JSON-view fix changed bytes; earlier preliminary passes not final; prior Windows full handle missing and no log, so rerun",
+    "fixtures": "two existing completion tests now choose /review explicitly because /rev also matches new /revise; original assertions unchanged",
+    "fixed_during_development": "generic failure recovery recopied source identity and blocked editor retry; initial ASCII-only safe view expanded Chinese beyond cap",
+    "rejected_hypothesis": "old instruction refresh already rebuilds current system prompt; no stale-system-prompt bug claimed"
+  },
+  "sdk_scope": "SDK runs precede the test_mcp_stdio-only fixture adjustment; every SDK and application byte unchanged; native backends unchanged",
+  "checks": [
+    "four uv locks",
+    "compileall src/tests/scripts",
+    "CLI help",
+    "generated schema equality and example TOML validation",
+    "offline wheel/sdist build and installed regressions",
+    "local documentation targets",
+    "git diff --check"
+  ],
+  "default_model_tool_definition_bytes": 4930,
+  "defaults_and_security": "no added model tool, dependency, adapter or OS backend change; no default request-budget increase; writes/commands and model pixel reads retain fresh approval; privacy and cancellation enforced in code",
+  "upstream_source": "read fixed OpenCode dev@9d90d892dcbfc52b47e95b2ea31b8aba877128fd dialog-fork.tsx and prompt/codec.ts; no upstream execution or latest-version claim",
+  "artifact_scope": "75 wheel app modules and 10 changed source/test files in sdist match; later final docs/evidence not claimed present in this earlier build",
+  "external_model_calls": 0,
+  "performance_claim": "none; synthetic fixtures and loopback HTTP do not establish real coding quality or parity with top agents",
+  "remote_ci": "pending; no dispatch/rerun/CI-enabled push before 2026-11-01 Asia/Singapore; commit uses [skip ci]; verify account restriction and prior gate before resuming; WSL is local evidence"
+}

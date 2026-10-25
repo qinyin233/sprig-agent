@@ -77,6 +77,8 @@ uv run --locked sprig
 
 常用任务可定义为[配置中的斜杠模板](docs/prompt-templates.md)：`[prompts.review]` 配置正文，`/review 范围` 按 Enter 发送，执行中同样可发送引导；Tab 只补全，操作仍逐次批准。`--list-prompts` 无需密钥即可离线列出模板元数据。
 
+`/revise` 可[编辑旧请求并重发](docs/conversation-revision.md)：独立编辑区 Enter 后确认，在该请求之前另建分支发送新正文，原会话与主草稿保持。长正文可收起显示，实际发送全文；工作区不回滚，新操作仍逐次批准。
+
 ### 独立任务工作目录
 
 ```sh
