@@ -180,7 +180,7 @@ uv run --locked sprig --config-schema
 | `temperature` / `top_p` | 有限数值 0–2 / 0–1；未配置时不发送 |
 | `seed` | 0–2147483647 的整数；服务不一定保证可复现 |
 | `reasoning_effort` | none/minimal/low/medium/high/xhigh/max；服务支持范围可能更窄 |
-| `thinking` | true 时发送 `chat_template_kwargs.enable_thinking=true`；不是通用推理协议 |
+| `thinking` | true 时按协议选择思考预设；false / `--no-thinking` 仅省略预设，不保证关闭服务端思考，见[请求字段](model-generation.md) |
 | `extra_body` | 额外 JSON/TOML 表，至多 16 KiB、深度 12、32 个顶层键；模型、消息、工具、流式、鉴权、token 等保留键禁止覆盖 |
 
 生成设置计入实际序列化请求预算，也绑定保存的会话；变更后不能直接发送旧会话。`thinking=true` 与额外 `chat_template_kwargs` 同时定义会报错。CLI 支持 `--temperature`、`--top-p`、`--seed`、`--reasoning-effort`、`--token-limit-field` 等覆盖。

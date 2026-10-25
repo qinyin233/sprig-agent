@@ -458,7 +458,8 @@ def main(argv=None):
     parser.add_argument("--command-log-dir", type=Path, help="opt in to private bounded command log retention outside all repositories")
     parser.add_argument("--proxy", help="system, direct, or credential-free HTTP(S) proxy URL")
     parser.add_argument("--disable-tool", action="append", choices=TOOL_NAMES, help="disable a tool in schemas and execution; repeatable")
-    parser.add_argument("--thinking", action=argparse.BooleanOptionalAction, default=None, help="request chat_template_kwargs.enable_thinking; provider support required, off unless selected")
+    parser.add_argument("--thinking", action=argparse.BooleanOptionalAction, default=None,
+                        help="request a protocol-specific thinking preset; --no-thinking omits the preset and leaves the server default unchanged")
     parser.add_argument("--preserve-reasoning", action=argparse.BooleanOptionalAction, default=None,
                         help="opt in to retaining reasoning_content for provider tool continuity; hidden from terminal, included in enabled private session saves")
     parser.add_argument("--check-history-format", choices=("tool_calls", "observations"),

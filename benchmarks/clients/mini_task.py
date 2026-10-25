@@ -97,6 +97,8 @@ def sdk_snapshot():
 
 def run_case(case, options, *, model_factory=None, confirm=approve, emit=None, case_adapter=None, request_interval=0):
     pacer = RequestPacer(request_interval)
+    if options.get("wire_api", "chat_completions") != "chat_completions":
+        raise ValueError("the pinned mini comparison supports only Chat Completions")
     if model_factory and request_interval:
         raise ValueError("pacing requires the actual backend, not scripted model fixtures")
     if case.get("history_reads"):
@@ -202,11 +204,14 @@ def run_case(case, options, *, model_factory=None, confirm=approve, emit=None, c
         model_route = "openai/" + config.model.removeprefix("openai/")
         model_kwargs = {**defaults["model"].get("model_kwargs", {}), "api_base": config.base_url,
                         "timeout": config.timeout, "num_retries": 0}
-        if config.max_tokens is not None:
-            model_kwargs["max_tokens"] = config.max_tokens
+        generation = config.generation_options()
+        extensions = set(json.loads(config.extra_body))
         if config.thinking:
+            extensions.add("chat_template_kwargs")
+        model_kwargs.update({name: value for name, value in generation.items() if name not in extensions})
+        if extensions:
             model_kwargs["extra_body"] = {**(model_kwargs.get("extra_body") or {}),
-                                          "chat_template_kwargs": {"enable_thinking": True}}
+                                          **{name: generation[name] for name in extensions}}
         model = model_factory(defaults) if model_factory else MeasuredModel(
             **{**defaults["model"], "model_name": model_route, "cost_tracking": "ignore_errors",
                "model_kwargs": model_kwargs})

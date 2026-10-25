@@ -88,6 +88,21 @@ class GenerationOptionsTests(unittest.TestCase):
             with self.subTest(value=value), self.assertRaises(ValueError):
                 replace(self.config, thinking=value)
 
+    def test_explicit_provider_thinking_disable_is_preserved_on_json_and_sse_requests(self):
+        for streaming in (False, True):
+            with self.subTest(stream=streaming):
+                captured = []
+                body = stream_body({"content": "Done"}) if streaming else envelope({"role": "assistant", "content": "Done"})
+                with local_backend(body, captured) as url:
+                    config = replace(self.config, base_url=url, proxy="direct", thinking=False, stream=streaming,
+                                     extra_body={"thinking": {"type": "disabled"}})
+                    reply = Provider(config).complete([{"role": "user", "content": "fixture"}], [])
+                self.assertEqual(reply["content"], "Done")
+                self.assertEqual(captured[0][0]["thinking"], {"type": "disabled"})
+                self.assertNotIn("chat_template_kwargs", captured[0][0])
+                self.assertEqual(config.binding()["extra_body"], {"thinking": {"type": "disabled"}})
+        self.assertEqual(replace(self.config, thinking=False).generation_options(), {})
+
     def test_generation_options_are_counted_in_exact_request_budget_before_http(self):
         messages = [{"role": "system", "content": "system"}, {"role": "user", "content": ""}]
         messages[-1]["content"] = "x" * (4096 - len(request_body(self.config, messages, [])))

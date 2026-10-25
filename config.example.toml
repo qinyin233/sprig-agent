@@ -25,7 +25,7 @@ max_context_bytes = 131072 # serialized request bytes, not a model token limit
 
 [providers.agnes.models.fast.generation]
 max_tokens = 2048
-thinking = false
+thinking = false # omit Sprig's thinking preset; this does not disable server-default reasoning
 # temperature = 0.2
 # top_p = 0.9
 # seed = 42

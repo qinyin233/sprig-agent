@@ -146,6 +146,23 @@ class NativeProtocolTests(unittest.TestCase):
             with self.subTest(key=key), self.assertRaises(ValueError):
                 self.config("responses", extra_body={key: "forbidden"})
 
+    def test_explicit_provider_thinking_disable_is_preserved_on_json_and_sse_requests(self):
+        for protocol in ("messages", "responses"):
+            expected = {"thinking": {"type": "disabled"}} if protocol == "messages" else {"reasoning": {"effort": "none"}}
+            options = {"extra_body": expected} if protocol == "messages" else {"reasoning_effort": "none"}
+            for streamed in (False, True):
+                with self.subTest(protocol=protocol, stream=streamed):
+                    captured = []
+                    with backend(protocol, [native(protocol, "Done", reasoning=False)], captured, stream=streamed) as url:
+                        config = self.config(protocol, base_url=url, stream=streamed, thinking=False, **options)
+                        reply = Provider(config).complete([{"role": "user", "content": "fixture"}], [])
+                    self.assertEqual(reply["content"], "Done")
+                    for name, value in expected.items():
+                        self.assertEqual(captured[0]["body"][name], value)
+                    self.assertNotIn("chat_template_kwargs", captured[0]["body"])
+                    if protocol == "responses":
+                        self.assertNotIn("reasoning_effort", captured[0]["body"])
+
     def test_native_roundtrip_auth_wire_size_hidden_metadata_and_usage(self):
         for protocol in ("messages", "responses"):
             for streamed in (False, True):
