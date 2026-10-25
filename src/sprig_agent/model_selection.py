@@ -131,6 +131,7 @@ class ModelSwitch:
         source, target = self.original.config, self.config
         text = (f"切换模型：{source.provider_name or '(startup)'}/{source.model} → {target.provider_name or '(startup)'}/{target.model}\n"
                 f"目标端点：{target.base_url}\n协议：{target.wire_api}\n上下文上限：{target.max_context_bytes} 字节\n"
+                f"临时 HTTP 错误最多额外重试：{target.retry_attempts} 次（共享 {target.request_deadline} 秒期限）\n"
                 f"鉴权头名：{target.api_key_header}；自定义头名：{', '.join(name for name, _ in target.headers)}；代理：{target.proxy}\n"
                 "生成设置：" + json.dumps(target.generation_options(), ensure_ascii=False) + "\n"
                 f"移除 {self.dropped} 项旧推理/原生协议元数据；保留对话文字和工具历史，不能沿用旧批准或验收。\n"

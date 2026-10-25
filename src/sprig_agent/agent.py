@@ -248,7 +248,7 @@ class Agent:
     def _summary_config(self):
         # Honor explicit limits, including Messages thinking budgets that depend
         # on them. Only add a bounded default where the user left it unspecified.
-        return replace(self.config, max_tokens=self.config.max_tokens or
+        return replace(self.config, retry_attempts=0, max_tokens=self.config.max_tokens or
                        (4096 if self.config.wire_api == "messages" else 2048))
 
     def _summary_input(self, messages, end=None):
@@ -721,7 +721,10 @@ class Agent:
             self.on_request_ready()
         self._event("model")
         self._check_cancelled()
-        options = {"check_cancelled": self._check_cancelled} if isinstance(self.provider, Provider) else {}
+        def retry_notice(info):
+            self.emit(f"[provider retry] HTTP {info['status']}; waiting {info['delay_seconds']:.2f}s; "
+                      f"attempt {info['attempt']}/{info['max_attempts']}; no tools executed by retry")
+        options = {"check_cancelled": self._check_cancelled, "on_retry": retry_notice} if isinstance(self.provider, Provider) else {}
         if not self.config.stream or self.emit_delta is None:
             return self.provider.complete(messages, self.schemas, **options)
         displayed = False

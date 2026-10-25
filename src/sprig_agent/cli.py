@@ -454,6 +454,7 @@ def main(argv=None):
     parser.add_argument("--token-limit-field", choices=("max_tokens", "max_completion_tokens"))
     parser.add_argument("--request-timeout", type=float, help="HTTP idle timeout; separate from approved command timeout")
     parser.add_argument("--request-deadline", type=float, help="total HTTP request limit in seconds (default: 300; maximum: 3600)")
+    parser.add_argument("--retry-attempts", type=int, help="additional HTTP 429/500/502/503/504 attempts, sharing the request deadline (default: 0; maximum: 5)")
     parser.add_argument("--command-log-dir", type=Path, help="opt in to private bounded command log retention outside all repositories")
     parser.add_argument("--proxy", help="system, direct, or credential-free HTTP(S) proxy URL")
     parser.add_argument("--disable-tool", action="append", choices=TOOL_NAMES, help="disable a tool in schemas and execution; repeatable")

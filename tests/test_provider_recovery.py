@@ -67,7 +67,9 @@ class FailureTests(unittest.TestCase):
     def test_invalid_or_ambiguous_delay_never_echoes_raw_header(self):
         for value in (None, "", "-1", "+1", "1.5", "1e2", "１２", "9" * 129,
                       "86401", "99999", "fixture-secret\x1b[31m", "17\r\nInjected: secret",
-                      "Sat, 03 Oct 2026 00:00:00", "Sat, 03 Oct 2026 00:00:00 +0900"):
+                      "Sat, 03 Oct 2026 00:00:00", "Sat, 03 Oct 2026 00:00:00 +0900",
+                      "Sat, 03 Oct 2026 00:00:00 GMT trailing",
+                      "Sat, 03 Oct 2026 00:00:00 GMT, Sat, 03 Oct 2026 01:00:00 GMT"):
             with self.subTest(value=value):
                 error = http_failure(429, {"Retry-After": value})
                 self.assertIsNone(error.retry_after)
@@ -78,9 +80,9 @@ class FailureTests(unittest.TestCase):
         headers["Retry-After"] = "17"
         headers["Retry-After"] = "30"
         self.assertIsNone(http_failure(503, headers).retry_after)
-        for status in (401, 500, 504):
+        for status in (401, 408, 413):
             self.assertIsNone(http_failure(status, {"Retry-After": "17"}).retry_after)
-        for status in (429, 503):
+        for status in (429, 500, 502, 503, 504):
             self.assertEqual(http_failure(status, {"Retry-After": "17"}).retry_after, 17)
 
     def test_network_diagnostics_distinguish_timeout_and_tls_without_leaking_reason(self):

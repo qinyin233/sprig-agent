@@ -14,7 +14,7 @@ TOOL_NAMES = ("list_files", "read_file", "search", "grep", "project_map", "edit_
 SHORTCUT_ACTIONS = ("cancel", "quit", "focus_input", "toggle_sidebar", "help", "new_conversation")
 GENERATION_FIELDS = ("max_tokens", "thinking", "temperature", "top_p", "reasoning_effort", "seed", "token_limit_field", "extra_body")
 MODEL_CONFIG_FIELDS = frozenset((*GENERATION_FIELDS, "model", "base_url", "api_key", "provider_name", "headers",
-    "request_timeout", "request_deadline", "proxy", "api_key_header", "api_key_scheme", "preserve_reasoning",
+    "request_timeout", "request_deadline", "retry_attempts", "proxy", "api_key_header", "api_key_scheme", "preserve_reasoning",
     "check_history_format", "wire_api", "max_context_bytes", "secret_values", "credential_env_vars", "setting_sources"))
 
 
@@ -142,6 +142,7 @@ class Config:
     extra_body: dict | str = field(default="{}", repr=False)
     request_timeout: float | None = None
     request_deadline: float = 300
+    retry_attempts: int = 0
     proxy: str = "system"
     api_key_header: str = "auto"
     api_key_scheme: str = "auto"
@@ -372,6 +373,8 @@ class Config:
         if (type(self.request_deadline) not in (int, float) or not math.isfinite(self.request_deadline)
                 or not 0 < self.request_deadline <= 3600):
             raise ValueError("request-deadline must be greater than 0 and at most 3600 seconds")
+        if type(self.retry_attempts) is not int or not 0 <= self.retry_attempts <= 5:
+            raise ValueError("retry-attempts must be an integer from 0 to 5")
         if not isinstance(self.proxy, str):
             raise ValueError("proxy must be a string")
         if self.proxy not in {"system", "direct"}:
@@ -498,6 +501,8 @@ class Config:
 
     def binding(self):
         binding = {"base_url": self.base_url, "model": self.model, "workdir": str(self.workdir)}
+        if self.retry_attempts:
+            binding["retry_attempts"] = self.retry_attempts
         if self.web_enabled:
             binding["web_enabled"] = True
         if self.background_enabled:

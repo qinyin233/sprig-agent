@@ -1,0 +1,223 @@
+{
+  "schema": 1,
+  "scope": "opt-in bounded retries for explicit transient model HTTP errors; identical prepared request and shared total deadline; existing tool approval, cancellation and steering retained",
+  "base_commit": "43b59747887e5bf6cc68d7ef19d3d0b786b52619",
+  "frozen_functional_files": 235,
+  "frozen_raw_bytes_manifest_sha256": "9bf0fcd82a04d17b7c9a939f259b9ae143e96409614257e9781d05dd40982dc4",
+  "source_manifest": {
+    "src/sprig_agent": {
+      "files": 77,
+      "sha256": "431df08becb5abc02794fee99d7c41ad2cd7c4fa926e22c7ba80b619f2d85a53"
+    },
+    "tests": {
+      "files": 112,
+      "sha256": "8c7d24c9f85ec22413a8f94db0e10979e656290d523a8fce1fdf486f70318b12"
+    }
+  },
+  "manifest_algorithm": "sorted relative path + NUL + SHA256(LF-normalized bytes) hex + newline",
+  "changed_functional_sha256": {
+    "config.example.toml": "7488b9a6ec07285f8a65dd1454325dabb39b57138297c2fd57d0df5895565a8f",
+    "config.schema.json": "5f4e30e054fe83d23e27f3e9b2e831e8981ea6b90f404b302c0aed1165c4223b",
+    "src/sprig_agent/agent.py": "24ffdc673a71c833ced07483fa7247181aa559a45c006c8245fafe167db85c80",
+    "src/sprig_agent/cli.py": "dae047f35ce84896a5f65b0ab2e8f4f708150ba5105dd7cb1d4fd2749006bd9c",
+    "src/sprig_agent/config.py": "143f5e34f02c453b836b8402b8d2c9f0bf83ada3f17f166bab5f657fa3eea643",
+    "src/sprig_agent/configuration_schema.py": "6f6e5d301de9c3a14b784cdf03804fcbdba11be3b010277be092e290a185441b",
+    "src/sprig_agent/model_selection.py": "a87acdb72ae61c8b78ac0a1686c2e72e11ad35ce5af379b0111363f34f52bf45",
+    "src/sprig_agent/provider.py": "d531f229e5f0b6dbc22f3e6bae316ea5cb3419ff1a804518bf70368192d7de80",
+    "src/sprig_agent/settings.py": "23f207178aa48d61037f25aab426397080077abfd51934788984d625cffb6b1f",
+    "tests/test_provider_recovery.py": "273e75245d3e670c8992e6aa019134baae93458a0fdd055eafd07c0756d420c6",
+    "tests/test_provider_retry.py": "e8b0619a2e0594b32fc495e5aeda8e616cb20e7ed5940c7cad9bef7b92529c88",
+    "tests/test_provider_retry_ui.py": "399f7a107e36887d3305ce1e1a2bf4c8b0b727606f044b4001551b440ecda3c1"
+  },
+  "local_suites": [
+    {
+      "platform": "native Windows Python 3.13.0",
+      "tests": 1530,
+      "passed": 1511,
+      "skipped": 19,
+      "seconds": 707.218,
+      "log_sha256": "f29e6e24d4d0b28f6daab7b13c9167ab0c8070f5a5f65b3970fe575cb6a6654e"
+    },
+    {
+      "platform": "local WSL Python 3.13.14; explicit NO_PROXY/no_proxy for localhost/127.0.0.1/::1",
+      "tests": 1530,
+      "passed": 1507,
+      "skipped": 23,
+      "seconds": 513.692,
+      "log_sha256": "d97e122a5211e817367a4f4066f10c889e4eec5d41001245077c56e2c01a6760"
+    },
+    {
+      "platform": "native Windows Python 3.11.14; 17 new and existing provider/recovery/metrics/transport/summary/model-selection",
+      "tests": 90,
+      "passed": 90,
+      "skipped": 0,
+      "seconds": 56.171,
+      "log_sha256": "8fb0c9ff5a5624d2ff0936f3b9c6d212b8e19debdb058dbe2eca4ce277605e31"
+    }
+  ],
+  "sdk_suites": [
+    {
+      "platform": "native Windows Python 3.12.12; mini SDK",
+      "tests": 25,
+      "passed": 25,
+      "skipped": 0,
+      "seconds": 53.877,
+      "log_sha256": "1f719e6785736a73afbfc1ba054f4ebc876ba811a9d69fc440acc482575efb79"
+    },
+    {
+      "platform": "local WSL Python 3.12.13; mini SDK; separate uv environment",
+      "tests": 25,
+      "passed": 25,
+      "skipped": 0,
+      "seconds": 208.398,
+      "log_sha256": "4c3596593f5b48f0316286bd4d081399933026e46de6fc74d9119040baf96c5e"
+    }
+  ],
+  "installed_wheel": {
+    "tests": 90,
+    "skipped": 0,
+    "wheel_source_modules_matching": 77,
+    "imported_installed_modules": 71,
+    "sdist_changed_source_tests_matching": 10,
+    "wheel_sha256": "b39d90fe209bf5b047b2c0a5166ed96c4e860a2bc933fad9308e00cc07114d95",
+    "sdist_sha256": "2637ba04252a0e2a9c471e1723d04b0a3fb654e668a8e965ad628c8f5d94def6",
+    "scope": "17 new plus existing provider/recovery/metrics/transport/summary/model-selection; copied tests and schema/example fixtures; every imported app module under installed target; later final docs/evidence not claimed in artifacts",
+    "seconds": 61.872,
+    "log_sha256": "9aeb914accec14545ae254482f4c7fafcaf18557c17affa5f0ac0e0c863cc148"
+  },
+  "isolated_negative_controls": {
+    "parent_no_retry": {
+      "tests": 1,
+      "expected_failures": 0,
+      "expected_errors": 6,
+      "source_sha256": "c05c2fe4e358143fdef15a219ed7afd8880e7c4dd858a7b9cda7a26b8522c60d",
+      "subcases": 6,
+      "scope": "isolated original Provider; inert wait attribute only adapts new fixture instrumentation; six genuine first HTTP 503 failures stop the edit/verification chains"
+    },
+    "current_independent_deadline_probe": {
+      "tests": 1,
+      "expected_failures": 0,
+      "expected_errors": 0
+    },
+    "reset_total_deadline_each_attempt": {
+      "tests": 1,
+      "expected_failures": 1,
+      "expected_errors": 0,
+      "scope": "independent peer returns after 1s backoff plus 0.7s second response; fresh 1.4s per-attempt deadline incorrectly accepts; shared deadline refuses"
+    },
+    "summary_retries_enabled": {
+      "tests": 1,
+      "expected_failures": 1,
+      "expected_errors": 0,
+      "scope": "removing summary single-request override attempts the forbidden wait after HTTP 503"
+    },
+    "all_http_errors_retryable": {
+      "tests": 1,
+      "expected_failures": 10,
+      "expected_errors": 0,
+      "scope": "broad classification schedules retry for ten permanent/nonselected statuses; fixture rejects each before another POST"
+    },
+    "permissive_date_parser": {
+      "tests": 1,
+      "expected_failures": 1,
+      "expected_errors": 0,
+      "scope": "original informational parser accepts canonical date followed by trailing text; final parser requires the complete standard GMT form before using the delay"
+    },
+    "external_model_calls": 0,
+    "production_files_changed": false,
+    "helper_sha256": "f82c33a94fbbd908e7bee5edd9eb89e94e81f597ce8208687d883b828aaf103e"
+  },
+  "scripted_protocol_paths": {
+    "protocols": [
+      "chat_completions",
+      "messages",
+      "responses"
+    ],
+    "delivery": [
+      "JSON",
+      "SSE"
+    ],
+    "cases": 6,
+    "http_attempts_per_case": 5,
+    "http_attempts": 30,
+    "successful_responses_per_case": 3,
+    "fresh_approvals_per_case": 3,
+    "fresh_approvals": 18,
+    "scope": "real HTTP 503 then read; HTTP 429 then edit; final model response; one fresh edit approval, one edit-check and one independent final-check approval; failed/resend request JSON identical; no retry text in model history"
+  },
+  "regressions": [
+    "17 new methods: 12 provider/policy including configuration changes, 2 configuration/CLI, 3 real 80x24 Textual",
+    "default zero preserves one attempt; ten permanent/nonselected HTTP statuses do not resend; error bodies never read and responses close before retry",
+    "all five eligible statuses tested through actual HTTPError objects; success retains failed attempt and unknown usage instead of replacing records",
+    "five additional attempts cap; exponential base 1/2/4/8/10 and single shared deadline; fixed progress metadata contains no request/response text",
+    "numeric and canonical GMT Retry-After parser; complete date round trip refuses trailing words or combined dates; hint is a minimum; invalid/duplicate/overlarge headers block retry; delay that does not fit remaining time is not shortened",
+    "actual backoff cancellation makes no second POST; unattempted cancellation recorded separately",
+    "actual second HTTP attempt expires under the original deadline; additional independent peer probe rejects 1s wait plus 0.7s response under a 1.4s shared total",
+    "request serialized once; caller message/tool mutation during wait cannot change resend; configuration changes during preparation or backoff stop before new destination",
+    "HTTP 200 malformed JSON, output-token limit and incomplete SSE do not retry; TLS/network/socket errors and request budget errors remain non-retryable",
+    "summary forces retry_attempts=0 and metadata list keeps single-request contract",
+    "provider and CLI precedence, source reporting, public metadata, model switching, generated schema and bound types; nonzero policy is session-bound and zero preserves old binding shape",
+    "CLI flag reaches actual transport and notice; invalid private provider setting stops before constructing provider",
+    "TUI Ctrl+C during real backoff preserves guidance in saved history for explicit Continue; cancellation does not issue another HTTP attempt",
+    "retried complete tool call still needs fresh edit and final command approvals",
+    "new steering during backoff skips old edit before any approval; new request receives guidance; no local retry notice in model history or saved conversation messages"
+  ],
+  "preliminary_checks": {
+    "initial_12": "two fixtures called nonexistent API names and one expected the wrong established CLI error exit code; corrected fixtures, no application workaround",
+    "initial_16": "two TUI expectations confused task status with local-operation status and queue storage with delivered saved guidance; command description assertion changed to actual RUN prefix; no product lifecycle change",
+    "wsl_startup": "first non-login shell exited 127 because uv was absent from PATH; no tests started; verified absolute uv executable then ran final suites",
+    "negative_helper": "helper import path and variadic forbidden-wait assertion adapter corrected before final controls; production files untouched",
+    "initial_full_suites_before_date_tightening": [
+      {
+        "platform": "native Windows, earlier permissive date parser",
+        "tests": 1530,
+        "passed": 1511,
+        "skipped": 19,
+        "seconds": 717.226,
+        "log_sha256": "b13bcbd28badf0fb58cade4b7934822f5937d328aa3199e2178fe58d02bcaa87"
+      },
+      {
+        "platform": "local WSL, earlier permissive date parser",
+        "tests": 1530,
+        "passed": 1507,
+        "skipped": 23,
+        "seconds": 517.633,
+        "log_sha256": "d1ecbc80c56d55320fc4a2ef9b8e5f871873f06ddcb6cdfaa7df74c56b5e4cc2"
+      }
+    ],
+    "date_tightening": "final review found email date parser accepts canonical GMT date plus trailing text; require complete canonical GMT round trip, add invalid cases and rerun full, 3.11, SDK, package and controls under a new seal",
+    "scope": "earlier focused/full/package passes do not substitute for final suites after date tightening; all old full runs completed before the final reruns"
+  },
+  "checks": [
+    "four uv locks",
+    "compileall src/tests/scripts",
+    "CLI help",
+    "schema generation equality and example validation",
+    "offline wheel/sdist and 90 installed regressions",
+    "local documentation targets",
+    "git diff --check"
+  ],
+  "documentation_checks": {
+    "documents": 6,
+    "local_document_targets": 289,
+    "schema_and_example": "pass"
+  },
+  "default_model_tool_definition_bytes": 4930,
+  "defaults_and_scope": "retry_attempts=0 by default; explicit 0..5 additional attempts only for 429/500/502/503/504; no model/provider/protocol fallback, no retry after transport/parse/partial stream failure, no tool replay, no new dependency or model tool; logical step cap unchanged but opt-in can increase HTTP count and usage",
+  "measurement_scope": "each attempted transmission separately recorded; error body bytes/usage unobserved; wait cancellation not_attempted; per-attempt elapsed and first text exclude prior backoff; attempted is not proof of delivery or zero cost",
+  "operating_system_scope": "no native filesystem/process or low-level socket backend changes; shared deadline assigned to existing per-attempt IOBudget; local Windows/WSL tested; native remote runners remain pending",
+  "upstream_source": "fixed OpenCode dev@9d90d892dcbfc52b47e95b2ea31b8aba877128fd packages/core/src/model-retry.ts read completely; no upstream execution/latest claim",
+  "artifact_scope": "77 wheel modules and 10 changed source/test files in sdist match frozen bytes; copied config/schema fixtures come from frozen workspace; later final documentation/evidence not claimed in artifacts",
+  "external_model_calls": 0,
+  "performance_claim": "none; implementation and offline recovery evidence do not improve the recorded real Click score or establish coding quality, provider latency or top-agent parity",
+  "remote_ci": "pending; no dispatch/rerun/CI-enabled push before 2026-11-01 Asia/Singapore; commit uses [skip ci]; verify account restriction and prior gate before resuming",
+  "post_full_recheck": {
+    "platform": "native Windows Python 3.13.0",
+    "tests": 26,
+    "passed": 26,
+    "skipped": 0,
+    "seconds": 6.752,
+    "log_sha256": "7126c2bfedc45c2f091127db2632cf320a55a8889832457442d935f63ef69a37",
+    "scope": "final full suite had one existing test_reasoning_protocol.py peer ConnectionResetError while writing response; unittest still OK; complete reasoning protocol module rerun passed without reproducing the trace; exact originating full-suite test not identified; application and fixtures unchanged"
+  }
+}

@@ -904,6 +904,11 @@
             "exclusiveMinimum": 0,
             "maximum": 3600
           },
+          "retry_attempts": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 5
+          },
           "proxy": {
             "type": "string",
             "minLength": 1,

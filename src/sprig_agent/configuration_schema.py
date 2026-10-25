@@ -96,6 +96,7 @@ def configuration_schema():
     provider = obj({
         "model": model_name, "base_url": text, "api_key": {**text, "writeOnly": True}, "api_key_env": environment,
         "request_timeout": number(0, 120, True), "request_deadline": number(0, 3600, True),
+        "retry_attempts": integer(0, 5),
         "proxy": {**text, "description": "system, direct, or an HTTP(S) proxy URL without credentials."},
         "api_key_header": text, "api_key_scheme": {"enum": ["auto", "bearer", "raw"]}, "headers": headers,
         "wire_api": {"enum": ["chat_completions", "messages", "responses"]},

@@ -1,12 +1,14 @@
-"""Bounded three-protocol HTTP client; optional SSE and no automatic retries."""
+"""Bounded three-protocol HTTP client; opt-in retries only for explicit HTTP failures."""
 
 import json
 from datetime import datetime, timezone
-from email.utils import parsedate_to_datetime
+from email.utils import format_datetime, parsedate_to_datetime
 from http.client import HTTPException
 import math
+import random
 import re
 import ssl
+import time
 import urllib.error
 import urllib.request
 
@@ -18,14 +20,16 @@ from .transport import HTTPHandler, HTTPSHandler, IOBudget, RequestDeadline
 MAX_RESPONSE = 2 * 1024 * 1024
 MAX_TOOL_CALLS = 16
 MAX_RETRY_AFTER = 24 * 60 * 60
+RETRY_STATUSES = {429, 500, 502, 503, 504}
 
 
 class ProviderError(Exception):
-    def __init__(self, message, *, status=None, retry_after=None, code="invalid_response"):
+    def __init__(self, message, *, status=None, retry_after=None, code="invalid_response", retryable=False):
         super().__init__(message)
         self.status = status
         self.retry_after = retry_after
         self.code = code if isinstance(code, str) and code in FAILURE_CODES else "invalid_response"
+        self.retryable = retryable
 
 
 def completion_failure(reason):
@@ -38,7 +42,7 @@ def completion_failure(reason):
 
 
 def retry_after_seconds(value, *, now=None):
-    """Parse a bounded server hint, never schedule or automatically retry a POST."""
+    """Parse a bounded server hint without echoing untrusted header text."""
     if (not isinstance(value, str) or len(value) > 128
             or any(ord(char) < 32 or ord(char) > 126 for char in value)):
         return None
@@ -48,7 +52,8 @@ def retry_after_seconds(value, *, now=None):
     else:
         try:
             date = parsedate_to_datetime(value)
-            if date.tzinfo is None or date.utcoffset().total_seconds() != 0:
+            if (date.tzinfo is None or date.utcoffset().total_seconds() != 0
+                    or format_datetime(date, usegmt=True) != value):
                 return None
             seconds = max(0, math.ceil((date - (now or datetime.now(timezone.utc))).total_seconds()))
         except (TypeError, ValueError, OverflowError):
@@ -72,16 +77,22 @@ def http_failure(status, headers, secret=""):
     }
     hint = hints.get(status, "service failed; check provider status before retrying manually"
                      if 500 <= status <= 599 else "check endpoint, model, or account settings")
-    delay = None
-    if status in {429, 503} and headers is not None:
+    delay, retryable = None, status in RETRY_STATUSES
+    if retryable and headers is not None:
         # Multiple hints are ambiguous; HTTPMessage preserves repeated fields.
-        values = headers.get_all("Retry-After", []) if hasattr(headers, "get_all") else [headers.get("Retry-After")]
+        if hasattr(headers, 'get_all'):
+            values = headers.get_all('Retry-After', [])
+        else:
+            value = headers.get('Retry-After')
+            values = [] if value is None else [value]
         if len(values) == 1:
             delay = retry_after_seconds(values[0])
+        if values and (len(values) != 1 or delay is None):
+            retryable = False  # Invalid/ambiguous hints must not become an early retry.
     message = f"provider HTTP {status}; {hint}; no automatic retry"
     if delay is not None:
         message += f"; server suggests waiting {delay} seconds before a manual retry"
-    return ProviderError(redact(message, secret), status=status, retry_after=delay, code="http_error")
+    return ProviderError(redact(message, secret), status=status, retry_after=delay, code="http_error", retryable=retryable)
 
 
 class NoRedirect(urllib.request.HTTPRedirectHandler):
@@ -203,24 +214,70 @@ class Provider:
         except (ValueError, TypeError, RecursionError):
             raise ProviderError("invalid or oversized model metadata response") from None
 
-    def complete(self, messages, tools, on_text=None, *, check_cancelled=None):
-        measurement = RequestMeasurement(self.config.stream)
-        try:
+    def complete(self, messages, tools, on_text=None, *, check_cancelled=None, on_retry=None):
+        config = self.config
+        body, headers, deadline, pending = None, None, None, None
+        sent = 0
+        def fresh():
             if check_cancelled:
                 check_cancelled()
-            result = self._complete(messages, tools, on_text, measurement, check_cancelled)
-            measurement.outcome = "success"
-            return result
-        except KeyboardInterrupt:
-            measurement.outcome = "cancelled"
-            raise
-        except ProviderError as error:
-            measurement.error_code = error.code
-            raise
-        finally:
-            self.measurements.add(measurement.finish())
+            if self.config is not config:
+                raise ProviderError('provider configuration changed; request stopped without resending', code='invalid_request')
+        for attempt in range(config.retry_attempts + 1):
+            measurement = RequestMeasurement(config.stream)
+            try:
+                fresh()
+                if pending is not None:
+                    delay, status = pending
+                    if on_retry is not None:
+                        on_retry({'attempt': attempt + 1, 'max_attempts': config.retry_attempts + 1,
+                                  'status': status, 'delay_seconds': delay})
+                    self._wait_retry(delay, deadline, fresh)
+                fresh()
+                if body is None:
+                    body = self._request_body(messages, tools, fresh)
+                    fresh()
+                    headers = self._headers(stream=config.stream)
+                    deadline = time.monotonic() + config.request_deadline
+                result = self._complete(body, headers, on_text, measurement, fresh, deadline)
+                measurement.outcome = "success"
+                return result
+            except KeyboardInterrupt:
+                measurement.outcome = "cancelled"
+                raise
+            except ProviderError as error:
+                measurement.error_code = error.code
+                if (error.retryable and error.code == 'http_error' and measurement.status == error.status
+                        and attempt < config.retry_attempts):
+                    base = min(2 ** attempt, 10)
+                    delay = max(random.uniform(base, min(base * 1.25, 10)), error.retry_after or 0)
+                    if delay < deadline - time.monotonic():
+                        pending = delay, error.status
+                        continue
+                additional = max(0, sent + int(measurement.started is not None) - 1)
+                if additional:
+                    message = str(error).replace('; no automatic retry', '; no further automatic retry')
+                    raise ProviderError(message + f'; additional HTTP attempts: {additional}', status=error.status,
+                                        retry_after=error.retry_after, code=error.code) from None
+                raise
+            finally:
+                sent += int(measurement.started is not None)
+                self.measurements.add(measurement.finish())
 
-    def _complete(self, messages, tools, on_text, measurement, check_cancelled):
+    @staticmethod
+    def _wait_retry(delay, deadline, check_cancelled):
+        end = time.monotonic() + delay
+        while True:
+            if check_cancelled:
+                check_cancelled()
+            now = time.monotonic()
+            if now >= deadline:
+                raise ProviderError('request deadline exceeded during retry wait; no request resent', code='request_deadline')
+            if now >= end:
+                return
+            time.sleep(min(0.1, end - now, deadline - now))
+
+    def _request_body(self, messages, tools, check_cancelled):
         config = self.config
         from .context import request_body
         try:
@@ -231,14 +288,18 @@ class Provider:
             raise ProviderError("request contains invalid text or JSON; no request sent", code="invalid_request") from None
         if len(body) > config.max_context_bytes:
             raise ProviderError("context byte budget exceeded; request was not sent", code="request_budget")
-        headers = self._headers(stream=config.stream)
+        return body
+
+    def _complete(self, body, headers, on_text, measurement, check_cancelled, deadline):
+        config = self.config
         from .native_protocols import PATHS
         request = urllib.request.Request(config.base_url + PATHS[config.wire_api], body, headers)
         budget = request._sprig_io_budget = IOBudget(config.request_timeout or config.timeout,
                                                    config.request_deadline, check_cancelled)
-        budget.check()
-        measurement.begin(len(body))
+        budget.deadline = deadline  # Each attempt has a fresh idle clock, never a fresh total deadline.
         try:
+            budget.check()
+            measurement.begin(len(body))
             with self.opener.open(request, timeout=config.request_timeout or config.timeout) as response:
                 status = getattr(response, "status", None)
                 if type(status) is int and 100 <= status <= 599:

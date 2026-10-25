@@ -134,7 +134,7 @@ uv run sprig '为现有函数补一个最小测试，并运行测试' --workdir 
 
 需要 `reasoning_content` 连续回传或拒绝客户端插入工具调用的服务，可在提供商表显式设置 `preserve_reasoning=true`、`check_history_format="observations"`。推理正文不显示，但会占用请求预算，并在启用私有会话保存时保留；默认关闭，也不自动开启模型思考。示例、参数格式和保存边界见[推理工具历史兼容](docs/reasoning-protocol.md)。
 
-模型请求失败时，按 HTTP 状态提示鉴权、权限、端点、请求大小、限流或服务故障；网络错误区分 socket 超时和 TLS 证书校验失败。错误响应正文、服务端原因和其他诊断头不会显示。对于 429 / 503，有效的 [`Retry-After`](https://www.rfc-editor.org/rfc/rfc9110.html#name-retry-after) 秒数或 UTC HTTP 日期只转成建议等待秒数；提示最多接受 24 小时，过长、非法或重复的字段被忽略。程序不等待或自动重试，也不保证等待后请求一定成功；CLI 使用 `/continue`，TUI 点击“继续当前对话”，明确发起下一次请求。
+模型请求失败时，按 HTTP 状态提示鉴权、权限、端点、请求大小、限流或服务故障；网络错误区分 socket 超时和 TLS 证书校验失败。错误正文、服务原因和原始诊断头不会显示。默认不自动重试；提供商 `retry_attempts` 或 `--retry-attempts 2` 可明确启用[临时 HTTP 错误重试](docs/provider-retry.md)，次数范围 0–5，所有尝试与退避共享原总期限。合法 `Retry-After` 作为最短等待，非法/重复提示或剩余期限不足时不自动重发。连接错误、超时和不完整响应仍需 CLI `/continue` 或 TUI“继续当前对话”；重试不保证成功或免费。
 
 ### 确认流程
 
@@ -179,6 +179,7 @@ sprig [TASK] [--workdir PATH] [--file RELATIVE_PATH ...] [--model MODEL] [--base
 | `--max-output` | `16000` 字节，工具输出上限；读取 / 搜索结果可截断，命令超出上限会被终止 |
 | `--stream` | 可选；逐步显示模型文本，工具调用仍在完整响应校验通过后执行 |
 | `--request-usage` | 显式请求流末尾的 token 用量，须搭配 `--stream` 或 `--tui`；服务不支持时不自动重试 |
+| `--retry-attempts` | 临时 HTTP 错误的额外尝试次数，0–5、默认 0；退避和全部尝试共享原请求期限，不重发不完整响应 |
 | `--metrics` | 退出 CLI/TUI 时向标准错误输出本地数值统计；不改变任务状态码，不写报告文件 |
 | `--read-only` | 只允许文件检查；工具入口强制拒绝所有写入和命令，不可搭配 `--check` |
 | `--inherit-env` | 显式允许获批命令继承更多环境变量；已知模型密钥仍移除 |
@@ -222,7 +223,7 @@ CLI `/usage`、TUI“查看请求统计”在本地显示当前 provider 实例�
 
 只保留服务报告的 `prompt_tokens`、`completion_tokens`、`total_tokens`。缺失字段、非法数值或矛盾用量为 `null`，不通过字符数推算 token、费用或计费结果。流式用量按[官方接口约定](https://developers.openai.com/api/reference/resources/chat)通过 `stream_options.include_usage` 请求；断流或取消可能缺失最终用量，兼容服务可能不支持此选项，所以默认不开启。重复且相同的用量片段只计一次；矛盾或非法片段使该请求用量未知。非流式响应中的用量自动记录。
 
-`reported_sum` 仅累计有明确数值的请求，同时给出 `known_requests`、`unknown_requests`；只有全部尝试都有该字段时，`complete_sum` 才是总数，否则为 `null`。请求结果 `success` 仅表示完整响应通过协议校验，不能证明代码正确、通过验收或新要求已采用。网络调用尝试也不证明服务收到请求；失败和取消不自动重试，其未知费用不能当作零。Provider 入口的预算拒绝属于 `not_attempted`，不会计为网络尝试；在 Agent 预算检查阶段已停止的任务没有 Provider 记录。
+`reported_sum` 仅累计有明确数值的请求，同时给出 `known_requests`、`unknown_requests`；只有全部尝试都有该字段时，`complete_sum` 才是总数，否则为 `null`。请求结果 `success` 仅表示完整响应通过协议校验，不能证明代码正确、通过验收或新要求已采用。网络调用尝试也不证明服务收到请求；明确启用的 HTTP 重试逐次计数，之前的失败和未知用量保持，其未知费用不能当作零。取消不重试。Provider 入口的预算拒绝属于 `not_attempted`，不会计为网络尝试；在 Agent 预算检查阶段已停止的任务没有 Provider 记录。
 
 只在内存保存最近 128 条数值记录，历史累计计数保留；不保存提示词、模型文本、工具参数、URL、请求 ID、错误正文或密钥。统计不进入模型上下文或会话文件，恢复历史不能恢复以往用量。它是请求级测量，完整任务耗时、工具与批准开销、内存及竞品对照仍需另外评测。
 
@@ -435,9 +436,9 @@ uv run python scripts/live-tui-smoke.py
 
 - `run` 没有操作系统级隔离，可能访问工作目录之外的文件、网络或其他环境变量中的秘密。程序会移除子进程环境中的 API 密钥变量，并遮盖已知密钥的原文；这不等于能检测或隐藏任意秘密
 - 文件工具的路径检查不构成面对恶意并发文件修改、硬链接或任意命令的完整安全边界。需要隔离时，请另外使用受限账户或容器
-- 仅支持文本任务和普通 function tools；支持 MCP HTTP/stdio 和公开网页文本读取，尚无图像输入、浏览器操作、多代理或自动重试；上下文压缩需要用户明确启用
+- 支持文本与静态图片输入、普通 function tools、MCP HTTP/stdio 和公开网页文本读取；尚无 PDF/音频、浏览器操作或多代理；上下文压缩需要用户明确启用
 - `--max-steps` 限制循环步数，`--max-context-bytes` 限制发送大小；均不是精确 token / 费用预算，也不保证适合每个模型的上下文窗口
-- 网络请求不自动重试，避免不明确地重复计费；POSIX 命令使用进程组终止机制，不承诺清理主动脱离进程组的进程；Windows 命令使用 Job Object
+- 网络请求默认不重试，临时 HTTP 错误可明确启用有界重试，不重发不完整响应；POSIX 命令使用进程组终止机制，不承诺清理主动脱离进程组的进程；Windows 命令使用 Job Object
 - HTTP 超时是 socket 等待超时，持续缓慢返回的响应可能超过所设秒数；响应仍有 2 MiB 大小限制，可用 Ctrl-C 中断
 - “OpenAI-compatible” 不保证模型、工具格式和响应行为兼容；所选服务与模型必须支持配置的协议和客户端函数工具
 - Windows 需要支持受保护 DACL 的文件系统及 Job Object API（Windows 10+）；不支持 FAT/exFAT 会话目录，或权限/作业策略禁止必要 API 的环境

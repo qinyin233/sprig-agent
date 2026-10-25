@@ -187,6 +187,8 @@ uv run --locked sprig --config-schema
 
 提供商可配置 `request_timeout`（0–120 秒，不含 0），限制网络空闲与连接阶段，未配置时沿用 `agent.timeout`；后者仍控制命令。`request_deadline` 默认 300 秒（0–3600 秒，不含 0），限制一次请求总时长，服务持续发送少量字节或 SSE 心跳不能延长它；不把 DNS 的同步系统调用宣称为可强制中断，详见[请求生命周期与取消边界](request-lifecycle.md)。CLI 可用 `--request-timeout`、`--request-deadline` 覆盖；两者均不进入模型 JSON，不改变会话绑定。
 
+`retry_attempts` 为提供商的额外 HTTP 尝试次数，0–5、默认 0，CLI 用 `--retry-attempts` 覆盖。明确启用后仅重试 429/500/502/503/504，退避和全部尝试共享原总期限，合法服务等待提示不会被缩短。非零次数进入会话绑定，可能增加请求及用量；不重发网络/超时/不完整响应，不重放工具。详见[重试边界与用量](provider-retry.md)。
+
 `proxy` 为 `system`、`direct` 或不含账号、查询、片段的 HTTP(S) 代理地址，CLI 可用 `--proxy` 覆盖。默认系统代理仍由 Python 标准库处理；explicit proxy 同样遵循标准库的 NO_PROXY 行为。TLS 校验和禁止重定向始终保留。
 
 模型看到的 `run` 工具超时上限使用生效的命令 `timeout`，不固定显示120秒，也不取提供商的 HTTP `request_timeout`。提案省略 `timeout` 时使用命令上限；超限值在审批前拒绝，错误给出实际数字，不自动延长或改写请求。不同 Agent 的工具定义独立，修改一个实例不影响其他实例。

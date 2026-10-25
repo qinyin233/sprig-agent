@@ -27,6 +27,7 @@ interface = "tui"
 model = "agnes-3.0-flash"
 base_url = "https://apihub.agnes-ai.com/v1"
 api_key_env = "AGNES_API_KEY"
+# retry_attempts = 2 # optional extra transient HTTP attempts; default 0, may incur usage
 # Instead of api_key_env, api_key = "your-key" is supported in this private file.
 # Environment references are recommended; never commit a key.
 
@@ -136,7 +137,7 @@ GROUP_FIELDS = {
 }
 TUI_FIELDS = {"theme": "tui_theme", "sidebar": "tui_sidebar", "editor_height": "tui_editor_height",
               "steering_mode": "steering_mode", "metrics": "show_metrics", "keybindings": "tui_keybindings"}
-TRANSPORT_FIELDS = {"request_timeout", "request_deadline", "proxy", "api_key_header", "api_key_scheme", "preserve_reasoning", "check_history_format", "wire_api"}
+TRANSPORT_FIELDS = {"request_timeout", "request_deadline", "retry_attempts", "proxy", "api_key_header", "api_key_scheme", "preserve_reasoning", "check_history_format", "wire_api"}
 CONTEXT_FIELDS = {"max_bytes": "max_context_bytes", "compact": "compact_context",
                   "trigger_ratio": "context_trigger_ratio", "keep_recent_messages": "context_keep_recent_messages",
                   "keep_read_bytes": "context_keep_read_bytes", "files": "reference_files"}
@@ -611,6 +612,7 @@ def public_config(config, metadata):
             "generation": config.generation_options(),
             "context": {name: getattr(config, field) for name, field in CONTEXT_FIELDS.items()},
             "transport": {"request_timeout": config.request_timeout, "request_deadline": config.request_deadline, "proxy": config.proxy,
+                          "retry_attempts": config.retry_attempts,
                           "preserve_reasoning": config.preserve_reasoning,
                           "wire_api": config.wire_api,
                           "check_history_format": config.check_history_format,
