@@ -1,0 +1,130 @@
+{
+  "schema": 1,
+  "scope": "numeric completed-tool outcomes only; no source, arguments, paths or reasoning",
+  "source_commit": "a129df50e8e8234f21b73b581e42f00b94b16a97",
+  "model_attempts": 5,
+  "complete_model_responses": 4,
+  "discarded_model_responses": 1,
+  "model_tools": {
+    "project_map": 2,
+    "read_file": 6,
+    "grep": 2
+  },
+  "application_baseline_checks": 1,
+  "observations": [
+    {
+      "step": 1,
+      "tool": "project_map",
+      "error": false,
+      "truncated": false,
+      "matched_files": 0,
+      "returned_files": 0
+    },
+    {
+      "step": 1,
+      "tool": "project_map",
+      "error": false,
+      "truncated": false,
+      "matched_files": 1,
+      "returned_files": 1
+    },
+    {
+      "step": 2,
+      "tool": "read_file",
+      "error": false,
+      "truncated": true,
+      "range_complete": true,
+      "read_id_returned": true
+    },
+    {
+      "step": 2,
+      "tool": "grep",
+      "error": false,
+      "truncated": false,
+      "timed_out": false,
+      "files_read": 18,
+      "bytes_read": 396957,
+      "entries_scanned": 18,
+      "skipped_files": 0,
+      "returned_matches": 28
+    },
+    {
+      "step": 3,
+      "tool": "read_file",
+      "error": false,
+      "truncated": true,
+      "range_complete": true,
+      "read_id_returned": true
+    },
+    {
+      "step": 3,
+      "tool": "read_file",
+      "error": false,
+      "truncated": true,
+      "range_complete": true,
+      "read_id_returned": true
+    },
+    {
+      "step": 3,
+      "tool": "read_file",
+      "error": true,
+      "symbol_match_count": 0,
+      "read_id_returned": false,
+      "error_category": "symbol_not_found"
+    },
+    {
+      "step": 3,
+      "tool": "read_file",
+      "error": false,
+      "truncated": true,
+      "symbol_complete": true,
+      "read_id_returned": true
+    },
+    {
+      "step": 4,
+      "tool": "read_file",
+      "error": false,
+      "truncated": true,
+      "symbol_complete": true,
+      "read_id_returned": true
+    },
+    {
+      "step": 4,
+      "tool": "grep",
+      "error": false,
+      "truncated": false,
+      "timed_out": false,
+      "files_read": 31,
+      "bytes_read": 343728,
+      "entries_scanned": 32,
+      "skipped_files": 0,
+      "returned_matches": 1
+    }
+  ],
+  "output_limit_notice_persisted": true,
+  "session_history_valid": true,
+  "session_sha256": "00a31f06f1fa132c989ed73286d6eb628989a3ee49d66132d4dcd29c4eb0515d",
+  "native_fixed_command_approvals": 3,
+  "candidate_unchanged": true,
+  "actual_runtime_validation": {
+    "python": "3.12.12",
+    "declared_requirements_satisfied": 13,
+    "file_map_tests": 12,
+    "file_map_passed": 11,
+    "file_map_skipped": 1,
+    "file_map_seconds": 3.611,
+    "skip_reason": "POSIX symlink/FIFO; run on native Windows",
+    "uv_pip_check": true,
+    "installed_packages_checked": 31
+  },
+  "evidence_boundary": {
+    "real_model_run": true,
+    "automatic_retries": 0,
+    "new_candidate_writes": 0,
+    "remote_ci": "pending; frozen before 2026-11-01 Asia/Singapore",
+    "performance_improvement_claimed": false,
+    "general_agent_ranking_claimed": false,
+    "source_unchanged": true,
+    "input_file_map_mode_exercised": false
+  }
+}
