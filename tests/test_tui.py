@@ -111,6 +111,43 @@ class TuiTests(unittest.IsolatedAsyncioTestCase):
             self.assertIsNone(app.messages)
         self.assertEqual(len(head), 40)
 
+    async def test_remove_worktree_uses_real_approvals_and_keeps_the_current_conversation(self):
+        from tests.test_worktrees import init_repo, git
+        head = init_repo(self.root)
+        target = self.parent / "finished task with spaces"
+        git(self.root, "worktree", "add", "--detach", str(target), head)
+        provider = ScriptedProvider([])
+        app = self.app(provider)
+        async with app.run_test(size=(110, 36)) as pilot:
+            await self.send_text(pilot, "/remove-worktree " + str(target))
+            for _ in range(10):
+                await self.until(pilot, lambda: isinstance(app.screen, ApprovalScreen))
+                previous = app.screen
+                await self.click(pilot, "#approve")
+                await self.until(pilot, lambda: app.screen is not previous)
+            await self.until(pilot, lambda: not app.busy)
+            self.assertEqual(app.last_operation_status, 0)
+            self.assertEqual(app.config.workdir, self.config.workdir)
+            self.assertFalse(target.exists())
+            self.assertEqual(provider.calls, [])
+            self.assertEqual(git(self.root, "for-each-ref", "--format=%(objectname)", "refs/heads/sprig-worktree-*"), head)
+
+    async def test_remove_worktree_denial_preserves_files_without_model_requests(self):
+        from tests.test_worktrees import init_repo, git
+        head = init_repo(self.root)
+        target = self.parent / "keep this task"
+        git(self.root, "worktree", "add", "--detach", str(target), head)
+        provider = ScriptedProvider([])
+        app = self.app(provider)
+        async with app.run_test(size=(110, 36)) as pilot:
+            await self.send_text(pilot, "/remove-worktree " + str(target))
+            await self.until(pilot, lambda: isinstance(app.screen, ApprovalScreen))
+            await self.click(pilot, "#reject")
+            await self.until(pilot, lambda: not app.busy)
+            self.assertTrue(target.exists())
+            self.assertEqual((target / "base.txt").read_bytes(), b"base\n")
+            self.assertEqual(provider.calls, [])
+
     async def test_worktree_command_in_read_only_tui_does_not_ask_or_create(self):
         from dataclasses import replace
         self.config = replace(self.config, read_only=True)

@@ -1,0 +1,63 @@
+{
+  "schema_version": 1,
+  "date": "2026-10-26",
+  "base_commit": "316e4e31ffe55391a5e2d68b4ac4a1904e8dec59",
+  "scope": "Explicit local clean-worktree removal and recovery; disposable real Git fixtures and TUI approvals. No model performance score.",
+  "external_model_calls": 0,
+  "remote_native_ci": "pending; frozen before 2026-11-01 Asia/Singapore; verify account restriction before resuming",
+  "source_seal": {
+    "files": 210,
+    "sha256": "67f4adcb1a01625a9633cf8462992582e8d2508fe8559c2fd12ecbe683de71cf",
+    "selection": "All .py under src/sprig_agent, tests, scripts, plus pyproject.toml, uv.lock, config.schema.json, config.example.toml, AGENTS.md, MANIFEST.in",
+    "algorithm": "SHA256 of UTF-8 json.dumps({relative_posix_path: sha256(raw_working_file_bytes)}, sort_keys=True), default JSON separators and ensure_ascii=True. Raw files were shared with local WSL through /mnt/e. Documentation/report changes are outside the seal."
+  },
+  "checks": {
+    "windows_full": {"python": "3.13.0", "git": "2.45.1.windows.1", "total": 1586, "passed": 1566, "skipped": 20, "failures": 0, "errors": 0, "seconds": 726.068},
+    "local_wsl_full": {"distribution": "Ubuntu-26.04", "python": "3.13.14", "git": "2.53.0", "total": 1586, "passed": 1563, "skipped": 23, "failures": 0, "errors": 0, "seconds": 540.467},
+    "windows_python_311_focused": {"total": 42, "passed": 42, "skipped": 0, "failures": 0, "errors": 0, "seconds": 71.701},
+    "new_test_methods": {"removal": 16, "tui": 2},
+    "locked_projects": [".", "benchmarks/clients/mini", "benchmarks/clients/aider", "benchmarks/repositories/click"],
+    "wheel_modules_equal_raw_source": 79,
+    "wheel_modules_imported_from_extracted_wheel": 78,
+    "wheel_main_module": "not imported because it executes the CLI; --help exercised through extracted-wheel cli.main",
+    "compact_model_tool_schema_bytes": 4927,
+    "generated_configuration_schema": "matches runtime",
+    "local_document_targets_checked": 266
+  },
+  "raw_git_control": {
+    "platform": "local native Windows, Git 2.45.1.windows.1",
+    "ordinary_status_empty": true,
+    "ignored_disposable_file_present_before_remove": true,
+    "raw_git_remove_succeeded": true,
+    "ignored_disposable_file_survived": false,
+    "sprig_corresponding_test": "test_ignored_local_data_is_not_removed; target and exact bytes retained"
+  },
+  "covered_behaviors": [
+    "Detached unique commit retained in visible recovery branch, then restored through the existing approved create-worktree path",
+    "Original source index, staged/unstaged bytes, untracked file and HEAD preserved",
+    "Branch and packed branch references retained",
+    "Dirty, staged, untracked, ignored and extra empty-directory targets rejected",
+    "Hidden index flags, gitlink and symlink index modes rejected",
+    "Main/foreign/locked targets and configured private storage rejected",
+    "Fresh literal-True approval for each process; denial and cancellation preserve the checkout",
+    "Index flag mutation during status approval and same-size/same-timestamp edits during final approval rejected",
+    "Clean-only external filter not executed even when timestamp changes force Git to rehash",
+    "Recovery reference deletion during final approval stops removal and reports retained=false",
+    "Post-removal verification denial reports uncertainty without replay or cleanup",
+    "Inventory and process output budgets enforced",
+    "CLI/chat and TUI Enter/approval flows do not request a model or switch the conversation"
+  ],
+  "development_findings": [
+    "The unreleased first draft allowed an assume-unchanged flag set during status approval to hide an edit. The failing disposable test was corrected by freezing metadata before index/status inspection and rechecking it.",
+    "A clean-only filter was not discovered by the original checkout-oriented filter-name matcher. A timestamp-controlled test reproduced its execution; the matcher and removal overrides now disable clean filters too.",
+    "Other intermediate draft/fixture failures were repaired before the final frozen full suites. Earlier targeted results do not replace the final full-suite results above."
+  ],
+  "limits": [
+    "Local WSL is not native remote Linux CI; skips are not passes",
+    "No force removal, automatic commit/stash/merge/push or deletion of recovery branches",
+    "No OS sandbox, exclusive checkout lock or filesystem transaction; external writers must be stopped before approval",
+    "Inventory is bounded to 20000 entries, depth 64, 128 MiB file bytes and 15 seconds per snapshot; metadata is bounded too",
+    "Recovery restores committed files, not private sessions, processes, pending approvals or previous acceptance conclusions",
+    "No proof of improved real-model repository success rate"
+  ]
+}

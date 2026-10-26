@@ -244,7 +244,7 @@ def chat(agent, task, messages, emit, *, autostart=True, model_selection=None, s
                 emit("/changes review lists retained file-edit comparisons; /changes show ID|latest [OFFSET SNAPSHOT] pages the historical diff locally. Read-only TUI viewer preserves the composer; review is not a new verification result.")
                 emit("/logs lists this conversation's retained command output; /log ID [OFFSET] pages historical text; /logs clear requires fresh deletion approval. Retention is opt-in via --command-log-dir or storage.command_log_dir.")
                 emit("/ref PATH adds a live file reference; /unref PATH removes it; /refs lists metadata; /refs clear removes all. No model request is sent. Small complete files refresh before requests; larger files provide path/size only.")
-                emit("/worktrees lists local checkouts; /worktree PATH creates a detached checkout after fresh approvals. All remaining text is the path; the current conversation stays in this workspace.")
+                emit("/worktrees lists checkouts; /worktree PATH creates one; /remove-worktree PATH retains HEAD in a recovery branch and removes a clean linked checkout after fresh approvals. The current conversation stays here.")
                 emit("Enter a task to continue the same conversation. /continue explicitly continues retained history without adding a duplicate request; /status shows local context; /plan shows model-reported progress, never approval or acceptance; /context previews the request budget; /usage shows local numeric request measurements and unknown token counts; /compact confirms request-only elision; /changes lists exact edit backups; /undo and /redo require diff approval; /undo-batch and /redo-batch recover retained independent batches with fresh approval per file; /discard-history confirms removal of backups; /diff and /git show Git changes with approval; /exit closes chat.")
             elif task == "/models reload":
                 if model_selection is None:
@@ -334,14 +334,16 @@ def chat(agent, task, messages, emit, *, autostart=True, model_selection=None, s
                     run(None)
                 else:
                     emit("No task to continue. Enter a task first.")
-            elif task == "/worktrees" or task == "/worktree" or task.startswith("/worktree "):
-                if task == "/worktree":
-                    emit("Use /worktree PATH to create a detached checkout, or /worktrees to list. The current conversation stays in this workspace.")
+            elif task in {"/worktrees", "/worktree", "/remove-worktree"} or task.startswith(("/worktree ", "/remove-worktree ")):
+                removing = task == "/remove-worktree" or task.startswith("/remove-worktree ")
+                if task in {"/worktree", "/remove-worktree"}:
+                    emit("Use /worktree PATH to create, /remove-worktree PATH to retain HEAD and remove a clean linked checkout, or /worktrees to list.")
                     continue
                 from .worktrees import worktree_action
                 with local_command():
                     result = worktree_action(agent.config, agent.tools.request_approval,
-                                             path=task[len("/worktree "):].strip() if task.startswith("/worktree ") else None,
+                                             path=task.split(" ", 1)[1].strip() if " " in task else None,
+                                             **({"remove": True} if removing else {}),
                                              cancel_event=agent.cancel_event)
                 if "error" in result and status == 0:
                     status = 2
@@ -509,6 +511,7 @@ def main(argv=None):
     group.add_argument("--config-schema", action="store_true", help="print the configuration JSON schema offline")
     group.add_argument("--list-worktrees", action="store_true", help="list local Git worktrees after command approval; no model request")
     group.add_argument("--create-worktree", type=Path, metavar="PATH", help="approve a detached checkout in a new external directory; keep this conversation unchanged")
+    group.add_argument("--remove-worktree", type=Path, metavar="PATH", help="retain HEAD in a recovery branch and approve removal of a clean external linked checkout")
     parser.add_argument("--worktree-ref", metavar="REF", help="local revision for --create-worktree (default HEAD); never fetch")
     parser.add_argument("--session-dir", type=Path)
     parser.add_argument("--session-max-age-days", type=int, help="retention age for explicit --prune-sessions; never auto-delete")
@@ -523,7 +526,7 @@ def main(argv=None):
     feedback_context.enter_context(feedback_scope(None))
     try:
         manage_sessions = args.list_sessions or args.delete_session or args.prune_sessions
-        manage_worktrees = args.list_worktrees or args.create_worktree is not None
+        manage_worktrees = args.list_worktrees or args.create_worktree is not None or args.remove_worktree is not None
         if args.worktree_ref is not None and args.create_worktree is None:
             raise ValueError("--worktree-ref requires --create-worktree")
         if args.dry_run and not args.prune_sessions:
@@ -588,7 +591,8 @@ def main(argv=None):
             return 0
         if manage_worktrees:
             from .worktrees import worktree_action
-            result = worktree_action(config, approve, path=args.create_worktree,
+            result = worktree_action(config, approve, path=args.remove_worktree if args.remove_worktree is not None else args.create_worktree,
+                                     **({"remove": True} if args.remove_worktree is not None else {}),
                                      ref="HEAD" if args.worktree_ref is None else args.worktree_ref)
             print(terminal_text(json.dumps(redact(result, key), ensure_ascii=False, indent=2)))
             return 2 if "error" in result or result.get("approved") is False else 0

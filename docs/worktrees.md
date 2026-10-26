@@ -1,5 +1,7 @@
 # 独立任务工作目录
 
+创建/列出之外，现在也可通过 `/remove-worktree PATH` 或 `--remove-worktree PATH` 收尾干净的外部工作树，先保留恢复分支再逐次批准移除。限制、取消和恢复步骤见[工作树收尾与恢复](worktree-removal.md)。
+
 Sprig 可以显式创建 Git worktree，让新任务从一个固定提交开始，并保留原目录的暂存修改、未暂存修改和未跟踪文件。工作目录独立，Git 对象和引用仍然共享；这是 [Git worktree](https://git-scm.com/docs/git-worktree.html) 的目录模型，不是进程、文件系统或网络沙箱。
 
 ## 创建并开始新任务

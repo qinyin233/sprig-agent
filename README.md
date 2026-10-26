@@ -88,7 +88,7 @@ uv run --locked sprig --workdir /path/to/repo --create-worktree ../repo-task
 uv run --locked sprig --workdir /path/to/repo-task --tui
 ```
 
-从固定提交创建 detached Git worktree，保留原目录的未提交修改。TUI 和聊天可用 `/worktrees`、`/worktree ../新任务目录`；每次 Git 命令仍逐次批准，当前会话不切换，不向模型发请求。hooks、内容过滤器和 Git 网络传输在管理过程中禁用；目录共享 Git 对象和引用，不提供 OS 沙箱。使用、恢复和隐私边界见 [worktree 工作流](docs/worktrees.md)。
+从固定提交创建 detached Git worktree，保留原目录的未提交修改。TUI 和聊天可用 `/worktrees`、`/worktree ../新任务目录`、`/remove-worktree ../干净任务目录`；移除前保留恢复分支，每次 Git 命令仍逐次批准，当前会话不切换，不向模型发请求。hooks、内容过滤器和 Git 网络传输在管理过程中禁用；目录共享 Git 对象和引用，不提供 OS 沙箱。使用、恢复和隐私边界见 [worktree 工作流](docs/worktrees.md)。
 
 ### Agnes 3.0 Flash 预设
 

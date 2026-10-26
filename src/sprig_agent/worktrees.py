@@ -1,4 +1,4 @@
-"""Explicit local Git worktrees; never switch, clean, merge or replay a task."""
+"""Explicit local Git worktrees; never switch, force-clean or replay a task."""
 
 from contextlib import ExitStack
 from dataclasses import replace
@@ -15,7 +15,7 @@ from .config import redact
 from .tools import Tools
 
 COMMIT = re.compile(r"[0-9a-f]{40}(?:[0-9a-f]{24})?\Z")
-FILTER = re.compile(r"filter\.(.+)\.(smudge|process|required)\Z", re.IGNORECASE | re.DOTALL)
+FILTER = re.compile(r"filter\.(.+)\.(smudge|process|clean|required)\Z", re.IGNORECASE | re.DOTALL)
 MAX_CONFIG = 1024 * 1024
 
 
@@ -128,8 +128,8 @@ def parse_worktrees(output):
     return records
 
 
-def worktree_action(config, approve, *, path=None, ref="HEAD", cancel_event=None):
-    """List, or create a detached checkout in a new explicit external directory.
+def worktree_action(config, approve, *, path=None, ref="HEAD", remove=False, cancel_event=None):
+    """List, create, or retain HEAD and remove an explicit clean linked checkout.
 
     Every Git process uses the normal approved, bounded process runner. Git's
     user/system config and inherited routing variables are deliberately absent.
@@ -137,9 +137,16 @@ def worktree_action(config, approve, *, path=None, ref="HEAD", cancel_event=None
     """
     if config.read_only or not config.tool_enabled("run"):
         return {"error": "worktree management requires enabled command execution and writable mode", "approved": False}
+    if type(remove) is not bool or (remove and (path is None or ref != "HEAD")):
+        return {"error": "worktree removal requires a path and does not accept a revision", "approved": False}
     if not isinstance(ref, str) or not 1 <= len(ref) <= 256 or ref.startswith("-") or any(char.isspace() or ord(char) < 32 or ord(char) == 127 for char in ref):
         return {"error": "worktree ref must be a local Git revision of at most 256 characters", "approved": False}
     created, commands, add_attempted = False, 0, False
+    removed = removal_attempted = retained = retain_attempted = target_released = False
+    removal_guard = None
+    recovery_ref, phase, review = None, None, ""
+    recovery_parent = None
+    target_config_guards = []
     target, root = None, _safe_path(config.workdir, config.workdir)
     executable = shutil.which("git")
     if executable is None:
@@ -150,6 +157,7 @@ def worktree_action(config, approve, *, path=None, ref="HEAD", cancel_event=None
     config_guards = []
     with ExitStack() as stack:
         source = _PinnedDirectory(root, stack)
+        target_handles = stack.enter_context(ExitStack())
         target_parent = target_pin = hooks_pin = None
         if path is not None:
             target = _safe_path(path, root)
@@ -158,6 +166,13 @@ def worktree_action(config, approve, *, path=None, ref="HEAD", cancel_event=None
             if target.is_relative_to(root) or root.is_relative_to(target):
                 return {"error": "new worktree must be outside the source workspace", "approved": False}
             target_parent = _PinnedDirectory(target.parent, stack)
+            if remove:
+                for protected in (config.config_path, *config.config_paths, config.session_dir,
+                                  config.change_history_dir, config.command_log_dir):
+                    if protected is not None and Path(protected).is_relative_to(target):
+                        return {"error": "worktree contains configured private storage or configuration", "approved": False, "removed": False}
+                target_pin = _PinnedDirectory(target, target_handles)
+                target_identity = _identity(target)
 
         def check():
             if cancel_event is not None and cancel_event.is_set():
@@ -165,7 +180,17 @@ def worktree_action(config, approve, *, path=None, ref="HEAD", cancel_event=None
             source.check()
             if target_parent:
                 target_parent.check()
-                if not created:
+                if remove:
+                    if removed:
+                        try:
+                            target_parent.directory.stat(target.name)
+                        except FileNotFoundError:
+                            pass
+                        else:
+                            raise WorktreeError("removed worktree path reappeared; inspect before retrying")
+                    elif _identity(target) != target_identity:
+                        raise WorktreeError("worktree target changed during approval")
+                elif not created:
                     try:
                         target_parent.directory.stat(target.name)
                     except FileNotFoundError:
@@ -182,19 +207,51 @@ def worktree_action(config, approve, *, path=None, ref="HEAD", cancel_event=None
                     current = None
                 if current != original:
                     raise WorktreeError("Git configuration changed during approval; inspect and retry")
+            if not target_released:
+                for directory, name, original, limit in target_config_guards:
+                    try:
+                        current = directory.directory.read(name, limit)
+                    except FileNotFoundError:
+                        current = None
+                    if current != original:
+                        raise WorktreeError("target Git configuration changed during approval")
+            if phase in {"inspect", "retain", "remove"} and removal_guard is not None and not target_released:
+                removal_guard.check()
+            if recovery_parent is not None:
+                recovery_parent.check()
+                name = recovery_ref.rsplit("/", 1)[-1]
+                if retained:
+                    if recovery_parent.directory.read(name, 256) != (commit + "\n").encode("ascii"):
+                        raise WorktreeError("recovery branch changed; removal stopped")
+                elif phase == "retain" and not retain_attempted:
+                    try:
+                        recovery_parent.directory.read(name, 256)
+                    except FileNotFoundError:
+                        pass
+                    else:
+                        raise WorktreeError("recovery branch already exists; nothing replaced")
             if hooks_pin is not None:
                 hooks_pin.check()
                 if any(hooks_pin.path.iterdir()):
                     raise WorktreeError("private hooks directory changed; command not executed")
 
         def confirm(description):
-            nonlocal add_attempted
+            nonlocal add_attempted, removal_attempted, retain_attempted, target_released, target_pin
             check()
-            answer = approve(redact("LOCAL WORKTREE MANAGEMENT; does not switch the current conversation.\n" + description, config.secrets)) is True
+            answer = approve(redact("LOCAL WORKTREE MANAGEMENT; does not switch the current conversation.\n" + review + description, config.secrets)) is True
             if answer:
                 check()
                 if adding and not created:
                     add_attempted = True
+                if phase == "retain":
+                    retain_attempted = True
+                if phase == "remove":
+                    # Windows directory handles deny deletion. Release only
+                    # the target capabilities after the final freshness check;
+                    # keep the source, common Git directory and parent pinned.
+                    target_handles.close()
+                    target_pin = None
+                    target_released = removal_attempted = True
             return answer
 
         # This empty private directory disables hooks on every Git command.
@@ -264,6 +321,31 @@ def worktree_action(config, approve, *, path=None, ref="HEAD", cancel_event=None
                         raise WorktreeError("Git configuration exceeds the 1 MiB safety limit")
                     config_guards.append((pin, name, original))
             keys = run([*base, "config", "--no-includes", "--null", "--name-only", "--list"]).split("\0")
+            if remove:
+                records = parse_worktrees(run([*base, "worktree", "list", "--porcelain", "-z"]))
+                record = next((row for row in records if Path(row["path"]) == target), None)
+                if (record is None or Path(records[0]["path"]) == target or record.get("bare")
+                        or record.get("locked") or record.get("prunable")):
+                    raise WorktreeError("remove only an existing unlocked linked worktree of this repository")
+                target_probe = run([*base, "-C", str(target), "rev-parse", "--path-format=absolute",
+                    "--show-toplevel", "--git-common-dir", "--absolute-git-dir", "--verify", "HEAD^{commit}"]).splitlines()
+                common = _safe_path(probe[1], root)
+                if (len(target_probe) != 4 or Path(target_probe[0]) != target
+                        or Path(target_probe[1]) != common or not COMMIT.fullmatch(target_probe[3])
+                        or target_probe[3] != record["head"] or Path(target_probe[2]).parent != common / "worktrees"):
+                    raise WorktreeError("target worktree registration or commit could not be verified")
+                gitdir = _safe_path(target_probe[2], root)
+                target_git = _PinnedDirectory(gitdir, target_handles, metadata=True)
+                for name in ("config", "config.worktree", "HEAD", "index", "commondir", "gitdir", "locked", "HEAD.lock", "index.lock"):
+                    limit = 16 * MAX_CONFIG if name == "index" else MAX_CONFIG
+                    try:
+                        original = target_git.directory.read(name, limit)
+                    except FileNotFoundError:
+                        original = None
+                    if original is not None and len(original) > limit:
+                        raise WorktreeError("target Git metadata exceeds the safety limit")
+                    target_config_guards.append((target_git, name, original, limit))
+                keys += run([*base, "-C", str(target), "config", "--no-includes", "--null", "--name-only", "--list"]).split("\0")
             check()
             drivers = set()
             for key in keys:
@@ -280,6 +362,44 @@ def worktree_action(config, approve, *, path=None, ref="HEAD", cancel_event=None
             overrides = [item for driver in sorted(drivers) for item in (
                 "-c", "filter." + driver + ".smudge=", "-c", "filter." + driver + ".process=",
                 "-c", "filter." + driver + ".required=false")]
+            if remove:
+                from .worktree_removal import RemovalGuard, clean_index
+                overrides += [item for driver in sorted(drivers) for item in ("-c", "filter." + driver + ".clean=")]
+                tracked = clean_index(run([*base, *overrides, "-C", str(target), "ls-files", "--stage", "-v", "-z"]))
+                def cancelled():
+                    if cancel_event is not None and cancel_event.is_set():
+                        raise KeyboardInterrupt
+                removal_guard = RemovalGuard(target, common, gitdir, record, tracked, target_handles, cancelled)
+                phase = "inspect"
+                if run([*base, *overrides, "-C", str(target), "status", "--porcelain=v1", "-z",
+                        "--untracked-files=all", "--ignored=matching", "--ignore-submodules=none"]):
+                    raise WorktreeError("worktree has staged, modified, untracked or ignored files; nothing removed")
+                phase = None
+                # A visible branch keeps even a detached task commit reachable.
+                # Pin its existing parent before Git writes a fresh UUID name.
+                recovery_parent = _PinnedDirectory(common / "refs" / "heads", stack, metadata=True)
+                recovery_ref = "refs/heads/sprig-worktree-" + uuid.uuid4().hex
+                commit = record["head"]
+                review = ("REMOVE CLEAN WORKTREE: " + str(target) + "\nHEAD: " + commit
+                          + "\nKeep commit in recovery branch: " + recovery_ref
+                          + "\nStop other writers in this checkout before approving."
+                          + "\nNo force, branch deletion, merge or cleanup of dirty files.\n")
+                phase = "retain"
+                run([*base, "-c", "core.logAllRefUpdates=false", "update-ref", "--no-deref",
+                     recovery_ref, commit, "0" * len(commit)])
+                retained = True
+                phase = "remove"
+                run([*base, *overrides, "worktree", "remove", "--", str(target)])
+                removed, phase = True, None
+                check()
+                remaining = parse_worktrees(run([*base, "worktree", "list", "--porcelain", "-z"]))
+                check()
+                if any(Path(row["path"]) == target for row in remaining):
+                    raise WorktreeError("worktree removal registration could not be verified")
+                return {"approved": True, "removed": True, "verified": True, "retained": True, "path": str(target),
+                        "head": commit, "recovery_ref": recovery_ref, "commands_approved": commands,
+                        "git_network_disabled": True, "hooks_disabled": True, "content_filters_disabled": True,
+                        "restore_argv": ["sprig", "--workdir", str(root), "--create-worktree", str(target), "--worktree-ref", recovery_ref]}
             adding = True
             run([*base, *overrides, "worktree", "add", "--detach", "--no-guess-remote", "--", str(target), commit])
             created = True
@@ -294,8 +414,25 @@ def worktree_action(config, approve, *, path=None, ref="HEAD", cancel_event=None
                     "hooks_disabled": True, "content_filters_disabled": True,
                     "git_network_disabled": True, "working_changes_copied": False,
                     "start_argv": ["sprig", "--workdir", str(target)]}
-        except (_Stopped, ValueError, OSError) as error:
-            result = error.result if isinstance(error, _Stopped) else {"error": str(error)}
+        except (_Stopped, ValueError, OSError, KeyboardInterrupt) as error:
+            if isinstance(error, KeyboardInterrupt) and not remove:
+                raise
+            result = (error.result if isinstance(error, _Stopped) else
+                      {"error": "worktree removal cancelled", "cancelled": True, "outcome": "cancelled"}
+                      if isinstance(error, KeyboardInterrupt) else {"error": str(error)})
+            if remove:
+                recovery_valid = None
+                if retained:
+                    try:
+                        recovery_valid = recovery_parent.directory.read(recovery_ref.rsplit("/", 1)[-1], 256) == (commit + "\n").encode("ascii")
+                    except FileNotFoundError:
+                        recovery_valid = False
+                    except (OSError, ValueError):
+                        pass
+                return {**result, "removed": None if removal_attempted else False, "verified": False,
+                        "path": str(target), "commands_approved": commands,
+                        **({"recovery_ref": recovery_ref, "retained": recovery_valid} if retain_attempted else {}),
+                        **({"outcome": "uncertain", "recovery": "inspect the target, recovery branch and git worktree list; no retry or cleanup was performed"} if removal_attempted else {})}
             return {**result, "created": None if add_attempted else False, "verified": False,
                     "commands_approved": commands, **({"path": str(target)} if target else {}),
                     **({"outcome": "uncertain", "recovery": "inspect the target and git worktree list; no cleanup or retry was performed"} if add_attempted else {})}
