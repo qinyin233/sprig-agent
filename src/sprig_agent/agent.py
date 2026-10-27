@@ -107,8 +107,9 @@ class Agent:
                 schema["function"]["parameters"]["properties"]["timeout"]["maximum"] = config.timeout
                 if isinstance(tools, Tools) and tools.jobs.enabled():
                     schema["function"]["parameters"]["properties"]["background"] = {"type": "boolean"}
+                    schema["function"]["parameters"]["properties"]["stdin"] = {"enum": ["closed", "pipe"]}
                     schema["function"]["parameters"]["properties"]["timeout"]["maximum"] = max(config.timeout, config.background_timeout)
-                    schema["function"]["description"] += " background=true starts an owned noninteractive job; timeout cap " + str(config.background_timeout) + "s. Foreground keeps its existing cap."
+                    schema["function"]["description"] += " background=true starts an owned job; stdin='pipe' explicitly permits separately approved input/EOF. Timeout cap " + str(config.background_timeout) + "s. Foreground keeps its existing cap."
         if config.command_log_dir is not None and config.tool_enabled("read_log"):
             self.schemas.append(copy.deepcopy(READ_LOG_SCHEMA))
         if isinstance(tools, Tools) and callable(getattr(tools, "ask", None)) and config.tool_enabled("question"):

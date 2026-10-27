@@ -36,8 +36,10 @@ class Process:
                     return result.si_status if result.si_code == os.CLD_EXITED else -result.si_status
             return None
 
-    def write(self, raw):
-        with self._lock:
+    def write(self, raw, *, nonblocking=False):
+        if not self._lock.acquire(blocking=not nonblocking):
+            return 0
+        try:
             if self.closed:
                 raise ValueError("process pipes are closed")
             if os.name == "nt":
@@ -47,6 +49,8 @@ class Process:
                 return os.write(fd, raw)
             except BlockingIOError:
                 return 0
+        finally:
+            self._lock.release()
 
     def read(self, channel):
         with self._lock:
@@ -61,9 +65,11 @@ class Process:
             except BlockingIOError:
                 return None
 
-    def close_input(self):
+    def close_input(self, *, nonblocking=False):
         """Non-interactive commands receive EOF; MCP leaves this pipe open."""
-        with self._lock:
+        if not self._lock.acquire(blocking=not nonblocking):
+            return False
+        try:
             if self.closed:
                 raise ValueError("process pipes are closed")
             if os.name == "nt":
@@ -72,6 +78,9 @@ class Process:
                     self.child.stdin = None
             else:
                 self.child.stdin.close()
+            return True
+        finally:
+            self._lock.release()
 
     def close(self):
         with self._lock:

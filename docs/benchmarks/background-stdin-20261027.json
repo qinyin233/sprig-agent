@@ -1,0 +1,193 @@
+{
+  "schema_version": 1,
+  "date": "2026-10-27",
+  "base_commit": "53a265dba7d3a7efdc671a522937406f1a109ba3",
+  "scope": "Explicit per-job UTF-8 stdin pipes with fresh approval for text and EOF. Disposable process/CLI/TUI/loopback fixtures, not real-model performance.",
+  "external_model_calls": 0,
+  "remote_native_ci": "pending; frozen before 2026-11-01 Asia/Singapore; verify account restriction and prior required gate before resuming",
+  "source_seal": {
+    "files": 245,
+    "sha256": "52605e6fa741d2faf367c3a5ee8e1e705f1bb4a754e790c3de12a410c920b7d6",
+    "normalized_lf_sha256": "9e06e845d377c2152d523fd7e0811f4e7372bc219a08f71db13b5af86d25098b",
+    "selection": "All .py under src/sprig_agent, tests, scripts, benchmarks/clients, benchmarks/repositories, pruning .venv*, node_modules, __pycache__, .git; root pyproject.toml, uv.lock, configuration schema/example, AGENTS.md, MANIFEST.in, .python-version, tests workflow; pyproject.toml, uv.lock, .python-version for mini, aider, Click and Requests projects.",
+    "algorithm": "SHA256 of UTF-8 json.dumps({relative_posix_path: sha256(raw_file_bytes)}, sort_keys=True), default separators/ensure_ascii=True. Windows raw working files were shared through /mnt/e. LF variant replaces raw CRLF with LF before each file digest. Documentation/reports excluded."
+  },
+  "checks": {
+    "windows_full": {
+      "total": 1620,
+      "passed": 1599,
+      "skipped": 21,
+      "failures": 0,
+      "errors": 0,
+      "seconds": 647.82,
+      "exit_code": 0,
+      "python": "3.13.0"
+    },
+    "local_wsl_full": {
+      "total": 1620,
+      "passed": 1597,
+      "skipped": 23,
+      "failures": 0,
+      "errors": 0,
+      "seconds": 535.032,
+      "exit_code": 0,
+      "python": "3.13.14",
+      "distribution": "Ubuntu-26.04",
+      "filesystem": "repository shared through /mnt/e; not native remote CI"
+    },
+    "windows_python_311_focused": {
+      "total": 61,
+      "passed": 60,
+      "skipped": 1,
+      "failures": 0,
+      "errors": 0,
+      "seconds": 44.397,
+      "python": "3.11.14"
+    },
+    "windows_new_feature_focused": {
+      "total": 20,
+      "passed": 19,
+      "skipped": 1,
+      "failures": 0,
+      "errors": 0,
+      "seconds": 14.405
+    },
+    "windows_mini_original": {
+      "total": 26,
+      "passed": 26,
+      "skipped": 0,
+      "failures": 0,
+      "errors": 0,
+      "seconds": 36.199
+    },
+    "windows_mini_requests_profile": {
+      "total": 26,
+      "passed": 26,
+      "skipped": 0,
+      "failures": 0,
+      "errors": 0,
+      "seconds": 38.758
+    },
+    "local_wsl_mini_original": {
+      "total": 26,
+      "passed": 26,
+      "skipped": 0,
+      "failures": 0,
+      "errors": 0,
+      "seconds": 169.41
+    },
+    "local_wsl_mini_requests_profile": {
+      "total": 26,
+      "passed": 26,
+      "skipped": 0,
+      "failures": 0,
+      "errors": 0,
+      "seconds": 140.872
+    },
+    "configuration_schema": "matches runtime; no new configuration fields",
+    "default_compact_tool_schema_bytes": 4927,
+    "locked_projects": [
+      ".",
+      "benchmarks/clients/mini",
+      "benchmarks/clients/aider",
+      "benchmarks/repositories/click",
+      "benchmarks/repositories/requests"
+    ],
+    "local_document_targets_checked": 652,
+    "final_archive_contract": {
+      "wheel_modules_equal_source": 79,
+      "wheel_modules_imported_from_extracted_wheel": 78,
+      "sdist_changed_files_equal_source": 13,
+      "artifact_process_credentials": "absent",
+      "artifact_local_config_and_venvs": "absent"
+    }
+  },
+  "contracts": {
+    "default_stdin": "closed",
+    "opt_in": "run(background=true,stdin=pipe)",
+    "approval_per_input": true,
+    "approval_per_eof": true,
+    "input_encoding": "UTF-8",
+    "automatic_newline": false,
+    "input_max_bytes": 4096,
+    "job_input_max_bytes": 65536,
+    "write_loop_seconds": 2,
+    "original_job_deadline_extended": false,
+    "queued_input": false,
+    "automatic_input_replay": false,
+    "input_complete_means": "bytes written to pipe or write end closed; not a consumption or program-success guarantee",
+    "partial_failure": "stop the same owned job; preserve byte count and uncertain outcome; do not resend the original input",
+    "stop_reasons": "preserve output limit, original timeout and explicit user cancellation; report stdin failure separately",
+    "pty_or_terminal_emulation": false,
+    "credential_channel": false,
+    "os_sandbox": false
+  },
+  "coverage": {
+    "new_test_methods": 20,
+    "protocols": [
+      "chat_completions",
+      "messages",
+      "responses"
+    ],
+    "encodings": [
+      "json",
+      "sse"
+    ],
+    "protocol_subcases": 6,
+    "protocol_flow": [
+      "approved pipe start",
+      "approved first chunk",
+      "approved second chunk",
+      "approved EOF",
+      "wait",
+      "bounded output",
+      "independent fixed acceptance"
+    ],
+    "real_terminal_ui": "80x24 Textual; Enter local commands and approval correction; no external provider",
+    "guidance": "new text in approval rejects old stdin and enters the normal explicit-new-task flow; background completion alone does not query a model",
+    "boundaries": [
+      "UTF-8/CRLF/literal JSON paths",
+      "default closed and foreground refusal",
+      "readonly/disabled policy",
+      "non-bool approval refusal",
+      "credential/NUL/surrogate/byte limits",
+      "expired owner and original deadline",
+      "input version changed during approval",
+      "working directory replacement on POSIX",
+      "new model-visible project rules",
+      "argument snapshot and stale read IDs",
+      "partial writes at the exact lifetime cap",
+      "cancel during write",
+      "natural exit before delivery completes",
+      "write/EOF mutex contention",
+      "output-limit/user-cancel/timeout state preservation"
+    ]
+  },
+  "development_findings": [
+    "The original run API rejected the stdin keyword and every background start immediately closed the pipe. The first real UTF-8/EOF workflow failed before implementation.",
+    "The first draft counted the complete input again after a partial suffix write, rejecting a valid last frame at 64 KiB. An actual partial-writer test failed with only 1024/4096 bytes; reserved-frame checks now preserve the exact lifetime quota.",
+    "A draft could retain natural exited state after later discovering only part of the approved input had entered the pipe. The controlled two-byte receiver exposed it; the final state is failed with uncertain delivery.",
+    "The initial mutex wait could exceed the input loop budget and then deliver late data. Holding the process lock reproduced about two seconds for both write and EOF under a 0.1-second test budget. Optional nonblocking lock acquisition now lets the original deadline/cancellation checks continue; default MCP call behavior is retained.",
+    "A draft input failure overwrote output-limited and explicitly cancelled states. Controlled real process cases failed before correction; the final checks preserve those states, original timeout and a separate stdin failure marker.",
+    "Initial test fixtures used an SSE Chat Completions envelope for JSON and expected no model call after an explicit new requirement in the approval UI. The fixtures now encode each mode correctly and retain the existing intentional new-task behavior; the provider parser and user-guidance flow were not relaxed."
+  ],
+  "limits": [
+    "No PTY, terminal size/signal handling, password prompt emulation, binary stdin or process restart/reattachment.",
+    "A completed pipe write does not prove the program consumed it. EOF/cleanup may let the approved program perform further effects; cancellation is not rollback.",
+    "Configured credentials are blocked; ordinary input/tool history may contain stdin text. This is not a secret-entry channel.",
+    "The loop uses a finite cooperative write budget and original task deadline; policy/filesystem checks and owned cleanup are separate operations, not a hard real-time OS guarantee.",
+    "Background logs remain memory-only. This change does not add durable job recovery or command filesystem snapshots.",
+    "Local WSL and platform skips do not establish native remote Linux/Windows/macOS CI or a complete Python matrix.",
+    "Scripted loopback replies and known fixture commands do not establish improved real-model coding success or top-agent parity."
+  ],
+  "peer_source": {
+    "repository": "anomalyco/opencode",
+    "commit": "9d90d892dcbfc52b47e95b2ea31b8aba877128fd",
+    "read_only": true,
+    "executed": false,
+    "paths_sha256": {
+      "packages/core/src/shell.ts": "f1c689935409e56c91f905f333cc6c825d8745206cc8c6e921e08a659f846ced",
+      "packages/core/src/pty.ts": "ee4f45b418e0a34994c67f2e9f7fad45a3dc3452411482be85b7a0e09fbc26e4"
+    }
+  }
+}

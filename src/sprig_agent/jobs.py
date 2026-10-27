@@ -1,6 +1,7 @@
 """Conversation-owned background commands; no restart, detached PID or saved authority."""
 from collections import OrderedDict
 import codecs
+from dataclasses import dataclass
 import hashlib
 import json
 import math
@@ -14,15 +15,27 @@ from .mcp_process import Process
 from .streaming import TextOutput
 
 MAX_ACTIVE, MAX_RECORDS, MAX_RETAINED = 4, 8, 1024 * 1024
+MAX_INPUT, MAX_JOB_INPUT, INPUT_TIMEOUT = 4096, 65536, 2
+INPUT_FAILURE = "background stdin delivery failed; effects may be incomplete; no input was replayed"
 JOB_SCHEMA = {"type": "function", "function": {
-    "name": "job", "description": "Observe owned background commands: list/status/output/wait (<=30s), or freshly approve cancel. Start via run(background=true). Memory-only; no restart/replay. Output offsets are UTF-8 bytes; keep end for a stable prefix. Exit is not fixed acceptance.",
+    "name": "job", "description": "Owned background commands: list/status/output/wait (<=30s); freshly approve cancel, input (exact UTF-8 <=4KiB), or eof. Input requires run(background=true,stdin='pipe'); no PTY/replay. Output offsets are UTF-8 bytes; keep end for a stable prefix. Exit is not fixed acceptance.",
     "parameters": {"type": "object", "properties": {
-        "action": {"enum": ["list", "status", "output", "wait", "cancel"]},
+        "action": {"enum": ["list", "status", "output", "wait", "cancel", "input", "eof"]},
         "job_id": {"type": "string", "maxLength": 40},
+        "text": {"type": "string", "minLength": 1, "maxLength": MAX_INPUT},
         "offset": {"type": "integer", "minimum": 0, "maximum": MAX_RETAINED},
         "end": {"type": "integer", "minimum": 0, "maximum": MAX_RETAINED},
         "seconds": {"type": "number", "minimum": 0, "maximum": 30}},
         "required": ["action"], "additionalProperties": False}}}
+
+
+@dataclass(frozen=True, repr=False)
+class InputProposal:
+    row: object
+    epoch: int
+    version: int
+    config: object
+    data: object
 
 
 class Output:
@@ -58,7 +71,7 @@ class Output:
 
 
 class Job:
-    def __init__(self, identity, process, label, truncated, seconds, cap, secrets):
+    def __init__(self, identity, process, label, truncated, seconds, cap, secrets, directory, identity_cwd, stdin):
         self.identity, self.process, self.label = identity, process, label
         self.seconds, self.cap = seconds, cap
         self.command_truncated = truncated
@@ -68,6 +81,12 @@ class Job:
         self.output = Output(secrets)
         self.thread = None
         self.error = None
+        self.cwd, self.directory_identity = directory, identity_cwd
+        self.stdin_pipe, self.stdin_open = stdin == "pipe", stdin == "pipe"
+        self.stdin_bytes, self.input_version = 0, 0
+        self.input_failure = False
+        self.input_stop = False
+        self.input_lock = threading.Lock()
 
 
 class Jobs:
@@ -97,7 +116,9 @@ class Jobs:
             if any(row.state == "cleanup_failed" for row in self.records.values()):
                 raise ValueError("background cleanup is uncertain; inspect and close this conversation before starting commands")
 
-    def start(self, argv, directory, env, seconds, cap, *, epoch):
+    def start(self, argv, directory, env, seconds, cap, *, epoch, stdin="closed"):
+        if not isinstance(stdin, str) or stdin not in {"closed", "pipe"}:
+            raise ValueError("invalid background stdin mode")
         self.available()
         with self.lock:
             self.available()
@@ -108,12 +129,16 @@ class Jobs:
                 if old is None:
                     raise ValueError("background record capacity reached")
                 del self.records[old]
+            info = directory.stat()
+            identity_cwd = (info.st_dev, info.st_ino)
             process = Process(argv, directory, env)
             try:
-                process.close_input()
+                if stdin == "closed":
+                    process.close_input()
                 self.check()
                 label = terminal_text(redact(json.dumps([os.path.basename(argv[0]), *argv[1:]], ensure_ascii=False), self.config.secrets)).encode("utf-8")
-                row = Job("job-" + uuid.uuid4().hex, process, label[:160].decode("utf-8", errors="ignore"), len(label) > 160, seconds, cap, self.config.secrets)
+                row = Job("job-" + uuid.uuid4().hex, process, label[:160].decode("utf-8", errors="ignore"), len(label) > 160,
+                          seconds, cap, self.config.secrets, directory, identity_cwd, stdin)
                 row.thread = threading.Thread(target=self._run, args=(row,), name="sprig-" + row.identity, daemon=False)
                 self.records[row.identity] = row
                 self.revision += 1
@@ -125,13 +150,111 @@ class Jobs:
                 raise
             return {**self._info(row), "approved": True, "started": True, "task_completed": False}
 
+    def _input_ready(self, proposal, reserved=False):
+        self.check()
+        row = proposal.row
+        if (self.closed or self.resetting or not self.enabled() or self.config is not proposal.config
+                or self.epoch != proposal.epoch or self.records.get(row.identity) is not row
+                or row.input_version != proposal.version + int(reserved)):
+            raise ValueError("stdin proposal expired after owner, policy or input changed; request fresh approval")
+        if (row.state != "running" or row.done.is_set() or row.cancel.is_set() or not row.stdin_open
+                or time.monotonic() >= row.started + row.seconds):
+            raise ValueError("stdin is unavailable or the original job deadline expired; no input was replayed")
+        if not reserved and proposal.data is not None and row.stdin_bytes + len(proposal.data) > MAX_JOB_INPUT:
+            raise ValueError("background stdin exceeds its 64 KiB lifetime input budget")
+
+    def prepare_input(self, action, job_id, text):
+        data = None
+        if action == "input":
+            if not isinstance(text, str) or not text:
+                raise ValueError("stdin input must be nonempty UTF-8 text without NUL")
+            if len(text) > MAX_INPUT:
+                raise ValueError("stdin input exceeds 4 KiB; send separately approved chunks")
+            if "\0" in text:
+                raise ValueError("stdin input must not contain NUL")
+            try:
+                data = text.encode("utf-8")
+            except UnicodeError:
+                raise ValueError("stdin input must be valid UTF-8 text") from None
+            if len(data) > MAX_INPUT:
+                raise ValueError("stdin input exceeds 4 KiB; send separately approved chunks")
+            if any(secret in text for secret in self.config.credential_secrets):
+                raise ValueError("configured credentials must not appear in stdin input")
+        elif action != "eof" or text is not None:
+            raise ValueError("EOF accepts no text")
+        with self.lock:
+            row = self._find(job_id)
+            proposal = InputProposal(row, self.epoch, row.input_version, self.config, data)
+            self._input_ready(proposal)
+            if row.input_lock.locked():
+                raise ValueError("another stdin operation is in progress; no input was queued")
+            return proposal
+
+    def deliver_input(self, proposal, recheck):
+        row, offset, reserved = proposal.row, 0, False
+        if not row.input_lock.acquire(blocking=False):
+            raise ValueError("another stdin operation is in progress; request fresh approval")
+        def result(complete):
+            with self.lock:
+                return {"job_id": row.identity, "state": row.state, "approved": True,
+                        "stdin": "failed" if row.input_failure else "open" if row.stdin_open else "closed",
+                        "input_bytes": len(proposal.data) if proposal.data is not None else 0,
+                        "written_bytes": offset, "stdin_bytes": row.stdin_bytes, "input_complete": complete,
+                        "task_completed": False, "not_authorization": True}
+        try:
+            recheck()
+            with self.lock:
+                self._input_ready(proposal)
+                row.input_version += 1
+                self.revision += 1
+                reserved = True
+            until = min(time.monotonic() + INPUT_TIMEOUT, row.started + row.seconds)
+            while True:
+                recheck()
+                with self.lock:
+                    self._input_ready(proposal, reserved=True)
+                if time.monotonic() >= until:
+                    raise TimeoutError("stdin write deadline expired")
+                if proposal.data is None:
+                    if row.process.close_input(nonblocking=True):
+                        with self.lock:
+                            row.stdin_open = False
+                        return result(True)
+                else:
+                    count = row.process.write(proposal.data[offset:], nonblocking=True)
+                    if type(count) is not int or not 0 <= count <= len(proposal.data) - offset:
+                        raise ValueError("invalid process pipe write count")
+                    with self.lock:
+                        offset += count
+                        row.stdin_bytes += count
+                    if offset == len(proposal.data):
+                        return result(True)
+                row.cancel.wait(.02)
+        except BaseException as error:
+            if not reserved:
+                raise
+            with self.lock:
+                row.input_failure = not isinstance(error, KeyboardInterrupt) or bool(offset)
+                row.input_stop = row.input_failure and not isinstance(error, KeyboardInterrupt) and not row.cancel.is_set()
+                row.stdin_open = False
+                row.cancel.set()
+                if row.done.is_set() and row.input_failure and row.state == "exited":
+                    row.state, row.error = "failed", INPUT_FAILURE
+                self.revision += 1
+            if not isinstance(error, (OSError, ValueError)):
+                raise
+            return {**result(False), "outcome": "uncertain",
+                    "error": "stdin delivery failed or expired; job stopping, effects may be partial. Inspect state; input was not replayed."}
+        finally:
+            row.input_lock.release()
+
     def _run(self, row):
         state, code = "exited", None
         channels = {"stdout", "stderr"}
         try:
             while True:
                 if row.cancel.is_set():
-                    state = "cancelled"
+                    state = "failed" if row.input_failure and row.input_stop else "cancelled"
                     break
                 if time.monotonic() - row.started >= row.seconds:
                     state = "timed_out"
@@ -175,9 +298,12 @@ class Jobs:
                     row.output.finish()
                 except BaseException:
                     state = "failed" if state != "cleanup_failed" else state
+                if row.input_failure and state == "exited":
+                    state = "failed"
                 row.state, row.code = state, code
+                row.stdin_open = False
                 if state in {"failed", "cleanup_failed"}:
-                    row.error = "background execution or cleanup failed; effects may be incomplete; no command was retried"
+                    row.error = INPUT_FAILURE if row.input_failure and state == "failed" else "background execution or cleanup failed; effects may be incomplete; no command was retried"
                 self.revision += 1
                 row.done.set()
 
@@ -193,6 +319,10 @@ class Jobs:
                           output_limited=row.state == "output_limited")
         if row.error:
             result.update(error=row.error, outcome="uncertain")
+        if row.stdin_pipe:
+            result.update(stdin="failed" if row.input_failure else "open" if row.stdin_open else "closed", stdin_bytes=row.stdin_bytes)
+            if row.input_failure:
+                result.update(stdin_failed=True, outcome="uncertain")
         return result
 
     def _find(self, identity):
@@ -321,19 +451,27 @@ def local_arguments(text):
     command, _, remainder = text.partition(" ")
     if command == "start":
         value = json.loads(remainder)
-        if not isinstance(value, dict) or set(value) - {"argv", "cwd", "timeout"} or "argv" not in value:
+        if not isinstance(value, dict) or set(value) - {"argv", "cwd", "timeout", "stdin"} or "argv" not in value:
             raise ValueError('Use /job start {"argv":["program","arg"],"cwd":".","timeout":300}')
         return "run", {**value, "background": True}
+    if command == "input":
+        identity, separator, payload = remainder.partition(" ")
+        if not separator or len(payload) > MAX_INPUT * 6 + 2 or not payload.lstrip().startswith('"'):
+            raise ValueError('Use /job input ID "exact text\\n"; at most 4 KiB UTF-8')
+        value = json.loads(payload)
+        if not isinstance(value, str):
+            raise ValueError("job input requires a JSON string")
+        return "job", {"action": "input", "job_id": identity, "text": value}
     parts = text.split()
     if not parts or parts == ["list"]:
         return "job", {"action": "list"}
     if len(parts) == 2 and parts[0] == "list":
         return "job", {"action": "list", "offset": int(parts[1])}
-    if len(parts) == 2 and parts[0] in {"status", "cancel"}:
+    if len(parts) == 2 and parts[0] in {"status", "cancel", "eof"}:
         return "job", {"action": parts[0], "job_id": parts[1]}
     if len(parts) in {2, 3} and parts[0] == "wait":
         return "job", {"action": "wait", "job_id": parts[1], "seconds": float(parts[2]) if len(parts) == 3 else 1}
     if 2 <= len(parts) <= 4 and parts[0] == "output":
         return "job", {"action": "output", "job_id": parts[1], **({"offset": int(parts[2])} if len(parts) >= 3 else {}),
                        **({"end": int(parts[3])} if len(parts) == 4 else {})}
-    raise ValueError("Use /jobs or /job start|list|status|output|wait|cancel; output uses ID [OFFSET [END]]")
+    raise ValueError('Use /jobs or /job start|list|status|output|wait|cancel|input|eof; input uses ID "JSON string"')

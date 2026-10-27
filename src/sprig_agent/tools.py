@@ -354,9 +354,15 @@ class Tools:
             self.instructions.recheck_action((), rules)
         return self.web.fetch(url, result_id, offset, format, recheck=recheck)
 
-    def job(self, action="list", job_id=None, offset=0, end=None, seconds=0):
+    def job(self, action="list", job_id=None, offset=0, end=None, seconds=0, text=None):
         self._require_tool("job")
         self._check_cancelled()
+        if action in {"input", "eof"}:
+            if type(offset) is not int or offset != 0 or end is not None or type(seconds) not in (int, float) or seconds != 0:
+                raise ToolError("stdin operations accept only job_id and input text")
+            return self._job_input(action, job_id, text)
+        if text is not None:
+            raise ToolError("text applies only to job input")
         if action == "cancel":
             self.jobs.control("status", job_id)
             if not self.request_approval("STOP owned background command " + str(job_id)
@@ -367,6 +373,51 @@ class Tools:
         if action == "cancel":
             result["approved"] = True
         return result
+
+    def _job_input(self, action, identity, text):
+        proposal = self.jobs.prepare_input(action, identity, text)
+        if self.config is not proposal.config:
+            raise ToolError("stdin policy changed; request fresh approval")
+        row = proposal.row
+        cwd = row.cwd.relative_to(self.config.workdir).as_posix()
+        parts = self._parts(cwd)
+        rules = self.instructions.prepare_action(parts)
+        with self._directory(parts) as directory:
+            def recheck():
+                self._check_mcp()
+                self._require_tool("job")
+                if self.config is not proposal.config:
+                    raise ToolError("stdin policy changed; request fresh approval")
+                self._parts(cwd)
+                for info in (directory.stat("."), os.stat(directory.path, follow_symlinks=False)):
+                    if (not stat.S_ISDIR(info.st_mode) or (info.st_dev, info.st_ino) != row.directory_identity
+                            or getattr(info, "st_file_attributes", 0) & getattr(stat, "FILE_ATTRIBUTE_REPARSE_POINT", 0x400)):
+                        raise ToolError("background working directory changed; input was not replayed")
+                if text is not None and any(secret in text for secret in self.config.credential_secrets):
+                    raise ToolError("configured credentials must not appear in stdin input")
+                self.instructions.recheck_action(parts, rules)
+            recheck()
+            description = ("SEND UTF-8 STDIN to owned background command " + str(identity) if action == "input"
+                           else "SEND EOF to owned background command " + str(identity))
+            description += ("\ncwd: " + json.dumps(cwd, ensure_ascii=False)
+                            + "\ncommand preview" + (" (truncated)" if row.command_truncated else "") + ": "
+                            + terminal_text(redact(row.label, self.config.secrets)))
+            description += ("\nMay cause the approved program to perform further filesystem/network actions. "
+                            "Original job deadline/output caps remain; no PTY or replay. "
+                            "Failed/partial input stops the job; prior effects may be incomplete.")
+            if text is not None:
+                description += ("\nUTF-8 input bytes: " + str(len(proposal.data)) + "; previously written: " + str(row.stdin_bytes)
+                                + "/65536\nExact text (no newline added): " + json.dumps(text, ensure_ascii=False))
+            if not self.request_approval(description):
+                return {"approved": False, "job_id": identity}
+            recheck()
+            self.read_versions.clear()
+            self.index.clear()
+            try:
+                return self.jobs.deliver_input(proposal, recheck)
+            finally:
+                self.read_versions.clear()
+                self.index.clear()
 
     def _lsp_document(self, path):
         self._check_mcp()
@@ -1219,12 +1270,14 @@ class Tools:
             result["log"] = {"saved": False, "outcome": "unknown", "reason": "command log save failed; inspect /logs before relying on retention"}
         return result
 
-    def run(self, argv, cwd=".", timeout=None, background=False):
+    def run(self, argv, cwd=".", timeout=None, background=False, stdin="closed"):
         self._require_tool("run")
         if self.config.read_only:
             return {"approved": False, "error": "read-only mode blocks command execution"}
         if type(background) is not bool:
             raise ToolError("background must be a boolean")
+        if not isinstance(stdin, str) or stdin not in {"closed", "pipe"} or stdin == "pipe" and not background:
+            raise ToolError("stdin must be closed or an explicitly opted-in background pipe")
         if background:
             self.jobs.available()
             job_epoch = self.jobs.epoch
@@ -1258,7 +1311,10 @@ class Tools:
                             + "; override names: " + json.dumps([name for name, _ in self.config.command_env]))
         preview = None
         if background:
-            description += ("\nBACKGROUND: returns an owned job handle. Non-interactive stdin is closed; no PTY. "
+            description += ("\nBACKGROUND: returns an owned job handle. "
+                            + ("STDIN PIPE stays open: later text/EOF needs separate fresh approval; <=4 KiB per input, <=64 KiB per job. "
+                               if stdin == "pipe" else "Non-interactive stdin is closed. ")
+                            + "No PTY. "
                             "At most four active / eight retained records, <=1 MiB redacted output per job in memory. "
                             "Completion only notifies locally, without automatic model requests or acceptance. "
                             "Cancellation/reset/exit stops the process tree. Not resumed or replayed after restore. "
@@ -1290,7 +1346,7 @@ class Tools:
                 raise ToolError("configured credentials cannot appear in background argv")
             self.read_versions.clear()
             try:
-                return self.jobs.start(argv, directory, env, seconds, output_limit, epoch=job_epoch)
+                return self.jobs.start(argv, directory, env, seconds, output_limit, epoch=job_epoch, stdin=stdin)
             finally:
                 self.read_versions.clear()
         sampled = output_limit > self.config.max_output
