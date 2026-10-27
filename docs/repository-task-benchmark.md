@@ -2,6 +2,8 @@
 
 此入口让 Sprig 和 mini-SWE-agent 2.4.6 从同一 Click 源码快照、任务文字和外部验收开始，各自保留正常行动循环。任务来自 [Click #3107](https://github.com/pallets/click/issues/3107)，行为与验收参考 [#3228](https://github.com/pallets/click/pull/3228)：增加拼错子命令的建议，统一命令和选项错误格式，并导出独立的 `NoSuchCommand` 异常。它为实际模型对照提供入口，当前校准和脚本回复测试都不是模型成绩。
 
+另有独立的 [Requests 异常序列化任务](requests-task-benchmark.md)，使用同一项目中的完整 Sprig / mini 环境检查 pickle 与真正进程池行为。2026-10-26 两套验收改为让内层 worker 继承外层已批准命令的进程组 / Job，补验取消与超时后的普通子孙进程收尾；Click 的任务、642 项检查及已知失败集合保持。更新后的本地校准范围见[本批记录](benchmarks/requests-task-20261026.json)，没有新的真实模型成绩。
+
 ## 输入和验收
 
 | 项目 | 固定条件 |

@@ -54,3 +54,5 @@ Sprig 和 mini 现在都在发送前限制实际序列化的 JSON 请求体字�
 新增 [固定 Click 仓库任务](repository-task-benchmark.md)使用独立环境中的 pytest 8.4.2，让两边从同一修复前源码和外部验收运行。Windows/WSL 的固定回复回归覆盖各自行动循环中首次验收失败、四文件修复和重新验收通过，以及拒绝验收。它仍是单个公开历史任务，未运行真实模型，新增批次采用 `[skip ci]`，没有该批次远程 CI 结论。
 
 上述离线测试中的模型回复和 HTTP 内容是固定夹具，不能混为上文的真实运行。已有单次真实样本，仍缺声明条件一致的多次配对、多仓库独立任务集、自然长会话或峰值进程内存测量，不能因此声称接近顶尖 agent。
+
+[Requests 任务](requests-task-benchmark.md)使用另一个包含完整运行依赖的共同项目。内部适配器可显式接收该项目的 `uv.lock`，在 SDK 初始化前校验路径和大小，并纳入完整性保护；`client_lock_sha256` 因此记录实际选定的锁，`client_dependency_versions` 记录当前安装的 SDK、LiteLLM、OpenAI、Requests 和可选 MCP 版本，缺失保持 null。其他入口默认使用原 mini 项目锁。版本和锁摘要只是环境证据，不能代替 SDK 行为回归或声明所有传递依赖都等于旧环境。

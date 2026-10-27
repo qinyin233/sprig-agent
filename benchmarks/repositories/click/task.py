@@ -60,6 +60,7 @@ class ClickTask:
         self.oracle = {"upstream/" + name: body for name, body in reference.items()
                        if name.startswith("tests/") or name in {"pyproject.toml", "LICENSE.txt"}}
         self.oracle["oracle.py"] = Path(__file__).with_name("oracle.py").read_bytes()
+        self.oracle["supervised_worker.py"] = Path(__file__).parents[1].joinpath("supervised_worker.py").read_bytes()
         self.oracle["known-failures.json"] = json.dumps(sorted(fixture.FAILED_BEFORE)).encode()
         for path in (REPO / "src").rglob("*.py"):
             self.oracle["runner/" + path.relative_to(REPO / "src").as_posix()] = path.read_bytes()
@@ -92,6 +93,7 @@ class ClickTask:
             "benchmarks/repositories/click/uv.lock", "uv.lock")]
         paths.append(REPO / "benchmarks/clients/request_pacing.py")
         paths.append(REPO / "benchmarks/clients/tool_diagnostics.py")
+        paths.append(REPO / "benchmarks/repositories/supervised_worker.py")
         paths.extend((REPO / "src").rglob("*.py"))
         guards = {path: (path.resolve(), path.read_bytes()) for path in paths}
         def intact():

@@ -21,3 +21,7 @@ include benchmarks/clients/node/package.json benchmarks/clients/node/package-loc
 include benchmarks/repositories/click/pyproject.toml benchmarks/repositories/click/uv.lock benchmarks/repositories/click/.python-version
 include benchmarks/repositories/click/task.py benchmarks/repositories/click/oracle.py
 recursive-include benchmarks/repositories/click/tests *.py
+include benchmarks/repositories/requests/pyproject.toml benchmarks/repositories/requests/uv.lock benchmarks/repositories/requests/.python-version
+include benchmarks/repositories/requests/task.py benchmarks/repositories/requests/oracle.py
+recursive-include benchmarks/repositories/requests/tests *.py
+include benchmarks/repositories/supervised_worker.py

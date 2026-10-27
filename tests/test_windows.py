@@ -132,12 +132,14 @@ class WindowsTests(unittest.TestCase):
         self.assertFalse((self.root / "pwned").exists())
 
     def test_timeout_kills_descendants_before_delayed_side_effect(self):
-        child = "import time; from pathlib import Path; time.sleep(0.6); Path('pwned').write_text('bad')"
+        # Allow interpreter startup before requiring a real spawned descendant.
+        # The delayed write must still become observable if that child survives.
+        child = "import time; from pathlib import Path; time.sleep(4); Path('pwned').write_text('bad')"
         parent = "import subprocess,sys,time; subprocess.Popen([sys.executable,'-c'," + repr(child) + "]); print('spawned',flush=True); time.sleep(30)"
-        result = self.tools.execute("run", {"argv": [sys.executable, "-c", parent], "timeout": 0.2})
+        result = self.tools.execute("run", {"argv": [sys.executable, "-c", parent], "timeout": 2})
         self.assertTrue(result["timed_out"])
         self.assertIn("spawned", result["output"])
-        time.sleep(0.7)
+        time.sleep(4.2)
         self.assertFalse((self.root / "pwned").exists())
 
     def test_app_alias_and_alias_backed_venv_are_rejected_before_launch(self):

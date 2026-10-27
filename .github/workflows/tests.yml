@@ -67,3 +67,9 @@ jobs:
       - run: uv run --project benchmarks/clients/mini --locked python -I -B -m unittest discover -s benchmarks/repositories/click/tests -p test_mini_repository.py -v
         env:
           SPRIG_CLICK_FIXTURE: ${{ runner.temp }}/sprig-click-pinned
+      - run: uv sync --project benchmarks/repositories/requests --locked --python 3.12
+      - run: uv run --project benchmarks/repositories/requests --locked python -I -B scripts/benchmark-requests-task.py --fetch --fixture "${{ runner.temp }}/sprig-requests-pinned"
+      - run: uv run --project benchmarks/repositories/requests --locked python -I -B scripts/benchmark-requests-task.py --self-test --fixture "${{ runner.temp }}/sprig-requests-pinned"
+      - run: uv run --project benchmarks/repositories/requests --locked python -I -B -m unittest discover -s benchmarks/repositories/requests/tests -v
+        env:
+          SPRIG_REQUESTS_FIXTURE: ${{ runner.temp }}/sprig-requests-pinned

@@ -1,0 +1,24 @@
+[project]
+name = "sprig-requests-task-validation"
+version = "0.1.0"
+requires-python = ">=3.12,<3.13"
+dependencies = [
+    "sprig-agent",
+    "mini-swe-agent==2.4.6",
+    "litellm==1.103.2", # Match the validated mini profile; avoid untested optional-route imports.
+    "simplejson>=3.19,<4",
+    "pytest==8.4.2",
+    "pytest-httpbin==2.0.0",
+    "pytest-cov",
+    "pytest-mock",
+    "pytest-xdist",
+    "PySocks>=1.5.6,!=1.5.7",
+    "colorama==0.4.6; sys_platform == 'win32'",
+]
+
+[tool.uv.sources]
+sprig-agent = { path = "../../..", editable = true }
+
+[[tool.uv.index]]
+url = "https://pypi.org/simple"
+default = true

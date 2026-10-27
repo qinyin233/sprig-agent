@@ -227,7 +227,7 @@ CLI `/usage`、TUI“查看请求统计”在本地显示当前 provider 实例�
 
 只在内存保存最近 128 条数值记录，历史累计计数保留；不保存提示词、模型文本、工具参数、URL、请求 ID、错误正文或密钥。统计不进入模型上下文或会话文件，恢复历史不能恢复以往用量。它是请求级测量，完整任务耗时、工具与批准开销、内存及竞品对照仍需另外评测。
 
-可通过 [编码任务诊断](docs/coding-benchmark.md)在一次性项目中运行定位、跨文件修复、新功能等任务，保留逐次批准并记录任务和工具开销。[客户端对照准备](docs/client-comparison.md)提供固定版本的独立 uv / npm 环境与原生入口检查。[固定 Click 仓库任务](docs/repository-task-benchmark.md)让 Sprig 和 mini 从相同源码、任务和外部验收开始，支持各自行动循环中的失败后修复。离线自检和入口检查不是模型成绩，也不能代替真实竞品对照。
+可通过 [编码任务诊断](docs/coding-benchmark.md)在一次性项目中运行定位、跨文件修复、新功能等任务，保留逐次批准并记录任务和工具开销。[客户端对照准备](docs/client-comparison.md)提供固定版本的独立 uv / npm 环境与原生入口检查。[固定 Click 仓库任务](docs/repository-task-benchmark.md)与 [Requests 异常序列化任务](docs/requests-task-benchmark.md)让 Sprig 和 mini 从相同源码、任务和外部验收开始，支持各自行动循环中的失败后修复。离线自检和入口检查不是模型成绩，也不能代替真实竞品对照。
 
 ### 会话管理
 

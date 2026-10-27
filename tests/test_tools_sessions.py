@@ -241,21 +241,23 @@ class ToolTests(unittest.TestCase):
     def test_command_timeout_and_output_cap(self):
         self.allowed = True
         started = time.monotonic()
-        result = self.call("run", argv=[sys.executable, "-c", "import time; print('start', flush=True); time.sleep(30)"], timeout=0.15)
+        # Keep interpreter startup separate from the bounded cleanup allowance.
+        result = self.call("run", argv=[sys.executable, "-c", "import time; print('start', flush=True); time.sleep(30)"], timeout=2)
         self.assertTrue(result["timed_out"])
         self.assertIn("start", result["output"])
-        self.assertLess(time.monotonic() - started, 2)
+        self.assertLess(time.monotonic() - started, 4)
         result = self.call("run", argv=[sys.executable, "-c", "print('x' * (2 * 1024 * 1024))"])
         self.assertTrue(result["output_limited"])
         self.assertEqual(len(result["output"].encode()), 1024)
 
     def test_descendant_pipe_does_not_defeat_timeout(self):
         self.allowed = True
-        script = "import subprocess, sys; subprocess.Popen([sys.executable, '-c', 'import time; time.sleep(30)'])"
+        script = "import subprocess, sys; subprocess.Popen([sys.executable, '-c', 'import time; time.sleep(30)']); print('spawned', flush=True)"
         started = time.monotonic()
-        result = self.call("run", argv=[sys.executable, "-c", script], timeout=0.2)
+        result = self.call("run", argv=[sys.executable, "-c", script], timeout=2)
         self.assertTrue(result["timed_out"])
-        self.assertLess(time.monotonic() - started, 2)
+        self.assertIn("spawned", result["output"])
+        self.assertLess(time.monotonic() - started, 4)
 
     def test_command_key_removed_and_known_key_output_redacted(self):
         self.allowed = True

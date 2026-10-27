@@ -28,3 +28,5 @@ uv run --project benchmarks/clients/mini --locked python -I -B scripts/benchmark
 后续真实复测应在修正后的锁定环境上固定源码、任务、预算与顺序，分别保留两边原生报告，并在循环后另行批准独立验收。应用源码与环境、校准与模型成绩分别记录；之前中断的任务不会因本次离线检查通过而变成成功。
 
 此后已在修正提交上完成[一次新的真实搜索任务配对](live-evaluation-search-pair-20261025.md)。两边均通过 4/4，原生数值与自检失败过程另页保留；它属于后续模型试验，不将本页的依赖/离线检查改写成模型成绩。
+
+[Requests 仓库任务](requests-task-benchmark.md)另建共同 uv 项目，保留完整 Sprig 运行依赖和 Requests 检查所需的 simplejson 等库。该项目的初次新解析暴露 LiteLLM 1.106.4 的可选 MCP 路由导入不兼容，因此显式使用原已验证 mini 环境的 1.103.2，并在两个项目分别运行 SDK 回归。新旧项目的其他传递版本可以不同，报告记录实际项目锁和已安装版本，不把初始化失败算成模型失败。WSL 下载不稳定时，仅从公开 PyPI 取得该锁的兼容 wheel，校验每个 SHA-256，以 uv 的哈希约束离线安装，再通过原 `uv sync --locked --offline`；没有改锁、版本或 TLS 校验。

@@ -5,7 +5,7 @@ from contextlib import contextmanager, redirect_stdout, redirect_stderr, ExitSta
 from datetime import datetime, timezone
 import hashlib
 import importlib.util
-from importlib.metadata import version
+from importlib.metadata import PackageNotFoundError, version
 import json
 import math
 import logging
@@ -95,8 +95,12 @@ def sdk_snapshot():
     return bench.suite.digest(files), intact
 
 
-def run_case(case, options, *, model_factory=None, confirm=approve, emit=None, case_adapter=None, request_interval=0):
+def run_case(case, options, *, model_factory=None, confirm=approve, emit=None, case_adapter=None, request_interval=0, environment_lock=None):
     pacer = RequestPacer(request_interval)
+    environment_lock = Path(environment_lock) if environment_lock is not None else REPO / "benchmarks/clients/mini/uv.lock"
+    if (environment_lock.name != "uv.lock" or environment_lock.is_symlink() or not environment_lock.is_file()
+            or not environment_lock.resolve().is_relative_to(REPO) or environment_lock.stat().st_size > 4 * 1024 * 1024):
+        raise ValueError("comparison environment requires a bounded local project uv.lock")
     if options.get("wire_api", "chat_completions") != "chat_completions":
         raise ValueError("the pinned mini comparison supports only Chat Completions")
     if model_factory and request_interval:
@@ -137,7 +141,13 @@ def run_case(case, options, *, model_factory=None, confirm=approve, emit=None, c
             REPO / "benchmarks/clients/mini/uv.lock", REPO / "benchmarks/clients/mini/pyproject.toml",
             REPO / "benchmarks/clients/request_pacing.py",
             REPO / "benchmarks/clients/tool_diagnostics.py",
-            REPO / "scripts/benchmark-tasks.py")}
+            REPO / "scripts/benchmark-tasks.py", environment_lock)}
+        dependency_versions = {}
+        for name in ("mini-swe-agent", "litellm", "openai", "requests", "mcp"):
+            try:
+                dependency_versions[name] = version(name)
+            except PackageNotFoundError:
+                dependency_versions[name] = None
         def intact():
             try:
                 for path, (original_path, body) in protected.items():
@@ -265,7 +275,8 @@ def run_case(case, options, *, model_factory=None, confirm=approve, emit=None, c
         return redact({"schema": 2, "scope": scope,
                        "model_mode": "scripted_protocol_fixture" if model_factory else "upstream_backend_transport",
                        "client": "mini", "client_version": minisweagent.__version__, "sdk_sources_sha256": source_signature,
-                       "client_lock_sha256": hashlib.sha256((REPO / "benchmarks/clients/mini/uv.lock").read_bytes()).hexdigest(),
+                       "client_lock_sha256": hashlib.sha256(protected[environment_lock][1]).hexdigest(),
+                       "client_dependency_versions": dependency_versions,
                        "driver_sha256": hashlib.sha256(protected[Path(__file__)][1]).hexdigest(),
                        "environment_sha256": hashlib.sha256(protected[REPO / "benchmarks/clients/mini_environment.py"][1]).hexdigest(),
                        "shell_relay_sha256": hashlib.sha256(protected[REPO / "benchmarks/clients/bash_command.py"][1]).hexdigest(),

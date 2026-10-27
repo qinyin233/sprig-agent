@@ -174,14 +174,15 @@ class CommandCaptureTests(unittest.TestCase):
         self.assertNotIn("\ufffd", result["output"])
 
     def test_timeout_and_descendant_cleanup_still_apply_with_sampling(self):
-        child = "import time; from pathlib import Path; time.sleep(0.8); Path('unexpected-child-write').write_text('bad')"
+        # Leave startup margin before requiring sampled output and a descendant.
+        child = "import time; from pathlib import Path; time.sleep(4); Path('unexpected-child-write').write_text('bad')"
         script = ("import subprocess,sys,time; subprocess.Popen([sys.executable,'-c'," + repr(child) + "]); "
                   "print('x'*10000,flush=True); time.sleep(30)")
-        result = self.run_command(script, timeout=0.2)
+        result = self.run_command(script, timeout=2)
         self.assertTrue(result["timed_out"])
         self.assertFalse(result["output_limited"])
         self.assertTrue(result["output_truncated"])
-        time.sleep(0.9)
+        time.sleep(4.2)
         self.assertFalse((self.root / "unexpected-child-write").exists())
 
     def test_readonly_disabled_tool_and_refusal_do_not_start_command(self):

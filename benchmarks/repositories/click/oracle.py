@@ -67,13 +67,11 @@ def supervise():
     directory = Path(__file__).resolve().parent
     sys.path.insert(0, str(directory / "runner"))
     from sprig_agent.config import Config
-    from sprig_agent.tools import Tools
+    from sprig_agent.policy import command_environment
+    sys.path.insert(0, str(directory))
+    from supervised_worker import run_worker
     argv = [sys.executable, "-I", "-B", str(directory / "oracle.py"), "--worker"]
-    tools = Tools(Config(Path.cwd(), "offline-verifier", max_output=65536), lambda _: True)
-    try:
-        result = tools.run(argv, timeout=20)
-    finally:
-        tools.close()
+    result = run_worker(argv, env=command_environment(Config(Path.cwd(), "offline-verifier")), timeout=20)
     allowed = set(json.loads((directory / "known-failures.json").read_text("utf-8")))
     return validate_result(result, allowed)
 

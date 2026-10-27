@@ -1,0 +1,705 @@
+{
+  "schema_version": 1,
+  "date": "2026-10-26",
+  "batch_started_local_date": "2026-10-26",
+  "validation_completed_local_date": "2026-10-27",
+  "timezone": "Asia/Singapore",
+  "base_commit": "f84a916925220527be6a8977f21c1079ce4e574a",
+  "scope": "Second public historical repository task and bounded inherited-group oracle workers. Offline calibration and scripted loopback fixtures, not an autonomous model score.",
+  "external_model_calls": 0,
+  "remote_native_ci": "pending; no Actions before 2026-11-01 Asia/Singapore; verify account restriction and prior required gate before resuming",
+  "source_seal": {
+    "files": 244,
+    "sha256": "23e51979fff0f0892c4e36bab40e821758c2409e2dd3fa46d2cfd9a744ff468a",
+    "normalized_lf_sha256": "e0c70225a06d5fb38228b20288ddddc317776ef4bbe6e50532f2eeeaef1452ae",
+    "selection": "All .py under src/sprig_agent, tests, scripts, benchmarks/clients, benchmarks/repositories, pruning .venv*, node_modules, __pycache__, .git; root pyproject.toml, uv.lock, configuration schema/example, AGENTS.md, MANIFEST.in, .python-version, tests workflow; pyproject.toml, uv.lock, .python-version for mini, aider, Click and Requests projects.",
+    "algorithm": "SHA256 of UTF-8 json.dumps({relative_posix_path: sha256(raw_file_bytes)}, sort_keys=True) with default separators and ensure_ascii=True. Windows raw working files were shared through /mnt/e. The LF variant first replaces raw CRLF with LF. Documentation and reports are excluded."
+  },
+  "checks": {
+    "windows_full": {
+      "total": 1600,
+      "passed": 1580,
+      "skipped": 20,
+      "failures": 0,
+      "errors": 0,
+      "seconds": 627.02,
+      "python": "3.13.0",
+      "exit_code": 0
+    },
+    "local_wsl_full": {
+      "total": 1600,
+      "passed": 1577,
+      "skipped": 23,
+      "failures": 0,
+      "errors": 0,
+      "seconds": 518.645,
+      "python": "3.13.14",
+      "distribution": "Ubuntu-26.04",
+      "filesystem": "repository shared through /mnt/e; not native remote CI",
+      "exit_code": 0
+    },
+    "windows_python_311_focused": {
+      "total": 18,
+      "passed": 18,
+      "skipped": 0,
+      "failures": 0,
+      "errors": 0,
+      "seconds": 26.762,
+      "python": "3.11.14"
+    },
+    "windows_timeout_focused": {
+      "total": 18,
+      "passed": 18,
+      "skipped": 0,
+      "failures": 0,
+      "errors": 0,
+      "seconds": 27.506
+    },
+    "windows_requests_integration": {
+      "total": 5,
+      "passed": 5,
+      "skipped": 0,
+      "failures": 0,
+      "errors": 0,
+      "seconds": 82.11
+    },
+    "local_wsl_requests_integration": {
+      "total": 5,
+      "passed": 5,
+      "skipped": 0,
+      "failures": 0,
+      "errors": 0,
+      "seconds": 304.431
+    },
+    "windows_original_mini_sdk": {
+      "total": 26,
+      "passed": 26,
+      "skipped": 0,
+      "failures": 0,
+      "errors": 0,
+      "seconds": 72.026
+    },
+    "local_wsl_original_mini_sdk": {
+      "total": 26,
+      "passed": 26,
+      "skipped": 0,
+      "failures": 0,
+      "errors": 0,
+      "seconds": 251.465
+    },
+    "windows_requests_mini_sdk": {
+      "total": 26,
+      "passed": 26,
+      "skipped": 0,
+      "failures": 0,
+      "errors": 0,
+      "seconds": 85.787
+    },
+    "local_wsl_requests_mini_sdk": {
+      "total": 26,
+      "passed": 26,
+      "skipped": 0,
+      "failures": 0,
+      "errors": 0,
+      "seconds": 307.136
+    },
+    "windows_click_integration": {
+      "total": 5,
+      "passed": 5,
+      "skipped": 0,
+      "failures": 0,
+      "errors": 0,
+      "seconds": 43.911
+    },
+    "local_wsl_click_integration": {
+      "total": 5,
+      "passed": 5,
+      "skipped": 0,
+      "failures": 0,
+      "errors": 0,
+      "seconds": 71.629
+    },
+    "windows_mini_click_integration": {
+      "total": 2,
+      "passed": 2,
+      "skipped": 0,
+      "failures": 0,
+      "errors": 0,
+      "seconds": 31.66
+    },
+    "local_wsl_mini_click_integration": {
+      "total": 2,
+      "passed": 2,
+      "skipped": 0,
+      "failures": 0,
+      "errors": 0,
+      "seconds": 90.034
+    },
+    "locked_projects": [
+      ".",
+      "benchmarks/clients/mini",
+      "benchmarks/clients/aider",
+      "benchmarks/repositories/click",
+      "benchmarks/repositories/requests"
+    ],
+    "configuration_schema": "matches runtime",
+    "compact_model_tool_schema_bytes": 4927,
+    "windows_reinstalled_environment": {
+      "RECORD_sha256_files_checked": 1526,
+      "discovered_tests": 1600,
+      "discovery_errors": 0
+    },
+    "native_windows_timeout_controls": {
+      "parent_only_kill": {
+        "parent_only_kill_control_delayed_write": true,
+        "sprig_spawn_timeout_no_delayed_write": true,
+        "retained_assertions": 3
+      },
+      "startup_delay": {
+        "controlled_startup_delay_seconds": 0.35,
+        "results": [
+          {
+            "timeout": 0.2,
+            "timed_out": true,
+            "spawned_marker": false
+          },
+          {
+            "timeout": 2,
+            "timed_out": true,
+            "spawned_marker": true
+          }
+        ],
+        "actual_full_run_cause": "not directly traced; former fixture assumes startup within 0.2s"
+      }
+    },
+    "packaging_preflight": {
+      "wheel_modules_equal_source": 79,
+      "wheel_modules_imported_from_extracted_wheel": 78,
+      "sdist_changed_files_equal_source": 19,
+      "scope": "Before this numeric report and startup-margin corrections; final archives are rebuilt and checked separately.",
+      "process_credentials_local_configuration_and_venvs": "absent from built archives"
+    },
+    "local_document_targets_checked": 647,
+    "final_archive_contract": {
+      "wheel_modules_equal_source": 79,
+      "wheel_modules_imported_from_extracted_wheel": 78,
+      "sdist_changed_files_equal_source": 23,
+      "artifact_process_credentials": "absent",
+      "artifact_local_config_and_venvs": "absent"
+    },
+    "python_sources_parsed": 224,
+    "changed_public_files_credential_checked": 24,
+    "credential_shaped_hits": 0
+  },
+  "calibrations": {
+    "windows": {
+      "requests": {
+        "scope": "fixed offline external acceptance calibration; not a model score",
+        "success": true,
+        "python": "3.12.12",
+        "platform": "Windows",
+        "repository_task": {
+          "protocol": 1,
+          "repository": "psf/requests",
+          "issue": 6628,
+          "reference_pr": 6629,
+          "base_commit": "96b22fa18c00831656ee4b286bf1c9062459b00a",
+          "base_sha256": "1e92afeb2bca849b3dfa91a1d604c43fc2d960a2b2736db18a1edb062b2de0a2",
+          "acceptance_commit": "3ff3ff21dd45957c9e143cd500291959bb15f690",
+          "acceptance_snapshot_sha256": "8cf248a17d3c52edb0a25bc79f050cda83891a3fd3aa106089e122c6b16e707b",
+          "snapshot_files": 40,
+          "expected_checks": 58,
+          "backend_checks": 29,
+          "backends": [
+            "stdlib",
+            "simplejson"
+          ],
+          "task_sha256": "5a67b11ce843f3f5eb6ddf6c2609ed0dd40c767abb8836df3b002345a8e4ab5f",
+          "adapter_sha256": "85daebc131c19a1fbbc7f8e50449b57df8a5fc3ca900da1f79e094535ea72b0d",
+          "comparison_lock_sha256": "1d7f93846b09bb492245b70d9b4e36ca2f54d462dcbb701c3251cdd5ba292db2",
+          "comparison_environment_versions": {
+            "sprig-agent": "0.1.0",
+            "simplejson": "3.20.2",
+            "requests": "2.34.2",
+            "mini-swe-agent": "2.4.6",
+            "litellm": "1.103.2",
+            "openai": "2.54.0",
+            "pytest": "8.4.2"
+          }
+        },
+        "results": [
+          {
+            "phase": "base",
+            "backends": [
+              {
+                "backend": "stdlib",
+                "checks_passed": 6,
+                "collected": 29,
+                "failed": [
+                  "copy:copy",
+                  "copy:deepcopy",
+                  "pickle:p0:doc0",
+                  "pickle:p0:doc1",
+                  "pickle:p0:doc2",
+                  "pickle:p1:doc0",
+                  "pickle:p1:doc1",
+                  "pickle:p1:doc2",
+                  "pickle:p2:doc0",
+                  "pickle:p2:doc1",
+                  "pickle:p2:doc2",
+                  "pickle:p3:doc0",
+                  "pickle:p3:doc1",
+                  "pickle:p3:doc2",
+                  "pickle:p4:doc0",
+                  "pickle:p4:doc1",
+                  "pickle:p4:doc2",
+                  "pickle:p5:doc0",
+                  "pickle:p5:doc1",
+                  "pickle:p5:doc2",
+                  "pool:raise",
+                  "pool:return",
+                  "upstream:regression"
+                ],
+                "passed": false,
+                "schema": 1,
+                "skipped": 0
+              },
+              {
+                "backend": "simplejson",
+                "checks_passed": 6,
+                "collected": 29,
+                "failed": [
+                  "copy:copy",
+                  "copy:deepcopy",
+                  "pickle:p0:doc0",
+                  "pickle:p0:doc1",
+                  "pickle:p0:doc2",
+                  "pickle:p1:doc0",
+                  "pickle:p1:doc1",
+                  "pickle:p1:doc2",
+                  "pickle:p2:doc0",
+                  "pickle:p2:doc1",
+                  "pickle:p2:doc2",
+                  "pickle:p3:doc0",
+                  "pickle:p3:doc1",
+                  "pickle:p3:doc2",
+                  "pickle:p4:doc0",
+                  "pickle:p4:doc1",
+                  "pickle:p4:doc2",
+                  "pickle:p5:doc0",
+                  "pickle:p5:doc1",
+                  "pickle:p5:doc2",
+                  "pool:raise",
+                  "pool:return",
+                  "upstream:regression"
+                ],
+                "passed": false,
+                "schema": 1,
+                "skipped": 0
+              }
+            ],
+            "checks_passed": 12,
+            "collected": 58,
+            "passed": false,
+            "schema": 1,
+            "skipped": 0,
+            "valid": true
+          },
+          {
+            "phase": "reference",
+            "backends": [
+              {
+                "backend": "stdlib",
+                "checks_passed": 29,
+                "collected": 29,
+                "failed": [],
+                "passed": true,
+                "schema": 1,
+                "skipped": 0
+              },
+              {
+                "backend": "simplejson",
+                "checks_passed": 29,
+                "collected": 29,
+                "failed": [],
+                "passed": true,
+                "schema": 1,
+                "skipped": 0
+              }
+            ],
+            "checks_passed": 58,
+            "collected": 58,
+            "passed": true,
+            "schema": 1,
+            "skipped": 0,
+            "valid": true
+          }
+        ],
+        "recorded_at_utc": "2026-10-26T15:05:40.643977+00:00"
+      },
+      "click": {
+        "scope": "pinned external oracle calibration; no model requests or agent score",
+        "success": true,
+        "repository_task": {
+          "protocol": 1,
+          "repository": "pallets/click",
+          "snapshot_files": 52,
+          "base_commit": "19fd4d6e18bc9fce451f92f422696b11169faa57",
+          "base_sha256": "7d610833c8a6564f980f747e4601e7f4821872702c4a59f32ff9c5d653300d08",
+          "acceptance_commit": "831c8f0948af519e45b90801d7430ff25451f972",
+          "acceptance_snapshot_sha256": "62d0162a63fa5322307e29d1710ec7624bd3ca20572329fddbdae1fe628f628d",
+          "expected_upstream_checks": 642,
+          "public_exception_contract": true,
+          "acceptance_python": "3.12",
+          "acceptance_pytest": "8.4.2",
+          "entry_sha256": "82537f9541e770f9a2168f058b01f2ef1f4f9661ae3ae58d0b7c3187a31f89d4",
+          "adapter_sha256": "9931a747ca3f0c566533079d8c403f386f2b77e1f720ef5f81e6753a09a4aa03",
+          "comparison_lock_sha256": "b04f8515898adaf101aeacc850d16eaf22d7470819969d90f02abedc1a9ed43d",
+          "task_sha256": "2908db436a3b9ac92c17b2d60eed48baae6c6549b9a1c83bb775bc816bcf6273"
+        },
+        "python": "3.12.12",
+        "platform": "Windows-11-10.0.26300-SP0",
+        "results": [
+          {
+            "phase": "base",
+            "schema": 1,
+            "public_exception_contract": false,
+            "pytest_returncode": 1,
+            "collected": 642,
+            "checks_passed": 635,
+            "skipped": 0,
+            "passed": false,
+            "failed": [
+              "tests/test_commands.py::test_suggest_possible_commands[decline-(Did you mean one of: 'declare', 'refine'?)]",
+              "tests/test_commands.py::test_suggest_possible_commands[pause-Did you mean 'push'?]",
+              "tests/test_options.py::test_suggest_possible_options[--bounds-(Did you mean one of: '--bound', '--count'?)]",
+              "tests/test_options.py::test_suggest_possible_options[--bount-(Did you mean one of: '--bound', '--count'?)]",
+              "tests/test_options.py::test_suggest_possible_options[--cat-Did you mean '--count'?]",
+              "tests/test_options.py::test_unknown_options[--foo]",
+              "tests/test_options.py::test_unknown_options[-f]"
+            ],
+            "other_failures": 0
+          },
+          {
+            "phase": "reference",
+            "checks_passed": 642,
+            "public_exception_contract": true,
+            "schema": 1,
+            "pytest_returncode": 0,
+            "skipped": 0,
+            "collected": 642,
+            "passed": true,
+            "failed": [],
+            "other_failures": 0
+          }
+        ],
+        "recorded_at_utc": "2026-10-26T14:55:31.524742+00:00"
+      }
+    },
+    "wsl": {
+      "requests": {
+        "scope": "fixed offline external acceptance calibration; not a model score",
+        "success": true,
+        "python": "3.12.13",
+        "platform": "Linux",
+        "repository_task": {
+          "protocol": 1,
+          "repository": "psf/requests",
+          "issue": 6628,
+          "reference_pr": 6629,
+          "base_commit": "96b22fa18c00831656ee4b286bf1c9062459b00a",
+          "base_sha256": "1e92afeb2bca849b3dfa91a1d604c43fc2d960a2b2736db18a1edb062b2de0a2",
+          "acceptance_commit": "3ff3ff21dd45957c9e143cd500291959bb15f690",
+          "acceptance_snapshot_sha256": "8cf248a17d3c52edb0a25bc79f050cda83891a3fd3aa106089e122c6b16e707b",
+          "snapshot_files": 40,
+          "expected_checks": 58,
+          "backend_checks": 29,
+          "backends": [
+            "stdlib",
+            "simplejson"
+          ],
+          "task_sha256": "5a67b11ce843f3f5eb6ddf6c2609ed0dd40c767abb8836df3b002345a8e4ab5f",
+          "adapter_sha256": "85daebc131c19a1fbbc7f8e50449b57df8a5fc3ca900da1f79e094535ea72b0d",
+          "comparison_lock_sha256": "1d7f93846b09bb492245b70d9b4e36ca2f54d462dcbb701c3251cdd5ba292db2",
+          "comparison_environment_versions": {
+            "sprig-agent": "0.1.0",
+            "simplejson": "3.20.2",
+            "requests": "2.34.2",
+            "mini-swe-agent": "2.4.6",
+            "litellm": "1.103.2",
+            "openai": "2.54.0",
+            "pytest": "8.4.2"
+          }
+        },
+        "results": [
+          {
+            "phase": "base",
+            "backends": [
+              {
+                "backend": "stdlib",
+                "checks_passed": 6,
+                "collected": 29,
+                "failed": [
+                  "copy:copy",
+                  "copy:deepcopy",
+                  "pickle:p0:doc0",
+                  "pickle:p0:doc1",
+                  "pickle:p0:doc2",
+                  "pickle:p1:doc0",
+                  "pickle:p1:doc1",
+                  "pickle:p1:doc2",
+                  "pickle:p2:doc0",
+                  "pickle:p2:doc1",
+                  "pickle:p2:doc2",
+                  "pickle:p3:doc0",
+                  "pickle:p3:doc1",
+                  "pickle:p3:doc2",
+                  "pickle:p4:doc0",
+                  "pickle:p4:doc1",
+                  "pickle:p4:doc2",
+                  "pickle:p5:doc0",
+                  "pickle:p5:doc1",
+                  "pickle:p5:doc2",
+                  "pool:raise",
+                  "pool:return",
+                  "upstream:regression"
+                ],
+                "passed": false,
+                "schema": 1,
+                "skipped": 0
+              },
+              {
+                "backend": "simplejson",
+                "checks_passed": 6,
+                "collected": 29,
+                "failed": [
+                  "copy:copy",
+                  "copy:deepcopy",
+                  "pickle:p0:doc0",
+                  "pickle:p0:doc1",
+                  "pickle:p0:doc2",
+                  "pickle:p1:doc0",
+                  "pickle:p1:doc1",
+                  "pickle:p1:doc2",
+                  "pickle:p2:doc0",
+                  "pickle:p2:doc1",
+                  "pickle:p2:doc2",
+                  "pickle:p3:doc0",
+                  "pickle:p3:doc1",
+                  "pickle:p3:doc2",
+                  "pickle:p4:doc0",
+                  "pickle:p4:doc1",
+                  "pickle:p4:doc2",
+                  "pickle:p5:doc0",
+                  "pickle:p5:doc1",
+                  "pickle:p5:doc2",
+                  "pool:raise",
+                  "pool:return",
+                  "upstream:regression"
+                ],
+                "passed": false,
+                "schema": 1,
+                "skipped": 0
+              }
+            ],
+            "checks_passed": 12,
+            "collected": 58,
+            "passed": false,
+            "schema": 1,
+            "skipped": 0,
+            "valid": true
+          },
+          {
+            "phase": "reference",
+            "backends": [
+              {
+                "backend": "stdlib",
+                "checks_passed": 29,
+                "collected": 29,
+                "failed": [],
+                "passed": true,
+                "schema": 1,
+                "skipped": 0
+              },
+              {
+                "backend": "simplejson",
+                "checks_passed": 29,
+                "collected": 29,
+                "failed": [],
+                "passed": true,
+                "schema": 1,
+                "skipped": 0
+              }
+            ],
+            "checks_passed": 58,
+            "collected": 58,
+            "passed": true,
+            "schema": 1,
+            "skipped": 0,
+            "valid": true
+          }
+        ],
+        "recorded_at_utc": "2026-10-26T15:04:09.792845+00:00"
+      },
+      "click": {
+        "scope": "pinned external oracle calibration; no model requests or agent score",
+        "success": true,
+        "repository_task": {
+          "protocol": 1,
+          "repository": "pallets/click",
+          "snapshot_files": 52,
+          "base_commit": "19fd4d6e18bc9fce451f92f422696b11169faa57",
+          "base_sha256": "7d610833c8a6564f980f747e4601e7f4821872702c4a59f32ff9c5d653300d08",
+          "acceptance_commit": "831c8f0948af519e45b90801d7430ff25451f972",
+          "acceptance_snapshot_sha256": "62d0162a63fa5322307e29d1710ec7624bd3ca20572329fddbdae1fe628f628d",
+          "expected_upstream_checks": 642,
+          "public_exception_contract": true,
+          "acceptance_python": "3.12",
+          "acceptance_pytest": "8.4.2",
+          "entry_sha256": "82537f9541e770f9a2168f058b01f2ef1f4f9661ae3ae58d0b7c3187a31f89d4",
+          "adapter_sha256": "9931a747ca3f0c566533079d8c403f386f2b77e1f720ef5f81e6753a09a4aa03",
+          "comparison_lock_sha256": "b04f8515898adaf101aeacc850d16eaf22d7470819969d90f02abedc1a9ed43d",
+          "task_sha256": "2908db436a3b9ac92c17b2d60eed48baae6c6549b9a1c83bb775bc816bcf6273"
+        },
+        "python": "3.12.13",
+        "platform": "Linux-6.18.54.1-microsoft-standard-WSL2-x86_64-with-glibc2.43",
+        "results": [
+          {
+            "phase": "base",
+            "collected": 642,
+            "skipped": 0,
+            "schema": 1,
+            "public_exception_contract": false,
+            "checks_passed": 635,
+            "pytest_returncode": 1,
+            "passed": false,
+            "failed": [
+              "tests/test_commands.py::test_suggest_possible_commands[decline-(Did you mean one of: 'declare', 'refine'?)]",
+              "tests/test_commands.py::test_suggest_possible_commands[pause-Did you mean 'push'?]",
+              "tests/test_options.py::test_suggest_possible_options[--bounds-(Did you mean one of: '--bound', '--count'?)]",
+              "tests/test_options.py::test_suggest_possible_options[--bount-(Did you mean one of: '--bound', '--count'?)]",
+              "tests/test_options.py::test_suggest_possible_options[--cat-Did you mean '--count'?]",
+              "tests/test_options.py::test_unknown_options[--foo]",
+              "tests/test_options.py::test_unknown_options[-f]"
+            ],
+            "other_failures": 0
+          },
+          {
+            "phase": "reference",
+            "schema": 1,
+            "pytest_returncode": 0,
+            "checks_passed": 642,
+            "collected": 642,
+            "public_exception_contract": true,
+            "skipped": 0,
+            "passed": true,
+            "failed": [],
+            "other_failures": 0
+          }
+        ],
+        "recorded_at_utc": "2026-10-26T15:23:03.998944+00:00"
+      }
+    }
+  },
+  "runtime": {
+    "windows": {
+      "python": "3.12.12",
+      "platform": "Windows",
+      "direct_sprig_dependencies": {
+        "google-re2": "1.1.20251105",
+        "jsonschema": "4.26.0",
+        "pillow": "13.0.0",
+        "pyyaml": "6.0.3",
+        "textual": "8.2.8",
+        "tree-sitter": "0.25.2",
+        "tree-sitter-c": "0.24.2",
+        "tree-sitter-cpp": "0.23.4",
+        "tree-sitter-go": "0.25.0",
+        "tree-sitter-java": "0.23.5",
+        "tree-sitter-javascript": "0.25.0",
+        "tree-sitter-rust": "0.24.2",
+        "tree-sitter-typescript": "0.23.2"
+      }
+    },
+    "wsl": {
+      "python": "3.12.13",
+      "platform": "Linux",
+      "direct_sprig_dependencies": {
+        "google-re2": "1.1.20251105",
+        "jsonschema": "4.26.0",
+        "pillow": "13.0.0",
+        "pyyaml": "6.0.3",
+        "textual": "8.2.8",
+        "tree-sitter": "0.25.2",
+        "tree-sitter-c": "0.24.2",
+        "tree-sitter-cpp": "0.23.4",
+        "tree-sitter-go": "0.25.0",
+        "tree-sitter-java": "0.23.5",
+        "tree-sitter-javascript": "0.25.0",
+        "tree-sitter-rust": "0.24.2",
+        "tree-sitter-typescript": "0.23.2"
+      }
+    }
+  },
+  "coverage": {
+    "new_root_test_methods": 14,
+    "requests_integration_test_methods": 5,
+    "sprig_protocol_subcases": {
+      "protocols": [
+        "chat_completions",
+        "messages",
+        "responses"
+      ],
+      "encodings": [
+        "json",
+        "sse"
+      ],
+      "count": 6
+    },
+    "requests_backends": [
+      "stdlib",
+      "simplejson"
+    ],
+    "checks_per_backend": 29,
+    "requests_candidate_files": 40,
+    "requests_candidate_bytes": 412614,
+    "reference_files": 40,
+    "reference_bytes": 413447,
+    "reference_implementation_in_candidate": false,
+    "ordinary_descendant_probes": [
+      "inner timeout",
+      "outer timeout",
+      "outer cancellation"
+    ],
+    "capture_probes": [
+      "byte overflow",
+      "invalid UTF-8"
+    ],
+    "runtime_integrity_probes": [
+      "equal-sized active source change",
+      "resolved path redirection"
+    ]
+  },
+  "development_findings": [
+    "New LiteLLM 1.106.4 failed optional MCP route imports before any HTTP. Adding the then-available MCP package still had incompatible types. The final project explicitly pins validated LiteLLM 1.103.2 and both SDK profiles are exercised; no product MCP dependency was added.",
+    "The draft Requests guard omitted active runtime source. A non-writing simulated same-size change reproduced a false intact result; active sources/helpers/locks now receive bounded byte and resolved-path checks. This probe failed before the fix and passes afterward.",
+    "Nested Tools.run created a separate POSIX session for fixed workers. Both oracle workers now inherit the approved outer group/Windows Job. Real ordinary-descendant tests cover inner/outer timeout and cancellation; no malicious-session containment claim.",
+    "A draft fixed-worker pipe close could block on Windows while a descendant retained the writer; the bounded reader now leaves that handle to process exit when capture is incomplete.",
+    "An old Click fixture pointer failed the existing source digest check. Final Click checks use a freshly verified pinned fixture; the rejection was not an agent failure.",
+    "An attempted Python 3.11 switch targeted the active default environment and interrupted its rebuild. A later Windows full run collected only 1553 tests with four import errors from missing cryptography files. All default-environment dependencies were reinstalled with uv; 1526 RECORD-hashed files and discovery of all 1600 tests were verified before the final full run. Python 3.11 uses an independent environment.",
+    "The first complete repaired-environment Windows run collected 1600 tests with one existing fixture failure: a 0.2-second deadline expired before its spawned marker. The unchanged isolated test passed five times. Its startup allowance is now 2 seconds, the descendant writes after 4 seconds, and observation waits another 4.2 seconds; all original assertions remain. A raw parent-only-kill control produced the delayed write, while Sprig killed the descendant. The final full suites include this fixture correction.",
+    "A subsequent complete Windows run found two analogous output-dependent fixture failures at 0.15/0.2 seconds. Sampling/foreground timeout fixtures now allow 2 seconds for startup; delayed writes remain beyond the deadline, all output/timeout/cleanup assertions remain, and cleanup receives a separate bounded 2-second allowance. The parent-exited-but-descendant-pipe case now explicitly requires its spawned marker, closing a previous false-positive path. Other short deadlines that do not require process startup remain unchanged.",
+    "WSL public-package downloads failed. Exact compatible PyPI wheels were checked against the unchanged locks and installed through uv with hash requirements, followed by successful uv sync --locked --offline for Requests and Click. No TLS or lock bypass.",
+    "Earlier full/focused results and interrupted Windows runs were superseded. The final full counts above include the active-runtime guard fix; scripted fixtures never count as model performance.",
+    "After a host-session interruption both scheduled full-run handles were missing, the logs had no conclusion and no matching Windows/WSL test process remained. They were treated as interrupted, not successful. The recorded fresh full runs have explicit exit code 0 markers."
+  ],
+  "limits": [
+    "This is a selected public historical task with possible training contamination, not held-out evaluation, the complete Requests suite or a top-agent ranking.",
+    "The Requests task includes an extracted upstream regression plus focused custom checks; 58 checks do not mean 58 independent real tasks.",
+    "The mini SDK still supports only Chat Completions. Native tool sets/templates differ and matching request byte limits do not imply matching token or cost budgets.",
+    "A reference archive remains accessible to the operating-system account. Fresh approvals and source guards are not an OS sandbox or complete anti-cheat isolation.",
+    "Worker supervision covers ordinary inherited descendants; malicious code may create other sessions or modify in-process acceptance.",
+    "Local WSL is not a native remote runner. Platform skips are not passes; native remote Linux/Windows/macOS CI remains pending.",
+    "Reported check durations reflect local validation load/filesystem conditions and are not paired agent speed measurements."
+  ]
+}
