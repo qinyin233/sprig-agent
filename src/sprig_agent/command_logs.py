@@ -7,6 +7,7 @@ import json
 import math
 import re
 import stat
+import threading
 import time
 import uuid
 
@@ -31,6 +32,64 @@ READ_LOG_SCHEMA = {"type": "function", "function": {
 
 class LogError(ValueError):
     pass
+
+
+def valid_status(status):
+    base = {"returncode", "timed_out", "output_limited"}
+    if not isinstance(status, dict) or any(type(status.get(key)) is not bool for key in base - {"returncode"}):
+        return False
+    if set(status) == base:
+        return type(status["returncode"]) is int
+    return (set(status) == base | {"job_id", "state", "stdin_failed"}
+            and isinstance(status["job_id"], str) and re.fullmatch(r"job-[0-9a-f]{32}", status["job_id"]) is not None
+            and status["state"] in {"exited", "timed_out", "output_limited", "failed", "cleanup_failed"}
+            and type(status["stdin_failed"]) is bool
+            and (type(status["returncode"]) is int or status["returncode"] is None and status["state"] != "exited")
+            and status["timed_out"] == (status["state"] == "timed_out")
+            and status["output_limited"] == (status["state"] == "output_limited"))
+
+
+def record_digest(row):
+    return hashlib.sha256(json.dumps(row, sort_keys=True, ensure_ascii=False).encode("utf-8")).hexdigest()
+
+
+class BackgroundLog:
+    """One approved completion-time append; no new cleanup or eviction authority."""
+    def __init__(self, logs, preview):
+        self.logs, self.preview = logs, preview
+        self.capture, self.failed = LogCapture(logs.config.secrets), False
+
+    def write(self, text):
+        if not self.failed:
+            try:
+                self.capture.write(text.encode("utf-8"))
+            except Exception:
+                self.failed = True
+                self.capture.data.clear()
+
+    def finish(self, result, check):
+        def ready():
+            self.logs._ready()
+            check()
+            if (self.logs.config is not self.preview["config"] or self.logs.owner != self.preview["owner"]
+                    or self.logs.generation != self.preview["generation"]):
+                raise LogError("background log owner or policy changed; no log was saved")
+        try:
+            ready()
+            if self.failed:
+                return {"saved": False, "reason": "background log capture failed; command was not replayed"}
+            text, limited = self.capture.finish()
+            writer = CommandLogs(self.preview["config"], ready)
+            writer.owner, writer._write_lock = self.preview["owner"], self.logs._write_lock
+            return writer.save(self.preview, text, limited, result, append_only=True)
+        except KeyboardInterrupt:
+            return {"saved": False, "outcome": "unknown", "reason": "background retention interrupted; inspect /logs; no command was replayed"}
+        except ValueError as error:
+            return {"saved": False, "reason": str(error)}
+        except Exception:
+            return {"saved": False, "outcome": "unknown", "reason": "background log save failed; inspect /logs; no command was replayed"}
+        finally:
+            self.capture.data.clear()
 
 
 def log_state(value=None):
@@ -68,6 +127,8 @@ class CommandLogs:
     def __init__(self, config, check_cancelled=lambda: None):
         self.config, self.check = config, check_cancelled
         self.closed = False
+        self.generation = 0
+        self._write_lock = threading.Lock()
         self.restore()
 
     def _ready(self):
@@ -148,9 +209,7 @@ class CommandLogs:
                 if len(data) > MAX_LOG or hashlib.sha256(data).hexdigest() != row["sha256"]:
                     raise ValueError
                 status = row["status"]
-                if (not isinstance(status, dict) or set(status) != {"returncode", "timed_out", "output_limited"}
-                        or type(status["returncode"]) is not int
-                        or any(type(status[key]) is not bool for key in ("timed_out", "output_limited"))):
+                if not valid_status(status):
                     raise ValueError
                 ids.add(row["id"])
         except (ValueError, TypeError, KeyError, RecursionError):
@@ -165,9 +224,24 @@ class CommandLogs:
         except FileNotFoundError:
             return {"version": 1, "records": []}, None
 
-    def preview(self):
+    def preview(self, *, background=False):
         state, digest = self.snapshot()
-        return {"digest": digest, "retention_candidates": [row["id"] for row in state["records"]]}
+        result = {"digest": digest, "retention_candidates": [row["id"] for row in state["records"]]}
+        if background:
+            result.update(config=self.config, owner=self.owner, generation=self.generation,
+                          records={row["id"]: record_digest(row) for row in state["records"]})
+        return result
+
+    @contextmanager
+    def _writing(self):
+        self._ready()
+        if not self._write_lock.acquire(timeout=1):
+            raise LogError("command log writer is busy; no log was saved or evicted")
+        try:
+            self._ready()
+            yield
+        finally:
+            self._write_lock.release()
 
     def _commit(self, store, state):
         self.check()
@@ -190,7 +264,7 @@ class CommandLogs:
             except FileNotFoundError:
                 pass
 
-    def save(self, preview, text, limited, result):
+    def save(self, preview, text, limited, result, *, append_only=False):
         self._ready()
         text = redact(text, self.config.secrets)
         data = text.encode("utf-8")
@@ -200,9 +274,33 @@ class CommandLogs:
                "text": text, "sha256": hashlib.sha256(data).hexdigest(), "capture_limited": bool(limited),
                "status": {"returncode": result["returncode"], "timed_out": bool(result.get("timed_out")),
                           "output_limited": bool(result.get("output_limited"))}}
-        with self._open(create=True) as store:
+        if append_only:
+            row["status"].update(job_id=result["job_id"], state=result["state"], stdin_failed=bool(result.get("stdin_failed")))
+        if not valid_status(row["status"]):
+            raise LogError("command log requires a valid observed exit status")
+        with self._writing(), self._open(create=True) as store:
             store.acquire(NAME)
             state, digest = self._load(store)
+            if append_only:
+                current = {entry["id"]: record_digest(entry) for entry in state["records"]}
+                if any(current.get(identity) != revision for identity, revision in preview["records"].items()):
+                    raise LogError("background log store changed beyond append; no log was saved or evicted")
+                try:
+                    store.handle.stat(TEMP)
+                except FileNotFoundError:
+                    pass
+                else:
+                    raise LogError("background retention cannot remove a pending file; use a freshly approved foreground save or clear")
+                records = [*state["records"], row]
+                try:
+                    if len(records) > MAX_RECORDS:
+                        raise JsonBudgetExceeded
+                    encoded_size({"version": 1, "records": records}, max_bytes=MAX_STORE, check_cancelled=self.check)
+                except JsonBudgetExceeded:
+                    raise LogError("background log capacity reached; no records were evicted") from None
+                self._commit(store, {"version": 1, "records": records})
+                return {"saved": True, "log_id": row["id"], "bytes": len(data), "capture_limited": limited,
+                        "historical": True, "expires_at": row["created"] + RETENTION}
             if digest != preview["digest"]:
                 raise LogError("command log store changed since approval; no log was saved or evicted")
             now = time.time()
@@ -277,10 +375,11 @@ class CommandLogs:
         if approve("DELETE retained command logs from this conversation only: " + json.dumps(selected)) is not True:
             return {"approved": False, "deleted": 0}
         self.check()
-        with self._open() as store:
+        with self._writing(), self._open() as store:
             store.acquire(NAME)
             current, current_digest = self._load(store)
             if current_digest != digest:
                 raise LogError("command log store changed during approval; no records were deleted")
+            self.generation += 1
             self._commit(store, {"version": 1, "records": [row for row in current["records"] if row["id"] not in selected]})
         return {"approved": True, "deleted": len(selected)}

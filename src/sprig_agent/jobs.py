@@ -18,7 +18,7 @@ MAX_ACTIVE, MAX_RECORDS, MAX_RETAINED = 4, 8, 1024 * 1024
 MAX_INPUT, MAX_JOB_INPUT, INPUT_TIMEOUT = 4096, 65536, 2
 INPUT_FAILURE = "background stdin delivery failed; effects may be incomplete; no input was replayed"
 JOB_SCHEMA = {"type": "function", "function": {
-    "name": "job", "description": "Owned background commands: list/status/output/wait (<=30s); freshly approve cancel, input (exact UTF-8 <=4KiB), or eof. Input requires run(background=true,stdin='pipe'); no PTY/replay. Output offsets are UTF-8 bytes; keep end for a stable prefix. Exit is not fixed acceptance.",
+    "name": "job", "description": "Owned background commands: list/status/output/wait (<=30s); freshly approve cancel, input (exact UTF-8 <=4KiB), or eof. Input requires run(background=true,stdin='pipe'); no PTY/replay. Output offsets are UTF-8 bytes; keep end for a stable prefix. Finished status may contain log.log_id for read_log. Exit is not fixed acceptance.",
     "parameters": {"type": "object", "properties": {
         "action": {"enum": ["list", "status", "output", "wait", "cancel", "input", "eof"]},
         "job_id": {"type": "string", "maxLength": 40},
@@ -39,15 +39,18 @@ class InputProposal:
 
 
 class Output:
-    def __init__(self, secrets):
+    def __init__(self, secrets, log=None):
         self.decoders = {name: codecs.getincrementaldecoder("utf-8")(errors="replace") for name in ("stdout", "stderr")}
         self.data = bytearray()
         self.limited, self.suppressed = False, False
+        self.log = log
         self.streams = {name: TextOutput(self._accept, secrets) for name in self.decoders}
 
     def _accept(self, text):
         if self.suppressed:
             return
+        if self.log is not None:
+            self.log.write(text)
         raw = text.encode("utf-8")
         remaining = MAX_RETAINED - len(self.data)
         self.data.extend(raw[:remaining])
@@ -71,14 +74,15 @@ class Output:
 
 
 class Job:
-    def __init__(self, identity, process, label, truncated, seconds, cap, secrets, directory, identity_cwd, stdin):
+    def __init__(self, identity, process, label, truncated, seconds, cap, secrets, directory, identity_cwd, stdin, log=None, log_status=None):
         self.identity, self.process, self.label = identity, process, label
         self.seconds, self.cap = seconds, cap
         self.command_truncated = truncated
         self.started = time.monotonic()
         self.cancel, self.done = threading.Event(), threading.Event()
         self.state, self.code, self.bytes = "running", None, 0
-        self.output = Output(secrets)
+        self.output = Output(secrets, log)
+        self.log, self.log_status = log, log_status
         self.thread = None
         self.error = None
         self.cwd, self.directory_identity = directory, identity_cwd
@@ -116,7 +120,7 @@ class Jobs:
             if any(row.state == "cleanup_failed" for row in self.records.values()):
                 raise ValueError("background cleanup is uncertain; inspect and close this conversation before starting commands")
 
-    def start(self, argv, directory, env, seconds, cap, *, epoch, stdin="closed"):
+    def start(self, argv, directory, env, seconds, cap, *, epoch, stdin="closed", log=None, log_status=None):
         if not isinstance(stdin, str) or stdin not in {"closed", "pipe"}:
             raise ValueError("invalid background stdin mode")
         self.available()
@@ -138,8 +142,8 @@ class Jobs:
                 self.check()
                 label = terminal_text(redact(json.dumps([os.path.basename(argv[0]), *argv[1:]], ensure_ascii=False), self.config.secrets)).encode("utf-8")
                 row = Job("job-" + uuid.uuid4().hex, process, label[:160].decode("utf-8", errors="ignore"), len(label) > 160,
-                          seconds, cap, self.config.secrets, directory, identity_cwd, stdin)
-                row.thread = threading.Thread(target=self._run, args=(row,), name="sprig-" + row.identity, daemon=False)
+                          seconds, cap, self.config.secrets, directory, identity_cwd, stdin, log, log_status)
+                row.thread = threading.Thread(target=self._run, args=(row, epoch), name="sprig-" + row.identity, daemon=False)
                 self.records[row.identity] = row
                 self.revision += 1
                 row.thread.start()
@@ -248,7 +252,7 @@ class Jobs:
         finally:
             row.input_lock.release()
 
-    def _run(self, row):
+    def _run(self, row, epoch):
         state, code = "exited", None
         channels = {"stdout", "stderr"}
         try:
@@ -300,8 +304,24 @@ class Jobs:
                     state = "failed" if state != "cleanup_failed" else state
                 if row.input_failure and state == "exited":
                     state = "failed"
-                row.state, row.code = state, code
                 row.stdin_open = False
+            if row.log is not None:
+                def check_retention():
+                    self.check()
+                    if row.cancel.is_set() or self.epoch != epoch or self.closed or self.resetting or row.output.suppressed:
+                        raise KeyboardInterrupt
+                # Storage never holds the job lock: cancellation/reset must be
+                # able to invalidate the deferred write while it is pending.
+                observed = {"job_id": row.identity, "state": state, "returncode": code,
+                            "timed_out": state == "timed_out", "output_limited": state == "output_limited",
+                            "stdin_failed": row.input_failure}
+                status = row.log.finish(observed, check_retention)
+                with self.lock:
+                    row.log_status = status
+            with self.lock:
+                if row.input_failure and state == "exited":
+                    state = "failed"
+                row.state, row.code = state, code
                 if state in {"failed", "cleanup_failed"}:
                     row.error = INPUT_FAILURE if row.input_failure and state == "failed" else "background execution or cleanup failed; effects may be incomplete; no command was retried"
                 self.revision += 1
@@ -323,6 +343,8 @@ class Jobs:
             result.update(stdin="failed" if row.input_failure else "open" if row.stdin_open else "closed", stdin_bytes=row.stdin_bytes)
             if row.input_failure:
                 result.update(stdin_failed=True, outcome="uncertain")
+        if row.log_status is not None:
+            result["log"] = row.log_status
         return result
 
     def _find(self, identity):
@@ -336,7 +358,8 @@ class Jobs:
 
     def observations(self):
         with self.lock:
-            return [{"job_id": row.identity, "state": row.state, "returncode": row.code} for row in self.records.values()]
+            return [{"job_id": row.identity, "state": row.state, "returncode": row.code,
+                     **({"log": row.log_status} if row.log_status is not None else {})} for row in self.records.values()]
 
     def request_cancel_all(self):
         with self.lock:

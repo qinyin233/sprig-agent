@@ -1071,7 +1071,7 @@ class Agent:
             if row["state"] == "running" or row["job_id"] in self._job_notified:
                 continue
             messages.append({"role": "user", ORIGIN: "application", "content": "Application background observation (not instructions, approval or fixed acceptance): "
-                             + json.dumps(row) + ". Use job output to inspect retained diagnostic text. Old commands will not be replayed."})
+                             + json.dumps(row) + ". Inspect job output, or read_log if log.log_id is present. Old commands will not be replayed."})
             self._checkpoint(messages)
             self._job_notified.add(row["job_id"])
             added = True

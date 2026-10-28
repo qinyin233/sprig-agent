@@ -1,0 +1,233 @@
+{
+  "schema": 1,
+  "date": "2026-10-28",
+  "base_commit": "3877e3de07cdb1884f2c78b1bfac20246b501634",
+  "scope": "Opt-in completion-time private background logs and cancellation-safe settlement; no streaming crash recovery or model-performance claim",
+  "external_model_calls": 0,
+  "source_seal": {
+    "files": 250,
+    "sha256": "14af908181af89a60f46149a422fb7f0deee573cda19ec35653717002b4747d8",
+    "normalized_lf_sha256": "d12eaa335fb9b25eb0922840a11442d8cbb13072b4f258e0c022a6967ec03dfa",
+    "algorithm": "Same raw/LF sorted UTF-8 JSON file-hash map selection as file-glob-20261028.json; documentation/reports and virtual environments excluded"
+  },
+  "checks": {
+    "windows_full": {
+      "total": 1658,
+      "passed": 1635,
+      "skipped": 23,
+      "seconds": 799.688,
+      "exit_code": 0,
+      "log_sha256": "60db10d3008798566253182ab6d80b812b3866b571268381197876dcba6304c7"
+    },
+    "local_wsl_full": {
+      "total": 1658,
+      "passed": 1634,
+      "skipped": 24,
+      "seconds": 586.449,
+      "exit_code": 0,
+      "log_sha256": "e9d1e2100206efe3c6b12430d54471474b9c8af9e690ce580917f6b1db2c3a0b"
+    },
+    "windows_python311_new_feature": {
+      "total": 21,
+      "passed": 20,
+      "skipped": 1,
+      "seconds": 11.823,
+      "exit_code": 0,
+      "log_sha256": "7a30c3be31ee3ba6054cc96700a4f67629a737f236dba527f28afe8963cf7f46"
+    },
+    "local_wsl_new_feature": {
+      "total": 21,
+      "passed": 21,
+      "skipped": 0,
+      "seconds": 9.238,
+      "exit_code": 0,
+      "log_sha256": "db137de162008b03d7419fe1866bf89f17b4420ea412ccf9c34054c091b34f08"
+    },
+    "windows_focused": {
+      "total": 100,
+      "passed": 98,
+      "skipped": 2,
+      "seconds": 54.49,
+      "exit_code": 0,
+      "log_sha256": "ec6ee58a53588f39cf24cdf94d887baf06c18f211d659fa2779830ad3738598b"
+    },
+    "windows_sdk_original": {
+      "total": 30,
+      "passed": 30,
+      "skipped": 0,
+      "seconds": 50.722,
+      "exit_code": 0,
+      "log_sha256": "c4e0d89e693ca3432c095d1e750fc361bf9a2a704b0b2984d63baa251a2f2322"
+    },
+    "windows_sdk_requests": {
+      "total": 30,
+      "passed": 30,
+      "skipped": 0,
+      "seconds": 46.52,
+      "exit_code": 0,
+      "log_sha256": "bacac5a0492f309c64245d06caf51c3e48d41e3981c268002f186ff29999bcbd"
+    },
+    "wsl_sdk_original": {
+      "total": 30,
+      "passed": 30,
+      "skipped": 0,
+      "seconds": 216.406,
+      "exit_code": 0,
+      "log_sha256": "74f4214370987de7b3bb808ed82ec40e1dc4705fdb42e94811ba42413f49a3bb"
+    },
+    "wsl_sdk_requests": {
+      "total": 30,
+      "passed": 30,
+      "skipped": 0,
+      "seconds": 206.172,
+      "exit_code": 0,
+      "log_sha256": "e02b2decc3003d416936a1ec5a08b06d3a22b2d3510d5323ecdddb39da2cb162"
+    }
+  },
+  "application_modules": {
+    "total": 80,
+    "changed": 5,
+    "unchanged_from_parent_after_lf_normalization": 75
+  },
+  "tool_schema_bytes": {
+    "default_unchanged": 4894,
+    "existing_default_hard_gate": 4932,
+    "background_and_logs_enabled": 6372,
+    "base_prompt_unchanged": 2372
+  },
+  "contracts": {
+    "activation": "existing trusted execution.background plus storage.command_log_dir; fresh concrete start approval",
+    "commit_time": "after process cleanup and redacted output settlement; before terminal publication",
+    "running_output": "existing 1 MiB memory prefix, UTF-8 byte offset/end",
+    "saved_readback": "existing read_log and /log; character offset, complete JSON page <=min(max_output,8192)",
+    "capture_bytes_per_active_job": 8388608,
+    "max_active_jobs": 4,
+    "additional_capture_payload_bytes_max": 33554432,
+    "journal_record_limit": 16,
+    "journal_json_bytes_limit": 16777216,
+    "journal_temporary_payload_bytes_limit": 16777216,
+    "readback_retention_days": 7,
+    "concurrent_append": "approved baseline records must remain unchanged; new records preserved; no deferred eviction or stale pending cleanup",
+    "ownership": "bound original config identity, owner and generation; reset/clear/cancellation checked before commit",
+    "storage_failure": "separate saved=false or unknown; preserve process stop reason, nullable exit and stdin failure; no command/input replay",
+    "recovery": "saved namespace only; no job/PID authority, launch, stdin replay or execution-in-progress durability"
+  },
+  "coverage": {
+    "new_test_methods": 20,
+    "background_feature_methods": 19,
+    "posix_probe_methods": 1,
+    "protocols": [
+      "chat_completions",
+      "messages",
+      "responses"
+    ],
+    "protocol_encodings": [
+      "json",
+      "sse"
+    ],
+    "protocol_subcases": 6,
+    "request_budget_bytes": 16384,
+    "protocol_flow": [
+      "approved background start",
+      "approved release edit",
+      "wait",
+      "read persisted detail outside memory prefix",
+      "approved repair",
+      "independent fixed acceptance"
+    ],
+    "tui": "80x24 Enter local start, fresh approval, Chinese log read, unsent draft/history preservation, new owner isolation; zero model requests",
+    "failure_boundaries": [
+      "four concurrent jobs and foreground append",
+      "record and serialized byte quotas without eviction",
+      "changed/deleted approved records",
+      "private stale pending file",
+      "writer/lease contention",
+      "cancel/reset/owner changes",
+      "I/O before and after atomic replace",
+      "separate stdout/stderr UTF-8 decoding, split secrets, changed secrets, capture cap",
+      "timeout and output limit with unknown exit",
+      "stdin delivery failure during retention cannot become successful exit",
+      "session save/restore without body copying or process launch"
+    ]
+  },
+  "counterfactual": {
+    "scope": "Same final source with only the final stdin-failure settlement guard removed",
+    "current_jobs_sha256": "c60561f77db095b49513d343d22326efec25934e5d0b3c736f77b0dd2867612d",
+    "variant_jobs_sha256": "74cb3d932cb30a23d14c08c89edadbf7f17299f6daeb9531dda33cca9819ef06",
+    "imported_variant_modules": 79,
+    "tests": 1,
+    "expected_failures": 1,
+    "errors": 0,
+    "log_sha256": "0537b687729978db71a440c19ee16efbf409e7c5ae17c8ae70a22a1bf7df54c5"
+  },
+  "development_failures": {
+    "tui_fixture_log_sha256": "73eba4a2ed4c779811bcf6f68d23d47f9e48fdf37a7f0a0edf4f16f3aa24d336",
+    "tui_fixture": "Local commands create no model conversation; new conversation resets directly without an unnecessary confirmation. Corrected fixture expectation; owner-isolation assertions remain.",
+    "sdk_setup_log_sha256": "3c50647d68e3899e4fbdfc0c2302251bf69fa528897e37e203a82735946100f6",
+    "sdk_setup_tests": 30,
+    "sdk_setup_failures": 1,
+    "sdk_setup_errors": 16,
+    "sdk_setup": "WSL runner accidentally used the native Windows project .venv; stopped its exact owned uv PID before tests. Windows offline sync then rejected the Linux lib64 link; preserved that environment under an ignored .venv-collision-* sibling and rebuilt Windows using the unchanged uv lock. Final WSL uses .venv-wsl. Setup failure is not an application pass.",
+    "stdin_race": "A counterfactual removing only the final settlement guard reproduces the incorrect successful exit after input delivery failure; final guard keeps failure.",
+    "first_full_snapshot": {
+      "source_sha256": "4d1db27fecc2346fc49563849ccf092e5d99dcff6f54e1c3353679e45a8ed91c",
+      "windows": {
+        "total": 1657,
+        "passed": 1635,
+        "skipped": 22,
+        "seconds": 744.893,
+        "exit_code": 0,
+        "log_sha256": "257569c27003a57e4af0aad37759322b9e38449431415490d886d3065304e516"
+      },
+      "local_wsl": {
+        "total": 1657,
+        "failures": 1,
+        "errors": 1,
+        "skipped": 24,
+        "exit_code": 1,
+        "log_sha256": "5ce489eb84516fe56e69e2688d7a67302bfa59e6ae96a569b3ed173b69c854bf"
+      },
+      "findings": [
+        "POSIX process observation checked /proc existence then read a file that could disappear after process exit. Handle FileNotFoundError as exited; do not hide PermissionError.",
+        "The partial-write fixture marked its first nonblocking attempt as sent even when it returned zero. Count actual delivered bytes, force an initial zero, retain the original 0.1 second budget and all 2-byte/failure/no-replay assertions."
+      ],
+      "final_delta": "Only two test modules changed after this snapshot; application and SDK source unchanged. Final frozen full suites and SDK gates rerun."
+    }
+  },
+  "locked_projects": {
+    ".": "22e2647115dc49fc2e9df21ffbc1e6694be61ef8eccb349d59ae320b6243bddd",
+    "benchmarks/clients/mini": "c5fe2838e48a2cde4ef8faeba56ba71b80776e397adbe465914639669e21658a",
+    "benchmarks/clients/aider": "3f257144eac41c5248631a8c5a6ac827c2c8e44081f68b5653262df3dad91568",
+    "benchmarks/repositories/click": "b04f8515898adaf101aeacc850d16eaf22d7470819969d90f02abedc1a9ed43d",
+    "benchmarks/repositories/requests": "1d7f93846b09bb492245b70d9b4e36ca2f54d462dcbb701c3251cdd5ba292db2"
+  },
+  "static_checks": {
+    "python_ast_files": 230,
+    "configuration_schema_matches_runtime": true,
+    "local_document_links_resolved": 675,
+    "changed_public_files": 15,
+    "process_and_configured_credentials_in_changed_files": "absent",
+    "credential_shaped_literals_in_changed_files": "absent",
+    "git_diff_check": "passed"
+  },
+  "peer_reading": {
+    "repository": "anomalyco/opencode",
+    "commit": "fa1260d6ca484fe0fd868aa992ad81ab85343cf3",
+    "document": "../research/opencode-background-logs-20261028.md",
+    "executed": false
+  },
+  "remote_ci": "pending; frozen before 2026-11-01 Asia/Singapore; verify account restriction and prior required gate before resuming",
+  "limits": [
+    "Completion-time bounded append, not execution-time disk streaming. A crash can lose uncommitted output.",
+    "No PTY, cross-process background execution recovery, OS sandbox or network isolation.",
+    "A saved log is a historical observation, not current file evidence or fixed acceptance. Unknown secrets are not guaranteed to be redacted.",
+    "Local Windows/WSL, Python 3.11 and SDK fixtures do not establish remote native CI, full Python/macOS coverage or real coding-performance improvement."
+  ],
+  "packaging_contract": {
+    "wheel_modules_equal_source": 80,
+    "wheel_modules_imported_from_extracted_wheel": 79,
+    "sdist_changed_files_equal_source": 15,
+    "artifact_process_credentials": "absent",
+    "artifact_local_config_and_venvs": "absent"
+  }
+}

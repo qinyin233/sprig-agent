@@ -167,11 +167,16 @@ class JobStdinTests(unittest.TestCase):
         tools = self.tools()
         identity = self.start(tools)
         process = tools.jobs.records[identity].process
-        original, sent = process.write, []
+        original, sent, attempts = process.write, [], []
         def partial(raw, **kwargs):
-            if not sent:
-                sent.append(True)
-                return original(raw[:2], **kwargs)
+            if not attempts:
+                attempts.append(True)
+                return 0  # A nonblocking lock miss is not delivered input.
+            remaining = 2 - sum(sent)
+            if remaining:
+                count = original(raw[:remaining], **kwargs)
+                sent.append(count)
+                return count
             return 0
         with patch.object(process, "write", partial), patch("sprig_agent.jobs.INPUT_TIMEOUT", .1):
             result = tools.job("input", identity, text="PARTIAL\n")

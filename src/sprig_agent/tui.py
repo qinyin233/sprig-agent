@@ -522,7 +522,7 @@ class SprigApp(App[int]):
         for row in rows:
             if row["state"] != "running" and row["job_id"] not in self._job_seen:
                 self._job_seen.add(row["job_id"])
-                self.append("\n[后台任务状态；不是验收结果] " + json.dumps(row) + "；/job output ID 查看输出。\n")
+                self.append("\n[后台任务状态；不是验收结果] " + json.dumps(row) + "；/job output ID 查看内存输出，log_id 可用 /log 回查。\n")
                 self.event("后台命令已结束；当前工作区仍需独立检查")
 
     def safe(self, text):

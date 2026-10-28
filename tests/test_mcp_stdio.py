@@ -51,8 +51,21 @@ def running(pid):
         os.kill(pid, 0)
         stat = Path('/proc') / str(pid) / 'stat'
         return not stat.exists() or stat.read_text().split()[2] != 'Z'
-    except ProcessLookupError:
+    except (ProcessLookupError, FileNotFoundError):
         return False
+
+
+class ProcessProbeTests(unittest.TestCase):
+    @unittest.skipIf(os.name == "nt", "POSIX /proc disappearance; Windows uses a process handle")
+    def test_proc_disappearing_after_exists_is_exited_without_hiding_other_errors(self):
+        with patch(__name__ + ".os.kill"), patch(__name__ + ".Path") as path:
+            status = path.return_value.__truediv__.return_value.__truediv__.return_value
+            status.exists.return_value = True
+            status.read_text.side_effect = FileNotFoundError
+            self.assertFalse(running(12345))
+            status.read_text.side_effect = PermissionError
+            with self.assertRaises(PermissionError):
+                running(12345)
 
 
 def rows(state):

@@ -26,7 +26,7 @@ from .revisions import READ_ID_PATTERN, ReadVersions, valid_read_id
 from .map_selection import MapSelection, encoded_size
 from .policy import FilePolicy, command_environment
 from .output import CommandOutput, SampledCommandOutput
-from .command_logs import CommandLogs, LogCapture
+from .command_logs import BackgroundLog, CommandLogs, LogCapture
 from .questions import answer_result, validate_questions
 from .skills import Skills
 from .mcp import McpManager
@@ -1333,19 +1333,21 @@ class Tools:
                             + "No PTY. "
                             "At most four active / eight retained records, <=1 MiB redacted output per job in memory. "
                             "Completion only notifies locally, without automatic model requests or acceptance. "
-                            "Cancellation/reset/exit stops the process tree. Not resumed or replayed after restore. "
-                            "Background output is not written to the foreground command-log journal.")
-        if self.config.command_log_dir is not None and not background:
+                            "Cancellation/reset/exit stops the process tree. Not resumed or replayed after restore.")
+        if self.config.command_log_dir is not None:
             try:
-                preview = self.logs.preview()
+                preview = self.logs.preview(background=True) if background else self.logs.preview()
             except (OSError, ValueError):
                 preview = {"unavailable": True}
             description += ("\nRETAIN redacted command output in private storage: " + str(self.config.command_log_dir)
                             + "; up to 8 MiB per log / 16 records / 16 MiB journal; readback expires in 7 days, "
                             "payload remains until approved save/clear; temporary payload up to 16 MiB. "
-                            "Expired/old records may be removed as needed, plus the fixed stale pending file. "
-                            "No command is replayed. Retention candidates (IDs only): "
-                            + json.dumps(preview.get("retention_candidates", [])))
+                            + ("BACKGROUND: append only after exit; no eviction or stale pending cleanup. Up to 8 MiB extra capture memory per active job. "
+                               "Concurrent appends allowed; removed/changed approved records, quota, cancellation or owner changes refuse retention. "
+                               "A crash before completion loses the uncommitted output. " if background else
+                               "Expired/old records may be removed as needed, plus the fixed stale pending file. ")
+                            + "No command is replayed. Retention candidates (IDs only): "
+                            + json.dumps([] if background else preview.get("retention_candidates", [])))
             if "unavailable" in preview:
                 description += "\nLogging is unavailable; this command will run without a retained log."
         if not self.request_approval(description):
@@ -1362,7 +1364,11 @@ class Tools:
                 raise ToolError("configured credentials cannot appear in background argv")
             self.read_versions.clear()
             try:
-                return self.jobs.start(argv, directory, env, seconds, output_limit, epoch=job_epoch, stdin=stdin)
+                log = BackgroundLog(self.logs, preview) if preview is not None and "unavailable" not in preview else None
+                status = ({"saved": False, "pending": True} if log is not None else
+                          {"saved": False, "reason": "command log storage unavailable before approval"} if preview is not None else None)
+                return self.jobs.start(argv, directory, env, seconds, output_limit, epoch=job_epoch, stdin=stdin,
+                                       log=log, log_status=status)
             finally:
                 self.read_versions.clear()
         sampled = output_limit > self.config.max_output

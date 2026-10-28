@@ -33,7 +33,7 @@ CLI 可用 `--command-log-dir PATH` 覆盖，`--show-config` 和 TUI `/config` �
 
 `offset` 是保留文本的字符偏移，不是原始管道字节位置。每页完整 JSON 受 `min(max_output, 8192)` 字节限制，含元数据和转义开销，UTF-8 不截断码点。`complete=true` 只表示已读到这份保留文本末尾，必须同时看 `returncode`、`timed_out`、`output_limited`、`capture_limited`；它不表示命令成功或任务通过。
 
-默认非交互任务仍有原九种工具；交互回调另可提供 [question](questions.md)。启用日志且 `[tools].read_log=true` 才增加回查工具，有摘要时可再增加 `read_history`。`read_log=false` / `--disable-tool read_log` 禁用模型回查，用户的本地查看入口仍保留。启用的确定性上下文压缩可省略旧成功回查正文，保留元数据；失败/超时/超限和近期记录仍受原保护规则约束。
+默认非交互任务有十种工具；交互回调另可提供 [question](questions.md)。启用日志且 `[tools].read_log=true` 才增加回查工具，有摘要时可再增加 `read_history`。`read_log=false` / `--disable-tool read_log` 禁用模型回查，用户的本地查看入口仍保留。启用的确定性上下文压缩可省略旧成功回查正文，保留元数据；失败/超时/超限和近期记录仍受原保护规则约束。
 
 日志所有权随启用保存的会话写入少量元数据，完整日志正文不复制进会话 JSON；恢复只恢复只读访问范围，不执行命令。新对话生成新的所有权，不能继续读前一对话的日志。另存分支沿用来源对话的日志访问范围。若未保存会话，退出后应用会失去该次命名空间，日志仍可能留在私有存储中，直到后续获批清理或淘汰；因此示例同时开启自动保存。
 
@@ -50,6 +50,6 @@ CLI 可用 `--command-log-dir PATH` 覆盖，`--show-config` 和 TUI `/config` �
 
 `tests/test_command_logs.py` 覆盖真实子进程中间日志回查、UTF-8/控制字符/跨块与跨页脱敏、容量淘汰、过期、崩溃暂存、锁竞争、保存故障、权限/硬链接、只读/拒绝/取消、历史读取标识失效、会话所有权与恢复、CLI 本地控制和实际 TUI 新对话/恢复/逐次清理。三协议真实 HTTP 回放验证命令只批准一次，随后通过回查找到展示中省略的细节，并在 16 KiB 请求预算内继续。
 
-源码对照基于固定 OpenCode `dev@9d90d89` 的 [`tool-output.ts`](https://github.com/anomalyco/opencode/blob/9d90d892dcbfc52b47e95b2ea31b8aba877128fd/packages/core/src/tool-output.ts)：它将截断正文写入工具输出文件并返回路径。Sprig 使用受限会话句柄和专用有界存储，明确展示批准与清理边界；当前不提供后台任务、可恢复 stdin 或任意路径下载。
+源码对照基于固定 OpenCode `dev@9d90d89` 的 [`tool-output.ts`](https://github.com/anomalyco/opencode/blob/9d90d892dcbfc52b47e95b2ea31b8aba877128fd/packages/core/src/tool-output.ts)：它将截断正文写入工具输出文件并返回路径。Sprig 使用受限会话句柄和专用有界存储，明确展示批准与清理边界；不提供任意路径下载。后续已增加[后台命令及完成后日志提交](background-jobs.md#完成后保留日志)：复用同一 journal 和回查接口，延期保存仅允许追加，不能借用旧批准淘汰后来生成的日志；执行中崩溃仍可能丢失未提交输出。后台日志额外包含 job_id、原终态和 stdin_failed，未知 returncode 为 null；这些字段不授权恢复进程。旧版本可能拒绝含新状态的 journal，不要据此重跑命令。
 
 本批完整测试、打包和精确 CI 结果见[机器记录](benchmarks/command-logs-20261020.json)。固定回复回放证明工具和状态流程，不证明模型编码成功率或已追平其他 agent。
