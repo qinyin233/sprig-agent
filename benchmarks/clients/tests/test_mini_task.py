@@ -21,6 +21,67 @@ spec.loader.exec_module(driver)
 
 
 class MiniTaskTests(unittest.TestCase):
+    def test_http_timeout_reaches_sdk_request_independently_of_command_cap(self):
+        import httpx
+        from mini_transport import MeasuredTransport
+        original = MeasuredTransport.__init__
+        for configured, expected in ((83, 83), (None, 17)):
+            calls = []
+            def receive(request):
+                calls.append(request.extensions['timeout'])
+                raise httpx.ReadTimeout('fixture-private-marker', request=request)
+            def init(transport, config):
+                original(transport, config, inner=httpx.MockTransport(receive))
+            with self.subTest(configured=configured), patch.object(MeasuredTransport, '__init__', init):
+                report = driver.run_case(driver.bench.suite.cases()['py-interval'],
+                    {'model': 'fixture', 'api_key': 'fixture-private-marker', 'timeout': 17,
+                     'request_timeout': configured}, confirm=lambda _: self.fail('unexpected approval'))
+            self.assertEqual(calls, [dict.fromkeys(('connect', 'read', 'write', 'pool'), expected)])
+            self.assertEqual(report['request_timeout_seconds'], expected)
+            self.assertEqual(report['command_timeout_seconds'], 17)
+            self.assertEqual(report['outcome'], 'timeout')
+            self.assertEqual(report['http_attempts'], 1)
+            self.assertEqual(report['request_measurements']['failures'], {'timeout': 1})
+            self.assertEqual(report['approvals']['requests'], 0)
+            self.assertNotIn('fixture-private-marker', json.dumps(report))
+
+    def test_real_sdk_socket_uses_shorter_http_timeout_without_retry(self):
+        import time
+        calls = []
+        class Handler(BaseHTTPRequestHandler):
+            def do_POST(self):
+                self.rfile.read(int(self.headers['Content-Length']))
+                calls.append(True)
+                time.sleep(.4)
+                try:
+                    self.send_response(200)
+                    self.send_header('Content-Length', '2')
+                    self.end_headers()
+                    self.wfile.write(b'{}')
+                except OSError:
+                    pass  # The timed-out client closes its socket.
+            def log_message(self, *args):
+                pass
+        server = ThreadingHTTPServer(('127.0.0.1', 0), Handler)
+        thread = threading.Thread(target=server.serve_forever, daemon=True)
+        thread.start()
+        try:
+            report = driver.run_case(driver.bench.suite.cases()['py-interval'],
+                {'model': 'fixture', 'base_url': f'http://127.0.0.1:{server.server_port}/v1',
+                 'api_key': 'fixture-private-marker', 'timeout': 60, 'request_timeout': .1,
+                 'max_steps': 1}, confirm=lambda _: self.fail('unexpected approval'))
+        finally:
+            server.shutdown(); server.server_close(); thread.join(5)
+        self.assertEqual(calls, [True])
+        self.assertEqual(report['outcome'], 'timeout', report)
+        self.assertEqual(report['http_attempts'], 1)
+        self.assertEqual(report['requests'][0]['outcome'], 'error')
+        self.assertEqual(report['command_timeout_seconds'], 60)
+        self.assertEqual(report['request_timeout_seconds'], .1)
+        self.assertFalse(report['automatic_retries'])
+        self.assertEqual(report['request_measurements']['failures'], {'timeout': 1})
+        self.assertIsNone(report['request_measurements']['recent'][0]['usage'])
+
     def test_other_protocols_stop_before_private_process_or_sdk_access(self):
         for protocol in ("messages", "responses"):
             with self.subTest(protocol=protocol), patch.object(driver, "private_process") as private:

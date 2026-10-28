@@ -24,7 +24,7 @@ class MeasuredTransport(httpx.BaseTransport):
 
     def stop(self, reason):
         self.last_failure = reason
-        raise TransportPolicyError(reason)
+        raise TransportPolicyError(reason) from None
 
     def handle_request(self, request):
         measurement = RequestMeasurement(False)
@@ -74,6 +74,12 @@ class MeasuredTransport(httpx.BaseTransport):
         except KeyboardInterrupt:
             measurement.outcome = "cancelled"
             raise
+        except httpx.TimeoutException:
+            measurement.error_code = "timeout"
+            self.stop("timeout")
+        except httpx.TransportError:
+            measurement.error_code = "connection_error"
+            self.stop("connection_error")
         finally:
             try:
                 if response is not None:

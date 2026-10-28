@@ -1,0 +1,151 @@
+{
+  "schema": 1,
+  "date": "2026-10-28",
+  "base_commit": "0b7a3f749dcd4a5cfa638728dab7829da76e9681",
+  "scope": "Real Requests task evidence and correction to reference SDK HTTP timeout forwarding; not an agent ranking or product-feature parity claim",
+  "external_model_calls": 23,
+  "external_models": [
+    "USTC/deepseek-flash-2"
+  ],
+  "actual_cost": null,
+  "source_seal": {
+    "files": 245,
+    "sha256": "64e54c28388c1bd4ad638ea3953f6998f3ef17b1b92af8dc5690733b672c2748",
+    "normalized_lf_sha256": "00541caf13965e207973ef3461ea5342eedf518f85f171ee05dd6ad3500b3e21",
+    "algorithm": "Same selection and raw/normalized-LF JSON-map SHA256 algorithm as background-stdin-20261027.json; documentation/reports excluded"
+  },
+  "changed_functional_files": [
+    "benchmarks/clients/mini_task.py",
+    "benchmarks/clients/mini_transport.py",
+    "benchmarks/clients/tests/test_mini_task.py",
+    "benchmarks/clients/tests/test_mini_transport.py"
+  ],
+  "application_modules_unchanged_from_sprig_run": 79,
+  "checks": {
+    "windows_full": {
+      "total": 1620,
+      "passed": 1599,
+      "skipped": 21,
+      "seconds": 849.123,
+      "exit_code": 0,
+      "log_sha256": "d50015d8083d3ddf6946ef5828126b8005a4a976468b498459c738b90e9aee4d"
+    },
+    "local_wsl_full": {
+      "total": 1620,
+      "passed": 1597,
+      "skipped": 23,
+      "seconds": 598.69,
+      "exit_code": 0,
+      "log_sha256": "ac94636cedd8ee8703706b732145bd7125e58aeb7aa4600612cbc7db02fa8713"
+    },
+    "windows_sdk_original": {
+      "total": 30,
+      "passed": 30,
+      "skipped": 0,
+      "seconds": 68.429,
+      "exit_code": 0,
+      "log_sha256": "542d5385c6009a6ea5d520c2cc242d8ac39c991535fd31bcaea777ddb6dda4f2"
+    },
+    "windows_sdk_requests": {
+      "total": 30,
+      "passed": 30,
+      "skipped": 0,
+      "seconds": 39.949,
+      "exit_code": 0,
+      "log_sha256": "f387836d96a793770a505fc860d041c78a86fa98ca55e71e54f2f47b4e2d0e47"
+    },
+    "local_wsl_sdk_original": {
+      "total": 30,
+      "passed": 30,
+      "skipped": 0,
+      "seconds": 268.67,
+      "exit_code": 0,
+      "log_sha256": "ab765c856dbb904a5f869299d1f397b3ce140dd4a18f6fbaee0d501631069565"
+    },
+    "local_wsl_sdk_requests": {
+      "total": 30,
+      "passed": 30,
+      "skipped": 0,
+      "seconds": 245.899,
+      "exit_code": 0,
+      "log_sha256": "6ed82f78e693d9ce717b5f1ebee6e35c219f113ae793c92d2ed5974e21adf51d"
+    },
+    "windows_requests_integration": {
+      "total": 5,
+      "passed": 5,
+      "skipped": 0,
+      "seconds": 50.593,
+      "exit_code": 0,
+      "log_sha256": "afc87204f91d544652ef22e704cfcaaf1417d7035dcf6afb3a7426ae66198889"
+    },
+    "archive_contract": {
+      "wheel_modules_equal_source": 79,
+      "wheel_modules_imported_from_extracted_wheel": 78,
+      "sdist_changed_files_equal_source": 14,
+      "artifact_process_credentials": "absent",
+      "artifact_local_config_and_venvs": "absent"
+    }
+  },
+  "native_reports_equal_private_bytes": {
+    "requests-sprig-live-20261028": {
+      "sha256": "1d8b162781aca0c2fdf08d8699100cd737853144902e7a0e7978dc81983ddc5a"
+    },
+    "requests-mini-pre-timeout-fix-20261028": {
+      "sha256": "2d90962a499e6db6d33872f7955b1821479d734bd52deeff08e222317ebea085"
+    },
+    "requests-mini-post-timeout-fix-20261028": {
+      "sha256": "42eec8ea56f675be866b1436037e57b6e3fff27153f2d6568251b80621120b8f"
+    }
+  },
+  "sprig_model_tool_calls": {
+    "grep": 3,
+    "read_file": 4,
+    "list_files": 1,
+    "run": 3,
+    "edit_lines": 3
+  },
+  "sprig_tool_errors": {
+    "missing_path": 2,
+    "outside_workspace": 1,
+    "expired_read_id": 1,
+    "missing_line_ending": 1
+  },
+  "sprig_changed_file_equal_public_reference": true,
+  "timeout_fix": {
+    "httpx_openai_litellm": "request_timeout or timeout",
+    "command_timeout": "unchanged; separately reported",
+    "configured_83_vs_command_17": "actual SDK request previously carried 17; now 83; unset HTTP timeout still falls back to 17",
+    "delayed_http": "0.4s server response was accepted despite configured 0.1s; now fixed timeout and one attempt",
+    "network_failures": "four HTTPX timeout types and four transport error types; fixed reason, no exception text or retry",
+    "partial_body": "close response, retain byte count/status and unknown usage",
+    "initial_failing_log_sha256": "a6385025d857c16836b507da4f9535cf978ce4f8451906f289eacefdd9379826",
+    "new_test_methods": 4,
+    "httpx_deadline_scope": "per IO phase; not a hard total request deadline"
+  },
+  "locked_projects": {
+    ".": "22e2647115dc49fc2e9df21ffbc1e6694be61ef8eccb349d59ae320b6243bddd",
+    "benchmarks/clients/mini": "c5fe2838e48a2cde4ef8faeba56ba71b80776e397adbe465914639669e21658a",
+    "benchmarks/clients/aider": "3f257144eac41c5248631a8c5a6ac827c2c8e44081f68b5653262df3dad91568",
+    "benchmarks/repositories/click": "b04f8515898adaf101aeacc850d16eaf22d7470819969d90f02abedc1a9ed43d",
+    "benchmarks/repositories/requests": "1d7f93846b09bb492245b70d9b4e36ca2f54d462dcbb701c3251cdd5ba292db2"
+  },
+  "configuration_schema": "matches runtime; unchanged",
+  "compact_tool_schema_bytes": 4927,
+  "peer_reading": {
+    "repository": "anomalyco/opencode",
+    "commit": "fa1260d6ca484fe0fd868aa992ad81ab85343cf3",
+    "paths": [
+      "packages/core/src/tool/plugin/read.ts"
+    ],
+    "executed": false
+  },
+  "remote_ci": "pending; frozen before 2026-11-01 Asia/Singapore; confirm account restriction and prior required gate before resuming",
+  "limits": [
+    "One public historical Requests success; candidate exception file equals known reference, so training-data memory is possible.",
+    "Click failures remain. Two incomplete mini samples are not agent wins/losses.",
+    "SSE/native reasoning/edit checks and JSON/Bash/submit checks differ; no fully controlled ranking.",
+    "Mini temporary workspaces were cleaned; no retained final candidate snapshots or independent postchecks.",
+    "Failed HTTP usage and complete cross-run token total/cost are unknown.",
+    "Local WSL/platform skips do not establish native remote CI or a complete Python matrix."
+  ]
+}

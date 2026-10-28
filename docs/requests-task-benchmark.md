@@ -1,6 +1,6 @@
 # 第二个固定仓库任务：Requests 异常序列化
 
-此任务来自 [Requests #6628](https://github.com/psf/requests/issues/6628) 和[上游修复 #6629](https://github.com/psf/requests/pull/6629)：JSON 解码异常经过 pickle 或进程池传输时，调用者应收到原异常，并能继续提交有效任务。它扩展了已有的 [Click 仓库任务](repository-task-benchmark.md)，用于发现另一类真实库代码问题；本批只有离线校准和固定回复回归，没有外部模型请求或新的编码成绩。
+此任务来自 [Requests #6628](https://github.com/psf/requests/issues/6628) 和[上游修复 #6629](https://github.com/psf/requests/pull/6629)：JSON 解码异常经过 pickle 或进程池传输时，调用者应收到原异常，并能继续提交有效任务。它扩展了已有的 [Click 仓库任务](repository-task-benchmark.md)。2026-10-26 初始批次只有离线校准和固定回复回归；后续 [2026-10-28 真实运行](live-evaluation-requests-20261028.md)记录 Sprig 的一次 58/58 成功及未完成的 mini 参考，不构成整体能力排名。
 
 ## 固定输入与检查
 

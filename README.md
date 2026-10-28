@@ -229,6 +229,8 @@ CLI `/usage`、TUI“查看请求统计”在本地显示当前 provider 实例�
 
 可通过 [编码任务诊断](docs/coding-benchmark.md)在一次性项目中运行定位、跨文件修复、新功能等任务，保留逐次批准并记录任务和工具开销。[客户端对照准备](docs/client-comparison.md)提供固定版本的独立 uv / npm 环境与原生入口检查。[固定 Click 仓库任务](docs/repository-task-benchmark.md)与 [Requests 异常序列化任务](docs/requests-task-benchmark.md)让 Sprig 和 mini 从相同源码、任务和外部验收开始，支持各自行动循环中的失败后修复。离线自检和入口检查不是模型成绩，也不能代替真实竞品对照。
 
+[Requests 的一次真实运行](docs/live-evaluation-requests-20261028.md)通过 58/58 外部检查，保留未完成参考、工具恢复和公开任务污染限制，不代表整体水平或排名。
+
 ### 会话管理
 
 ```sh

@@ -29,6 +29,52 @@ class Body(httpx.SyncByteStream):
 
 
 class MiniTransportTests(unittest.TestCase):
+    def test_network_failures_have_fixed_numeric_reasons_without_retry(self):
+        for kind in (httpx.ConnectTimeout, httpx.ReadTimeout, httpx.WriteTimeout, httpx.PoolTimeout,
+                     httpx.ConnectError, httpx.ReadError, httpx.WriteError, httpx.RemoteProtocolError):
+            calls = []
+            def failed(request):
+                calls.append(True)
+                raise kind('fixture-private-marker', request=request)
+            reason = 'timeout' if issubclass(kind, httpx.TimeoutException) else 'connection_error'
+            with self.subTest(kind=kind.__name__):
+                transport = MeasuredTransport(SimpleNamespace(base_url='https://example.invalid/v1', max_context_bytes=4096),
+                                              inner=httpx.MockTransport(failed))
+                self.addCleanup(transport.close)
+                with self.assertRaises(TransportPolicyError) as caught:
+                    self.send(transport)
+                self.assertEqual(caught.exception.reason, reason)
+                self.assertTrue(caught.exception.__suppress_context__)
+                self.assertEqual(calls, [True])
+                report = transport.report()
+                self.assertEqual(report['attempts'], 1)
+                self.assertEqual(report['outcomes']['error'], 1)
+                self.assertEqual(report['failures'], {reason: 1})
+                self.assertEqual(report['recent'][0]['policy_failure'], reason)
+                self.assertIsNone(report['recent'][0]['usage'])
+                self.assertNotIn('fixture-private-marker', str(caught.exception) + json.dumps(report))
+
+    def test_partial_body_timeout_closes_stream_and_keeps_usage_unknown(self):
+        body = b'{"text":"fixture-private-marker",'
+        class FailedBody(Body):
+            def __iter__(self):
+                yield body
+                raise httpx.ReadTimeout('fixture-private-marker')
+        stream = FailedBody([])
+        transport = MeasuredTransport(SimpleNamespace(base_url='https://example.invalid/v1', max_context_bytes=4096),
+            inner=httpx.MockTransport(lambda _: httpx.Response(200, stream=stream)))
+        self.addCleanup(transport.close)
+        with self.assertRaises(TransportPolicyError) as caught:
+            self.send(transport)
+        self.assertEqual(caught.exception.reason, 'timeout')
+        self.assertTrue(stream.closed)
+        report = transport.report()
+        self.assertEqual(report['response_bytes'], len(body))
+        self.assertEqual(report['recent'][0]['http_status'], 200)
+        self.assertIsNone(report['recent'][0]['usage'])
+        self.assertEqual(report['failures'], {'timeout': 1})
+        self.assertNotIn('fixture-private-marker', json.dumps(report))
+
     def transport(self, body=b'{}', *, status=200, headers=None, cap=4096):
         stream = Body([body] if isinstance(body, bytes) else body)
         calls = []

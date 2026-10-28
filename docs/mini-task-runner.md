@@ -56,3 +56,5 @@ Sprig 和 mini 现在都在发送前限制实际序列化的 JSON 请求体字�
 上述离线测试中的模型回复和 HTTP 内容是固定夹具，不能混为上文的真实运行。已有单次真实样本，仍缺声明条件一致的多次配对、多仓库独立任务集、自然长会话或峰值进程内存测量，不能因此声称接近顶尖 agent。
 
 [Requests 任务](requests-task-benchmark.md)使用另一个包含完整运行依赖的共同项目。内部适配器可显式接收该项目的 `uv.lock`，在 SDK 初始化前校验路径和大小，并纳入完整性保护；`client_lock_sha256` 因此记录实际选定的锁，`client_dependency_versions` 记录当前安装的 SDK、LiteLLM、OpenAI、Requests 和可选 MCP 版本，缺失保持 null。其他入口默认使用原 mini 项目锁。版本和锁摘要只是环境证据，不能代替 SDK 行为回归或声明所有传递依赖都等于旧环境。
+
+2026-10-28 [真实 Requests 运行](live-evaluation-requests-20261028.md)暴露 HTTP 超时转发遗漏：OpenAI、HTTPX、LiteLLM 曾使用命令 `timeout`，没有采用独立 `request_timeout`。现统一使用后者并保留未设置时的回退，报告分别记录 `request_timeout_seconds` 与 `command_timeout_seconds`。这是 HTTPX 各 IO 阶段的超时，不是整个调用的总期限，不宣称与 Sprig 的总期限机制相同。HTTPX 超时和传输故障现在有固定原因、未知用量及无重试记录；旧 `client_error` 保持原样，不依据耗时反推确切异常。

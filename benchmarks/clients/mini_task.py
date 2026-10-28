@@ -164,9 +164,10 @@ def run_case(case, options, *, model_factory=None, confirm=approve, emit=None, c
         template_signature = hashlib.sha256((builtin_config_dir / "mini.yaml").read_bytes()).hexdigest()
         requests = []
         wire = None if model_factory else MeasuredTransport(config)
+        http_timeout = config.request_timeout or config.timeout
         client = None if wire is None else resources.enter_context(OpenAI(
-            api_key=key, base_url=config.base_url, timeout=config.timeout, max_retries=0,
-            http_client=httpx.Client(transport=wire, timeout=config.timeout, trust_env=False,
+            api_key=key, base_url=config.base_url, timeout=http_timeout, max_retries=0,
+            http_client=httpx.Client(transport=wire, timeout=http_timeout, trust_env=False,
                                     follow_redirects=False, headers={"Accept-Encoding": "identity"})))
 
         class MeasuredModel(LitellmModel):
@@ -213,7 +214,7 @@ def run_case(case, options, *, model_factory=None, confirm=approve, emit=None, c
 
         model_route = "openai/" + config.model.removeprefix("openai/")
         model_kwargs = {**defaults["model"].get("model_kwargs", {}), "api_base": config.base_url,
-                        "timeout": config.timeout, "num_retries": 0}
+                        "timeout": http_timeout, "num_retries": 0}
         generation = config.generation_options()
         extensions = set(json.loads(config.extra_body))
         if config.thinking:
@@ -290,7 +291,7 @@ def run_case(case, options, *, model_factory=None, confirm=approve, emit=None, c
                        "max_steps": config.max_steps, "stream": False,
                        "check_before_task": config.check_before_task, "baseline_status": baseline_status,
                        "model_task_sha256": hashlib.sha256(model_task.encode("utf-8")).hexdigest(),
-                       "request_timeout_seconds": config.timeout,
+                       "request_timeout_seconds": http_timeout, "command_timeout_seconds": config.timeout,
                        "generation_options": config.generation_options(),
                        "max_context_bytes": config.max_context_bytes if wire else None,
                        "context_budget": "actual serialized HTTP JSON body" if wire else "scripted fixture; no HTTP transport",
