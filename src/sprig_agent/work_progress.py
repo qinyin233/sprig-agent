@@ -1,7 +1,7 @@
 """Bounded per-invocation tool observations; advice, never task acceptance."""
 import json
 
-INSPECTIONS = frozenset({"list_files", "read_file", "search", "grep", "project_map"})
+INSPECTIONS = frozenset({"list_files", "glob", "read_file", "search", "grep", "project_map"})
 FILE_CHANGES = frozenset({"edit_file", "edit_lines", "file_action"})
 APPROVAL_ACTIONS = FILE_CHANGES | {"run", "mcp", "web_fetch", "job", "lsp"}
 UNCERTAIN = ("timed_out", "output_limited", "skipped", "cancelled", "interrupted", "outcome", "partial")

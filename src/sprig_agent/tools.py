@@ -7,7 +7,7 @@ import io
 import json
 import math
 import os
-from pathlib import PurePosixPath
+from pathlib import PurePosixPath, PureWindowsPath
 import selectors
 import signal
 import stat
@@ -40,6 +40,7 @@ from .line_edits import replace_lines, validate_edits
 from .search import FileGlob, RegexBudgetExceeded, RegexMatcher, matching_lines
 from .syntax import IndexUnavailable
 from .image_reads import ImageReadResult, read_image
+from .file_glob import discover as discover_files
 
 MAX_FILE = 512 * 1024
 MAX_READ = 8 * 1024 * 1024
@@ -61,42 +62,45 @@ def schema(name, description, properties, required=()):
 
 STRING = {"type": "string"}
 TOOL_SCHEMAS = [
-    schema("list_files", "List one directory; no symlinks/protected files.",
+    schema("list_files", "List one directory; no links/private paths.",
            {"path": STRING}),
-    schema("read_file", "UTF-8 window: range_complete; truncated may mean later lines. symbol_complete <=512KiB. cursor='start'/next_cursor scan<=8MiB. Partial lines: no read_id. image=true: approve run-only pixels; no text options/read_id.",
+    schema("glob", "Case-sensitive glob relative to path; basename any depth, ** dirs. Check flags.",
+           {"pattern": STRING, "path": STRING,
+            "hidden": {"type": "boolean"}, "limit": {"type": "integer"}}, ["pattern"]),
+    schema("read_file", "UTF-8 lines/symbol or cursor='start'/next_cursor. range_complete/symbol_complete; truncated may mean later lines. Partial lines/images lack read_id; image=true asks run-only pixels.",
            {"path": STRING, "offset": {"type": "integer", "minimum": 1, "maximum": 1000000},
             "limit": {"type": "integer", "minimum": 1, "maximum": 10000}, "line_numbers": {"type": "boolean"},
             "cursor": {"type": "string", "maxLength": 80},
             "symbol": {"type": "string", "minLength": 1, "maxLength": 1024}, "image": {"type": "boolean"}}, ["path"]),
-    schema("grep", "RE2 regex default; literal=true: exact text. No lookaround/backrefs; ASCII \\w/\\d/\\b; 1MiB/cooperative 1s. ignore_case: full literal/simple folding RE2. files/count: context=0, physical CR/LF lines. Check truncated/timed_out/skipped.",
+    schema("grep", "RE2 (ASCII \\w/\\d/\\b; no lookaround/backrefs; simple folding). literal=true for text; physical CR/LF lines. Check truncated/timed_out/skipped.",
            {"pattern": {"type": "string", "minLength": 1, "maxLength": 1000}, "path": STRING,
             "glob": {"type": "string", "minLength": 1, "maxLength": 256},
             "ignore_case": {"type": "boolean"}, "literal": {"type": "boolean"},
             "context": {"type": "integer", "minimum": 0, "maximum": 10},
             "limit": {"type": "integer", "minimum": 1, "maximum": 1000},
             "output_mode": {"enum": ["content", "files", "count"]}}, ["pattern"]),
-    schema("project_map", "File/dir: Python/JS/TS/TSX/Rust/Go/C/C++/Java declarations, 1-based. Case-insensitive literal name/path; exact/prefix first. include_calls: syntax, not resolved refs. Check flags; read before edits.",
+    schema("project_map", "File/dir declarations; literal name/path. include_calls: syntax, not resolved refs. Check flags; read source.",
            {"path": STRING, "query": {"type": "string", "minLength": 1, "maxLength": 256},
             "include_calls": {"type": "boolean"}}),
-    schema("edit_file", "Unique exact old/new (old='' creates) OR <=32 edits in ORIGINAL text. Parent must exist. Approved full diff, atomic write, undo; reread mismatches. Prefer edit_lines.",
+    schema("edit_file", "Unique old/new (old='' creates) OR <=32 edits in original text. Full diff approval, atomic write, undo. Reread mismatches.",
            {"path": STRING, "old": STRING, "new": STRING,
             "edits": {"type": "array", "minItems": 1, "maxItems": MAX_EDITS,
                       "items": {"type": "object", "properties": {"old": STRING, "new": STRING},
                                 "required": ["old", "new"], "additionalProperties": False}}}, ["path"]),
-    schema("edit_lines", "read_id pins read_file hash; stale/expired IDs fail before approval. Whole-line, 1-based inclusive; insert end_line=start_line-1. Preserve line endings; no overlap.",
+    schema("edit_lines", "Whole-line edits with current read_id, 1-based inclusive. Insert: end=start-1. Preserve line endings; reread after commands.",
            {"path": STRING, "read_id": {"type": "string", "pattern": READ_ID_PATTERN, "maxLength": 64},
             "edits": {"type": "array", "minItems": 1, "maxItems": MAX_EDITS,
                            "items": {"type": "object", "properties": {
                                "start_line": {"type": "integer", "minimum": 1, "maximum": 1000000},
                                "end_line": {"type": "integer", "minimum": 0, "maximum": 1000000}, "new": STRING},
                                "required": ["start_line", "end_line", "new"], "additionalProperties": False}}}, ["path", "read_id", "edits"]),
-    schema("update_plan", "Plan <=16, <=1 in_progress, <=4KiB; [] clears. Revise after guidance. Not approval/acceptance evidence.",
+    schema("update_plan", "Plan <=16, <=1 in_progress; [] clears. Not approval/acceptance.",
            {"plan": {"type": "array", "maxItems": 16, "items": {"type": "object", "properties": {
                "step": {"type": "string", "minLength": 1, "maxLength": 256},
                "status": {"enum": ["pending", "in_progress", "completed"]}},
                "required": ["step", "status"], "additionalProperties": False}},
             "explanation": {"type": "string", "maxLength": 512}}, ["plan"]),
-    schema("file_action", "mkdir (parent exists); delete/move UTF-8 <=512KiB with source read_id. Move copies then deletes: two approvals, both may remain. No overwrite/recursive delete.",
+    schema("file_action", "mkdir; delete/move UTF-8 <=512KiB with read_id. No overwrite/recursive delete; move asks twice and may leave both files.",
            {"action": {"enum": ["mkdir", "delete", "move"]}, "path": STRING, "destination": STRING,
             "read_id": STRING}, ["action", "path"]),
     schema("run", "Approve argv; NOT sandboxed (outside files/network). Omit timeout for configured cap.",
@@ -325,7 +329,7 @@ class Tools:
             self._require_tool(name)
             if not isinstance(arguments, dict):
                 raise ToolError("tool arguments must be an object")
-            method = {"list_files": self.list_files, "read_file": self.read_file,
+            method = {"list_files": self.list_files, "glob": self.glob, "read_file": self.read_file,
                       "search": self.search, "grep": self.grep, "project_map": self.project_map,
                       "edit_file": self.edit_file, "edit_lines": self.edit_lines,
                       "run": self.run, "update_plan": self.update_plan, "file_action": self.file_action,
@@ -475,6 +479,18 @@ class Tools:
                     break
                 entries.append({"name": entry.name, "type": kind})
         return {"entries": sorted(entries, key=lambda item: item["name"]), "truncated": truncated}
+
+    def glob(self, pattern, path=".", *, hidden=False, limit=100):
+        self._require_tool("glob")
+        matcher = FileGlob(pattern)
+        if PureWindowsPath(pattern).drive:
+            raise ToolError("glob pattern must be relative to the selected directory")
+        if type(hidden) is not bool or type(limit) is not int or not 1 <= limit <= 1000:
+            raise ToolError("glob hidden must be boolean and limit an integer from 1 to 1000")
+        parts = self._parts(path)
+        if len(parts) > 32:
+            raise ToolError("glob scope exceeds 32 path components; narrow the workspace")
+        return discover_files(self, parts, matcher, hidden, limit, skip_directory)
 
     def read_file(self, path, offset=1, limit=None, *, line_numbers=_MISSING, cursor=_MISSING, symbol=_MISSING, image=False):
         self._require_tool("read_file")

@@ -103,7 +103,7 @@ class GrepTests(unittest.TestCase):
                     with self.assertRaisesRegex(ToolError, "disabled"):
                         getattr(tools, name)("alpha")
                     self.assertIn("disabled", tools.execute(name, {argument: "alpha"})["error"])
-        self.assertEqual(len(TOOL_SCHEMAS), 9)
+        self.assertEqual(len(TOOL_SCHEMAS), 10)  # glob adds a filename tool; search remains an alias.
         names = [row["function"]["name"] for row in TOOL_SCHEMAS]
         self.assertIn("grep", names)
         self.assertNotIn("search", names)

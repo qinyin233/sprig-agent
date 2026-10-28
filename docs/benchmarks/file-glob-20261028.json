@@ -1,0 +1,255 @@
+{
+  "schema": 1,
+  "date": "2026-10-28",
+  "base_commit": "857c5f9f9081d71084c4b56e7d831681cdddc36f",
+  "scope": "Filename-only glob tool, policy/config integration and request-footprint preservation; fixtures do not establish real-model improvement",
+  "external_model_calls": 0,
+  "source_seal": {
+    "files": 248,
+    "sha256": "19cfbfa907ae935dfe1eb1a7045304ded85751ac06741f3658516a4627578ae2",
+    "normalized_lf_sha256": "34a433f72095504028207bc45b84a6bdce9c00ee72193c087ea4daef6663ce86",
+    "algorithm": "Same selection/raw/LF JSON-map SHA256 algorithm as background-stdin-20261027.json; documentation/reports excluded"
+  },
+  "checks": {
+    "windows_full": {
+      "total": 1638,
+      "passed": 1616,
+      "skipped": 22,
+      "seconds": 842.286,
+      "exit_code": 0,
+      "log_sha256": "552d5218362824666b06c3abcf66a42cce67880407b7e5f028bfeffab56c3bf5"
+    },
+    "local_wsl_full": {
+      "total": 1638,
+      "passed": 1614,
+      "skipped": 24,
+      "seconds": 609.176,
+      "exit_code": 0,
+      "log_sha256": "8f0792e706e95ec6ea05363686a92d788c398744c18e1ff1e4a2524dba10454e"
+    },
+    "windows_python311_new_feature": {
+      "total": 18,
+      "passed": 17,
+      "skipped": 1,
+      "seconds": 19.392,
+      "exit_code": 0,
+      "log_sha256": "578759c6fee99faa47b53e46d46d83281eb77eaa7d05469538113d1e466bf86a"
+    },
+    "windows_focused_contracts": {
+      "total": 150,
+      "passed": 147,
+      "skipped": 3,
+      "seconds": 36.324,
+      "exit_code": 0,
+      "log_sha256": "bc7e285cba9214733f3687c8f4aef3b900c13727bc6e9d1973a9a3e75f34cfab"
+    },
+    "windows_sdk_original": {
+      "total": 30,
+      "passed": 30,
+      "skipped": 0,
+      "seconds": 54.126,
+      "exit_code": 0,
+      "log_sha256": "83f3d84cbce1071d7e4bf16bf6e8a00db71491ad34d97e01b0633427f7a711f9"
+    },
+    "windows_sdk_requests": {
+      "total": 30,
+      "passed": 30,
+      "skipped": 0,
+      "seconds": 52.272,
+      "exit_code": 0,
+      "log_sha256": "43568ea46caacf94a150fffcc479dead813fe4a92e9058d593acfc80e49bfeba"
+    },
+    "local_wsl_sdk_original": {
+      "total": 30,
+      "passed": 30,
+      "skipped": 0,
+      "seconds": 253.07,
+      "exit_code": 0,
+      "log_sha256": "f81cb6e782ba42c876c945c0352ea5df467fcc049b6307761d5908939f41c73e"
+    },
+    "local_wsl_sdk_requests": {
+      "total": 30,
+      "passed": 30,
+      "skipped": 0,
+      "seconds": 219.067,
+      "exit_code": 0,
+      "log_sha256": "54cda45e92dbd9ecc67806abbe521eea9b51f394dc084efb10bc8e7c4a48285f"
+    }
+  },
+  "request_footprint_bytes": {
+    "baseline_tool_schemas": 4927,
+    "current_tool_schemas": 4894,
+    "unchanged_tool_schema_hard_gate": 4932,
+    "baseline_base_prompt": 2524,
+    "current_base_prompt": 2372,
+    "baseline_readonly_schemas": 2707,
+    "current_readonly_schemas": 2797
+  },
+  "counterfactual": {
+    "scope": "One offline filename probe on the same Requests base snapshot; not a replay of a model-selected glob or a model-performance result",
+    "base_commit": "857c5f9f9081d71084c4b56e7d831681cdddc36f",
+    "baseline_application_modules": 79,
+    "fixture_files": 40,
+    "fixture_sha256": "1e92afeb2bca849b3dfa91a1d604c43fc2d960a2b2736db18a1edb062b2de0a2",
+    "external_model_calls": 0,
+    "results": {
+      "baseline": {
+        "glob_present": false,
+        "found_paths": [],
+        "unknown_tool": true,
+        "entries_scanned": null,
+        "truncated": null,
+        "bad_original_path_still_rejected": true,
+        "compact_tool_schema_bytes": 4927,
+        "default_binding_sha256": "5d5692059675d86d333c35d11418f5e94a4fb4f808ed0beadeae129670a500b2"
+      },
+      "current": {
+        "glob_present": true,
+        "found_paths": [
+          "src/requests/exceptions.py"
+        ],
+        "unknown_tool": false,
+        "entries_scanned": 44,
+        "truncated": false,
+        "bad_original_path_still_rejected": true,
+        "compact_tool_schema_bytes": 4894,
+        "default_binding_sha256": "5d5692059675d86d333c35d11418f5e94a4fb4f808ed0beadeae129670a500b2"
+      }
+    }
+  },
+  "contracts": {
+    "read_only": true,
+    "candidate_file_bodies_opened": false,
+    "policy_data_reads": "bounded .sprigignore through existing FilePolicy",
+    "commands_or_network_by_glob": false,
+    "read_or_write_authorization": false,
+    "pattern_scope": "relative to selected path; results relative to workspace",
+    "case_sensitive": true,
+    "hidden_default": false,
+    "pattern_max_utf8_bytes": 256,
+    "pattern_max_components": 32,
+    "default_limit": 100,
+    "max_limit": 1000,
+    "entries_scanned_max": 5000,
+    "recursive_depth_max": 32,
+    "cooperative_seconds": 1,
+    "response_bytes": "min(max_output,16384)",
+    "disabled_by": [
+      "glob",
+      "list_files"
+    ],
+    "policy_reloaded_before_release": true,
+    "credential_filenames": "configured values and existing FilePolicy credential-shape heuristic excluded",
+    "links_and_special_files": "not returned or traversed; includes native Windows junction and POSIX symlink/FIFO fixtures",
+    "resume_cursor": false,
+    "cache_or_automatic_path_correction": false,
+    "read_id_from_discovery": false
+  },
+  "coverage": {
+    "new_test_methods": 18,
+    "protocols": [
+      "chat_completions",
+      "messages",
+      "responses"
+    ],
+    "encodings": [
+      "json",
+      "sse"
+    ],
+    "protocol_subcases": 6,
+    "flow": [
+      "glob",
+      "current read",
+      "freshly approved edit",
+      "stage check",
+      "independent final acceptance"
+    ],
+    "request_budget_unchanged": 16384,
+    "tui": "80x24 Textual Enter, Chinese filename, readonly discovery/read with no approval or writes",
+    "benchmark_diagnostics": "glob name and bounded counts, no filenames/patterns/raw arguments"
+  },
+  "development_failures": {
+    "full_runs": [
+      {
+        "stage": "v1-windows",
+        "total": 1637,
+        "failures": 6,
+        "errors": 1,
+        "skipped": 22,
+        "log_sha256": "24fccecc6033163726c226684694c65f264ffd2d34f195cdbdd04ec30873a976"
+      },
+      {
+        "stage": "v1-wsl",
+        "total": 1637,
+        "failures": 6,
+        "errors": 1,
+        "skipped": 24,
+        "log_sha256": "fb35e82e00ade5b67feea2b7770106fdeb0da99b98a9f4a3677af569b19200a5"
+      },
+      {
+        "stage": "v2-windows",
+        "total": 1638,
+        "failures": 1,
+        "errors": 1,
+        "skipped": 22,
+        "log_sha256": "bd8e5cd10d760c6e075a65f6402fc8ae2a79bc1b042d0465b3119eab09aa8a1d"
+      },
+      {
+        "stage": "v2-wsl",
+        "total": 1638,
+        "failures": 1,
+        "errors": 1,
+        "skipped": 24,
+        "log_sha256": "e21172d0c146b01c5b402deb1aa0f38d33e3a8fcaf7781fb38a62e95b417a448"
+      }
+    ],
+    "credential_shape_log_sha256": "bfce06f5f823266c5e2cbc7cbae4cb2e2821dedb478afb553ef5196955f7a589",
+    "v1_source_sha256": "c9eb2e9e88aa46fa4c0a640eea400b785d818569f687921e969c83faafdaa078",
+    "v2_source_sha256": "4aa8481f6b664c2f8086e67be82e7d5ca6c88fbcf4d2f3a8868f122f02c445b4",
+    "findings": [
+      "The 5433-byte draft violated the unchanged 4932-byte gate and existing fixed request budgets; duplicate descriptions were reduced without raising limits.",
+      "The next draft omitted range_complete and regex timeout/physical-line/folding wording; both OS suites rejected these missing semantics. Restored explicit descriptions and compacted duplicate approval prose.",
+      "A credential-shaped filename absent from config was initially returned; the new controlled failure led to applying existing FilePolicy signature filtering to names.",
+      "Initial test helpers used a nonexistent Tools.set_config and omitted Chat SSE call indexes; fixtures were corrected. Configuration schema regenerated and old explicit tool sets extended."
+    ]
+  },
+  "locked_projects": {
+    ".": "22e2647115dc49fc2e9df21ffbc1e6694be61ef8eccb349d59ae320b6243bddd",
+    "benchmarks/clients/mini": "c5fe2838e48a2cde4ef8faeba56ba71b80776e397adbe465914639669e21658a",
+    "benchmarks/clients/aider": "3f257144eac41c5248631a8c5a6ac827c2c8e44081f68b5653262df3dad91568",
+    "benchmarks/repositories/click": "b04f8515898adaf101aeacc850d16eaf22d7470819969d90f02abedc1a9ed43d",
+    "benchmarks/repositories/requests": "1d7f93846b09bb492245b70d9b4e36ca2f54d462dcbb701c3251cdd5ba292db2"
+  },
+  "peer_reading": {
+    "repository": "anomalyco/opencode",
+    "commit": "fa1260d6ca484fe0fd868aa992ad81ab85343cf3",
+    "paths": [
+      "packages/core/src/tool/plugin/glob.ts"
+    ],
+    "executed": false
+  },
+  "remote_ci": "pending; frozen before 2026-11-01 Asia/Singapore; recheck account restriction and prior required gate before resuming",
+  "limits": [
+    "No real-model success/round-count improvement measured; prior Requests/Click results remain unchanged.",
+    "Stdlib FileGlob syntax (* ? [] whole-component **); no brace/extglob expansion or negated pattern list.",
+    "Names are historical observations, not file versions; later reads/edits must revalidate independently.",
+    "Truncated results are an observed subset, not guaranteed lexicographically first or a stable page. Cooperative budgets cannot preempt a blocking OS call.",
+    "Local WSL and skips do not establish remote native CI, macOS, or a full Python matrix."
+  ],
+  "packaging_contract": {
+    "wheel_modules_equal_source": 80,
+    "wheel_modules_imported_from_extracted_wheel": 79,
+    "sdist_changed_files_equal_source": 22,
+    "artifact_process_credentials": "absent",
+    "artifact_local_config_and_venvs": "absent"
+  },
+  "static_checks": {
+    "python_ast_files": 228,
+    "configuration_schema_matches_runtime": true,
+    "local_document_links_resolved": 669,
+    "changed_public_files": 22,
+    "process_and_configured_credentials_in_changed_files": "absent",
+    "credential_shaped_literals_in_changed_files": "absent",
+    "git_diff_check": "passed"
+  }
+}

@@ -89,6 +89,7 @@ response_language = "简体中文" # explanations only; direct user requests tak
 
 [tools]
 list_files = true
+glob = true # filename-only discovery; also disabled when list_files=false
 read_file = true
 search = true
 grep = true # canonical model search; search is the legacy alias; either false disables both

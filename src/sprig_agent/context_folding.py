@@ -5,7 +5,7 @@ from .config import redact
 from .json_budget import JSON_OPTIONS, JsonBudgetExceeded, encoded_size
 
 BODY_FIELDS = {"read_file": "content", "search": ("matches", "files"), "grep": ("matches", "files"),
-               "list_files": "entries", "project_map": "files"}
+               "list_files": "entries", "glob": "files", "project_map": "files"}
 MAX_ARGUMENT_CHARS = 16384
 MAX_RESULT_CHARS = 32768
 MAX_GROUP_CALLS = 64

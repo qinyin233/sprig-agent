@@ -88,6 +88,23 @@ class FileGlob:
                             if index < len(parts) and fnmatch.fnmatchcase(parts[index], pattern)}
         return len(parts) in possible
 
+    def could_descend(self, parts):
+        """Whether a directory prefix can contain a future matching file."""
+        if len(self.parts) == 1:
+            return True  # Basename patterns apply at any depth.
+        possible = {0}
+        for pattern in self.parts:
+            if not possible:
+                return False
+            if len(parts) in possible:
+                return True  # Remaining pattern parts can consume a file suffix.
+            if pattern == "**":
+                possible = set(range(min(possible), len(parts) + 1))
+            else:
+                possible = {index + 1 for index in possible
+                            if index < len(parts) and fnmatch.fnmatchcase(parts[index], pattern)}
+        return self.parts[-1] == "**" and len(parts) in possible
+
 
 def matching_lines(text, query, ignore_case, context, check_cancelled, matcher=None):
     """Preserve physical CR/LF lines with at most 10 previous/pending rows."""

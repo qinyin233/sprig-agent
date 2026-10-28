@@ -17,7 +17,7 @@ class ToolDiagnostics:
         for field in ("approved", "timed_out", "output_limited", "truncated", "line_truncated", "range_complete"):
             if type(result.get(field)) is bool:
                 summary[field] = result[field]
-        for field in ("returncode", "files_read", "bytes_read", "entries_scanned", "skipped_files"):
+        for field in ("returncode", "files_read", "bytes_read", "entries_scanned", "skipped_files", "skipped_entries"):
             if type(result.get(field)) is int:
                 summary[field] = result[field]
         if name in {"search", "grep"}:
@@ -49,11 +49,13 @@ class ToolDiagnostics:
             summary["listed_entries"] = len(result["entries"])
         if name == "project_map" and isinstance(result.get("files"), list):
             summary["mapped_files"] = len(result["files"])
+        if name == "glob" and isinstance(result.get("files"), list):
+            summary["matched_files"] = len(result["files"])
         if name == "update_plan" and result.get("plan_updated") is True and isinstance(result.get("plan"), list):
             summary["planned_steps"] = len(result["plan"])
             for status in ("pending", "in_progress", "completed"):
                 summary["plan_" + status] = sum(isinstance(step, dict) and step.get("status") == status for step in result["plan"])
-        if name in {"read_file", "search", "grep", "list_files", "project_map"} and not summary["error"]:
+        if name in {"read_file", "search", "grep", "list_files", "glob", "project_map"} and not summary["error"]:
             # Equality of bounded tool output does not imply a complete or
             # unchanged workspace. Never cache or skip the actual inspection.
             inspected = {key: value for key, value in result.items() if name != "read_file" or key != "read_id"}

@@ -182,7 +182,7 @@ def run_case(case, config_options, *, provider_factory=Provider, confirm=approve
                     result = super().execute(name, arguments)
                 finally:
                     elapsed = (time.perf_counter() - started) * 1000
-                    tool_records.append({"tool": name if name in {"read_file", "list_files", "search", "grep", "project_map", "edit_file", "edit_lines", "run", "update_plan"} else "unknown",
+                    tool_records.append({"tool": name if name in {"read_file", "list_files", "glob", "search", "grep", "project_map", "edit_file", "edit_lines", "run", "update_plan"} else "unknown",
                                          "active_ms": round(max(0, elapsed - (approvals["wait_ms"] - before)), 3),
                                          "result_bytes": None})
                 tool_records[-1]["result_bytes"] = len(json.dumps(result, ensure_ascii=True).encode("utf-8"))

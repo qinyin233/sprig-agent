@@ -163,6 +163,9 @@
         "list_files": {
           "type": "boolean"
         },
+        "glob": {
+          "type": "boolean"
+        },
         "read_file": {
           "type": "boolean"
         },
@@ -1343,6 +1346,9 @@
             "type": "object",
             "properties": {
               "list_files": {
+                "type": "boolean"
+              },
+              "glob": {
                 "type": "boolean"
               },
               "read_file": {
