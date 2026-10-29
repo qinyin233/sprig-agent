@@ -122,7 +122,12 @@ class Agent:
         if isinstance(tools, Tools) and tools.jobs.enabled():
             self.schemas.append(copy.deepcopy(JOB_SCHEMA))
         if isinstance(tools, Tools) and config.lsp_servers and config.tool_enabled("lsp") and config.tool_enabled("read_file") and not config.read_only:
-            self.schemas.append(copy.deepcopy(LSP_SCHEMA))
+            lsp_schema=copy.deepcopy(LSP_SCHEMA)
+            if not config.tool_enabled('edit_file'):
+                lsp_schema['function']['parameters']['properties']['action']['enum'].remove('rename')
+                lsp_schema['function']['parameters']['properties'].pop('new_name')
+                lsp_schema['function']['description']='Approved configured language-server queries only; file editing disabled. 1-based Unicode positions. result_id+offset pages cached observations.'
+            self.schemas.append(lsp_schema)
         self._job_notified = set()
         self.work_progress = WorkProgress()
         self.had_rejected_action = False
@@ -1020,7 +1025,7 @@ class Agent:
                             self.references.files = selected
                             self.references.observed = [row for row in self.references.observed
                                                         if row["path"] in selected and row["path"] != arguments.get("destination")]
-                    if (name in {"edit_file", "edit_lines", "file_action"} and result.get("approved") is True
+                    if ((name in {"edit_file", "edit_lines", "file_action"} or name=="lsp" and result.get("action")=="rename") and result.get("approved") is True
                             and result.get("changed") is True and "error" not in result
                             and not any(result.get(flag) for flag in ("outcome", "skipped", "cancelled", "interrupted"))):
                         edited = True

@@ -1,0 +1,190 @@
+{
+  "schema": 1,
+  "date": "2026-10-29",
+  "base_commit": "aca256916a72e6666e8e75fd2f4c980eb6ef3047",
+  "scope": "LSP semantic rename to current-snapshot existing-file edits with individual approvals, preflight, backups and edit checks; no server-driven edit or command channel.",
+  "source_seal": {
+    "files": 262,
+    "sha256": "6b4302116886d456b25baaae3f4e4c1d308aeb1f49dba2b0e2229f5b2b91e5f4",
+    "normalized_lf_sha256": "760f31d00916abb863d83cd45e1bb9a37e3500dc9e45d6e05e28e0e4391a86fd",
+    "selection": "Same complete Python/project/config/CI input selection as line-patches-20261029.json; docs/reports and virtual environments excluded."
+  },
+  "application_modules": {
+    "total": 84,
+    "changed": [
+      "agent.py",
+      "cli.py",
+      "edit_batch.py",
+      "local_commands.py",
+      "lsp.py",
+      "lsp_client.py",
+      "lsp_edits.py",
+      "tools.py",
+      "tui.py",
+      "work_progress.py"
+    ],
+    "unchanged_parent_after_lf_normalization": 74
+  },
+  "checks": {
+    "native_windows_full": {
+      "total": 1723,
+      "passed": 1699,
+      "skipped": 24,
+      "seconds": 803.655,
+      "exit_code": 0,
+      "log_sha256": "c6483a777b257148de413ffed3254bf308f612539402aa1070179e033ac0d9e3"
+    },
+    "local_wsl_full": {
+      "total": 1723,
+      "passed": 1699,
+      "skipped": 24,
+      "seconds": 624.067,
+      "exit_code": 0,
+      "log_sha256": "542a0bf3f585dada87b8fa2c09ce9e5fed6abc6397442c956319633792dab1a1"
+    },
+    "native_windows_python311_related": {
+      "total": 56,
+      "passed": 56,
+      "skipped": 0,
+      "seconds": 17.615,
+      "exit_code": 0,
+      "log_sha256": "65d96353b0d768381e96c49752e5850dc63888fb8957e40159c6421aa727e1d1"
+    },
+    "native_windows_sdk": {
+      "total": 30,
+      "passed": 30,
+      "skipped": 0,
+      "seconds": 46.518,
+      "exit_code": 0,
+      "log_sha256": "bb26a18816eb3dcf9fac505cfe16d210c64ffc6fc67636c054dcf26bd4409745"
+    },
+    "local_wsl_sdk": {
+      "total": 30,
+      "passed": 30,
+      "skipped": 0,
+      "seconds": 212.855,
+      "exit_code": 0,
+      "log_sha256": "8f12201657a8aab04bccd4a64cd9776fef217da2a27f0c9db0bf026ab0134ad2"
+    }
+  },
+  "new_test_methods": 24,
+  "protocols": [
+    "chat_completions",
+    "messages",
+    "responses"
+  ],
+  "encodings": [
+    "json",
+    "sse"
+  ],
+  "protocol_subcases": 6,
+  "default_tool_schema_bytes_unchanged": 4921,
+  "existing_tool_schema_gate_unchanged": 4932,
+  "base_prompt_bytes_unchanged": 2372,
+  "protocol_request_budget_unchanged": 16384,
+  "real_engine": {
+    "passed": true,
+    "engine_sha256": "695b84de39702b15f1ba10ae2db7ed67d287d235c78796ed22e8d5c4af4e6edb",
+    "changed_files": 2,
+    "version_confirmed_targets": 0,
+    "unrelated_namespace_unchanged": true,
+    "crlf_preserved": true,
+    "undo_redo_exact": true,
+    "approved_operations": 8,
+    "server_stopped_before_writes": true,
+    "external_model_requests": 0,
+    "scope": "real clangd on two disposable C++ files; no project-wide index or agent coding-score claim",
+    "log_sha256": "ea4ac0a778deb3030a75cc4f80968eb2e87f868955d47c34bd5192caaf6cdc80",
+    "platform": "native Windows",
+    "limit": "clangd returned unversioned targets. The application binds bytes after the response; this does not prove server-index snapshot consistency or complete project coverage."
+  },
+  "contracts": {
+    "authorization": "RPC/initialize/synchronization approval plus each actual full file diff; RPC result grants no write authority; disabled edit_file removes rename schema and blocks backend",
+    "proposal": "changes or preferred documentChanges; prepareRename when advertised; UTF-16 ranges against complete current UTF-8; plain existing-file TextEdits only",
+    "versions": "integer document version must match synchronized decoded path identity and content hash; unversioned target bytes captured after response and reported",
+    "paths": "whole-proposal refusal for private/outside/reparse targets, aliases, invalid ranges, unsupported annotations/resource operations or credentials; no filtering then partial application",
+    "limits": {
+      "files": 16,
+      "text_edits": 512,
+      "source_or_result_bytes": 524288,
+      "rpc_frame_bytes_unchanged": 1048576,
+      "new_name_characters": 256,
+      "new_name_utf8_bytes": 1024,
+      "minimum_output_bytes_unchanged": 1024
+    },
+    "lifecycle": "close selected server before file reviews; owner/config/cancel guard includes single-file approvals; human review outside completed RPC deadline",
+    "failure": "stop subsequent writes; retain confirmed prefix and batch ID, pending backup and uncertainty; never replay RPC, approval or cancelled write",
+    "text": "strict UTF-16 boundaries and overlap checks; same-position insertion order, BOM and untouched CR/LF bytes preserved; newText is literal",
+    "history": "common private per-file backups and batch labels; undo/redo and batch recovery keep existing retention/conflict/pending limits",
+    "integration": "successful model rename enters post-edit fixed checks and independent final acceptance; local CLI/TUI makes zero model calls and leaves acceptance unverified",
+    "output": "bounded counters and batch ID; optional redacted error detail measured after JSON escaping; never drop completed-prefix facts for diagnostics"
+  },
+  "development_failures": {
+    "sprig-lsp-rename-initial-20261029": {
+      "terminal_result": "FAILED (failures=8)",
+      "log_sha256": "237173f688ccf709f54770a6926429b01c495b1036d2be6ced61775b3b637f49",
+      "finding": "Initial local rename preflight forced model-action context with no served model guidance; preserve caller mode. New fixture also used platform-translated write_text while expecting LF bytes; use explicit bytes."
+    },
+    "sprig-lsp-rename-output-budget-counterexample-20261029": {
+      "terminal_result": "FAILED (failures=1)",
+      "log_sha256": "432ee0b90706b3b1fabbfbfcee611f03584295011723e63ac01f505520761028",
+      "finding": "After one completed file, quoted diagnostic text serialized to 1153 bytes against the original 1024-byte output cap. Count encoded JSON and omit optional detail before discarding prefix facts."
+    }
+  },
+  "superseded_full_runs": {
+    "windows": {
+      "total": 1721,
+      "passed": 1697,
+      "skipped": 24,
+      "seconds": 882.765,
+      "exit_code": 0,
+      "log_sha256": "3cdf2470dfb883a02b258674a0ac7003863d0b78f989eb523e05ab5ca65e3211",
+      "accepted_as_final": false,
+      "source_changed_after_start": true
+    },
+    "wsl": {
+      "total": 1721,
+      "passed": 1697,
+      "skipped": 24,
+      "seconds": 675.344,
+      "exit_code": 0,
+      "log_sha256": "152fd80c896c944b89a354c24c253cd435ed5ae555956037e4303312875fa936",
+      "accepted_as_final": false,
+      "source_changed_after_start": true
+    }
+  },
+  "static_checks": {
+    "python_ast_files": 242,
+    "runtime_schema_matches": true,
+    "five_uv_locks": "passed",
+    "cli_help": "passed",
+    "configuration_schema_matches_runtime": true,
+    "local_document_links_resolved": 696,
+    "changed_public_files": 21,
+    "process_and_configured_credentials_in_changed_files": "absent",
+    "credential_shaped_literals_in_changed_files": "absent",
+    "git_diff_check": "passed"
+  },
+  "source_reading": {
+    "opencode": "aec0b9a6d8898f68f923aaf08b7306d931fd9d76",
+    "fixed_blob_comparisons": 1,
+    "upstream_executed": false,
+    "document": "../research/lsp-rename-20261029.md",
+    "protocol": "Microsoft LSP 3.17 rename, WorkspaceEdit, TextDocumentEdit and Position source definitions"
+  },
+  "external_model_calls": 0,
+  "remote_ci": "pending; no Actions before 2026-11-01 Asia/Singapore; every commit [skip ci]; verify account restriction and prior gate before resuming",
+  "limits": [
+    "Configured language servers retain current-user filesystem/network authority; not an OS sandbox.",
+    "No formatter, code action, resource operations, change annotations, server applyEdit/executeCommand or complete-index guarantee.",
+    "Local Windows/WSL and Python 3.11 checks do not prove native remote runners, macOS or the full Python matrix.",
+    "Real two-file C++ semantics and fixed-reply HTTP/TUI tests do not establish real model coding gains or completion of the overall capability goal."
+  ],
+  "packaging_contract": {
+    "wheel_modules_equal_source": 84,
+    "wheel_modules_imported_from_extracted_wheel": 83,
+    "sdist_changed_files_equal_source": 21,
+    "artifact_process_credentials": "absent",
+    "artifact_local_config_and_venvs": "absent"
+  }
+}

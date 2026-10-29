@@ -142,7 +142,7 @@ class Tools:
         self.mcp_manager = McpManager(config, self._check_mcp, self.request_approval, self._prepare_mcp_process)
         self.web = WebFetcher(config, self._check_mcp, self.request_approval)
         self.jobs = Jobs(config, self._check_mcp)
-        self.lsp_manager = LanguageServers(config, self._check_mcp, self.request_approval, self._prepare_mcp_process, self._lsp_document)
+        self.lsp_manager = LanguageServers(config, self._check_mcp, self.request_approval, self._prepare_mcp_process, self._lsp_document, self._lsp_rename)
         self._jobs_revision = self.jobs.revision
 
     def _check_mcp(self):
@@ -348,8 +348,8 @@ class Tools:
             batch.finish(arguments, result)
         return redact(result, self.config.secrets)
 
-    def edit_batch(self, requests):
-        return preflight(self, requests)
+    def edit_batch(self, requests, guard=None, *, model_action=True):
+        return preflight(self, requests, guard, model_action=model_action)
 
     def web_fetch(self, url=None, result_id=None, offset=0, format="text"):
         self._require_tool("web_fetch")
@@ -451,6 +451,64 @@ class Tools:
             if action not in {"status", "result"}:
                 self.read_versions.clear()
                 self.index.clear()
+
+    def _lsp_rename(self, plans, guard):
+        requests=[]
+        for plan in plans:
+            doc=plan['document']
+            if doc['text']==plan['after']:
+                continue
+            # Whole-file line replacement keeps the full source hash guard and
+            # all ordinary privacy, diff, identity, backup and approval checks.
+            total=sum(1 for _ in io.StringIO(doc['text'][1:] if doc['text'].startswith('\ufeff') else doc['text'],newline=''))
+            after=plan['after'][1:] if doc['text'].startswith('\ufeff') else plan['after']
+            requests.append(('edit_file',{'path':doc['path'],'sha256':doc['sha256'],
+                'line_edits':[{'start_line':1,'end_line':total,'new':after}]},None))
+        result={'action':'rename','approved':True,'changed':False,'changed_files':0,'requested_files':len(requests),
+                'unversioned_target_files':sum(not plan['version_confirmed'] for plan in plans),'not_acceptance':True}
+        if not requests:
+            guard();return result
+        def detail(value):
+            text=str(redact(value.get('error','Operation was refused or did not complete'),self.config.secrets))
+            while len(json.dumps(text,ensure_ascii=False).encode('utf-8'))>384:
+                text=text[:max(1,len(text)//2)]
+            return text
+        def bounded(value):
+            # All other fields are bounded counters/enums and a 32-byte ID.
+            # Only diagnostics vary; never discard completed-prefix facts.
+            if len(json.dumps(value,ensure_ascii=False).encode('utf-8'))>min(self.config.max_output,16384):
+                value.pop('detail',None)
+                value['detail_omitted']=True
+            return value
+        def expired():
+            try:
+                guard()
+            except (ValueError,OSError) as error:
+                result.update(error='LSP rename owner expired; inspect completed files and backups before continuing',
+                    reason='owner_expired',partial=result['changed'],detail=detail({'error':str(error)}))
+                return True
+            return False
+        with self.edit_batch(requests,guard,model_action=self.instructions.model_action_active) as blocked:
+            if blocked is not None:
+                failed=next((value for value in blocked if value.get('batch_preflight')=='failed'),blocked[0])
+                return bounded({**result,'error':'LSP rename batch preflight failed; no rename writes executed','reason':'preflight','detail':detail(failed)})
+            result['batch_id']=self._edit_batch.identity
+            for index,(name,arguments,_) in enumerate(requests):
+                if expired():return bounded(result)
+                value=self.execute(name,arguments)
+                if value.get('changed') is True and value.get('approved') is True and 'error' not in value and not value.get('outcome'):
+                    result['changed_files']+=1;result['changed']=True
+                if ('error' in value or value.get('approved') is False or value.get('outcome') or value.get('skipped')):
+                    uncertain=bool(value.get('outcome') or self.history.state['pending'] is not None)
+                    result.update(partial=result['changed'] or uncertain,stopped_file_index=index+1,
+                        reason='rejected' if value.get('approved') is False else 'file_error',
+                        detail=detail(value),
+                        error='LSP rename stopped; inspect the changed prefix and backups before requesting a new operation')
+                    if value.get('approved') is False:result['approved']=False
+                    if uncertain:result['outcome']='uncertain'
+                    return bounded(result)
+        if expired():return bounded(result)
+        return bounded(result)
 
     def file_action(self, action, path, read_id=None, destination=None):
         from .file_actions import execute

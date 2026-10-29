@@ -78,7 +78,8 @@ while True:
     if method == "initialize":
         capabilities = {"textDocumentSync": {"openClose": True, "change": 1 if active == "full_sync" else 2},
                         "definitionProvider": True, "referencesProvider": True, "implementationProvider": True,
-                        "hoverProvider": True, "documentSymbolProvider": True, "workspaceSymbolProvider": True}
+                        "hoverProvider": True, "documentSymbolProvider": True, "workspaceSymbolProvider": True,
+                        "renameProvider": {"prepareProvider": True} if active in {"rename_prepare","rename_prepare_null"} else True}
         if active == "pull":
             capabilities["diagnosticProvider"] = {}
         if active == "utf8":
@@ -91,6 +92,8 @@ while True:
             capabilities.pop("definitionProvider")
         if active == "no_workspace":
             capabilities.pop("workspaceSymbolProvider")
+        if active == "no_rename":
+            capabilities.pop("renameProvider")
         result = {"capabilities": capabilities}
     elif method in {"textDocument/didOpen", "textDocument/didChange"}:
         doc = params["textDocument"]
@@ -142,7 +145,12 @@ while True:
             for index, name in enumerate(("workspace/applyEdit", "workspace/executeCommand", "client/registerCapability", "workspace/configuration")):
                 send({"jsonrpc": "2.0", "id": "server-" + str(index), "method": name, "params": {"items": [{"section": "secret"}]}})
         uri = params["textDocument"]["uri"]
-        if method == "textDocument/hover":
+        if method == "textDocument/prepareRename":
+            result = None if active == 'rename_prepare_null' else {"range":span(),"placeholder":"symbol"}
+        elif method == "textDocument/rename":
+            rename_file=state/'rename.json'
+            result=json.loads(rename_file.read_text(encoding='utf-8')) if rename_file.exists() else None
+        elif method == "textDocument/hover":
             result = {"contents": {"kind": "markdown", "value": "中文🎍" * (5000 if active == "large_hover" else 1) + os.environ.get("LSP_FIXTURE_TOKEN", "")}}
         elif method == "textDocument/documentSymbol":
             result = [{"name": "root", "kind": 3, "range": span(), "selectionRange": span(), "children": [

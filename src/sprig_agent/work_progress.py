@@ -28,7 +28,7 @@ class WorkProgress:
             self.reset_inspections()
             if name == "run":
                 self.approved_commands += 1
-            if (name in FILE_CHANGES and result.get("changed") is True and "error" not in result
+            if ((name in FILE_CHANGES or name=="lsp" and result.get("action")=="rename") and result.get("changed") is True and "error" not in result
                     and not any(result.get(flag) for flag in UNCERTAIN)):
                 self.file_changes += 1
             return

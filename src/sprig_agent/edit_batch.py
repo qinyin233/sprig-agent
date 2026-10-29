@@ -1,6 +1,6 @@
 """Preflight independent edits; individual approvals and backups remain authoritative."""
 
-from contextlib import contextmanager
+from contextlib import contextmanager, nullcontext
 from dataclasses import dataclass
 import hashlib
 import os
@@ -27,11 +27,12 @@ class EditPreview:
 
 
 class EditBatch:
-    def __init__(self, previews):
+    def __init__(self, previews, guard=None):
         self.pending = {path_key(item.parts): item for item in previews}
         self.identity = uuid.uuid4().hex
         self.failed = False
         self.completed = 0
+        self.guard = guard or (lambda: None)
 
     def backup_label(self):
         return {"id": self.identity, "index": self.completed + 1}
@@ -42,6 +43,7 @@ class EditBatch:
                 "skipped": True, "changed": False, "batch_writes_completed": self.completed}
 
     def check_source(self, tools, parts, raw, info):
+        self.guard()
         expected = self.pending.get(path_key(parts))
         if (expected is None or expected.revision != tools._revision(info)
                 or expected.before != digest(raw)):
@@ -52,6 +54,7 @@ class EditBatch:
             raise ValueError("proposal changed after edit batch preflight; request a fresh batch")
 
     def check_pending(self, tools):
+        self.guard()
         # Reopen and revalidate every remaining target after EACH approval. This
         # catches changes in a later file before committing the current file.
         # External writers can still race; this is not a cross-file transaction.
@@ -76,11 +79,11 @@ class EditBatch:
 
 
 @contextmanager
-def preflight(tools, requests):
+def preflight(tools, requests, guard=None, *, model_action=True):
     """Yield per-call failures or None; requests contain (name, arguments, error)."""
     if len(requests) > 16:
         raise ValueError("edit batch exceeds 16 tool calls")
-    if len(requests) < 2 or any(name not in {"edit_file", "edit_lines"} for name, _, _ in requests):
+    if (len(requests) < 2 and guard is None) or any(name not in {"edit_file", "edit_lines"} for name, _, _ in requests):
         yield None
         return
     # Same-file chains may depend on preceding edits. Leave them sequential,
@@ -97,8 +100,10 @@ def preflight(tools, requests):
     previews, failure = [], None
     tools._edit_preview = True
     try:
-        with tools.instructions.model_action():
+        with (tools.instructions.model_action() if model_action else nullcontext()):
             for index, (name, arguments, error) in enumerate(requests):
+                if guard is not None:
+                    guard()
                 tools._check_cancelled()
                 result = error if error is not None else tools.execute(name, arguments)
                 if not isinstance(result, EditPreview):
@@ -115,7 +120,7 @@ def preflight(tools, requests):
         yield [dict(result, batch_preflight="failed", batch_writes_completed=0)
                if offset == index else dict(skipped) for offset in range(len(requests))]
         return
-    tools._edit_batch = EditBatch(previews)
+    tools._edit_batch = EditBatch(previews, guard)
     try:
         yield None
     finally:
