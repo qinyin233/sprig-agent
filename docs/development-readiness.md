@@ -1,5 +1,7 @@
 # 产品能力与达标差距
 
+保留[一次中断后明确恢复的真实 Click 任务](live-evaluation-click-interrupted-20261029.md)：干净 `0550c19`、USTC `deepseek-flash-2`，原段保存七个回复，恢复仅使用原十二次请求预算中剩余五次，旧写入意图不重放。独立验收 635/642 → 638/642、零跳过，公开异常契约仍失败；只改一文件、未补齐命令分派/公共导出与候选测试，任务未完成。前半段请求统计缺失，恢复段 107089 token 不能当作整次用量或用作能力/成本排名。原失败不改写；请求统计退出丢失的[源码依据与后续边界](research/opencode-request-measurements-20261029.md)已列，持久化尚未实现，远程 CI 继续冻结。
+
 补齐[跨文件语义重命名](lsp-rename.md)：已配置 LSP 计算 WorkspaceEdit，全部目标预检后逐文件新批准，沿用版本、路径/隐私、完整差异和批次备份。支持 prepareRename、UTF-16 与版本化文档；取消、拒绝、归属变化和结算不确定保留实际前缀，服务器主动写入仍拒绝。成功调用进入应用编辑后检查，真实 clangd 已在两文件 C++ 夹具验证命名空间选择、CRLF 与精确撤销/重做；协议、TUI、完整本地范围见[记录](benchmarks/lsp-rename-20261029.json)。不据此宣称项目引用完整或真实模型编码成绩改善，CI 继续冻结。
 
 补齐[读取绑定的紧凑补丁](line-patches.md)：`edit_lines` 可用标准编号 hunks 一次表达同文件多处修改，严格核对上下文、坐标与 EOF，保留完整版本、新批准、批次预检和备份。支持 BOM、Unicode 与一致的 Windows/POSIX 换行；旧成功补丁接入既有确定性上下文压缩。三协议 JSON/SSE、Enter TUI 与本地完整回归范围见[记录](benchmarks/line-patches-20261029.json)。没有追加外部模型测试或改写 Click 失败，实际编码目标仍未达成，远程 CI 继续冻结。

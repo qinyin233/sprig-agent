@@ -1,0 +1,248 @@
+{
+  "schema": 1,
+  "scope": "continued interrupted trial, not a fresh independent sample or controlled comparison",
+  "source_commit": "0550c193880aca939ef286cc778f03bd5073722b",
+  "helper_sha256": "4f94104dfbb51fd818d4b44c03d0e54596d7b35c7e2a77af3f27ecfa23c37752",
+  "initial_candidate_sha256": "7d610833c8a6564f980f747e4601e7f4821872702c4a59f32ff9c5d653300d08",
+  "final_candidate_sha256": "ab81a50d954272ad9a0b2f6151c28f8e96bd6d1178c24590f00e39a6f3e3b8dc",
+  "final_candidate_files": 52,
+  "final_workspace_sha256": "ab81a50d954272ad9a0b2f6151c28f8e96bd6d1178c24590f00e39a6f3e3b8dc",
+  "final_workspace_files": 52,
+  "verifier_sha256": "f9242a82afa83da6210f4ed26c3ddfa4566d35b8aea3217cb94663a3380d822a",
+  "verifier_intact": true,
+  "exit_code": 2,
+  "elapsed_ms": 310179.917,
+  "saved_first_segment_model_responses": 7,
+  "first_segment_measurements": null,
+  "additional_request_ceiling": 5,
+  "requests": {
+    "available": true,
+    "scope": "current provider instance; not persisted or sent to the model",
+    "attempts": 5,
+    "not_attempted": 0,
+    "outcomes": {
+      "success": 5,
+      "error": 0,
+      "cancelled": 0
+    },
+    "failures": {},
+    "request_bytes": 420054,
+    "response_bytes": 80516,
+    "elapsed_ms": 225562.439,
+    "usage": {
+      "prompt_tokens": {
+        "reported_sum": 105521,
+        "known_requests": 5,
+        "unknown_requests": 0,
+        "complete_sum": 105521
+      },
+      "completion_tokens": {
+        "reported_sum": 1568,
+        "known_requests": 5,
+        "unknown_requests": 0,
+        "complete_sum": 1568
+      },
+      "total_tokens": {
+        "reported_sum": 107089,
+        "known_requests": 5,
+        "unknown_requests": 0,
+        "complete_sum": 107089
+      }
+    },
+    "recent_limit": 128,
+    "recent_dropped": 0,
+    "recent": [
+      {
+        "attempted": true,
+        "streamed": true,
+        "outcome": "success",
+        "http_status": 200,
+        "request_bytes": 99136,
+        "response_bytes": 4981,
+        "elapsed_ms": 14734.133,
+        "first_text_ms": null,
+        "usage": {
+          "prompt_tokens": 24897,
+          "completion_tokens": 107,
+          "total_tokens": 25004
+        },
+        "finish_reason": "tool_calls",
+        "error_code": null
+      },
+      {
+        "attempted": true,
+        "streamed": true,
+        "outcome": "success",
+        "http_status": 200,
+        "request_bytes": 101327,
+        "response_bytes": 27838,
+        "elapsed_ms": 75583.294,
+        "first_text_ms": null,
+        "usage": {
+          "prompt_tokens": 25521,
+          "completion_tokens": 591,
+          "total_tokens": 26112
+        },
+        "finish_reason": "tool_calls",
+        "error_code": null
+      },
+      {
+        "attempted": true,
+        "streamed": true,
+        "outcome": "success",
+        "http_status": 200,
+        "request_bytes": 103789,
+        "response_bytes": 12942,
+        "elapsed_ms": 35219.582,
+        "first_text_ms": null,
+        "usage": {
+          "prompt_tokens": 26152,
+          "completion_tokens": 196,
+          "total_tokens": 26348
+        },
+        "finish_reason": "tool_calls",
+        "error_code": null
+      },
+      {
+        "attempted": true,
+        "streamed": true,
+        "outcome": "success",
+        "http_status": 200,
+        "request_bytes": 56160,
+        "response_bytes": 27677,
+        "elapsed_ms": 85639.422,
+        "first_text_ms": null,
+        "usage": {
+          "prompt_tokens": 14088,
+          "completion_tokens": 539,
+          "total_tokens": 14627
+        },
+        "finish_reason": "tool_calls",
+        "error_code": null
+      },
+      {
+        "attempted": true,
+        "streamed": true,
+        "outcome": "success",
+        "http_status": 200,
+        "request_bytes": 59642,
+        "response_bytes": 7078,
+        "elapsed_ms": 14386.008,
+        "first_text_ms": null,
+        "usage": {
+          "prompt_tokens": 14863,
+          "completion_tokens": 135,
+          "total_tokens": 14998
+        },
+        "finish_reason": "tool_calls",
+        "error_code": null
+      }
+    ]
+  },
+  "baseline_external": {
+    "public_exception_contract": false,
+    "schema": 1,
+    "collected": 642,
+    "pytest_returncode": 1,
+    "checks_passed": 635,
+    "skipped": 0,
+    "passed": false,
+    "failed": [
+      "tests/test_commands.py::test_suggest_possible_commands[decline-(Did you mean one of: 'declare', 'refine'?)]",
+      "tests/test_commands.py::test_suggest_possible_commands[pause-Did you mean 'push'?]",
+      "tests/test_options.py::test_suggest_possible_options[--bounds-(Did you mean one of: '--bound', '--count'?)]",
+      "tests/test_options.py::test_suggest_possible_options[--bount-(Did you mean one of: '--bound', '--count'?)]",
+      "tests/test_options.py::test_suggest_possible_options[--cat-Did you mean '--count'?]",
+      "tests/test_options.py::test_unknown_options[--foo]",
+      "tests/test_options.py::test_unknown_options[-f]"
+    ],
+    "other_failures": 0
+  },
+  "tools": [
+    {
+      "name": "run",
+      "patch_requested": false,
+      "error": false,
+      "approved": true,
+      "timed_out": false,
+      "output_limited": false,
+      "returncode": 1
+    },
+    {
+      "name": "read_file",
+      "patch_requested": false,
+      "error": false,
+      "truncated": true,
+      "line_truncated": false,
+      "range_complete": true,
+      "content_bytes": 1300,
+      "revision_available": true,
+      "read_id_available": true,
+      "same_output_repeats": 0
+    },
+    {
+      "name": "edit_lines",
+      "patch_requested": false,
+      "error": true
+    },
+    {
+      "name": "edit_file",
+      "patch_requested": false,
+      "error": false,
+      "approved": true
+    },
+    {
+      "name": "run",
+      "patch_requested": false,
+      "error": false,
+      "approved": true,
+      "timed_out": false,
+      "output_limited": false,
+      "returncode": 1
+    },
+    {
+      "name": "edit_file",
+      "patch_requested": false,
+      "error": false,
+      "approved": true
+    },
+    {
+      "name": "run",
+      "patch_requested": false,
+      "error": false,
+      "approved": true,
+      "timed_out": false,
+      "output_limited": false,
+      "returncode": 1
+    },
+    {
+      "name": "grep",
+      "patch_requested": false,
+      "error": true,
+      "regex": true
+    }
+  ],
+  "diagnostics": {
+    "source_sha256": "3c0fb82bc48bfc5399122ff60d3763b993f2d530f5312515b7cfe86981e52b57",
+    "recent_inspection_limit": 128,
+    "scope": "numeric and fixed-status tool results; repeats require identical arguments/output apart from read_id within the retained window; no inspection skipped"
+  },
+  "post_external": {
+    "schema": 1,
+    "skipped": 0,
+    "pytest_returncode": 1,
+    "checks_passed": 638,
+    "collected": 642,
+    "public_exception_contract": false,
+    "passed": false,
+    "failed": [
+      "tests/test_commands.py::test_suggest_possible_commands[decline-(Did you mean one of: 'declare', 'refine'?)]",
+      "tests/test_commands.py::test_suggest_possible_commands[pause-Did you mean 'push'?]",
+      "tests/test_options.py::test_unknown_options[--foo]",
+      "tests/test_options.py::test_unknown_options[-f]"
+    ],
+    "other_failures": 0
+  },
+  "candidate_unchanged_by_postcheck": true,
+  "workspace_unchanged_by_postcheck": true
+}
