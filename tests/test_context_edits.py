@@ -1,6 +1,7 @@
 """Explicit edit-history elision cannot remove refusals, pending work or safety gates."""
 
 import copy
+from contextlib import closing
 from dataclasses import replace
 import importlib.util
 import json
@@ -67,6 +68,39 @@ class EditContextTests(unittest.TestCase):
             self.assertEqual(marker["path"], arguments["path"])
             self.assertTrue(marker["context_elided"])
             self.assertEqual(report["after_bytes"], len(request_body(self.config, selected, TOOL_SCHEMAS)))
+
+    def test_successful_patch_elision_preserves_original_history_and_never_replays(self):
+        arguments = {"path":"file-0.txt","read_id":"r0123456789ab-1",
+            "patch":"@@ -1 +1 @@\n-"+"x"*10000+"\n+"+"y"*10000+"\n"}
+        function = self.history[2]["tool_calls"][0]["function"]
+        function.update(name="edit_lines",arguments=json.dumps(arguments))
+        original = copy.deepcopy(self.history)
+        selected, report = prepare_context(self.config,self.history,TOOL_SCHEMAS,True)
+        self.assertTrue(json.loads(selected[2]["tool_calls"][0]["function"]["arguments"])["context_elided"])
+        self.assertEqual(self.history,original)
+        self.assertEqual(selected[3],original[3])
+        self.assertEqual(selected[-6:],original[-6:])
+        self.assertEqual(validate_history(selected),selected)
+        self.assertEqual(report["after_bytes"],len(request_body(self.config,selected,TOOL_SCHEMAS)))
+        with closing(Tools(self.config,lambda _:self.fail("history marker must not request approval"))) as tools:
+            result=tools.execute("edit_lines",json.loads(selected[2]["tool_calls"][0]["function"]["arguments"]))
+            self.assertIn("error",result)
+
+    def test_patch_refusal_failure_uncertainty_and_invalid_shape_remain_in_context(self):
+        function = self.history[2]["tool_calls"][0]["function"]
+        arguments = {"path":"file-0.txt","read_id":"r0123456789ab-1",
+            "patch":"@@ -1 +1 @@\n-"+"x"*10000+"\n+"+"y"*10000+"\n"}
+        function.update(name="edit_lines",arguments=json.dumps(arguments))
+        result = json.loads(self.history[3]["content"])
+        for alteration in ({"approved":False},{"error":"invalid patch"},{"outcome":"uncertain"},{"changed":False}):
+            self.history[3]["content"]=json.dumps({**result,**alteration})
+            selected,_=prepare_context(self.config,self.history,TOOL_SCHEMAS,True)
+            self.assertEqual(selected[2:4],self.history[2:4])
+        self.history[3]["content"]=json.dumps(result)
+        for alteration in ({"edits":[]},{"patch":"not a hunk"},{"patch":None},{"read_id":"old"}):
+            function["arguments"]=json.dumps({**arguments,**alteration})
+            selected,_=prepare_context(self.config,self.history,TOOL_SCHEMAS,True)
+            self.assertEqual(selected[2:4],self.history[2:4])
 
     def test_refused_failed_uncertain_unapproved_and_noop_edits_keep_arguments(self):
         baseline = {"approved": True, "changed": True, "path": "file-0.txt"}

@@ -1,0 +1,164 @@
+{
+  "schema": 1,
+  "date": "2026-10-29",
+  "base_commit": "19e71408c450ed54334d1df2b1a6f9c3f08d0aa0",
+  "scope": "Revision-pinned single-file unified hunks through edit_lines, existing approvals/batches/undo and explicit successful-history elision.",
+  "source_seal": {
+    "files": 258,
+    "sha256": "c7ee8818a30d8dae0cb856f784b2cfbe2e750864f3e2e3355633afc438098fc3",
+    "normalized_lf_sha256": "10a86e1ce5a8d4b85c42e3e60f2278a8ec56e98ca0ad8aa82a496568e4689d47",
+    "selection": "All Python application/test/script/benchmark files, root and nested project locks/manifests plus existing config/CI inputs; same selection as external-editor-20261028.json."
+  },
+  "application_modules": {
+    "total": 83,
+    "changed": [
+      "context.py",
+      "line_patch.py",
+      "tools.py"
+    ],
+    "unchanged_parent_after_lf_normalization": 80
+  },
+  "checks": {
+    "native_windows_full": {
+      "total": 1699,
+      "passed": 1675,
+      "skipped": 24,
+      "seconds": 809.36,
+      "exit_code": 0,
+      "log_sha256": "e51e466eb4d435874a60b71ac66d696fe5311c36f5972b6a5e4f075f6a420ea8"
+    },
+    "local_wsl_full": {
+      "total": 1699,
+      "passed": 1675,
+      "skipped": 24,
+      "seconds": 641.051,
+      "exit_code": 0,
+      "log_sha256": "6fc7245be9ab375b5f8bbd7a00a961359348282b2fcd39c9e73840ae7c5ac6ff"
+    },
+    "native_windows_python311_related": {
+      "total": 43,
+      "passed": 43,
+      "skipped": 0,
+      "seconds": 18.558,
+      "exit_code": 0,
+      "log_sha256": "4db977ac025c0287b70b74d684d905021707b3748f9cc156fe525c3699c8dbd1"
+    },
+    "native_windows_sdk": {
+      "total": 30,
+      "passed": 30,
+      "skipped": 0,
+      "seconds": 42.747,
+      "exit_code": 0,
+      "log_sha256": "af3694b20b7e9b6ef5fa713444729daba107a1fff5ebc2cfd054eac9aa4d8c96"
+    },
+    "local_wsl_sdk": {
+      "total": 30,
+      "passed": 30,
+      "skipped": 0,
+      "seconds": 205.325,
+      "exit_code": 0,
+      "log_sha256": "2676ab2ddf29d90a0137f35c6056fb2b7bfabf798cad31f066e922da851cc6e7"
+    }
+  },
+  "new_test_methods": 20,
+  "protocols": [
+    "chat_completions",
+    "messages",
+    "responses"
+  ],
+  "encodings": [
+    "json",
+    "sse"
+  ],
+  "protocol_subcases": 6,
+  "request_budget_unchanged": 16384,
+  "default_tool_schemas_bytes": 4921,
+  "existing_tool_schema_gate_unchanged": 4932,
+  "base_prompt_bytes_unchanged": 2372,
+  "contracts": {
+    "mode": "exactly one of edits or patch; path/read_id required; single existing file, including empty",
+    "limits": {
+      "hunks": 32,
+      "patch_utf8_bytes": 524288,
+      "result_file_bytes": 524288,
+      "coordinate_maximum": 1000000
+    },
+    "matching": "exact old/new coordinates and counts; exact body/whitespace/EOF; no offset, trim or fuzzy matching",
+    "newlines": "preserve existing context/deletion bytes and BOM; added terminated lines follow the unique file EOL, LF when absent; mixed EOL additions require explicit edits; no-newline marker explicit",
+    "authorization": "existing full-diff literal-True approval, read-only/tool/privacy/policy/cancel checks, stable source recheck and private backup",
+    "batch": "same existing distinct-file preflight and per-file approval; invalid later hunk/file yields no initial writes; partial later refusal remains explicit",
+    "context": "only older uniquely settled, approved changed same-path edits are eligible; history/results/recent tail remain, markers cannot execute"
+  },
+  "static_checks": {
+    "python_ast_files": 238,
+    "runtime_schema_matches": true,
+    "five_uv_locks": "passed",
+    "cli_help": "passed",
+    "configuration_schema_matches_runtime": true,
+    "local_document_links_resolved": 690,
+    "changed_public_files": 14,
+    "process_and_configured_credentials_in_changed_files": "absent",
+    "credential_shaped_literals_in_changed_files": "absent",
+    "git_diff_check": "passed"
+  },
+  "development_failures": {
+    "sprig-line-patch-focused-20261029": {
+      "terminal_result": "FAILED (errors=1)",
+      "log_sha256": "8b5c4d13a2e42b18a841f6c7a2d10323e070561c409296e052375bd5400f4cb4",
+      "finding": "TUI fixture reused click without binding its until helper; corrected the fixture."
+    },
+    "sprig-line-patch-full-wsl-20261029": {
+      "terminal_result": "FAILED (failures=1, skipped=24)",
+      "log_sha256": "1048423a7107f628299b451d2c443065886a2d381e46838e9fca05c5f79f2ff1",
+      "finding": "Existing Schema assertion still required edits; updated it to require path/read_id and check both alternative payload types."
+    },
+    "sprig-line-patch-full-windows-20261029": {
+      "terminal_result": "FAILED (failures=1, skipped=24)",
+      "log_sha256": "8b40a89f875d45dac67a125761292f0ad89aac6011c2e72c96bde2e204d0004d",
+      "finding": "Same outdated required-edits assertion in the initial full run."
+    },
+    "sprig-line-patch-final-focused-20261029": {
+      "terminal_result": "IndentationError: unexpected indent",
+      "log_sha256": "6b60a8d7bbbaa8936164b8378516fd84e91afdb2d468696ed7f7666581d4aa1c",
+      "finding": "A test-only indentation typo while updating that assertion was corrected before the final freeze."
+    },
+    "sprig-line-patch-context-20261029": {
+      "terminal_result": "FAILED (errors=2)",
+      "log_sha256": "94cd3a8d59e199a4c75a7fdea1f2d48ec79d274b619c4ee12abfb40e8fb54079",
+      "finding": "Context fixture used Tools as a context manager; use closing(Tools(...)) to close the pinned handle even on failure."
+    }
+  },
+  "superseded_full_runs": "The first full runs started before successful-patch context elision was added. They are not used as final-source evidence; final full runs were started again after the v3 seal.",
+  "peer_reading": {
+    "opencode": "9d90d892dcbfc52b47e95b2ea31b8aba877128fd",
+    "files_compared_to_fixed_blob": 3,
+    "executed": false,
+    "document": "../research/opencode-patches-20261029.md"
+  },
+  "external_model_calls": 0,
+  "remote_ci": "pending; all commits [skip ci]; no Actions before 2026-11-01 Asia/Singapore; verify account restriction and prior gate before resuming",
+  "limits": [
+    "Headless Enter TUI and local Windows/WSL do not prove remote native CI, macOS or the full Python matrix.",
+    "Standard-diff random oracle and fixed-reply protocol chains do not prove model coding gains, token savings or completion of the overall capability goal.",
+    "Patch accepts numbered hunks for one existing path; file creation/move/deletion use their existing tools. Mixed-EOL terminated additions require explicit edits."
+  ],
+  "interrupted_attempts": {
+    "windows": {
+      "log_sha256": "7fed815561b30c6f2a126bc223af5d80d08527674da49a9769d40364b86b07eb",
+      "terminal_summary": false,
+      "accepted_as_pass": false
+    },
+    "wsl": {
+      "log_sha256": "dbe75e26bb9157a61f84a8dc0c9eb5b5dce43e1c658a4f8165e3702604ebc47a",
+      "terminal_summary": false,
+      "accepted_as_pass": false
+    }
+  },
+  "packaging_contract": {
+    "wheel_modules_equal_source": 83,
+    "wheel_modules_imported_from_extracted_wheel": 82,
+    "sdist_changed_files_equal_source": 14,
+    "artifact_process_credentials": "absent",
+    "artifact_local_config_and_venvs": "absent"
+  }
+}

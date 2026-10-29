@@ -129,12 +129,26 @@ def _edit_path(arguments, *, by_line=False):
     if value is None or not isinstance(value.get("path"), str) or not value["path"]:
         return None
     if by_line:
-        if set(value) != {"path", "read_id", "edits"} or not valid_read_id(value["read_id"]):
+        if not valid_read_id(value.get("read_id")):
             return None
-        from .line_edits import validate_edits
-        try:
-            validate_edits(value["edits"], 512 * 1024, lambda: None)
-        except (ValueError, TypeError):
+        if set(value) == {"path", "read_id", "patch"}:
+            from .line_patch import HEADER
+            patch = value["patch"]
+            if (not isinstance(patch, str) or not patch or len(patch) > 512 * 1024
+                    or not HEADER.fullmatch(patch.partition('\n')[0].removesuffix('\r'))):
+                return None
+            try:
+                if len(patch.encode('utf-8')) > 512 * 1024:
+                    return None
+            except UnicodeError:
+                return None
+        elif set(value) == {"path", "read_id", "edits"}:
+            from .line_edits import validate_edits
+            try:
+                validate_edits(value["edits"], 512 * 1024, lambda: None)
+            except (ValueError, TypeError):
+                return None
+        else:
             return None
     elif set(value) == {"path", "old", "new"}:
         if not all(isinstance(value[key], str) for key in ("old", "new")):

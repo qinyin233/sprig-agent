@@ -37,6 +37,7 @@ from .lsp_client import LspError
 from .edit_match import failure_details
 from .edit_batch import EditPreview, digest, preflight
 from .line_edits import replace_lines, validate_edits
+from .line_patch import apply as apply_line_patch
 from .search import FileGlob, RegexBudgetExceeded, RegexMatcher, matching_lines
 from .syntax import IndexUnavailable
 from .image_reads import ImageReadResult, read_image
@@ -87,13 +88,14 @@ TOOL_SCHEMAS = [
             "edits": {"type": "array", "minItems": 1, "maxItems": MAX_EDITS,
                       "items": {"type": "object", "properties": {"old": STRING, "new": STRING},
                                 "required": ["old", "new"], "additionalProperties": False}}}, ["path"]),
-    schema("edit_lines", "Whole-line edits with current read_id, 1-based inclusive. Insert: end=start-1. Preserve line endings; reread after commands.",
+    schema("edit_lines", "Current read_id. Use edits (1-based inclusive; insert end=start-1) OR patch (strict unified @@ hunks, no file headers). Preserve EOL.",
            {"path": STRING, "read_id": {"type": "string", "pattern": READ_ID_PATTERN, "maxLength": 64},
+            "patch": STRING,
             "edits": {"type": "array", "minItems": 1, "maxItems": MAX_EDITS,
                            "items": {"type": "object", "properties": {
                                "start_line": {"type": "integer", "minimum": 1, "maximum": 1000000},
                                "end_line": {"type": "integer", "minimum": 0, "maximum": 1000000}, "new": STRING},
-                               "required": ["start_line", "end_line", "new"], "additionalProperties": False}}}, ["path", "read_id", "edits"]),
+                               "required": ["start_line", "end_line", "new"], "additionalProperties": False}}}, ["path", "read_id"]),
     schema("update_plan", "Plan <=16, <=1 in_progress; [] clears. Not approval/acceptance.",
            {"plan": {"type": "array", "maxItems": 16, "items": {"type": "object", "properties": {
                "step": {"type": "string", "minLength": 1, "maxLength": 256},
@@ -1058,7 +1060,7 @@ class Tools:
                 "file_removed": target is None,
                 "note": "Workspace changed; previous model conclusions and acceptance results need rechecking."}
 
-    def edit_lines(self, path, read_id=_MISSING, edits=_MISSING):
+    def edit_lines(self, path, read_id=_MISSING, edits=_MISSING, patch=_MISSING):
         self._require_tool("edit_lines")
         if self.config.read_only:
             return {"approved": False, "changed": False, "error": "read-only mode blocks file writes"}
@@ -1073,9 +1075,9 @@ class Tools:
         if digest is None:
             return {"error": "read_id is not valid for this file/current run; read_file again", "changed": False,
                     "edit_failure": {"reason": "unknown_read_id", "source": "read_id"}}
-        if edits is _MISSING:
-            raise ToolError("edit_lines requires edits")
-        result = self.edit_file(path, sha256=digest, line_edits=edits)
+        if (edits is _MISSING) == (patch is _MISSING):
+            raise ToolError("edit_lines requires exactly one of edits or patch")
+        result = self.edit_file(path, sha256=digest, line_edits=edits, line_patch=patch)
         if isinstance(result, dict) and "edit_failure" in result:
             result["edit_failure"] = {**result["edit_failure"], "source": "read_id"}
         return result
@@ -1100,12 +1102,12 @@ class Tools:
             report["python_version"] = ".".join(map(str, sys.version_info[:3]))
         return report
 
-    def edit_file(self, path, old=_MISSING, new=_MISSING, *, edits=_MISSING, sha256=_MISSING, line_edits=_MISSING):
+    def edit_file(self, path, old=_MISSING, new=_MISSING, *, edits=_MISSING, sha256=_MISSING, line_edits=_MISSING, line_patch=_MISSING):
         self._require_tool("edit_file")
         if self.config.read_only:
             return {"approved": False, "changed": False, "error": "read-only mode blocks file writes"}
         multiple = edits is not _MISSING
-        by_line = line_edits is not _MISSING
+        by_line = line_edits is not _MISSING or line_patch is not _MISSING
         if by_line:
             if multiple or old is not _MISSING or new is not _MISSING:
                 raise ToolError("choose old/new, edits, or sha256 plus line_edits")
@@ -1115,7 +1117,11 @@ class Tools:
             if not isinstance(sha256, str) or len(sha256) != 64 or any(c not in "0123456789abcdef" for c in sha256):
                 return {"error": "sha256 must be 64 lowercase hex characters from read_file; prefer edit_lines with read_id", "changed": False,
                         "edit_failure": {"reason": "invalid_revision", "source": "sha256"}}
-            validate_edits(line_edits, MAX_FILE, self._check_cancelled)
+            if line_patch is not _MISSING:
+                if line_edits is not _MISSING:
+                    raise ToolError("choose line_edits or line_patch, not both")
+            else:
+                validate_edits(line_edits, MAX_FILE, self._check_cancelled)
             replacements = []
         elif sha256 is not _MISSING:
             raise ToolError("sha256 requires line_edits")
@@ -1155,7 +1161,8 @@ class Tools:
                 if hashlib.sha256(before_raw).hexdigest() != sha256:
                     return {"error": "file revision changed; read the file again before proposing line_edits", "changed": False,
                             "edit_failure": {"reason": "stale_revision"}}
-                after = replace_lines(before, line_edits, self._check_cancelled)
+                after = (apply_line_patch(before, line_patch, MAX_FILE, self._check_cancelled) if line_patch is not _MISSING
+                         else replace_lines(before, line_edits, self._check_cancelled))
             elif before_stat is None:
                 if multiple:
                     raise ToolError("edits require an existing file")

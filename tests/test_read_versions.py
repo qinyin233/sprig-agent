@@ -225,7 +225,9 @@ class ReadVersionTests(unittest.TestCase):
         self.assertEqual(self.approve.call_count, 2)
         self.assertEqual(len(captured), 3)
         schema = next(s["function"] for s in captured[0][0]["tools"] if s["function"]["name"] == "edit_lines")
-        self.assertEqual(set(schema["parameters"]["required"]), {"path", "read_id", "edits"})
+        self.assertEqual(set(schema["parameters"]["required"]), {"path", "read_id"})
+        self.assertEqual(schema["parameters"]["properties"]["edits"]["type"], "array")
+        self.assertEqual(schema["parameters"]["properties"]["patch"]["type"], "string")
         self.assertTrue(json.loads(history[-1]["content"])["returncode"] == 0)
 
     def test_http_boundary_failure_can_be_repaired_without_any_partial_write(self):
