@@ -4,6 +4,26 @@
   "description": "Private TOML, schema version 1. Cross-field, endpoint, path and permission restrictions are additionally checked at runtime.",
   "type": "object",
   "properties": {
+    "editor": {
+      "type": "object",
+      "properties": {
+        "command": {
+          "type": "array",
+          "maxItems": 32,
+          "items": {
+            "type": "string",
+            "maxLength": 4096
+          },
+          "description": "Trusted TUI editor argv; empty disables. Optional standalone {file}, otherwise append private draft path. No shell or environment expansion."
+        },
+        "timeout": {
+          "type": "number",
+          "exclusiveMinimum": 0,
+          "maximum": 3600
+        }
+      },
+      "additionalProperties": false
+    },
     "agent": {
       "type": "object",
       "properties": {
@@ -688,6 +708,7 @@
             "delete",
             "diff",
             "discard-history",
+            "editor",
             "exit",
             "files",
             "fork",
@@ -833,6 +854,14 @@
               }
             },
             "new_conversation": {
+              "type": "array",
+              "maxItems": 4,
+              "items": {
+                "type": "string",
+                "pattern": "^(?:(?:ctrl|alt|shift)\\+)*(?:f(?:[1-9]|1[0-2])|[a-z0-9]|home|end|pageup|pagedown|up|down|left|right)$"
+              }
+            },
+            "external_editor": {
               "type": "array",
               "maxItems": 4,
               "items": {
@@ -1189,6 +1218,26 @@
       "additionalProperties": {
         "type": "object",
         "properties": {
+          "editor": {
+            "type": "object",
+            "properties": {
+              "command": {
+                "type": "array",
+                "maxItems": 32,
+                "items": {
+                  "type": "string",
+                  "maxLength": 4096
+                },
+                "description": "Trusted TUI editor argv; empty disables. Optional standalone {file}, otherwise append private draft path. No shell or environment expansion."
+              },
+              "timeout": {
+                "type": "number",
+                "exclusiveMinimum": 0,
+                "maximum": 3600
+              }
+            },
+            "additionalProperties": false
+          },
           "agent": {
             "type": "object",
             "properties": {
@@ -1873,6 +1922,7 @@
                   "delete",
                   "diff",
                   "discard-history",
+                  "editor",
                   "exit",
                   "files",
                   "fork",
@@ -2018,6 +2068,14 @@
                     }
                   },
                   "new_conversation": {
+                    "type": "array",
+                    "maxItems": 4,
+                    "items": {
+                      "type": "string",
+                      "pattern": "^(?:(?:ctrl|alt|shift)\\+)*(?:f(?:[1-9]|1[0-2])|[a-z0-9]|home|end|pageup|pagedown|up|down|left|right)$"
+                    }
+                  },
+                  "external_editor": {
                     "type": "array",
                     "maxItems": 4,
                     "items": {

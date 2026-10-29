@@ -11,6 +11,7 @@
 - [按文件名发现路径](docs/file-glob.md)：glob 模式、目录范围、隐私过滤与有界只读遍历
 - CLI `--file` / TUI `/add` 附加有界快照；`--ref-file` / `/ref` 维护请求前刷新的文件引用
 - TUI Tab 补全本地命令和文件参数，`/files` 跨搜索勾选多个文件，批量附加快照或实时引用；主输入框保持 Enter 发送
+- [外部编辑器](docs/external-editor.md)：Ctrl+G 编辑完整草稿，逐次批准、私有临时文件与期限；返回后由 Enter 发送，支持 Windows 和 POSIX 的终端交接
 - TUI/chat 用 `/model` 明确确认后切换配置模型，保留对话并为启用的保存新建私有分支；选择本身不请求模型
 - 全屏终端 TUI、连续对话、项目代码地图、分目录 `AGENTS.md` 规则与本地 Git 查看
 - 交互式需求澄清：选项、多选和自填，Enter 确认、中途引导；答案不批准操作，见[提问流程](docs/questions.md)

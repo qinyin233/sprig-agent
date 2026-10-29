@@ -47,6 +47,10 @@ def configuration_schema():
         **{name: boolean for name in ("stream", "thinking", "read_only", "inherit_env", "compact_context", "request_usage", "project_instructions", "check_before_task", "check_after_edit")},
     })
     groups = {
+        "editor": obj({"command": {"type": "array", "maxItems": 32,
+                                   "items": {"type": "string", "maxLength": 4096},
+                                   "description": "Trusted TUI editor argv; empty disables. Optional standalone {file}, otherwise append private draft path. No shell or environment expansion."},
+                       "timeout": number(0, 3600, True)}),
         "agent": agent, "generation": generation,
         "tools": obj({name: boolean for name in TOOL_NAMES}),
         "files": obj({"exclude": {"type": "array", "maxItems": 256, "items": {**text, "maxLength": 256},

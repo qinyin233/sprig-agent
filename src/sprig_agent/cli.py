@@ -224,6 +224,8 @@ def chat(agent, task, messages, emit, *, autostart=True, model_selection=None, s
                     if action == "apply" and result.get("applied_inputs"):
                         status = 2
                     emit(json.dumps(result, ensure_ascii=False))
+            elif task == "/editor" or task.startswith("/editor "):
+                emit("Use --tui and Ctrl+G or /editor to edit the composer with the trusted configured editor. No model request sent.")
             elif task == "/prompts" or task.startswith("/prompts "):
                 from .prompt_templates import prompt_catalog
                 emit(json.dumps(prompt_catalog(agent.config, int(task[9:].strip()) if task[9:].strip() else 0), ensure_ascii=False))

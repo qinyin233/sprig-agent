@@ -179,6 +179,38 @@ def private_directory(path):
         checked(create_directory(str(path), c.byref(attributes)))
 
 
+def seal_editor_result(directory):
+    """Tighten only an owned temporary, single-link draft after atomic editor save."""
+    directory.ensure_open()
+    directory.check_private()
+    if not re.fullmatch(r"sprig-editor-[0-9a-f]{32}",directory.path.name):
+        raise ValueError("editor ACL sealing requires its private temporary directory")
+    handle=create_file(str(directory.path/'draft.md'),0x80000000 | 0xE0000,0,None,3,0x00200000,None)
+    if handle==c.c_void_p(-1).value:
+        raise c.WinError(c.get_last_error())
+    try:
+        info=FileInfo()
+        checked(get_file_info(handle,c.byref(info)))
+        if info.attributes & (0x400 | 0x10) or info.links!=1 or (info.size_high<<32 | info.size_low)>2*1024*1024:
+            raise ValueError("editor result must be an independent bounded regular file; no ACL was changed")
+        owner,dacl=PTR(),PTR()
+        present,defaulted=w.BOOL(),w.BOOL()
+        get_owner=api(security,"GetSecurityDescriptorOwner",w.BOOL,PTR,c.POINTER(PTR),c.POINTER(w.BOOL))
+        get_dacl=api(security,"GetSecurityDescriptorDacl",w.BOOL,PTR,c.POINTER(w.BOOL),c.POINTER(PTR),c.POINTER(w.BOOL))
+        set_security=api(security,"SetSecurityInfo",w.DWORD,w.HANDLE,w.DWORD,w.DWORD,PTR,PTR,PTR,PTR)
+        with private_attributes() as attributes:
+            checked(get_owner(attributes.descriptor,c.byref(owner),c.byref(defaulted)))
+            checked(get_dacl(attributes.descriptor,c.byref(present),c.byref(dacl),c.byref(defaulted)))
+            if not present.value or not dacl or not owner:
+                raise ValueError("private editor security descriptor is unavailable")
+            code=set_security(handle,1,0x80000005,owner,None,dacl,None)
+            if code:
+                raise c.WinError(code)
+        check_private(handle)  # Keep the ordinary strict reader unchanged.
+    finally:
+        close_handle(handle)
+
+
 def check_private(handle):
     owner, dacl, descriptor, sid = PTR(), PTR(), PTR(), PTR()
     get_security = api(security, "GetSecurityInfo", w.DWORD, w.HANDLE, w.DWORD, w.DWORD,
@@ -325,7 +357,7 @@ def check_command_launcher(executable):
 
 class StdioProcess:
     """Launch into a kill-on-close job before any child instruction executes."""
-    def __init__(self, argv, directory, env):
+    def __init__(self, argv, directory, env, *, console=False):
         self.job, self.process = None, None
         self.stdin = self.stdout = self.stderr = None
         program = argv[0]
@@ -356,16 +388,20 @@ class StdioProcess:
             limits = ExtendedLimits()
             limits.basic.flags = 0x2000
             checked(set_job(self.job, 9, c.byref(limits), c.sizeof(limits)))
-            for name in ("stdin", "stdout", "stderr"):
-                read_fd, write_fd = os.pipe()
-                parent, child = (write_fd, read_fd) if name == "stdin" else (read_fd, write_fd)
-                setattr(self, name, parent)
-                child_fds.append(child)
+            for descriptor, name in enumerate(("stdin", "stdout", "stderr")):
+                if console:
+                    child = descriptor
+                else:
+                    read_fd, write_fd = os.pipe()
+                    parent, child = (write_fd, read_fd) if name == "stdin" else (read_fd, write_fd)
+                    setattr(self, name, parent)
+                    child_fds.append(child)
                 handle = w.HANDLE()
                 checked(duplicate(current, msvcrt.get_osfhandle(child), current, c.byref(handle), 0, True, 2))
                 inherited.append(handle.value)
-                mode = w.DWORD(1)  # PIPE_NOWAIT, including Python 3.11.
-                checked(set_mode(msvcrt.get_osfhandle(parent), c.byref(mode), None, None))
+                if not console:
+                    mode = w.DWORD(1)  # PIPE_NOWAIT, including Python 3.11.
+                    checked(set_mode(msvcrt.get_osfhandle(parent), c.byref(mode), None, None))
             size = SIZE()
             init(None, 2, 0, c.byref(size))
             attributes = c.create_string_buffer(size.value)
@@ -375,12 +411,12 @@ class StdioProcess:
             checked(update(attributes, 0, 0x2000D, jobs, c.sizeof(jobs), None, None))
             checked(update(attributes, 0, 0x20002, handles, c.sizeof(handles), None, None))
             startup = StartupEx()
-            startup.info.size, startup.info.flags = c.sizeof(startup), 0x101
+            startup.info.size, startup.info.flags = c.sizeof(startup), 0x100 if console else 0x101
             startup.info.stdin, startup.info.stdout, startup.info.stderr = inherited
             startup.attributes = c.cast(attributes, PTR)
             environment = c.create_unicode_buffer("\0".join(f"{key}={value}" for key, value in sorted(env.items(), key=lambda item: item[0].upper())) + "\0\0")
             checked(create(executable, c.create_unicode_buffer(command), None, None, True,
-                           0x08000000 | 0x00080000 | 0x400, environment, str(directory), c.byref(startup), c.byref(info)))
+                           (0 if console else 0x08000000) | 0x00080000 | 0x400, environment, str(directory), c.byref(startup), c.byref(info)))
             self.process, info.process = info.process, None
         except BaseException:
             self.close()

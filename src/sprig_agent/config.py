@@ -11,7 +11,7 @@ from urllib.parse import urlsplit, urlunsplit
 from .credentials import RuntimeCredentials
 
 TOOL_NAMES = ("list_files", "glob", "read_file", "search", "grep", "project_map", "edit_file", "run", "update_plan", "edit_lines", "file_action", "read_history", "read_log", "question", "skill", "mcp", "web_fetch", "job", "lsp")
-SHORTCUT_ACTIONS = ("cancel", "quit", "focus_input", "toggle_sidebar", "help", "new_conversation")
+SHORTCUT_ACTIONS = ("cancel", "quit", "focus_input", "toggle_sidebar", "help", "new_conversation", "external_editor")
 GENERATION_FIELDS = ("max_tokens", "thinking", "temperature", "top_p", "reasoning_effort", "seed", "token_limit_field", "extra_body")
 MODEL_CONFIG_FIELDS = frozenset((*GENERATION_FIELDS, "model", "base_url", "api_key", "provider_name", "headers",
     "request_timeout", "request_deadline", "retry_attempts", "proxy", "api_key_header", "api_key_scheme", "preserve_reasoning",
@@ -186,6 +186,8 @@ class Config:
     background_enabled: bool = False
     background_timeout: float = 300
     prompt_templates: tuple = field(default=(), repr=False)
+    editor_command: tuple = field(default=(), repr=False)
+    editor_timeout: float = 300
     _runtime_credentials: RuntimeCredentials = field(default_factory=RuntimeCredentials, init=False, repr=False, compare=False)
 
     def __post_init__(self):
@@ -298,7 +300,7 @@ class Config:
                     raise ValueError("duplicate TUI key modifier")
                 value = "+".join([name for name in ("ctrl", "alt", "shift") if name in modifiers] + [parts[-1]])
                 if ((not re.fullmatch(r"f(?:[1-9]|1[0-2])", parts[-1]) and not ({"ctrl", "alt"} & set(modifiers)))
-                        or value in {"ctrl+c", "ctrl+q", "ctrl+l", "ctrl+j", "ctrl+a", "ctrl+v", "ctrl+x", "ctrl+z"}):
+                        or value in {"ctrl+c", "ctrl+q", "ctrl+l", "ctrl+g", "ctrl+j", "ctrl+a", "ctrl+v", "ctrl+x", "ctrl+z"}):
                     raise ValueError("TUI aliases cannot replace fixed safety, input, selection or clipboard keys")
                 if value in assigned:
                     raise ValueError("conflicting TUI shortcut keys")
@@ -429,6 +431,17 @@ class Config:
                 raise ValueError("invalid command environment or attempted model credential inheritance")
         if any(secret in arg for argv in self.checks for arg in argv for secret in self.credential_secrets):
             raise ValueError("configured credentials must not appear in acceptance arguments")
+        if (not isinstance(self.editor_command, tuple) or len(self.editor_command) > 32
+                or any(not isinstance(arg, str) or "\0" in arg or len(arg) > 4096 for arg in self.editor_command)
+                or self.editor_command and not self.editor_command[0]
+                or sum(len(arg.encode("utf-8")) for arg in self.editor_command) > 8192
+                or sum(arg == "{file}" for arg in self.editor_command) > 1
+                or any("{file}" in arg and arg != "{file}" for arg in self.editor_command)
+                or any(secret in arg for arg in self.editor_command for secret in self.credential_secrets)):
+            raise ValueError("editor.command requires <=32 literal argv strings, <=8 KiB, at most one standalone {file}, without configured credentials")
+        if (type(self.editor_timeout) not in (int, float) or not math.isfinite(self.editor_timeout)
+                or not 0 < self.editor_timeout <= 3600):
+            raise ValueError("editor.timeout must be positive and at most 3600 seconds")
         if self.tui_theme is not None and (not isinstance(self.tui_theme, str) or self.tui_theme not in {"textual-dark", "textual-light", "nord", "gruvbox", "dracula", "monokai", "tokyo-night", "solarized-dark", "solarized-light"}):
             raise ValueError("unsupported TUI theme")
         if type(self.tui_editor_height) is not int or not 3 <= self.tui_editor_height <= 12:

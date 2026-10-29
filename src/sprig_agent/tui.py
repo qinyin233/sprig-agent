@@ -204,6 +204,33 @@ class TaskInput(TextArea):
         self.history.checkpoint()
         self.focus()
 
+    def external_snapshot(self):
+        self.files.sync(self.text)
+        self.pastes.sync(self.text)
+        files=DraftFiles(self.text)
+        files.spans=list(self.files.spans)
+        text=self.text
+        for left,right,body,_ in reversed(self.pastes.spans):
+            text=text[:left]+body+text[right:]
+            files.sync(text,left,right)
+        return paste_text(text),files
+
+    def accept_external(self,text,files):
+        files.sync(text)
+        self.history.checkpoint()
+        self._expanding_paste=True
+        try:
+            self.replace(text,(0,0),self.document.end)
+        finally:
+            self._expanding_paste=False
+        self.files=files
+        self.pastes=DraftPastes(self.text)
+        self.verbatim_paste=self.literal_paste=bool(text)
+        self._queue_paste_mode=None
+        self._last_composer_edit.paste_after=self.paste_state()
+        self.history.checkpoint()
+        self.move_cursor(self.document.end)
+
     class Submitted(Message):
         def __init__(self, editor, text, draft=None):
             super().__init__()
@@ -291,6 +318,7 @@ class SprigApp(App[int]):
         Binding("ctrl+c", "cancel", "取消", priority=True),
         Binding("ctrl+q", "quit", "退出", priority=True),
         Binding("ctrl+l", "focus_task", "任务输入", priority=True),
+        Binding("ctrl+g", "external_editor", "外部编辑", priority=True),
         # Textual named actions need a nonempty base key. These identifiers
         # are never terminal events; set_keymap activates configured aliases.
         *(Binding("sprig_unbound_" + action, "configured_shortcut(" + repr(action) + ")", "",
@@ -348,6 +376,8 @@ class SprigApp(App[int]):
         self._transcript_trimmed = False
         self.streaming = False
         self.approval = None
+        self._editor_approval = None
+        self._editor_cancel_version = 0
         self.question = None
         # UI-thread-owned queue. Only the single agent worker takes its contents.
         self.pending_tasks = []
@@ -1525,8 +1555,12 @@ class SprigApp(App[int]):
 
     def action_cancel(self):
         self._queue_running = False
+        self._editor_cancel_version += 1
         had_jobs = self.tools.jobs.unsettled()
         self.tools.jobs.request_cancel_all()
+        if self._editor_approval is not None:
+            self._editor_approval.dismiss(False)
+            self._editor_approval=None
         if not self.busy:
             if had_jobs:
                 self.set_state("已请求停止后台任务；使用 /jobs 查看清理结果")
@@ -1667,15 +1701,94 @@ class SprigApp(App[int]):
             self.slash_command("/help")
         elif action == "new_conversation" and not self.busy:
             self.new_conversation()
+        elif action == "external_editor":
+            self.action_external_editor()
+
+    def action_external_editor(self):
+        from .external_editor import DraftEditor
+        if self.busy or isinstance(self.screen,ModalScreen):
+            self.notify("请等待当前操作结束后编辑草稿",severity="warning")
+            return
+        editor=self.query_one('#task',TaskInput)
+        try:
+            text,files=editor.external_snapshot()
+            proposal=DraftEditor(self.config,text)
+            if self._driver is None or not self._driver.can_suspend:
+                raise ValueError('当前终端不支持暂停/恢复，未启动编辑器；请在本机 TUI 使用此操作')
+        except (OSError,ValueError) as error:
+            self.notify(self.safe(error),severity='error')
+            return
+        snapshot=(editor.text,editor.paste_state(),tuple(editor.files.spans))
+        version=self.tools._conversation_version
+        cancellation=self._editor_cancel_version
+        config=self.config
+        def check():
+            self.tools._check_cancelled()
+            self.tools.root.ensure_open()
+            if (self._unmounted or self._editor_cancel_version!=cancellation
+                    or self.config is not config or self.tools.config is not config
+                    or self.tools._conversation_version!=version
+                    or (editor.text,editor.paste_state(),tuple(editor.files.spans))!=snapshot):
+                raise ValueError('草稿、会话或设置已变化；旧编辑器提案失效，请重新打开')
+        def approved(answer):
+            self._editor_approval=None
+            if answer is not True:
+                return
+            if not self._lifecycle_lock.acquire(blocking=False):
+                self.notify('另一个操作尚未完成；未启动编辑器',severity='warning')
+                return
+            self.cancel_event.clear()
+            error=None
+            result=None
+            try:
+                check()
+                self.set_busy(True)
+                self.tools.read_versions.clear()
+                self.tools.index.clear()
+                # Textual 8.2.8 resumes after yield, outside a finally. Never
+                # propagate editor errors through that yield: restore first.
+                with self.suspend():
+                    try:
+                        result=proposal.run(True,check)
+                    except BaseException as caught:
+                        error=caught
+                if error is not None:
+                    raise error
+                check()
+                lost=set(files.paths())
+                editor.accept_external(result,files)
+                lost-=set(editor.files.paths())
+                if lost:
+                    self.notify('编辑影响了内联文件标记，请重新选择对应文件',severity='warning')
+                self.set_state('外部编辑完成；检查草稿后 Enter 才发送')
+            except BaseException as caught:
+                self.notify('外部编辑已取消，草稿保留' if isinstance(caught,KeyboardInterrupt) else self.safe(caught),severity='error')
+            finally:
+                self.tools.read_versions.clear()
+                self.tools.index.clear()
+                self.set_task_result(2,'外部程序已获批准；工作区尚未重新验收')
+                if proposal.cleanup_pending:
+                    self.notify('编辑器留下文件，请手动检查私有目录：'+str(proposal.directory),severity='warning')
+                self.set_busy(False)
+                self._lifecycle_lock.release()
+        self._editor_approval=ApprovalScreen(self.safe(proposal.description()),allow_steering=False)
+        self.push_screen(self._editor_approval,approved)
 
     def slash_command(self, text):
         command, _, argument = text.partition(" ")
         argument = argument.strip()
         if text.split(None, 1) and text.split(None, 1)[0] == "/queue":
             command = "/queue"
+        if command == '/editor':
+            if argument:
+                self.notify('用法：/editor；Ctrl+G 编辑现有草稿',severity='error')
+            else:
+                self.call_later(self.action_external_editor)
+            return True
         if command == "/help":
             self.append("\n本地命令（不发送给模型）：\n"
                         "/help /keys /plan /status /config /models /context /usage /cancel /exit\n"
+                        "/editor 或 Ctrl+G（可信配置的外部编辑器；返回草稿，不自动发送）\n"
                         "/skills（已配置技能摘要） /skill NAME [PATH [OFFSET PAGE_SHA256]]（本地预览，不运行脚本）\n"
                         "/mcp（本地状态） /mcp connect|disconnect|tools|resources|templates|prompts SERVER（逐次确认请求）\n"
                         "/web（本地缓存） /web URL（逐次批准公开网页） /web result ID [UTF8偏移]（缓存分页）\n"
@@ -1721,7 +1834,7 @@ class SprigApp(App[int]):
                 self.reject_input(str(error))
             return
         if command == "/keys":
-            self.append("\n[快捷键] Enter 发送；Shift+Enter / Ctrl+J 换行；F4 展开粘贴；Ctrl+C 取消；Ctrl+Q 退出；Ctrl+L 输入。审批默认拒绝。\n"
+            self.append("\n[快捷键] Enter 发送；Shift+Enter / Ctrl+J 换行；F4 展开粘贴；Ctrl+G 外部编辑；Ctrl+C 取消；Ctrl+Q 退出；Ctrl+L 输入。审批默认拒绝。\n"
                         + json.dumps(dict(self.config.tui_keybindings), ensure_ascii=False, indent=2) + "\n")
             return
         if command == "/files":

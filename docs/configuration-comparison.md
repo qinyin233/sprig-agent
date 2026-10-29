@@ -52,7 +52,7 @@
 | 工具和命令环境 | OpenCode tools/permissions；Pi defaultTools；Codex environment/sandbox | 工具硬禁用、只读、路径排除、环境白名单/字面值、超时/输出上限/取消；整行工具继承基础编辑禁用，计划不授予权限，命令仍无 OS 沙箱 |
 | 界面与快捷键 | OpenCode tui.json；[Pi 按动作 keybindings.json](https://github.com/badlogic/pi-mono/blob/main/packages/coding-agent/docs/keybindings.md)；Codex tui.keymap | 主题、侧栏、高度、引导队列、用量、按动作附加快捷键；固定输入/审批键不改，没有完整 Vim 模式 |
 | 扩展、网络和 IDE | Codex/OpenCode MCP/skills；Pi 扩展资源；OpenCode LSP/formatters | 已有明确配置的 MCP HTTP/stdio、渐进技能文本、逐次批准的 LSP 查询、公开网页文本读取与图片输入/获批模型读图；OAuth、hooks、formatter、浏览器与多代理仍缺 |
-| Git 和外部交互 | Aider Git/编辑器；Codex/OpenCode 工作区/进程设置 | 状态/diff、获批文件工具撤销、明确创建 detached worktree、当前进程内受管后台任务；仍缺命令改动回滚、worktree 合并、外部编辑器、PTY 和通知后端 |
+| Git 和外部交互 | Aider Git/编辑器；Codex/OpenCode 工作区/进程设置 | 状态/diff、获批文件工具撤销、明确创建 detached worktree、当前进程内受管后台任务；已有可信配置的 TUI 外部草稿编辑器；仍缺命令改动回滚、worktree 合并、PTY 和通知后端 |
 
 Aider 的 `--config` 只加载指定的一个文件；默认文件按 home、仓库根、当前目录依次加载，后者优先。Pi 的用户/项目设置与资源合并规则见[官方配置说明](https://github.com/badlogic/pi-mono/blob/main/packages/coding-agent/docs/configuration.md)。Sprig 不隐式读取项目配置，避免下载的仓库改变凭据路由；`--project-config` 只接受受限层。
 
@@ -60,7 +60,7 @@ Aider 的 `--config` 只加载指定的一个文件；默认文件按 home、仓
 
 Sprig 通过明确 `wire_api` 选择 Chat Completions、Messages 或 Responses，不从 URL 猜测协议，也没有 Google 原生协议。`--list-models` 只证明元数据接口可读，不证明工具调用、流式、推理选项或价格可用。
 
-MCP OAuth/订阅/Apps、可执行插件/hooks、外部编辑器、完整编辑器键位/Vim 模式、操作系统沙箱、PTY、跨进程后台恢复、通知和多代理还缺执行后端。未知或未接入的设置继续拒绝，也不会把普通获批 shell 命令当作这些专用功能已完成。技能文本与任务模板不能转成持续授权。
+MCP OAuth/订阅/Apps、可执行插件/hooks、完整编辑器键位/Vim 模式、操作系统沙箱、PTY、跨进程后台恢复、通知和多代理还缺执行后端。未知或未接入的设置继续拒绝，也不会把普通获批 shell 命令当作这些专用功能已完成。技能文本与任务模板不能转成持续授权。
 
 Sprig 不提供配置自动批准、自动模型回退、隐式联网配置、关闭 TLS 验证、凭据获取命令或自动重试；保留逐次审批、明确端点和计费请求的边界。部分样本中的这些可选行为不适合直接照搬。
 

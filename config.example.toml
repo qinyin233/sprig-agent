@@ -143,6 +143,12 @@ auto_save_session = false # opt in to private, unencrypted transcripts
 # session_dir = "~/.local/state/sprig-agent/sessions"
 # change_history_dir = "~/.local/state/sprig-agent/changes" # exact file backups
 
+[editor]
+# Trusted user/profile argv. Empty disables; never read from a project or EDITOR.
+# On Windows use a native .exe, e.g. the actual Code.exe with --wait.
+command = [] # e.g. ["nvim", "{file}"] or ["/usr/bin/code", "--wait", "{file}"]
+timeout = 300 # <=3600 seconds; each invocation still needs fresh approval
+
 [tui]
 theme = "nord"
 sidebar = true

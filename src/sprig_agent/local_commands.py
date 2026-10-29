@@ -1,5 +1,6 @@
 """Built-in slash names shared by validation and terminal discovery."""
 COMMANDS = {
+    "editor": "TUI：用已配置外部编辑器编辑当前草稿，逐次批准；返回后不自动发送",
     "revise": "编辑旧用户请求并重发：确认后在该请求之前建分支，原文件和主草稿保留",
     "prompts": "列出已配置任务模板；/名称 参数发送展开后的普通任务或中途引导",
     "queue": "正文仅收存；run 顺序启动，每项独立预算；pause 暂停后续任务",

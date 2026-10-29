@@ -1,0 +1,244 @@
+{
+  "schema": 1,
+  "date": "2026-10-28",
+  "base_commit": "45e1915023e656cfe99ec61797af62a69b120f65",
+  "scope": "Trusted user-invoked external draft editor, native terminal handoff and private bounded import; no model-facing terminal capability or model-performance claim",
+  "external_model_calls": 0,
+  "source_seal": {
+    "files": 255,
+    "sha256": "eabdd88919d27a18540d43085a97ba58fd4e9cd35b2eb060b4cdea7f728f7ed2",
+    "normalized_lf_sha256": "30b99130f3e3ff37e0527c2680043713ee03ebe007830636f7d1986a5cacf341",
+    "algorithm": "Same sorted raw/LF UTF-8 JSON file-hash map selection as background-logs-20261028.json; docs/reports and virtual environments excluded"
+  },
+  "unit_snapshot": {
+    "sha256": "353a388c55419defcf2d4329cf3bddc7860f7040981ea67574c5d65b7bff2d74",
+    "files": 255,
+    "final_delta": [
+      "tests/fixtures/external_editor_terminal.py"
+    ],
+    "delta_reason": "Manual native-terminal observer now waits for the actual editor busy/return cycle and requires final phase=done, rather than treating a closed approval modal or exit code alone as completion.",
+    "all_application_and_automatic_test_inputs_unchanged": true,
+    "closure_files": 254,
+    "closure_sha256": "0a19514d3799b7dd2d63fb936db2d753ab0f116473db0aa9d6833d2945b952dd"
+  },
+  "checks": {
+    "windows_full": {
+      "total": 1679,
+      "passed": 1655,
+      "skipped": 24,
+      "seconds": 955.582,
+      "exit_code": 0,
+      "log_sha256": "5161b8809b742e18bb3cd55bfa9aca4b5a0885d9b5daf22591d3b62e521ec59c"
+    },
+    "local_wsl_full": {
+      "total": 1679,
+      "passed": 1655,
+      "skipped": 24,
+      "seconds": 688.277,
+      "exit_code": 0,
+      "log_sha256": "12a8ac4e4fcd0414e99db49094aedf993b1e006d716b505892288750176a5964"
+    },
+    "windows_python311_new_feature": {
+      "total": 21,
+      "passed": 20,
+      "skipped": 1,
+      "seconds": 29.522,
+      "exit_code": 0,
+      "log_sha256": "d8d41e688093291f536f9e518e9f2d7ef478ce845b9a6fb043c5ab5b16e5fa7b"
+    },
+    "windows_focused": {
+      "total": 156,
+      "passed": 153,
+      "skipped": 3,
+      "seconds": 117.335,
+      "exit_code": 0,
+      "log_sha256": "415b4f6a23a4a5d0b1292368e8f17ab671d317f53ca223dabf01706ca53a6a44"
+    },
+    "windows_sdk_original": {
+      "total": 30,
+      "passed": 30,
+      "skipped": 0,
+      "seconds": 77.232,
+      "exit_code": 0,
+      "log_sha256": "b2d86943a6c816cf38e82bda9c1bfb8b234a9231ce90461bf0402476fafda423"
+    },
+    "windows_sdk_requests": {
+      "total": 30,
+      "passed": 30,
+      "skipped": 0,
+      "seconds": 65.635,
+      "exit_code": 0,
+      "log_sha256": "130fc905c93af4099d6d19ff0b9231cbfb3202c3d3186f15849d029fb98750ca"
+    },
+    "wsl_sdk_original": {
+      "total": 30,
+      "passed": 30,
+      "skipped": 0,
+      "seconds": 285.989,
+      "exit_code": 0,
+      "log_sha256": "5b42bb9ca1b172ef41a2f2aa422cd06610f3171f1471b5573b00a42596ba4d28"
+    },
+    "wsl_sdk_requests": {
+      "total": 30,
+      "passed": 30,
+      "skipped": 0,
+      "seconds": 249.339,
+      "exit_code": 0,
+      "log_sha256": "13fbe0d03ec78e1e7db3b3ffa45f2a190d63fa9c74d445eaf4a26a702d81473c"
+    }
+  },
+  "native_terminal_acceptance": {
+    "windows": {
+      "phase": "done",
+      "platform": "Windows",
+      "python": "3.13.0",
+      "driver": "WindowsDriver",
+      "model_requests_before_enter": 0,
+      "fixture_requests_after_enter": 1,
+      "draft_utf8_bytes": 36,
+      "draft_sha256": "45c8114526242b5b4b8697c9eba029bdc8934e80deac7d04e02a57592e47903e",
+      "native_terminal": true,
+      "exit_status": 0,
+      "report_sha256": "6db4bf02c8851efcbbd4dbbed912ae5464fcdfe079ea0dd567a2c9cdc03a5273",
+      "process_exit_code": 0
+    },
+    "local_wsl": {
+      "phase": "done",
+      "platform": "Linux",
+      "python": "3.13.14",
+      "driver": "LinuxDriver",
+      "model_requests_before_enter": 0,
+      "fixture_requests_after_enter": 1,
+      "draft_utf8_bytes": 36,
+      "draft_sha256": "45c8114526242b5b4b8697c9eba029bdc8934e80deac7d04e02a57592e47903e",
+      "native_terminal": true,
+      "exit_status": 0,
+      "report_sha256": "26e9dfc8996af1721c1bda34184606290be2aba9c155a5c3f7596cc8156a71ac",
+      "process_exit_code": 0
+    }
+  },
+  "application_modules": {
+    "total": 82,
+    "changed": [
+      "cli.py",
+      "config.py",
+      "configuration_schema.py",
+      "console_process.py",
+      "external_editor.py",
+      "local_commands.py",
+      "settings.py",
+      "tui.py",
+      "windows.py"
+    ],
+    "unchanged_parent_after_lf_normalization": 73
+  },
+  "request_footprint": {
+    "tool_schemas_bytes_unchanged": 4894,
+    "existing_hard_gate_unchanged": 4932,
+    "base_prompt_bytes_unchanged": 2372
+  },
+  "contracts": {
+    "activation": "trusted user/profile editor.command; empty disables; no EDITOR/VISUAL inference or model tool",
+    "argv_max": 32,
+    "argv_utf8_bytes_max": 8192,
+    "placeholder": "at most one standalone {file}; otherwise append private path; no implicit shell",
+    "timeout_default_seconds": 300,
+    "timeout_max_seconds": 3600,
+    "draft_max_utf8_bytes": 2097152,
+    "authorization": "fresh literal True; readonly and disabled run block; draft/config/conversation/cancellation rechecked",
+    "privacy": "random private non-repository directory; known credentials rejected in argv/input/result; protected Windows ACL or POSIX 0700/0600 and child umask 0077",
+    "atomic_save": "Windows seals only the exact temporary single-link bounded regular file by handle before strict private read; never weakens the shared reader",
+    "import": "exit 0, complete UTF-8, CRLF/CR to LF, no terminal controls, stable fd-based identity before/after read, single link, no reparse or FIFO",
+    "cleanup": "known draft.md plus empty generated directory only; unknown editor side files left private and reported, never recursively removed",
+    "processes": "owned Windows Job Object from creation; POSIX foreground group handoff/restore and owned group cleanup",
+    "composer": "expand actual pastes; preserve whitespace, literal slash text, undo/redo; retain only selected untouched mention spans; no attachment authority from typed labels",
+    "dispatch": "return to composer; actual Enter required; original request budget and failed-send draft retention unchanged",
+    "terminal_output": "user-owned terminal while suspended, not tool-output capture; returned draft and model request remain bounded",
+    "cache_and_acceptance": "invalidate read versions/syntax cache and UI acceptance; no model/history branch or automatic continuation"
+  },
+  "coverage": {
+    "new_test_methods": 21,
+    "protocols": [
+      "chat_completions",
+      "messages",
+      "responses"
+    ],
+    "encodings": [
+      "json",
+      "sse"
+    ],
+    "protocol_subcases": 6,
+    "request_byte_budget": 16384,
+    "tui_headless": "80x24, suspension capability enabled only in fixtures; real native terminal proven separately",
+    "native_fixture": "tests/fixtures/external_editor_terminal.py",
+    "native_input": "declared fixture-confirm plus a separate Enter after report phase draft_restored; no blind input or human/model equivalence claim"
+  },
+  "development_failures": {
+    "logs": {
+      "windows_fd_stat": {
+        "log_sha256": "c00833b7e7be366cd04b3ce6c7fb111e61e9b4bcfe6e05a1e44dfcfdd08c6802",
+        "terminal_result": "FAILED (failures=1, errors=4, skipped=1)"
+      },
+      "ui_contextmanager_fixture": {
+        "log_sha256": "b3f93d96185dcb90e1eec19727b8df4b6e5e294c4a1e40eed547190772875fee",
+        "terminal_result": "FAILED (errors=4)"
+      },
+      "ui_worker_only_cancel": {
+        "log_sha256": "8300b50b70073cf15e67d05f1093ae3f9965a69487d04d01a5dc24a8d740ae6b",
+        "terminal_result": "FAILED (failures=4)"
+      },
+      "oversized_command_fixture": {
+        "log_sha256": "c4b35f0f705ae3087cde63e61d27baa095930d6c6312985814ffba65db54d41b",
+        "terminal_result": "FAILED (errors=1)"
+      },
+      "windows_atomic_acl": {
+        "log_sha256": "2b14c5f82ddab2278a7c9ec276bd95b5d246ca66d9beeda6346d959e25f529b9",
+        "terminal_result": "FAILED (errors=1, skipped=2)"
+      }
+    },
+    "findings": [
+      "Windows path stat and CRT fstat identity representations differed; use fd-based comparisons for both reopened handles.",
+      "UI runner called cancellation logic requiring a Textual worker; use shared tool cancellation from the UI.",
+      "Atomic editor replacement inherited an unprotected Windows ACL; seal the owned independent temporary file to current-user owner/protected DACL after no-link/size checks, then use the unchanged strict reader.",
+      "Fixtures initially mixed sync/async context managers and embedded 10000 bytes in an 8 KiB command; fix fixture construction without increasing budgets.",
+      "An early terminal observer could run between modal close and approval callback, and one delayed manual-input probe timed out. Incomplete probes are not passes; final observer requires the actual run/return cycle and final done report, with gated fixture input."
+    ]
+  },
+  "locked_projects": {
+    ".": "22e2647115dc49fc2e9df21ffbc1e6694be61ef8eccb349d59ae320b6243bddd",
+    "benchmarks/clients/mini": "c5fe2838e48a2cde4ef8faeba56ba71b80776e397adbe465914639669e21658a",
+    "benchmarks/clients/aider": "3f257144eac41c5248631a8c5a6ac827c2c8e44081f68b5653262df3dad91568",
+    "benchmarks/repositories/click": "b04f8515898adaf101aeacc850d16eaf22d7470819969d90f02abedc1a9ed43d",
+    "benchmarks/repositories/requests": "1d7f93846b09bb492245b70d9b4e36ca2f54d462dcbb701c3251cdd5ba292db2"
+  },
+  "static_checks": {
+    "python_ast_files": 235,
+    "configuration_schema_matches_runtime": true,
+    "five_uv_locks": "passed",
+    "cli_help": "passed",
+    "local_document_links_resolved": 681,
+    "changed_public_files": 22,
+    "process_and_configured_credentials_in_changed_files": "absent",
+    "credential_shaped_literals_in_changed_files": "absent",
+    "git_diff_check": "passed"
+  },
+  "peer_reading": {
+    "opencode": "fa1260d6ca484fe0fd868aa992ad81ab85343cf3",
+    "textual": "1d99508b928a771b51e1a527319c6b87dcff9e05",
+    "document": "../research/opencode-external-editor-20261028.md",
+    "upstream_executed": false
+  },
+  "remote_ci": "pending; no Actions before 2026-11-01 Asia/Singapore; recheck account restriction and prior required gate before resuming",
+  "limits": [
+    "Trusted editor/GUI/plugins have current-user system/network access; not an OS sandbox, model PTY or key-injection API.",
+    "Uncaptured user terminal output is distinct from bounded model tool output. GUI brokers or programs that return before file close cannot guarantee completion or cleanup of existing external instances.",
+    "Local Windows/WSL and a controlled editor do not prove all installed editor/plugin combinations, macOS, the full Python matrix, remote native CI or real coding gains."
+  ],
+  "packaging_contract": {
+    "wheel_modules_equal_source": 82,
+    "wheel_modules_imported_from_extracted_wheel": 81,
+    "sdist_changed_files_equal_source": 22,
+    "artifact_process_credentials": "absent",
+    "artifact_local_config_and_venvs": "absent"
+  }
+}

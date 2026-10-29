@@ -284,11 +284,16 @@ focus_input = ["f3"]
 cancel = ["f6"]
 quit = ["ctrl+f10"]
 new_conversation = ["ctrl+shift+n"]
+external_editor = ["f8"]
 ```
 
-支持上述六个动作，每动作至多四个键。用户/profile 按动作合并，较高层的同名数组整体替换；设置 `help=[]` 仅关闭该动作的附加别名。F1–F12 可单独绑定；字母、数字、home/end/pageup/pagedown/up/down/left/right 需带 Ctrl 或 Alt，可另加 Shift。修饰键顺序归一化，跨层重复或冲突也报错；终端是否报告某个组合仍取决于终端。`/keys` 查看生效别名。配置采用启动快照，修改后重启；规则/语言以外的界面偏好不改变会话绑定。
+支持上述七个动作，每动作至多四个键。用户/profile 按动作合并，较高层的同名数组整体替换；设置 `help=[]` 仅关闭该动作的附加别名。F1–F12 可单独绑定；字母、数字、home/end/pageup/pagedown/up/down/left/right 需带 Ctrl 或 Alt，可另加 Shift。修饰键顺序归一化，跨层重复或冲突也报错；终端是否报告某个组合仍取决于终端。`/keys` 查看生效别名。配置采用启动快照，修改后重启；规则/语言以外的界面偏好不改变会话绑定。
 
-Enter、Shift+Enter、Ctrl+J、Esc、Tab、Ctrl+C/Q/L 和选择/剪贴板键保持固定，不提供审批动作绑定。模态审批中，取消/退出别名走原有取消流程，其余别名无效；不会因快捷键批准操作。新对话仍执行已有确认。项目层不能改变可信键位。
+Enter、Shift+Enter、Ctrl+J、Esc、Tab、Ctrl+C/Q/L/G 和选择/剪贴板键保持固定，不提供审批动作绑定。模态审批中，取消/退出别名走原有取消流程，其余别名无效；不会因快捷键批准操作。新对话仍执行已有确认。项目层不能改变可信键位。
+
+## 外部草稿编辑器
+
+可信用户/profile 的 `[editor]` 支持字面 `command` argv 和 `timeout`，默认命令数组为空，期限 300 秒。Ctrl+G 或 `/editor` 逐次批准后编辑私有草稿，返回后 Enter 才发送；项目层不能设置。占位参数、Windows 原生可执行文件、临时文件/进程边界与验证范围见[外部编辑器](external-editor.md)。
 
 ## 显式项目设置
 
