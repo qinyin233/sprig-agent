@@ -16,6 +16,7 @@ from .diagnostics import diagnose
 from .provider import Provider, ProviderError
 from .runtime import runtime_label
 from .session import SessionError, SessionStore, validate_history
+from .usage_ledger import UsagePersistenceError
 from .settings import Settings, default_config_path, initialize_config, load_settings, public_config
 from .tools import Tools
 from .questions import terminal_questions
@@ -499,6 +500,7 @@ def main(argv=None):
     group.add_argument("--save-session", metavar="NAME")
     group.add_argument("--resume", metavar="NAME")
     group.add_argument("--list-sessions", action="store_true", help="list local session metadata without contacting a model")
+    group.add_argument('--session-usage', metavar='NAME', help='inspect saved numeric request usage offline; no model selection, credentials, replay or transcript output')
     group.add_argument("--verify", action="store_true", help="only run configured fixed checks with fresh approvals; no model credentials, request or saved transcript")
     group.add_argument("--delete-session", metavar="NAME", help="delete one local session after confirmation")
     group.add_argument("--prune-sessions", action="store_true", help="apply configured retention to idle sessions, each deletion requires confirmation")
@@ -522,12 +524,12 @@ def main(argv=None):
     parser.add_argument("--change-history-dir", type=Path, help="explicitly persist exact edit backups in a private directory outside the repository (not encrypted)")
     args = parser.parse_args(argv)
     key = ""
-    store = tools = history = provider = None
+    store = tools = history = provider = agent = None
     show_metrics = False
     feedback_context = ExitStack()
     feedback_context.enter_context(feedback_scope(None))
     try:
-        manage_sessions = args.list_sessions or args.delete_session or args.prune_sessions
+        manage_sessions = args.list_sessions or args.delete_session or args.prune_sessions or args.session_usage is not None
         manage_worktrees = args.list_worktrees or args.create_worktree is not None or args.remove_worktree is not None
         if args.worktree_ref is not None and args.create_worktree is None:
             raise ValueError("--worktree-ref requires --create-worktree")
@@ -622,7 +624,9 @@ def main(argv=None):
             return 0 if report.get("ok", True) else 1
         if manage_sessions:
             store = SessionStore(session_dir, config)
-            if args.list_sessions:
+            if args.session_usage is not None:
+                print(terminal_text(json.dumps(redact(store.usage(args.session_usage), key), ensure_ascii=False, indent=2)))
+            elif args.list_sessions:
                 listing = store.scan()
                 print(terminal_text(json.dumps(listing["sessions"], ensure_ascii=False, indent=2)))
                 if listing["limited"]:
@@ -692,6 +696,7 @@ def main(argv=None):
             agent.restore_references(state if isinstance(state, dict) else None)
             agent.restore_summary(store.loaded_summary, messages)
             agent.restore_logs(getattr(store, "loaded_logs", None))
+            agent.restore_usage(getattr(store, 'loaded_usage', None), messages)
             if args.reference_files:
                 messages, _ = agent.update_references(config.reference_files, messages=messages)
         if args.file:
@@ -820,13 +825,13 @@ def main(argv=None):
     except KeyboardInterrupt:
         print("Interrupted; no pending actions will be replayed on resume", file=sys.stderr)
         return 130
-    except (OSError, ValueError, ChangeError, ProviderError, SessionError) as exc:
+    except (OSError, ValueError, ChangeError, ProviderError, SessionError, UsagePersistenceError) as exc:
         print("Error: " + terminal_text(redact(str(exc), key)), file=sys.stderr)
         return 1
     finally:
         feedback_context.close()
         if show_metrics and provider is not None:
-            print("[usage] " + json.dumps(provider.measurements.report(), ensure_ascii=False), file=sys.stderr, flush=True)
+            print("[usage] " + json.dumps(agent.usage_report() if agent is not None else provider.measurements.report(), ensure_ascii=False), file=sys.stderr, flush=True)
         if tools:
             tools.close()
         elif history:

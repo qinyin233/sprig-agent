@@ -214,7 +214,7 @@ class Provider:
         except (ValueError, TypeError, RecursionError):
             raise ProviderError("invalid or oversized model metadata response") from None
 
-    def complete(self, messages, tools, on_text=None, *, check_cancelled=None, on_retry=None):
+    def complete(self, messages, tools, on_text=None, *, check_cancelled=None, on_retry=None, on_measurement=None):
         config = self.config
         body, headers, deadline, pending = None, None, None, None
         sent = 0
@@ -224,7 +224,8 @@ class Provider:
             if self.config is not config:
                 raise ProviderError('provider configuration changed; request stopped without resending', code='invalid_request')
         for attempt in range(config.retry_attempts + 1):
-            measurement = RequestMeasurement(config.stream)
+            measurement = RequestMeasurement(config.stream,
+                (lambda value: on_measurement('started', value)) if on_measurement is not None else None)
             try:
                 fresh()
                 if pending is not None:
@@ -262,7 +263,10 @@ class Provider:
                 raise
             finally:
                 sent += int(measurement.started is not None)
-                self.measurements.add(measurement.finish())
+                record = measurement.finish()
+                self.measurements.add(record)
+                if on_measurement is not None:
+                    on_measurement('finished', record)
 
     @staticmethod
     def _wait_retry(delay, deadline, check_cancelled):
@@ -300,6 +304,7 @@ class Provider:
         try:
             budget.check()
             measurement.begin(len(body))
+            budget.check()  # A durable start checkpoint may have consumed the remaining deadline.
             with self.opener.open(request, timeout=config.request_timeout or config.timeout) as response:
                 status = getattr(response, "status", None)
                 if type(status) is int and 100 <= status <= 599:

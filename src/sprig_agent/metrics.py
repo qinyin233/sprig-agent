@@ -30,8 +30,9 @@ def token_usage(value):
 
 
 class RequestMeasurement:
-    def __init__(self, streamed):
+    def __init__(self, streamed, on_begin=None):
         self.streamed = streamed
+        self.on_begin = on_begin
         self.started = self.first_text = None
         self.request_bytes = self.response_bytes = 0
         self.usage = None
@@ -41,6 +42,8 @@ class RequestMeasurement:
         self.error_code = self.finish_reason = None
 
     def begin(self, request_bytes):
+        if self.on_begin is not None:
+            self.on_begin({'streamed': self.streamed, 'request_bytes': request_bytes})
         self.request_bytes = request_bytes
         self.started = time.perf_counter()
 

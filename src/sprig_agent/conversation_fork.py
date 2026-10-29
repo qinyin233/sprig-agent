@@ -98,6 +98,7 @@ class ConversationFork:
                            checkpoint=original.checkpoint, emit_delta=original.emit_delta, cancel_event=original.cancel_event,
                            receive_input=original.receive_input, on_request_ready=original.on_request_ready, on_event=original.on_event)
         self.agent.restore_references(original.reference_state())
+        self.agent.fork_usage(original)
         self.agent.compact_context = original.compact_context
         self.logs = CommandLogs(original.config, original.tools._check_cancelled)
 
@@ -107,6 +108,7 @@ class ConversationFork:
         encoded_size(self.source, max_bytes=MAX_SESSION, check_cancelled=self.original._check_cancelled)
         if (self.original._running or self.original.tools.config is not self.original.config
                 or self.original.tools._conversation_version != self.version
+                or not self.agent.usage_source_current(self.original)
                 or fingerprint(self.source, len(self.source), self.original._check_cancelled) != self.source_hash):
             raise ValueError("conversation branch proposal is stale; select again")
 

@@ -322,6 +322,9 @@ class SummaryTests(unittest.TestCase):
                     self.assertEqual(body["max_output_tokens" if protocol == "responses" else "max_tokens"],
                                      4096 if protocol == "messages" else 2048)
                     self.assertEqual(provider.measurements.report()["attempts"], 1)
+                    self.assertEqual(agent.usage_report()['session_usage']['attempts'], 1)
+                    self.assertIsNone(agent.usage_ledger.snapshot()['pending'])
+                    self.assertNotIn('request_usage', body)
 
     def test_explicit_output_and_messages_thinking_budget_are_not_silently_reduced(self):
         captured = []

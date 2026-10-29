@@ -276,9 +276,16 @@ class StreamIntegrationTests(unittest.TestCase):
             with self.assertRaises(ProviderError):
                 agent.run("Do work")
             tools.execute.assert_not_called()
-            self.assertEqual(len(checkpoints), 2 if b'"length"' in body else 1)
+            # Request accounting may save unchanged history at start/finish.
+            # Only the fixed output-limit notice may change the transcript.
+            histories = [history for index, history in enumerate(checkpoints)
+                         if index == 0 or history != checkpoints[index - 1]]
+            self.assertEqual(len(histories), 2 if b'"length"' in body else 1)
             self.assertEqual(checkpoints[0][-1]["role"], "user")
             self.assertFalse(any("tool_calls" in message for history in checkpoints for message in history))
+            self.assertNotIn('Partial', json.dumps(checkpoints))
+            self.assertEqual(agent.usage_ledger.report()['outcomes']['error'], 1)
+            self.assertIsNone(agent.usage_ledger.snapshot()['pending'])
             self.assertEqual(displayed[-1], "\n")
 
     def test_decode_and_network_errors_are_sanitized_without_retry(self):

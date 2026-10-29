@@ -12,7 +12,8 @@ from .config import TOOL_NAMES, redact
 from .context import prepare_context, request_size
 from .instructions import ProjectInstructions
 from .json_budget import JsonBudgetExceeded, encoded_size
-from .metrics import Measurements
+from .metrics import FAILURE_CODES, Measurements
+from .usage_ledger import UsageLedger, UsagePersistenceError
 from .planning import TaskPlan
 from .revisions import ReadVersions
 from .references import FileReferences, merge_reference_paths, reference_paths, user_reference_paths
@@ -95,6 +96,7 @@ class Agent:
         self._context_files = []
         self._tool_images = []
         self.summary = None
+        self.usage_ledger = UsageLedger() if isinstance(provider, Provider) else None
         self._current_history = None
         self.references = FileReferences(config, tools, self._check_cancelled)
         self._prepared_reference_observations = []
@@ -212,7 +214,45 @@ class Agent:
             options["summary"] = self.summary
         if isinstance(self.tools, Tools) and self.tools.logs.state() is not None:
             options["logs"] = self.tools.logs.state()
+        if self.usage_ledger is not None:
+            options['usage'] = self.usage_ledger.snapshot()
         return options
+
+    def restore_usage(self, state=None, messages=None):
+        self.usage_ledger = UsageLedger(state, coverage_gap=bool(messages)) if state is not None or isinstance(self.provider, Provider) else None
+
+    def fork_usage(self, original):
+        if original.usage_ledger is not None:
+            self.usage_ledger = original.usage_ledger.fork()
+
+    def usage_source_current(self, original):
+        return self.usage_ledger is None and original.usage_ledger is None or (
+            self.usage_ledger is not None and self.usage_ledger.source_matches(original.usage_ledger))
+
+    def _usage_observer(self, messages):
+        def observe(event, value):
+            ledger = self.usage_ledger
+            if ledger is None:
+                return
+            if ledger.blocked:
+                if event == 'started':
+                    raise UsagePersistenceError('Usage checkpoint is uncertain; restore the saved session before another request.')
+                return  # Preserve the start failure; never clear its uncertain receipt.
+            try:
+                if event == 'started':
+                    ledger.begin(value)
+                else:
+                    ledger.finish(value)
+                self._checkpoint(messages)
+            except BaseException as error:
+                ledger.blocked = True
+                if isinstance(error, (KeyboardInterrupt, SystemExit)):
+                    raise
+                outcome = value.get('error_code') if event == 'finished' else None
+                suffix = f' Provider failure: {outcome}.' if isinstance(outcome, str) and outcome in FAILURE_CODES else ''
+                raise UsagePersistenceError('Usage checkpoint failed or is uncertain; no pending tool intent was executed. '
+                                            'Restore the saved session before continuing.' + suffix) from None
+        return observe
 
     def restore_logs(self, state=None):
         if isinstance(self.tools, Tools):
@@ -300,6 +340,8 @@ class Agent:
         return {**status, **report, "can_create": report["input_fits"]}
 
     def summarize(self, messages, end=None):
+        if self.usage_ledger is not None and self.usage_ledger.blocked:
+            raise UsagePersistenceError('Usage checkpoint is uncertain; restore the saved session before summarizing.')
         if self._running:
             raise ValueError("summarization requires an idle agent")
         request, report = self._summary_input(messages, end)
@@ -319,7 +361,7 @@ class Agent:
         if isinstance(provider, Provider):
             provider = copy.copy(provider)  # Keep the same opener and shared measurements.
             provider.config = self._summary_config()
-        options = {"check_cancelled": self._check_cancelled} if isinstance(provider, Provider) else {}
+        options = {"check_cancelled": self._check_cancelled, 'on_measurement': self._usage_observer(messages)} if isinstance(provider, Provider) else {}
         response = validate_message(provider.complete(request, [], **options), wire_api=self.config.wire_api,
                                     preserve_reasoning=self.config.preserve_reasoning)
         if response.get("tool_calls") or not isinstance(response.get("content"), str):
@@ -511,8 +553,12 @@ class Agent:
     def usage_report(self):
         measurements = getattr(self.provider, "measurements", None)
         if isinstance(measurements, Measurements):
-            return measurements.report()
-        return {"available": False, "reason": "provider does not record numeric request measurements"}
+            result = measurements.report()
+        else:
+            result = {"available": False, "reason": "provider does not record numeric request measurements"}
+        if self.usage_ledger is not None:
+            result['session_usage'] = self.usage_ledger.report()
+        return result
 
     def record_workspace_change(self, messages, result):
         from .batch_restore import BatchRestoreResult
@@ -739,7 +785,8 @@ class Agent:
         def retry_notice(info):
             self.emit(f"[provider retry] HTTP {info['status']}; waiting {info['delay_seconds']:.2f}s; "
                       f"attempt {info['attempt']}/{info['max_attempts']}; no tools executed by retry")
-        options = {"check_cancelled": self._check_cancelled, "on_retry": retry_notice} if isinstance(self.provider, Provider) else {}
+        options = {"check_cancelled": self._check_cancelled, "on_retry": retry_notice,
+                   'on_measurement': self._usage_observer(history)} if isinstance(self.provider, Provider) else {}
         if not self.config.stream or self.emit_delta is None:
             return self.provider.complete(messages, self.schemas, **options)
         displayed = False
@@ -863,6 +910,8 @@ class Agent:
 
     def run(self, task=None, messages=None, *, context_files=(), preflight=False):
         with self._execution():
+            if self.usage_ledger is not None and self.usage_ledger.blocked:
+                raise UsagePersistenceError('Usage checkpoint is uncertain; restore the saved session before continuing.')
             if context_files:
                 self._context_files, _ = self._file_snapshots(context_files)
             if context_files or preflight:

@@ -440,6 +440,7 @@ class SprigApp(App[int]):
                 self.agent.restore_references(selected if isinstance(selected, dict) else None)
                 self.agent.restore_summary(self.store.loaded_summary, self.messages)
                 self.agent.restore_logs(getattr(self.store, "loaded_logs", None))
+                self.agent.restore_usage(getattr(self.store, 'loaded_usage', None), self.messages)
                 if dict(config.setting_sources).get("reference_files") == "CLI" and config.reference_files:
                     self.messages, _ = self.agent.update_references(config.reference_files, messages=self.messages)
             if files:
@@ -1628,6 +1629,7 @@ class SprigApp(App[int]):
                 self.agent.restore_references(selected if isinstance(selected, dict) else None)
                 self.agent.restore_summary(self.store.loaded_summary, history)
                 self.agent.restore_logs(getattr(self.store, "loaded_logs", None))
+                self.agent.restore_usage(getattr(self.store, 'loaded_usage', None), history)
                 self._draft_submission = None
                 self.refresh_plan()
                 self.pending_tasks = []
@@ -1665,6 +1667,7 @@ class SprigApp(App[int]):
             self.agent.restore_references()
             self.agent.restore_summary()
             self.agent.restore_logs()
+            self.agent.restore_usage()
             self._draft_submission = None
             self.refresh_plan()
             self.pending_tasks = []
@@ -2147,7 +2150,7 @@ class SprigApp(App[int]):
             elif identity == "context-budget":
                 self.append("\n[上下文预算；本地预览]\n" + json.dumps(self.agent.context_preview(self.messages), ensure_ascii=False, indent=2) + "\n")
             elif identity == "usage":
-                self.append("\n[请求统计；本地记录，缺失用量为未知]\n" + json.dumps(self.agent.usage_report(), ensure_ascii=False, indent=2) + "\n")
+                self.append("\n[请求统计；本进程与会话分列，启用保存后持久化；缺失用量为未知，继承快照不算新增消费]\n" + json.dumps(self.agent.usage_report(), ensure_ascii=False, indent=2) + "\n")
             elif identity == "compact":
                 preview = self.agent.context_preview(self.messages)
 

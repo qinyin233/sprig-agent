@@ -125,6 +125,7 @@ class ModelSwitch:
                            checkpoint=original.checkpoint, emit_delta=original.emit_delta, cancel_event=original.cancel_event,
                            receive_input=original.receive_input, on_request_ready=original.on_request_ready, on_event=original.on_event)
         self.agent.restore_references(original.reference_state())
+        self.agent.fork_usage(original)
         self.agent.compact_context = original.compact_context
 
     def description(self, directory):
@@ -150,6 +151,7 @@ class ModelSwitch:
         self.ready = False
         if (self.original.tools.config is not self.original.config or self.original._running
                 or self.original.tools._conversation_version != self.version
+                or not self.agent.usage_source_current(self.original)
                 or getattr(self.selection, "_snapshot", None) is not self.catalog_snapshot):
             raise ValueError("model selection proposal is stale; select again")
         if approve(self.description(directory)) is not True:
@@ -171,6 +173,7 @@ class ModelSwitch:
         ready, self.ready = self.ready, False
         if (not self.changed or not ready or self.original._running
                 or self.original.tools._conversation_version != self.version
+                or not self.agent.usage_source_current(self.original)
                 or self.original.tools.config is not self.original.config
                 or getattr(self.selection, "_snapshot", None) is not self.catalog_snapshot):
             raise ValueError("model change must pass explicit confirmation and local preflight first")

@@ -23,8 +23,10 @@ from .command_logs import log_state
 from .input_inbox import INPUT_ID, UserInput, InputChanged, delivered_inputs, input_state, remaining_inputs, input_revision
 from .image_inputs import IMAGE_KEY, images
 from .message_origin import ORIGIN, application_origin
+from .usage_ledger import UsageLedger, usage_state
 
 _PRESERVE_INPUTS = object()
+_PRESERVE_USAGE = object()
 
 
 def _serialized(method):
@@ -157,6 +159,7 @@ class SessionStore:
         self.loaded_references = reference_state()
         self.loaded_summary = None
         self.loaded_logs = None
+        self.loaded_usage = None
         self.loaded_inputs = input_state()
         # A nested workdir must not allow storing transcripts elsewhere in the same repo.
         forbidden = [config.workdir]
@@ -261,7 +264,7 @@ class SessionStore:
             raise SessionError("session already exists; use --resume or choose a new name")
 
     @_serialized
-    def save_new(self, name, messages, *, references=None, summary=None, logs=None, inputs=_PRESERVE_INPUTS):
+    def save_new(self, name, messages, *, references=None, summary=None, logs=None, inputs=_PRESERVE_INPUTS, usage=_PRESERVE_USAGE):
         """Reserve and save a fresh name together, retaining ownership only on success."""
         with self._reservation(name):
             self.ensure_new(name)
@@ -272,19 +275,33 @@ class SessionStore:
                 options["logs"] = logs
             if inputs is not _PRESERVE_INPUTS:
                 options["inputs"] = inputs
+            if usage is not _PRESERVE_USAGE:
+                options['usage'] = usage
             self.save(name, messages, **options)
 
     @_serialized
     @_owned_session
-    def save(self, name, messages, *, references=None, summary=None, logs=None, inputs=_PRESERVE_INPUTS):
+    def save(self, name, messages, *, references=None, summary=None, logs=None, inputs=_PRESERVE_INPUTS, usage=_PRESERVE_USAGE):
         filename = self._filename(name)
         previous = None
+        try:
+            previous = self._read_document(filename)
+        except FileNotFoundError:
+            pass
         if inputs is _PRESERVE_INPUTS:
-            try:
-                previous = self._read_document(filename)
-            except FileNotFoundError:
-                pass
             inputs = previous.get("input_inbox") if previous else None
+        try:
+            prior_usage = usage_state(previous.get('request_usage')) if previous else None
+            selected_usage = prior_usage if usage is _PRESERVE_USAGE else usage_state(usage)
+            if prior_usage is not None:
+                if (selected_usage is None or selected_usage['id'] != prior_usage['id']
+                        or selected_usage['revision'] < prior_usage['revision']
+                        or selected_usage['revision'] == prior_usage['revision'] and selected_usage != prior_usage):
+                    raise ValueError('stale or conflicting usage')
+            if selected_usage is not None and redact(selected_usage, self.config.secrets) != selected_usage:
+                raise ValueError('credential conflict')
+        except (ValueError, TypeError):
+            raise SessionError('invalid, stale or credential-conflicting request usage; no data was overwritten') from None
         payload = {"version": 1, "binding": self.config.binding(), "messages": messages}
         if references is not None:
             try:
@@ -296,6 +313,8 @@ class SessionStore:
                     raise SessionError("configured credentials cannot appear in saved file reference paths")
                 payload["file_references"] = selected
         payload = redact(payload, self.config.secrets)
+        if selected_usage is not None:
+            payload['request_usage'] = selected_usage
         for row in payload["messages"] if isinstance(payload.get("messages"), list) else ():
             if isinstance(row, dict) and ORIGIN in row:
                 try:
@@ -353,12 +372,13 @@ class SessionStore:
         self.loaded_references = reference_state()
         self.loaded_summary = None
         self.loaded_logs = None
+        self.loaded_usage = None
         self.loaded_inputs = input_state()
         filename = self._filename(name)
         with self._reservation(name):
             return self._load(filename)
 
-    def _read_document(self, filename):
+    def _read_document(self, filename, *, check_binding=True):
         self._check_file(filename)
         try:
             raw = self.handle.read(filename, MAX_SESSION, private=True)
@@ -375,7 +395,7 @@ class SessionStore:
                 or saved["version"] == 2 and not isinstance(saved.get("input_inbox"), dict)):
             raise SessionError("unsupported session format")
         binding = self.config.binding()
-        if saved.get("binding") != binding:
+        if check_binding and saved.get("binding") != binding:
             legacy_binding = {key: value for key, value in binding.items() if key != "command_output_limit"}
             if "command_output_limit" in binding and saved.get("binding") == legacy_binding:
                 raise SessionError("session uses the legacy command-output stopping policy; resume with --command-output-limit 0 "
@@ -387,7 +407,26 @@ class SessionStore:
             remaining_inputs(saved.get("input_inbox"), saved.get("messages"))
         except (ValueError, UnicodeError):
             raise SessionError("invalid saved input inbox") from None
+        try:
+            usage = usage_state(saved.get('request_usage'))
+            if usage is not None and redact(usage, self.config.secrets) != usage:
+                raise ValueError
+        except (ValueError, TypeError):
+            raise SessionError('invalid or credential-conflicting saved request usage; no history sent') from None
         return saved
+
+    @_serialized
+    @_owned_session
+    def usage(self, name):
+        # Numeric inspection need not select the original model or load its
+        # transcript into an Agent. Privacy, size, lease and shape checks stay.
+        saved = self._read_document(self._filename(name), check_binding=False)
+        state = usage_state(saved.get('request_usage'))
+        if state is None:
+            return {'available': False, 'coverage_gap': True, 'network_contacted': False,
+                    'historical': True, 'reason': 'this legacy session has no saved request measurements'}
+        return {**UsageLedger(state).report(), 'network_contacted': False, 'historical': True,
+                'state_saved': False}
 
     def _load(self, filename):
         saved = self._read_document(filename)
@@ -407,6 +446,7 @@ class SessionStore:
         self.loaded_references = selected
         self.loaded_summary = checkpoint
         self.loaded_logs = logs
+        self.loaded_usage = usage_state(saved.get('request_usage'))
         self.loaded_inputs = remaining_inputs(redact(saved.get("input_inbox"), self.config.secrets), history)
         return history
 
@@ -418,7 +458,7 @@ class SessionStore:
 
     @_serialized
     @_owned_session
-    def enqueue_input(self, name, entry, *, history=None, references=None, summary=None, logs=None):
+    def enqueue_input(self, name, entry, *, history=None, references=None, summary=None, logs=None, usage=_PRESERVE_USAGE):
         if not isinstance(entry, UserInput):
             raise SessionError("structured user input is required")
         entry = UserInput(entry.id, redact(entry.text, self.config.secrets), entry.delivery)
@@ -433,6 +473,7 @@ class SessionStore:
             references = saved.get("file_references")
             summary = saved.get("summary_checkpoint")
             logs = saved.get("command_logs")
+            usage = saved.get('request_usage')
         pending = remaining_inputs(saved.get("input_inbox"), history)
         delivered = delivered_inputs(history)
         if entry.id in delivered:
@@ -444,7 +485,7 @@ class SessionStore:
             raise SessionError("user input identity was reused with different text")
         if prior is None:
             pending["pending"].append(entry.row())
-        self.save(name, history, references=references, summary=summary, logs=logs, inputs=pending)
+        self.save(name, history, references=references, summary=summary, logs=logs, inputs=pending, usage=usage)
         return True
 
     @_serialized
@@ -530,6 +571,7 @@ class SessionStore:
                         selected = reference_state(saved.get("file_references"))
                         checkpoint = summary_state(saved.get("summary_checkpoint"), history, binding=saved["binding"])
                         log_state(saved.get("command_logs"))
+                        usage_state(saved.get('request_usage'))
                         if self._stamp(self._check_file(entry.name)) != self._stamp(info):
                             raise ValueError("session changed during scan")
                         binding = {key: saved["binding"][key][:4096] for key in ("model", "base_url", "workdir")
