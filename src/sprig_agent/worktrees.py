@@ -100,7 +100,11 @@ def _safe_path(value, base):
     if not value or any(ord(char) < 32 or ord(char) == 127 for char in value):
         raise WorktreeError("worktree paths must be nonempty and contain no control characters")
     path = Path(value).expanduser()
-    return Path(os.path.abspath(path if path.is_absolute() else base / path))
+    path = Path(os.path.abspath(path if path.is_absolute() else base / path))
+    if os.name == 'nt':
+        from .windows import long_path
+        path = long_path(path)
+    return path
 
 
 def parse_worktrees(output):
@@ -169,7 +173,7 @@ def worktree_action(config, approve, *, path=None, ref="HEAD", remove=False, can
             if remove:
                 for protected in (config.config_path, *config.config_paths, config.session_dir,
                                   config.change_history_dir, config.command_log_dir):
-                    if protected is not None and Path(protected).is_relative_to(target):
+                    if protected is not None and _safe_path(protected, root).is_relative_to(target):
                         return {"error": "worktree contains configured private storage or configuration", "approved": False, "removed": False}
                 target_pin = _PinnedDirectory(target, target_handles)
                 target_identity = _identity(target)

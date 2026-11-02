@@ -1,6 +1,7 @@
 """Approved semantic queries with private paths, current source snapshots and pages."""
 from collections import OrderedDict
 import json
+import os
 from pathlib import Path
 import re
 import shlex
@@ -96,7 +97,19 @@ class LanguageServers:
         path = Path(urllib.request.url2pathname(parts.path))
         if not path.is_absolute():
             raise LspError("LSP file URI is not absolute")
-        return path.relative_to(self.config.workdir).as_posix()
+        root = self.config.workdir
+        if path.is_relative_to(root):
+            return path.relative_to(root).as_posix()
+        if os.name == 'nt':
+            from .windows import long_path
+            return long_path(path).relative_to(root).as_posix()
+        # Resolve only an alias of the workspace root. Keep the untrusted
+        # suffix intact for the normal no-follow document/privacy checks.
+        for parent in path.parents:
+            self.check()
+            if parent.resolve() == root:
+                return path.relative_to(parent).as_posix()
+        raise LspError('LSP file URI is outside the workspace')
 
     def control(self, action="status", server=None, path=None, line=None, column=None, query=None, result_id=None, offset=0, new_name=None):
         if not self.operation.acquire(blocking=False):

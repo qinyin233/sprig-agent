@@ -85,7 +85,7 @@ class FileGlobTests(unittest.TestCase):
         self.write('src/pkg/a.py'); self.write('unrelated/deep/b.py')
         scanned=[]; original=Directory.scandir
         def observe(directory):
-            scanned.append(directory.path.relative_to(self.root).as_posix())
+            scanned.append(directory.path.relative_to(self.config.workdir).as_posix())
             return original(directory)
         with patch.object(Directory,'scandir',observe):
             result=self.glob('src/**/*.py')

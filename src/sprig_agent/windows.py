@@ -35,6 +35,24 @@ create_file = api(kernel, "CreateFileW", w.HANDLE, w.LPCWSTR, w.DWORD, w.DWORD,
                   PTR, w.DWORD, w.DWORD, w.HANDLE)
 get_file_info = api(kernel, "GetFileInformationByHandle", w.BOOL, w.HANDLE, PTR)
 get_final_path = api(kernel, "GetFinalPathNameByHandleW", w.DWORD, w.HANDLE, w.LPWSTR, w.DWORD, w.DWORD)
+get_long_path = api(kernel, "GetLongPathNameW", w.DWORD, w.LPCWSTR, w.LPWSTR, w.DWORD)
+
+
+def long_path(path):
+    """Expand DOS names without resolving away symlinks/reparse components."""
+    path, tail = Path(path), []
+    while True:
+        buffer = c.create_unicode_buffer(32768)
+        length = get_long_path(str(path), buffer, len(buffer))
+        if length:
+            if length >= len(buffer):
+                raise ValueError('Windows path exceeds the supported buffer')
+            return Path(buffer.value).joinpath(*reversed(tail))
+        error = c.get_last_error()
+        if error not in (2, 3) or path.parent == path:
+            raise c.WinError(error)
+        tail.append(path.name)
+        path = path.parent
 
 
 def checked(result):

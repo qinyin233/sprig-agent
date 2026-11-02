@@ -2,8 +2,53 @@
 import os
 import signal
 import subprocess
+import sys
 import time
 import threading
+
+
+def poll_unreaped(child):
+    """Observe exit while retaining the leader's PID until group cleanup."""
+    if child.returncode is not None:
+        return child.returncode
+    if hasattr(os, 'waitid') and hasattr(os, 'WNOWAIT'):
+        result = os.waitid(os.P_PID, child.pid, os.WEXITED | os.WNOHANG | os.WNOWAIT)
+        if result is not None:
+            return result.si_status if result.si_code == os.CLD_EXITED else -result.si_status
+    return None
+
+
+def signal_group(child, sig):
+    """Never send another signal after releasing the owned leader's PID."""
+    if child.returncode is not None:
+        try:
+            os.killpg(child.pid, 0)
+        except ProcessLookupError:
+            return False
+        raise PermissionError('process leader was reaped; remaining group ownership is unverified')
+    try:
+        os.killpg(child.pid, sig)
+    except ProcessLookupError:
+        return False
+    except PermissionError as error:
+        # Darwin excludes zombies from group signalling and may report EPERM.
+        # Reap only an observed exit, then require ESRCH from an observation.
+        # Live/privileged groups and genuine permission errors remain failures.
+        if sys.platform != 'darwin' or poll_unreaped(child) is None:
+            raise
+        child.wait(timeout=0)
+        deadline = time.monotonic() + .2
+        while True:
+            try:
+                os.killpg(child.pid, 0)
+            except ProcessLookupError:
+                return False
+            except PermissionError:
+                if time.monotonic() < deadline:
+                    time.sleep(.01)
+                    continue
+            raise error
+    return True
 
 
 class Process:
@@ -30,11 +75,7 @@ class Process:
                 return self.child.poll()
             # Keep an exited leader unreaped until the final group kill. Reaping
             # it in a status check could let its PID/group ID be reused.
-            if hasattr(os, "waitid") and hasattr(os, "WNOWAIT"):
-                result = os.waitid(os.P_PID, self.child.pid, os.WEXITED | os.WNOHANG | os.WNOWAIT)
-                if result is not None:
-                    return result.si_status if result.si_code == os.CLD_EXITED else -result.si_status
-            return None
+            return poll_unreaped(self.child)
 
     def write(self, raw, *, nonblocking=False):
         if not self._lock.acquire(blocking=not nonblocking):
@@ -93,21 +134,18 @@ class Process:
             self.closed = True
             self.child.close()
             return
+        group_present = True
         try:
             self.child.stdin.close()
             until = time.monotonic() + .2
             while self.poll() is None and time.monotonic() < until:
                 time.sleep(.01)
-            try:
-                os.killpg(self.child.pid, signal.SIGTERM)
-            except ProcessLookupError:
-                pass
-            time.sleep(.02)
+            group_present = signal_group(self.child, signal.SIGTERM)
+            if group_present:
+                time.sleep(.02)
         finally:
-            try:
-                os.killpg(self.child.pid, signal.SIGKILL)
-            except ProcessLookupError:
-                pass
+            if group_present:
+                signal_group(self.child, signal.SIGKILL)
             try:
                 self.child.wait(timeout=5)
             finally:

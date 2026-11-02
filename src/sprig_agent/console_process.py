@@ -6,7 +6,7 @@ import subprocess
 import threading
 import time
 
-from .mcp_process import Process
+from .mcp_process import Process, signal_group
 
 
 @contextmanager
@@ -46,20 +46,14 @@ class ConsoleProcess(Process):
             return super()._close()
         error = None
         try:
-            try:
-                os.killpg(self.child.pid, signal.SIGTERM)
-            except ProcessLookupError:
-                pass
-            time.sleep(.02)
-            try:
-                os.killpg(self.child.pid, signal.SIGKILL)
-            except ProcessLookupError:
-                pass
+            if signal_group(self.child, signal.SIGTERM):
+                time.sleep(.02)
+                signal_group(self.child, signal.SIGKILL)
             self.child.wait(timeout=5)
         except BaseException as caught:
             error = caught
         finally:
-            self.closed = True
+            self.closed = error is None
             if self.foreground is not None:
                 with terminal_group(self.foreground):
                     pass

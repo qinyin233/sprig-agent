@@ -30,6 +30,7 @@ from .command_logs import BackgroundLog, CommandLogs, LogCapture
 from .questions import answer_result, validate_questions
 from .skills import Skills
 from .mcp import McpManager
+from .mcp_process import poll_unreaped, signal_group
 from .web_fetch import WebFetcher
 from .jobs import Jobs
 from .lsp import LanguageServers
@@ -1488,23 +1489,17 @@ class Tools:
                     if reason:
                         break
                 if not reason:
-                    while process.poll() is None:
+                    while poll_unreaped(process) is None:
                         self._check_cancelled()
                         remaining = deadline - time.monotonic()
                         if remaining <= 0:
                             reason = "timeout"
                             break
-                        try:
-                            process.wait(timeout=min(0.1, remaining))
-                        except subprocess.TimeoutExpired:
-                            pass
+                        time.sleep(min(0.01, remaining))
         finally:
             self.read_versions.clear()
             # Also clean up descendants that inherited the process group / pipe.
-            try:
-                os.killpg(process.pid, signal.SIGKILL)
-            except ProcessLookupError:
-                pass
+            signal_group(process, signal.SIGKILL)
             process.wait()
             process.stdout.close()
             self.read_versions.clear()

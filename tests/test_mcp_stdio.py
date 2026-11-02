@@ -334,7 +334,7 @@ class McpStdioTests(unittest.TestCase):
         directory.mkdir()
         tools = self.tools(server=self.server(cwd="目录 space"))
         self.assertTrue(self.action(tools, "connect").get("approved"))
-        self.assertEqual(Path(rows(self.state)[0]["cwd"]), directory)
+        self.assertEqual(Path(rows(self.state)[0]["cwd"]), directory.resolve())
         tools.close()
         missing = replace(self.server(), command=(str(self.root / "not-an-executable"),))
         tools = self.tools(server=missing)

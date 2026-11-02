@@ -53,7 +53,7 @@ class TuiTests(unittest.IsolatedAsyncioTestCase):
     def setUp(self):
         temporary = tempfile.TemporaryDirectory()
         self.addCleanup(temporary.cleanup)
-        self.parent = Path(temporary.name)
+        self.parent = Path(temporary.name).resolve()
         self.root = self.parent / "workspace"
         self.root.mkdir()
         self.config = Config(self.root, "test", base_url="http://localhost/v1", stream=True, timeout=5)

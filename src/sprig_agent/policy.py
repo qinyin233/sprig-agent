@@ -39,7 +39,7 @@ class FilePolicy:
                 continue
             from pathlib import Path
             try:
-                parts = Path(path).absolute().relative_to(directory.path.absolute()).parts
+                parts = Path(path).resolve().relative_to(directory.path.resolve()).parts
                 if os.name == "nt":
                     parts = tuple(p.lower() for p in parts)
                 self.config_parts.append(parts)
