@@ -25,7 +25,7 @@ class ExternalEditorTests(unittest.TestCase):
         return Config(self.root,'fixture',editor_command=(sys.executable,'-I','-c',code,'{file}'),editor_timeout=4,**options)
 
     def test_real_editor_reads_private_utf8_and_changes_only_the_returned_draft(self):
-        code="from pathlib import Path; import os,stat,sys; p=Path(sys.argv[1]); assert p.parent==Path.cwd(); assert p.name=='draft.md'; assert p.is_file(); p.write_bytes(p.read_bytes()+'中文🙂'.encode())"
+        code="from pathlib import Path; import os,stat,sys; p=Path(sys.argv[1]); assert p.parent.samefile(Path.cwd()); assert p.name=='draft.md'; assert p.is_file(); p.write_bytes(p.read_bytes()+'中文🙂'.encode())"
         proposal=DraftEditor(self.config(code),'  original\n\n')
         self.assertFalse(proposal.directory.exists())
         self.assertIn('NOT SANDBOXED',proposal.description())

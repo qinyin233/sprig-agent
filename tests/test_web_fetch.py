@@ -3,6 +3,7 @@ from contextlib import closing, contextmanager
 from dataclasses import replace
 from email.message import Message
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+import http.client
 import json
 import os
 from pathlib import Path
@@ -339,13 +340,19 @@ class WebFetchTests(unittest.TestCase):
             self.assertLess(time.monotonic() - start, 1.5)
             self.assertEqual(len(captured), 1)
             self.assertEqual(tools.web.status()["cached_pages"], 0)
-            timer = threading.Timer(.12, self.cancel.set)
-            timer.start()
+            # Cancellation has its own budget and occurs only after a real
+            # body read, rather than racing startup against the total deadline.
+            tools.web.config = replace(tools.config, request_timeout=2, request_deadline=5)
+            read1 = http.client.HTTPResponse.read1
+            def cancel_after_body(response, size):
+                chunk = read1(response, size)
+                if chunk:
+                    self.cancel.set()
+                return chunk
             try:
-                with self.assertRaises(KeyboardInterrupt):
+                with patch.object(http.client.HTTPResponse, "read1", cancel_after_body), self.assertRaises(KeyboardInterrupt):
                     tools.web_fetch(url=base + "/slow")
             finally:
-                timer.cancel()
                 self.cancel.clear()
             self.assertEqual(len(captured), 2)
             self.assertEqual(tools.web.status()["cached_pages"], 0)

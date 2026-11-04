@@ -73,8 +73,13 @@ def signal_group(child, sig):
         # Darwin excludes zombies from group signalling and may report EPERM.
         # Reap only an observed exit, then require ESRCH from an observation.
         # Live/privileged groups and genuine permission errors remain failures.
-        if sys.platform != 'darwin' or poll_unreaped(child) is None:
+        if sys.platform != 'darwin':
             raise
+        deadline = time.monotonic() + .2
+        while poll_unreaped(child) is None:
+            if time.monotonic() >= deadline:
+                raise error
+            time.sleep(.01)
         child.wait(timeout=0)
         deadline = time.monotonic() + .2
         while True:

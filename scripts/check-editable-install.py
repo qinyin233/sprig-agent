@@ -123,7 +123,17 @@ print(json.dumps({'python': '.'.join(map(str, sys.version_info[:3])), 'utf8_mode
             first = python_json(python, inspect_code, project, base_env, json.dumps(MODULES))
             entrypoint = environment / ("Scripts/sprig.exe" if os.name == "nt" else "bin/sprig")
             help_result = command([str(entrypoint), "--no-config", "--help"], env=base_env, cwd=project, allow_failure=True)
-            rows.append({"initial": first, "console_help": help_result.returncode == 0 and b"--model" in help_result.stdout})
+            row = {"initial": first, "console_help": help_result.returncode == 0 and b"--model" in help_result.stdout}
+            if not row["console_help"]:
+                # Keep launcher/import failures diagnosable on native runners
+                # without exposing arbitrary subprocess output or private paths.
+                row["console_failure"] = {
+                    "exit_code": help_result.returncode,
+                    "stdout_bytes": len(help_result.stdout), "stderr_bytes": len(help_result.stderr),
+                    "categories": [name for name in ("UnicodeDecodeError", "UnicodeEncodeError", "ModuleNotFoundError",
+                                                      "ImportError", "OSError", "ValueError", "Fatal Python error")
+                                   if name.encode("ascii") in help_result.stderr]}
+            rows.append(row)
         (source / (PROBE + ".py")).write_text("VALUE = 'second revision'\n", "utf-8")
         for row, environment in zip(rows, environments):
             second = python_json(interpreter(environment), inspect_code, project, base_env, json.dumps(MODULES))

@@ -248,18 +248,28 @@ class McpStdioTests(unittest.TestCase):
         self.assertTrue(all(not running(pid) for pid in pids))
 
     def test_stderr_allowance_is_enforced_without_retaining_or_returning_raw_logs(self):
+        from sprig_agent.mcp_stdio import MAX_STDERR
+        self.assertEqual(MAX_STDERR, 8 * 1024 * 1024)
         self.mode("stderr_flood")
         tools = self.tools(server=self.server(timeout=5, deadline=6))
-        result = self.action(tools, "connect")
+        # Exercise the real pipe and boundary without requiring 8 MiB of pipe
+        # throughput before the independent RPC deadline on every platform.
+        allowance = 64 * 1024
+        with patch("sprig_agent.mcp_stdio.MAX_STDERR", allowance):
+            result = self.action(tools, "connect")
         self.assertIn("stderr exceeded", result["error"])
         client = tools.mcp_manager.clients["local"]
-        self.assertGreater(client.stderr_bytes, 8 * 1024 * 1024)
+        self.assertGreater(client.stderr_bytes, allowance)
+        self.assertLessEqual(client.stderr_bytes, allowance + 4096)
         self.assertNotIn("PRIVATE_STDERR_FIXTURE", json.dumps(result))
         self.assertFalse(client.status()["process_running"])
 
     def test_total_deadline_includes_draining_a_pending_notification(self):
-        tools = self.tools(server=self.server(timeout=.4, deadline=.4))
+        tools = self.tools(server=self.server(timeout=5, deadline=6))
         self.assertTrue(self.action(tools, "connect").get("approved"))
+        client = tools.mcp_manager.clients["local"]
+        self.assertTrue(client.ready)
+        client.server = replace(client.server, timeout=.4, deadline=.4)
         def approve(_):
             self.mode("delayed")
             until = time.monotonic() + 2

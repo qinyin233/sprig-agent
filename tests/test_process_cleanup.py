@@ -10,7 +10,7 @@ from types import SimpleNamespace
 from unittest.mock import Mock, patch
 
 from sprig_agent.console_process import ConsoleProcess
-from sprig_agent.mcp_process import Process, poll_unreaped, _darwin_wait, _darwin_poll
+from sprig_agent.mcp_process import Process, poll_unreaped, signal_group, _darwin_wait, _darwin_poll
 
 
 @unittest.skipIf(os.name == 'nt', 'POSIX process groups; Windows uses owned job handles')
@@ -91,6 +91,21 @@ class ProcessCleanupTests(unittest.TestCase):
             process.close()
         self.assertEqual(calls, [signal.SIGTERM, 0, 0])
         self.assertTrue(process.closed)
+
+    def test_darwin_zombie_can_become_waitable_after_permission_error(self):
+        process = self.exited(Process)
+        real = os.killpg
+        calls = []
+        def darwin_group(pid, sig):
+            calls.append(sig)
+            if sig:
+                raise PermissionError(1, 'zombie-only group')
+            return real(pid, sig)
+        with patch('sys.platform', 'darwin'), patch('os.killpg', darwin_group), \
+                patch('sprig_agent.mcp_process.poll_unreaped', side_effect=[None, 0]):
+            self.assertFalse(signal_group(process.child, signal.SIGKILL))
+        self.assertEqual(calls, [signal.SIGKILL, 0])
+        self.assertEqual(process.child.returncode, 0)
 
     def test_foreground_command_keeps_leader_unreaped_until_group_cleanup(self):
         from sprig_agent.config import Config

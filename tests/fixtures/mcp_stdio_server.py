@@ -74,10 +74,12 @@ while True:
     if line is None:
         break
     active = mode()
-    if active == "delayed":
-        time.sleep(.25)
     request = json.loads(line)
     log(request)
+    if active == "delayed":
+        # Receipt is recorded before delaying the response; a client deadline
+        # may kill this fixture during the intentional response delay.
+        time.sleep(.25)
     if active == "marker_wait" and "id" in request:
         Path("LOCAL_EFFECT").write_text("CREATED")
         continue

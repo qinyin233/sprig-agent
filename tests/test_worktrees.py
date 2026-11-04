@@ -1,6 +1,6 @@
 """Real disposable Git repositories and approved local worktree management."""
 
-from contextlib import closing, redirect_stderr, redirect_stdout
+from contextlib import closing, contextmanager, redirect_stderr, redirect_stdout
 from dataclasses import replace
 import io
 import json
@@ -22,6 +22,20 @@ from sprig_agent.policy import command_environment
 from sprig_agent.session import SessionError, SessionStore
 from sprig_agent.tools import Tools
 from sprig_agent.worktrees import WorktreeError, _GitDirectory, parse_worktrees, worktree_action
+
+
+@contextmanager
+def command_failures():
+    """Categorical CI diagnostics; never record commands or subprocess output."""
+    failures, original = [], Tools.run
+    def run(*args, **kwargs):
+        try:
+            return original(*args, **kwargs)
+        except OSError as error:
+            failures.append({"type": type(error).__name__, "errno": error.errno})
+            raise
+    with patch.object(Tools, "run", run):
+        yield failures
 
 
 def git(root, *args):
@@ -314,9 +328,10 @@ class WorktreeTests(unittest.TestCase):
             if hard_limit:
                 self.config = replace(self.config, command_output_limit=256)
             self.approve.reset_mock()
-            result = self.create()
+            with command_failures() as failures:
+                result = self.create()
             self.assertIn("error", result)
-            self.assertIs(result["output_limited"], hard_limit)
+            self.assertIs(result["output_limited"], hard_limit, (result, failures))
             self.assertIs(result.get("output_truncated", False), not hard_limit)
             self.assertFalse(result["created"])
             self.assertFalse(self.target.exists())

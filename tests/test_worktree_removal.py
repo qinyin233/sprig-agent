@@ -13,7 +13,7 @@ import unittest
 from contextlib import closing, redirect_stdout, redirect_stderr
 from unittest.mock import Mock, patch
 
-from tests.test_worktrees import command, git, init_repo
+from tests.test_worktrees import command, command_failures, git, init_repo
 from sprig_agent.config import Config
 from sprig_agent.agent import Agent
 from sprig_agent.tools import Tools
@@ -219,11 +219,12 @@ class WorktreeRemovalTests(unittest.TestCase):
                 long_key = "fixture." + "k" * 400
                 if config.command_output_limit == 256:
                     git(self.root, "config", long_key, "bounded")
-                result = worktree_action(config, lambda _: True, path=self.target, remove=True)
+                with command_failures() as failures:
+                    result = worktree_action(config, lambda _: True, path=self.target, remove=True)
                 self.assertFalse(result.get("removed"), result)
                 self.assertTrue(self.target.exists())
                 if config.command_output_limit == 256:
-                    self.assertTrue(result["output_limited"], result)
+                    self.assertTrue(result["output_limited"], (result, failures))
                     git(self.root, "config", "--unset", long_key)
         def approve(text):
             if "remove" in command(text):
