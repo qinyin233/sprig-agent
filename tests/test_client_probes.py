@@ -103,6 +103,19 @@ print('1.2.3' if '--version' in sys.argv else '--model --offline')
                 run.assert_not_called()
             self.assertEqual(path.read_text(encoding="utf-8"), "preserve")
 
+    def test_failed_client_and_phase_are_reported_without_raw_exception(self):
+        marker = 'private-path-and-credential-marker'
+        with patch.object(sys, 'argv', ['probes', '--client', 'sprig', '--repeat', '1']), \
+                patch.object(probes, 'invocation', side_effect=PermissionError(marker)), \
+                patch('sys.stderr', new_callable=io.StringIO) as stderr:
+            self.assertEqual(probes.main(), 1)
+        output = stderr.getvalue()
+        self.assertIn('client=sprig', output)
+        self.assertIn('stage=installation', output)
+        self.assertIn('error_type=PermissionError', output)
+        self.assertNotIn(marker, output)
+        self.assertNotIn(marker, str(probes.ProbeFailure('sprig', 'metadata', PermissionError(marker))))
+
 
 if __name__ == "__main__":
     unittest.main()

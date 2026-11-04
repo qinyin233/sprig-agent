@@ -1,10 +1,47 @@
 """Owned nonblocking process pipes; cleanup is not an OS sandbox."""
 import os
+import errno
+from functools import lru_cache
 import signal
 import subprocess
 import sys
 import time
 import threading
+
+
+@lru_cache(maxsize=1)
+def _darwin_wait():
+    """Darwin's 64-bit waitid ABI, hidden by Python before 3.13."""
+    import ctypes as c
+    # Public Darwin sys/signal.h siginfo_t; keep reserved storage intact.
+    class SigInfo(c.Structure):
+        _fields_ = [('signo', c.c_int32), ('error', c.c_int32), ('code', c.c_int32),
+                    ('pid', c.c_int32), ('uid', c.c_uint32), ('status', c.c_int32),
+                    ('address', c.c_uint64), ('value', c.c_uint64), ('band', c.c_int64),
+                    ('reserved', c.c_uint64 * 7)]
+    library = c.CDLL('/usr/lib/libSystem.B.dylib', use_errno=True)
+    wait = library.waitid
+    wait.argtypes, wait.restype = [c.c_int, c.c_uint32, c.POINTER(SigInfo), c.c_int], c.c_int
+    return wait, SigInfo
+
+
+def _darwin_poll(child):
+    import ctypes as c
+    wait, info_type = _darwin_wait()
+    info = info_type()
+    # Darwin sys/wait.h: P_PID=1, WNOHANG=1, WEXITED=4, WNOWAIT=0x20.
+    if wait(1, child.pid, c.byref(info), 0x25):
+        error = c.get_errno()
+        if error == errno.EINTR:
+            return None
+        raise OSError(error, os.strerror(error))
+    if info.pid == 0:
+        return None
+    if (info.pid != child.pid or info.signo != 20 or info.code not in (1, 2, 3)
+            or not 0 <= info.status <= (255 if info.code == 1 else 31)
+            or info.code != 1 and info.status == 0):
+        raise OSError('unexpected native child exit status; process ownership is unverified')
+    return info.status if info.code == 1 else -info.status
 
 
 def poll_unreaped(child):
@@ -15,6 +52,8 @@ def poll_unreaped(child):
         result = os.waitid(os.P_PID, child.pid, os.WEXITED | os.WNOHANG | os.WNOWAIT)
         if result is not None:
             return result.si_status if result.si_code == os.CLD_EXITED else -result.si_status
+    elif sys.platform == 'darwin':
+        return _darwin_poll(child)
     return None
 
 

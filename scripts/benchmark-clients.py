@@ -29,6 +29,12 @@ FLAGS = {"sprig": ("--tui", "--metrics", "--check"), "aider": ("--model", "--ope
          "mini": ("--model", "--task", "--environment-class")}
 
 
+class ProbeFailure(ValueError):
+    def __init__(self, client, stage, error):
+        self.client, self.stage, self.error_type = client, stage, type(error).__name__
+        super().__init__(f'client={client}, stage={stage}, error_type={self.error_type}')
+
+
 def digest(path):
     value = hashlib.sha256()
     with path.open("rb") as source:
@@ -103,17 +109,23 @@ def run(clients, repeat):
                         "mini": digest(CLIENT_ROOT / "mini" / "uv.lock"),
                         "node": digest(CLIENT_ROOT / "node" / "package-lock.json")}, "clients": []}
     for client in clients:
-        argv = invocation(client)
-        entry = Path(argv[1]) if client == "pi" else Path(argv[0])
-        signature = digest(entry)
-        # mini's CLI has no --version. Its distribution metadata is checked
-        # separately; only --help starts the actual CLI module.
-        version_argv = [argv[0], "-I", "-c", "from importlib.metadata import version; print(version('mini-swe-agent'))"] if client == "mini" else None
-        runtime_name = "node" if client == "pi" else (None if client == "opencode" else "python")
-        row = {"client": client, "expected_version": VERSIONS[client], "entry_sha256": signature,
-               **probe(argv, VERSIONS[client], FLAGS[client], repeat, version_argv=version_argv, runtime_name=runtime_name)}
-        row["entry_unchanged"] = digest(entry) == signature
-        row["success"] = row["success"] and row["entry_unchanged"]
+        stage = 'installation'
+        try:
+            argv = invocation(client)
+            entry = Path(argv[1]) if client == "pi" else Path(argv[0])
+            signature = digest(entry)
+            # mini's CLI has no --version. Check its distribution separately;
+            # only --help starts the actual CLI module.
+            version_argv = [argv[0], "-I", "-c", "from importlib.metadata import version; print(version('mini-swe-agent'))"] if client == "mini" else None
+            runtime_name = "node" if client == "pi" else (None if client == "opencode" else "python")
+            stage = 'metadata'
+            row = {"client": client, "expected_version": VERSIONS[client], "entry_sha256": signature,
+                   **probe(argv, VERSIONS[client], FLAGS[client], repeat, version_argv=version_argv, runtime_name=runtime_name)}
+            stage = 'entry-integrity'
+            row["entry_unchanged"] = digest(entry) == signature
+            row["success"] = row["success"] and row["entry_unchanged"]
+        except (OSError, ValueError) as error:
+            raise ProbeFailure(client, stage, error) from None
         result["clients"].append(row)
     result["success"] = all(row["success"] for row in result["clients"])
     return result
@@ -137,6 +149,9 @@ def main():
             with args.report.open("x", encoding="utf-8", newline="\n") as target:
                 target.write(text)
         return 0 if report["success"] else 1
+    except ProbeFailure as error:
+        print(f"Client probe failed: {error}; raw details omitted.", file=sys.stderr)
+        return 1
     except (OSError, ValueError):
         print("Client probe failed; check pinned installations. Raw output and exceptions are not published.", file=sys.stderr)
         return 1
