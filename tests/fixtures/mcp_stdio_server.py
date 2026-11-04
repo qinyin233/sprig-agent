@@ -54,6 +54,7 @@ if mode() == "block_input":
     while True:
         time.sleep(1)
 threading.Thread(target=reader, daemon=True).start()
+(root / "server-ready").write_text("ready")
 notified = False
 while True:
     active = mode()
@@ -131,8 +132,11 @@ while True:
     else:
         result = {}
     os.write(2, b"private diagnostics are not protocol output\n")
-    send({"jsonrpc": "2.0", "id": "wrong" if active == "bad_id" else request["id"], "result": result})
+    response = {"jsonrpc": "2.0", "id": "wrong" if active == "bad_id" else request["id"], "result": result}
+    if active == "duplicate":
+        raw = json.dumps(response).encode() + b"\n"
+        os.write(1, raw + raw)
+    else:
+        send(response)
     if active == "parent_exit":
         os._exit(0)
-    if active == "duplicate":
-        send({"jsonrpc": "2.0", "id": request["id"], "result": result})

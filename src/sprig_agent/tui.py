@@ -535,7 +535,7 @@ class SprigApp(App[int]):
                 self.start(self.initial_task)
 
     def refresh_plan(self):
-        if not self._ui_ready or self._unmounted:
+        if not self._ui_ready or self._unmounted or not self.is_running:
             return
         snapshot = self.agent.plan_snapshot()
         labels = {"pending": "待处理", "in_progress": "进行中", "completed": "已完成（模型报告）"}
@@ -546,7 +546,7 @@ class SprigApp(App[int]):
         self.query_one("#task-plan", TextArea).load_text(self.safe("\n".join(lines) or "尚无任务计划"))
 
     def refresh_jobs(self):
-        if not self._ui_ready or self._unmounted:
+        if not self._ui_ready or self._unmounted or not self.is_running:
             return
         rows = self.tools.jobs.observations()
         self._job_seen.intersection_update(row["job_id"] for row in rows)
@@ -586,7 +586,7 @@ class SprigApp(App[int]):
             self._output_buffer = io.StringIO()
             self._output_size = 0
             self._output_condition.notify_all()
-        if not self._unmounted:
+        if not self._unmounted and self.is_running:
             self._append(text)
 
     def queue_output(self, text):

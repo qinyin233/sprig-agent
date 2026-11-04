@@ -1,0 +1,57 @@
+name: Native CI diagnostics
+
+on:
+  workflow_dispatch:
+    inputs:
+      expected_sha:
+        description: Exact pushed commit SHA to verify
+        required: true
+        type: string
+      platform:
+        description: Native runner
+        type: choice
+        default: macos-latest
+        options: [macos-latest, windows-latest, ubuntu-latest]
+      python_version:
+        description: Python version
+        type: choice
+        default: '3.14'
+        options: ['3.11', '3.12', '3.13', '3.14']
+      suite:
+        description: Focused regression cases
+        type: choice
+        default: both
+        options: [both, mcp, shutdown]
+
+permissions:
+  contents: read
+
+jobs:
+  regressions:
+    runs-on: ${{ inputs.platform }}
+    timeout-minutes: 10
+    env:
+      EXPECTED_SHA: ${{ inputs.expected_sha }}
+      UV_PYTHON: ${{ inputs.python_version }}
+      REGRESSION_CASE: ${{ inputs.suite }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ inputs.python_version }}
+      - uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9 # v9.0.0
+        with:
+          enable-cache: true
+      - run: uv sync --locked
+      - name: Verify exact commit
+        run: uv run --locked python -c "import os; assert os.environ['GITHUB_SHA'] == os.environ['EXPECTED_SHA']"
+      - name: Run focused native regressions
+        run: >-
+          uv run --locked python -c
+          "import os, unittest;
+          cases = {'mcp': ['tests.test_mcp_stdio'],
+          'shutdown': ['tests.test_tui.TuiTests.test_periodic_callbacks_stop_before_shutdown_removes_widgets',
+          'tests.test_job_stdin.JobStdinTuiTests.test_enter_starts_and_feeds_owned_pipe_without_model_requests']};
+          selected = os.environ['REGRESSION_CASE'];
+          names = cases['mcp'] + cases['shutdown'] if selected == 'both' else cases[selected];
+          unittest.main(module=None, argv=['native-ci', *names, '-q'])"

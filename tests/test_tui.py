@@ -69,6 +69,36 @@ class TuiTests(unittest.IsolatedAsyncioTestCase):
         editor.focus()
         await pilot.press("enter")
 
+    async def test_periodic_callbacks_stop_before_shutdown_removes_widgets(self):
+        provider = ScriptedProvider([])
+        app = self.app(provider)
+        row = {"job_id": "job-shutdown-fixture", "state": "exited", "returncode": 0}
+        close_all, ticks = app._close_all, []
+        async def close_widgets_then_tick():
+            await close_all()
+            if app._unmounted:
+                return
+            self.assertFalse(app.is_running)
+            self.assertTrue(app._ui_ready)
+            before = app.transcript
+            app._job_seen.clear()
+            app.refresh_jobs()
+            with app._output_condition:
+                app._output_buffer.write("late worker output")
+                app._output_size += len("late worker output")
+            app.flush_output()
+            app.refresh_plan()
+            self.assertEqual(app.transcript, before)
+            self.assertEqual(app._output_size, 0)
+            ticks.append(True)
+        with patch.object(app.tools.jobs, "observations", return_value=[row]), \
+                patch.object(app, "_close_all", close_widgets_then_tick):
+            async with app.run_test(size=(80, 24)):
+                app.refresh_jobs()
+                self.assertIn(row["job_id"], app.transcript)
+        self.assertTrue(ticks)
+        self.assertEqual(provider.calls, [])
+
     async def test_oversized_multibyte_input_retains_draft_without_request_or_checkpoint(self):
         from dataclasses import replace
         self.config = replace(self.config, max_context_bytes=4096)

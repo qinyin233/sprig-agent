@@ -208,17 +208,41 @@ class McpStdioTests(unittest.TestCase):
         self.assertIn("error", self.action(excluded, "connect"))
 
     def test_errors_partial_frames_and_floods_close_without_retry_or_model_output(self):
+        from sprig_agent.mcp_process import Process
+        marker = self.state / "server-ready"
+        ready, startup_errors = [], []
+        def ready_process(*args, **kwargs):
+            process = None
+            try:
+                process = Process(*args, **kwargs)
+                until = time.monotonic() + 10
+                while not marker.exists() and process.poll() is None and time.monotonic() < until:
+                    time.sleep(.005)
+                self.assertTrue(marker.exists(), "protocol fixture did not start")
+                ready.append(True)
+                return process
+            except BaseException as error:
+                startup_errors.append({"type": type(error).__name__, "errno": getattr(error, "errno", None)})
+                if process is not None:
+                    process.close()
+                raise
         for fault in ("bad_id", "invalid", "partial", "request", "flood", "stderr_flood", "duplicate"):
+            marker.unlink(missing_ok=True)
+            ready.clear()
+            startup_errors.clear()
             self.mode(fault)
-            # Include a real interpreter startup in the handshake allowance.
-            # Backpressure's tight RPC budget is tested after readiness below.
+            # Isolate protocol rejection from interpreter startup. The RPC
+            # retains its own strict budget after the real child is ready.
             tools = self.tools(server=self.server(timeout=3, deadline=4))
-            result = self.action(tools, "connect")
+            with patch("sprig_agent.mcp_stdio.Process", ready_process):
+                result = self.action(tools, "connect")
+            self.assertEqual(ready, [True], (fault, startup_errors, result))
             self.assertIn("error", result, fault)
             self.assertFalse(tools.mcp_manager.clients["local"].status()["process_running"])
             self.assertNotIn("PRIVATE_STDERR_FIXTURE", json.dumps(result))
             attempts = [r for r in rows(self.state) if r.get("method") in ("initialize", "server/discover")]
-            self.assertEqual(len(attempts), ("bad_id", "invalid", "partial", "request", "flood", "stderr_flood", "duplicate").index(fault) + 1)
+            self.assertEqual(len(attempts), ("bad_id", "invalid", "partial", "request", "flood", "stderr_flood", "duplicate").index(fault) + 1,
+                             (fault, result))
             tools.close()
 
     def test_backpressure_timeout_and_cancel_kill_owned_descendants(self):
