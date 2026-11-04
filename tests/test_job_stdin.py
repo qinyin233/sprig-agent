@@ -177,8 +177,10 @@ class JobStdinTests(unittest.TestCase):
                 count = original(raw[:remaining], **kwargs)
                 sent.append(count)
                 return count
-            return 0
-        with patch.object(process, "write", partial), patch("sprig_agent.jobs.INPUT_TIMEOUT", .1):
+            # Fail after confirmed delivery, independent of runner scheduling.
+            # Write deadlines and persistent lock misses have separate tests.
+            raise BrokenPipeError("fixture pipe failed after partial delivery")
+        with patch.object(process, "write", partial):
             result = tools.job("input", identity, text="PARTIAL\n")
         self.assertEqual(result["written_bytes"], 2)
         self.assertFalse(result["input_complete"])
@@ -223,9 +225,13 @@ class JobStdinTests(unittest.TestCase):
         identity = self.start(tools, "import sys; from pathlib import Path; Path('ready').write_text('ok'); Path('partial').write_bytes(sys.stdin.buffer.read(2))")
         row = tools.jobs.records[identity]
         write = row.process.write
+        sent = 0
         def exit_before_return(raw, **kwargs):
-            count = write(raw[:2], **kwargs)
-            self.wait_for(row.done.is_set)
+            nonlocal sent
+            count = write(raw[:2 - sent], **kwargs)
+            sent += count
+            if sent == 2:
+                self.wait_for(row.done.is_set)
             return count
         with patch.object(row.process, "write", exit_before_return):
             result = tools.job("input", identity, text="WHOLE\n")
@@ -244,11 +250,15 @@ class JobStdinTests(unittest.TestCase):
                 identity = self.start(tools, code if reason == "output_limited" else PROGRAM)
                 row = tools.jobs.records[identity]
                 write = row.process.write
+                sent = 0
                 def interrupted(raw, **kwargs):
-                    count = write(raw[:2], **kwargs)
-                    if reason == "cancelled":
-                        row.cancel.set()
-                    self.wait_for(row.done.is_set)
+                    nonlocal sent
+                    count = write(raw[:2 - sent], **kwargs)
+                    sent += count
+                    if sent == 2:
+                        if reason == "cancelled":
+                            row.cancel.set()
+                        self.wait_for(row.done.is_set)
                     return count
                 with patch.object(row.process, "write", interrupted):
                     result = tools.job("input", identity, text="INCOMPLETE\n")

@@ -430,7 +430,7 @@ def chat(agent, task, messages, emit, *, autostart=True, model_selection=None, s
 
 
 def main(argv=None):
-    parser = argparse.ArgumentParser(description="Sprig: a small approval-first coding agent")
+    parser = argparse.ArgumentParser(prog="sprig", description="Sprig: a small approval-first coding agent")
     parser.add_argument("task", nargs="?", help="task; optional when resuming")
     parser.add_argument("--version", action="version", version=__version__)
     parser.add_argument("--workdir", default=".")

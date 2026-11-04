@@ -27,6 +27,10 @@ def child_environment():
              "UV_PYTHON_BIN_DIR", "UV_LINK_MODE", "SSL_CERT_FILE", "SSL_CERT_DIR"}
     selected = {name: value for name, value in os.environ.items() if name.upper() in names}
     selected.update(PYTHONUTF8="0", PYTHONNOUSERSITE="1", UV_NO_PROGRESS="1")
+    if os.name == "nt":
+        # Reproduce hosted Windows output even on a Chinese-locale developer
+        # machine. This applies only to these disposable child environments.
+        selected["PYTHONIOENCODING"] = "cp1252:strict"
     return selected
 
 
