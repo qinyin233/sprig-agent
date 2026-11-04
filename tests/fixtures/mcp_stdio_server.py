@@ -61,10 +61,11 @@ while True:
         send({"jsonrpc": "2.0", "method": "notifications/tools/list_changed"})
         (root / "notified").write_text("sent")
         notified = True
-    if active == "delayed" and not notified:
+    if active == "drain_deadline" and not notified:
         os.write(1, b'{"jsonrpc":"2.0","method":"notifications/message","params":{"message":"')
         (root / "partial-notification").write_text("sent")
-        time.sleep(.25)
+        while not (root / "release-notification").exists():
+            time.sleep(.005)
         os.write(1, b'complete"}}\n')
         notified = True
     try:
@@ -76,10 +77,9 @@ while True:
     active = mode()
     request = json.loads(line)
     log(request)
-    if active == "delayed":
-        # Receipt is recorded before delaying the response; a client deadline
-        # may kill this fixture during the intentional response delay.
-        time.sleep(.25)
+    if active == "drain_deadline" and request.get("method") == "tools/list":
+        (root / "request-received").write_text("received")
+        continue  # Withhold the reply until the client enforces its deadline.
     if active == "marker_wait" and "id" in request:
         Path("LOCAL_EFFECT").write_text("CREATED")
         continue

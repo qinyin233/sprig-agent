@@ -8,6 +8,7 @@ import sys
 import tempfile
 import threading
 import time
+from types import SimpleNamespace
 import unittest
 from unittest.mock import patch
 
@@ -270,16 +271,39 @@ class McpStdioTests(unittest.TestCase):
         client = tools.mcp_manager.clients["local"]
         self.assertTrue(client.ready)
         client.server = replace(client.server, timeout=.4, deadline=.4)
-        def approve(_):
-            self.mode("delayed")
-            until = time.monotonic() + 2
-            while not (self.state / "partial-notification").exists() and time.monotonic() < until:
-                time.sleep(.01)
-            self.assertTrue((self.state / "partial-notification").exists())
-            return True
-        tools.approve = approve
-        result = self.action(tools, "tools")
-        self.assertIn("error", result)
+        self.mode("drain_deadline")
+        until = time.monotonic() + 2
+        while not (self.state / "partial-notification").exists() and time.monotonic() < until:
+            time.sleep(.01)
+        self.assertTrue((self.state / "partial-notification").exists())
+        until = time.monotonic() + 2
+        while not client.buffer and time.monotonic() < until:
+            client.poll_events()
+            time.sleep(.005)
+        self.assertTrue(client.buffer, "partial notification was not received")
+        # Real IPC barriers determine phases, while only this client's clock
+        # advances: drain consumes .3s, then RPC consumes .2s. Total .5 > .4,
+        # but the post-drain idle budget still has .2s left.
+        elapsed = [0.0]
+        until = time.monotonic() + 10
+        poll = client.poll_events
+        def observe():
+            self.assertLess(elapsed[0], .4, "total deadline was reset after notification drain")
+            count = poll()
+            if client.buffer:
+                elapsed[0] = .3
+                (self.state / "release-notification").write_text("release")
+            if (self.state / "request-received").exists():
+                elapsed[0] = .5
+            return count
+        def pause(seconds):
+            self.assertLess(time.monotonic(), until, "fixture IPC did not settle")
+            time.sleep(seconds)
+        clock = SimpleNamespace(monotonic=lambda: elapsed[0], sleep=pause)
+        with patch("sprig_agent.mcp_stdio.time", clock), patch.object(client, "poll_events", observe):
+            with self.assertRaisesRegex(McpError, "request timed out"):
+                client.rpc("tools/list", {})
+        self.assertEqual(elapsed[0], .5)
         self.assertFalse(tools.mcp_manager.clients["local"].status()["process_running"])
         self.assertEqual(sum(r.get("method") == "tools/list" for r in rows(self.state)), 1)
 
