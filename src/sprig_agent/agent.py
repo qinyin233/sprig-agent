@@ -31,7 +31,7 @@ from .mcp import MCP_SCHEMA, McpManager
 from .web_fetch import WEB_SCHEMA
 from .jobs import JOB_SCHEMA
 from .lsp import LSP_SCHEMA
-from .tools import GIT_STATUS_SCHEMA, TOOL_SCHEMAS, Tools
+from .tools import GIT_DIFF_SCHEMA, GIT_STATUS_SCHEMA, TOOL_SCHEMAS, Tools
 from .attachments import snapshots as file_snapshots, snapshot_message
 from .message_origin import ORIGIN, application_message
 from .image_reads import ImageReadResult
@@ -103,8 +103,9 @@ class Agent:
         self.schemas = [copy.deepcopy(schema) for schema in TOOL_SCHEMAS
                         if config.tool_enabled(schema["function"]["name"])
                         and (not config.read_only or schema["function"]["name"] not in {"edit_file", "edit_lines", "file_action", "run"})]
-        if isinstance(tools, Tools) and tools.git_status_available():
-            self.schemas.append(copy.deepcopy(GIT_STATUS_SCHEMA))
+        if isinstance(tools, Tools) and tools.git_observation_available():
+            self.schemas.extend(copy.deepcopy(schema) for schema in (GIT_STATUS_SCHEMA, GIT_DIFF_SCHEMA)
+                                if config.tool_enabled(schema["function"]["name"]))
         background_jobs = isinstance(tools, Tools) and tools.jobs.enabled()
         terminal_jobs = background_jobs and tools.jobs.terminal_enabled()
         for schema in self.schemas:

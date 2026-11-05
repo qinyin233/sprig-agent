@@ -113,6 +113,9 @@ TOOL_SCHEMAS = [
 ]
 GIT_STATUS_SCHEMA = schema("git_status", "Approved Git status by literal path. Index/worktree codes; ?? untracked. No authorship inference.",
                            {"path": STRING, "limit": {"type": "integer", "minimum": 1, "maximum": 512}})
+GIT_DIFF_SCHEMA = schema("git_diff", "Approved single-file Git patch. staged=true compares HEAD to index. Continue with snapshot and next_offset.",
+                         {"path": STRING, "staged": {"type": "boolean"}, "offset": {"type": "integer", "minimum": 0},
+                          "snapshot": {"type": "string", "pattern": "^[0-9a-f]{64}$"}}, ["path"])
 
 
 class ToolError(Exception):
@@ -340,7 +343,8 @@ class Tools:
                       "edit_file": self.edit_file, "edit_lines": self.edit_lines,
                       "run": self.run, "update_plan": self.update_plan, "file_action": self.file_action,
                       "read_log": self.read_log, "question": self.question, "skill": self.skill, "mcp": self.mcp,
-                      "web_fetch": self.web_fetch, "job": self.job, "lsp": self.lsp, "git_status": self.git_status}.get(name)
+                      "web_fetch": self.web_fetch, "job": self.job, "lsp": self.lsp, "git_status": self.git_status,
+                      "git_diff": self.git_diff}.get(name)
             if method is None:
                 raise ToolError("unknown tool")
             result = method(**arguments)
@@ -357,8 +361,13 @@ class Tools:
         from .git_status import git_status
         return git_status(self, path, limit)
 
-    def git_status_available(self):
-        if self.config.read_only or not all(self.config.tool_enabled(name) for name in ("git_status", "run")):
+    def git_diff(self, path, staged=False, offset=0, snapshot=None):
+        self._require_tool("git_diff")
+        from .git_status import git_diff
+        return git_diff(self, path, staged, offset, snapshot)
+
+    def git_observation_available(self):
+        if self.config.read_only or not self.config.tool_enabled("run"):
             return False
         from .git_status import checkout_available
         return checkout_available(self.config.workdir)

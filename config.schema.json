@@ -239,6 +239,9 @@
         },
         "git_status": {
           "type": "boolean"
+        },
+        "git_diff": {
+          "type": "boolean"
         }
       },
       "additionalProperties": false
@@ -1472,6 +1475,9 @@
                 "type": "boolean"
               },
               "git_status": {
+                "type": "boolean"
+              },
+              "git_diff": {
                 "type": "boolean"
               }
             },

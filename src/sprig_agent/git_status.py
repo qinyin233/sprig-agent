@@ -1,7 +1,8 @@
-"""Approved Git status using disposable index and reference metadata."""
+"""Approved Git observations using disposable index and reference metadata."""
 
 from contextlib import ExitStack
 from dataclasses import replace
+import hashlib
 import json
 import os
 from pathlib import Path, PurePosixPath, PureWindowsPath
@@ -19,6 +20,18 @@ MAX_INDEX = 16 * 1024 * 1024
 MAX_REF = 4096
 MAX_PACKED_REFS = 4 * 1024 * 1024
 STATUS = re.compile(r"(?:[ MADTUC]{2}|\?\?)\Z")
+DIGEST = re.compile(r"[0-9a-f]{64}\Z")
+PATCH_RECORD = re.compile(r":(000000|100644|100755) (000000|100644|100755) [0-9a-f]+ [0-9a-f]+ [ADM]\Z")
+
+
+def diff_arguments(argument):
+    if argument.startswith("{"):
+        parsed = json.loads(argument)
+        if not isinstance(parsed, dict) or "path" not in parsed:
+            raise ValueError("Git diff page arguments require a path")
+        return parsed
+    staged = argument.startswith("--staged ")
+    return {"path": argument.removeprefix("--staged ") if staged else argument, "staged": staged}
 
 
 def checkout_available(workspace):
@@ -194,16 +207,45 @@ def _rows(output, prefix, policy, secrets):
     return sorted(rows, key=lambda row: row["path"])
 
 
-def git_status(tools, path, limit):
+def _working_file(tools, path, *, content=False):
+    from .tools import MAX_FILE
+
+    try:
+        with tools._parent(path) as (directory, name):
+            info = directory.stat(name)
+            if (not stat.S_ISREG(info.st_mode) or info.st_nlink != 1
+                    or getattr(info, "st_file_attributes", 0) & 0x400):
+                raise ValueError("Git diff requires a single ordinary file without links")
+            if not content:
+                return info, None
+            with directory.open_read(name) as stream:
+                opened = os.fstat(stream.fileno())
+                # Windows path stat and descriptor fstat expose different ctime.
+                if (not os.path.samestat(info, opened) or opened.st_size != info.st_size
+                        or opened.st_mtime_ns != info.st_mtime_ns or opened.st_nlink != 1):
+                    raise ValueError("Git diff file changed while opening")
+                data = stream.read(MAX_FILE + 1)
+                if tools._revision(os.fstat(stream.fileno())) != tools._revision(opened):
+                    raise ValueError("Git diff file changed while reading")
+            if tools._revision(directory.stat(name)) != tools._revision(info):
+                raise ValueError("Git diff file changed while reading")
+            if len(data) > MAX_FILE:
+                raise ValueError("Git diff working copy exceeds 512 KiB")
+            text = tools._decode(data)
+            if redact(text, tools.config.secrets) != text:
+                raise ValueError("Git diff working copy contains protected content")
+            return info, data
+    except FileNotFoundError:
+        return None, None
+
+
+def _observe(tools, scope, *, staged=None):
     from .tools import Tools
 
     config = tools.config
-    if config.read_only or not config.tool_enabled("run"):
-        return {"approved": False, "error": "Git status requires enabled, approved command execution"}
-    if type(limit) is not int or not 1 <= limit <= 512:
-        raise ValueError("Git status limit must be from 1 to 512")
-    parts = tools._parts(path)
-    scope = "/".join(parts) or "."
+    diff = staged is not None
+    operation = "diff" if diff else "status"
+    original = tools._revision(_working_file(tools, scope)[0]) if diff else None
     executable = shutil.which("git")
     if executable is None:
         raise ValueError("Git executable not found on the process PATH")
@@ -223,6 +265,9 @@ def git_status(tools, path, limit):
         else:
             private.mkdir(mode=0o700)
         shadow = private / "snapshot.git"
+        worktree = private / "tree" if diff else root
+        prefix = tuple(config.workdir.relative_to(root).parts)
+        requested = "/".join((*prefix, scope)) if diff else scope
         state = None
 
         def snapshot():
@@ -237,7 +282,7 @@ def git_status(tools, path, limit):
 
         def confirm(description):
             nonlocal state
-            proposal = ("GIT STATUS · fixed read-only host command with a temporary Git index\n"
+            proposal = ("GIT " + operation.upper() + " · fixed read-only host command with a temporary Git index\n"
                         + "Repository: " + json.dumps(str(root)) + "\n" + description)
             if not tools.request_approval(redact(proposal, config.secrets)):
                 return False
@@ -245,11 +290,21 @@ def git_status(tools, path, limit):
             check()
             state = snapshot()
             _prepare_shadow(shadow, common, index, state[0], tools._check_cancelled)
+            if diff:
+                info, raw = _working_file(tools, scope, content=not staged)
+                if tools._revision(info) != original:
+                    raise ValueError("Git diff file changed during approval")
+                worktree.mkdir()
+                if raw is not None:
+                    target = worktree / requested
+                    target.parent.mkdir(parents=True, exist_ok=True)
+                    target.write_bytes(raw)
+                    target.chmod(0o700 if info.st_mode & stat.S_IXUSR else 0o600)
             check()
             return True
 
         cap = min(1_000_000, config.command_output_limit or config.max_output)
-        env = (("GIT_CONFIG_NOSYSTEM", "1"), ("GIT_CONFIG_GLOBAL", os.devnull),
+        env = (("GIT_CONFIG_NOSYSTEM", "1"), ("GIT_CONFIG_GLOBAL", str(private / "global-config")),
                ("GIT_ATTR_NOSYSTEM", "1"), ("GIT_TERMINAL_PROMPT", "0"),
                ("GIT_OPTIONAL_LOCKS", "0"), ("GIT_ALLOW_PROTOCOL", ""),
                ("GIT_NO_LAZY_FETCH", "1"), ("GIT_OBJECT_DIRECTORY", str(objects)))
@@ -260,32 +315,125 @@ def git_status(tools, path, limit):
         runner.instructions = tools.instructions
         stack.callback(runner.close)
         argv = [str(executable), "--no-pager", "--literal-pathspecs", "--git-dir", str(shadow),
-                "--work-tree", str(root), "-c", "core.fsmonitor=false", "-c", "core.hooksPath=" + os.devnull,
-                "-c", "core.attributesFile=" + os.devnull, "-c", "core.excludesFile=" + os.devnull,
-                "status", "--porcelain=v1", "-z", "--no-renames", "--untracked-files=all", "--ignore-submodules=all", "--", scope]
+                "--work-tree", str(worktree), "-c", "core.fsmonitor=false", "-c", "core.hooksPath=" + os.devnull,
+                "-c", "core.attributesFile=" + os.devnull, "-c", "core.excludesFile=" + os.devnull]
+        if diff:
+            argv.extend(["-C", str(worktree), "diff", "--raw", "-z", "--patch", "--no-color", "--no-relative",
+                         "--no-ext-diff", "--no-textconv", "--no-renames", "--ignore-submodules=all", "--unified=3"])
+            if staged:
+                argv.append("--cached")
+        else:
+            argv.extend(["status", "--porcelain=v1", "-z", "--no-renames", "--untracked-files=all", "--ignore-submodules=all"])
+        argv.extend(["--", requested])
         outcome = runner.execute("run", {"argv": argv})
         if outcome.get("approved") is False:
-            return {"approved": False}
+            return {"approved": False}, None, prefix
         if outcome.get("returncode") != 0 or outcome.get("timed_out") or outcome.get("output_limited") or "error" in outcome:
-            return {"approved": outcome.get("approved", False), "error": "Git status did not complete within its safety limits; try a narrower path",
-                    "timed_out": bool(outcome.get("timed_out")), "output_limited": bool(outcome.get("output_limited"))}
+            suggestion = "" if diff else ". Try a narrower path."
+            return {"approved": outcome.get("approved", False), "error": f"Git {operation} did not complete within its safety limits{suggestion}",
+                    "timed_out": bool(outcome.get("timed_out")), "output_limited": bool(outcome.get("output_limited"))}, None, prefix
         check()
         working.check()
         if state != snapshot():
-            raise ValueError("Git HEAD or index changed during observation; request a fresh status")
+            raise ValueError("Git HEAD or index changed during observation; request a fresh result")
+        if diff and tools._revision(_working_file(tools, scope)[0]) != original:
+            raise ValueError("Git diff file changed during observation; request a fresh diff")
         tools.policy.reload()
-        prefix = tuple(config.workdir.relative_to(root).parts)
-        rows = _rows(outcome["output"], prefix, tools.policy, config.secrets)
-        payload = {"approved": True, "scope": scope, "head": state[0], "entries": [],
-                   "total": len(rows), "truncated": True}
-        used = len(json.dumps(payload, ensure_ascii=True))
+        return outcome, state[0], prefix
+
+
+def git_status(tools, path, limit):
+    config = tools.config
+    if config.read_only or not config.tool_enabled("run"):
+        return {"approved": False, "error": "Git status requires enabled, approved command execution"}
+    if type(limit) is not int or not 1 <= limit <= 512:
+        raise ValueError("Git status limit must be from 1 to 512")
+    scope = "/".join(tools._parts(path)) or "."
+    outcome, head, prefix = _observe(tools, scope)
+    if "output" not in outcome:
+        return outcome
+    rows = _rows(outcome["output"], prefix, tools.policy, config.secrets)
+    payload = {"approved": True, "scope": scope, "head": head, "entries": [],
+               "total": len(rows), "truncated": True}
+    used = len(json.dumps(payload, ensure_ascii=True))
+    if used + 1 > config.max_output:
+        return {"approved": True, "error": "Git status scope is too long for the display limit"}
+    page = payload["entries"]
+    for row in rows[:limit]:
+        used += len(json.dumps(row, ensure_ascii=True)) + 2
         if used + 1 > config.max_output:
-            return {"approved": True, "error": "Git status scope is too long for the display limit"}
-        page = payload["entries"]
-        for row in rows[:limit]:
-            used += len(json.dumps(row, ensure_ascii=True)) + 2
-            if used + 1 > config.max_output:
-                break
-            page.append(row)
-        payload["truncated"] = len(page) < len(rows)
-        return payload
+            break
+        page.append(row)
+    payload["truncated"] = len(page) < len(rows)
+    return payload
+
+
+def _patch(output, expected):
+    if not output:
+        return ""
+    sections = output.split("\0", 3)
+    if len(sections) != 4 or not PATCH_RECORD.fullmatch(sections[0]) or sections[1] != expected or sections[2]:
+        raise ValueError("Git diff did not describe exactly one ordinary file")
+    body = sections[3]
+    if (not body.startswith("diff --git ") or not body.endswith("\n")
+            or any(ord(char) < 32 and char not in "\n\r\t" for char in body)):
+        raise ValueError("Git diff requires one complete text patch")
+    in_hunk = False
+    for line in body.split("\n")[1:-1]:
+        if line.startswith("@@ "):
+            in_hunk = True
+        elif in_hunk:
+            if not line.startswith((" ", "+", "-")) and line != r"\ No newline at end of file":
+                raise ValueError("Git diff contains output outside the text patch")
+        elif not line.startswith(("index ", "new file mode ", "deleted file mode ", "old mode ", "new mode ", "--- ", "+++ ")):
+            raise ValueError("Git diff requires one complete text patch")
+    if KEY_PATTERN.search(body) or "[REDACTED]" in body or "\ufffd" in body:
+        raise ValueError("Git diff contains protected or undecodable text")
+    return body
+
+
+def git_diff(tools, path, staged=False, offset=0, snapshot=None):
+    config = tools.config
+    if config.read_only or not config.tool_enabled("run"):
+        return {"approved": False, "error": "Git diff requires enabled, approved command execution"}
+    if (type(staged) is not bool or type(offset) is not int or not 0 <= offset <= 1_000_000
+            or snapshot is not None and (not isinstance(snapshot, str) or not DIGEST.fullmatch(snapshot))
+            or offset and snapshot is None):
+        raise ValueError("Git diff continuation requires its snapshot and character offset")
+    parts = tools._parts(path)
+    scope = "/".join(parts)
+    if (not scope or any(ord(char) < 32 or ord(char) == 127 for char in scope)
+            or tools.policy.excluded(parts, ignore_case=True) or KEY_PATTERN.search(scope)):
+        raise ValueError("Git diff requires one visible workspace file")
+    outcome, head, prefix = _observe(tools, scope, staged=staged)
+    if "output" not in outcome:
+        return outcome
+    if tools.policy.excluded(parts, ignore_case=True):
+        raise ValueError("Git diff path is now excluded")
+    body = _patch(outcome["output"], "/".join((*prefix, scope)))
+    digest = hashlib.sha256(json.dumps([head, scope, staged, body], ensure_ascii=False).encode("utf-8")).hexdigest()
+    if snapshot is not None and snapshot != digest:
+        raise ValueError("Git diff changed; reopen at offset 0")
+    if offset > len(body):
+        raise ValueError("Git diff offset exceeds the patch")
+
+    def page(length):
+        end = offset + length
+        return {"approved": True, "path": scope, "staged": staged, "snapshot": digest, "offset": offset,
+                "text": body[offset:end], "next_offset": end if end < len(body) else None}
+
+    def size(result):
+        return len(json.dumps(result, ensure_ascii=False).encode("utf-8"))
+
+    low, high = 0, min(8192, len(body) - offset)
+    budget = min(config.max_output, 16384)
+    while low < high:
+        mid = (low + high + 1) // 2
+        if size(page(mid)) <= budget:
+            low = mid
+        else:
+            high = mid - 1
+    result = page(low)
+    if size(result) > budget or not low and result["next_offset"] is not None:
+        raise ValueError("Git diff page exceeds its output budget")
+    return result

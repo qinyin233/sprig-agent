@@ -1862,7 +1862,7 @@ class SprigApp(App[int]):
                         "/lsp code_actions SERVER PATH 行 列 [结束行 结束列]；/lsp apply_code_action ID（新批准选择并逐文件审阅）\n"
                         "/continue /new /files /add 文件路径 /ref 文件路径 /unref 文件路径 /refs [clear]\n"
                         "/verify（仅固定检查；逐次批准，观察进入会话；不调用模型或自动继续）\n"
-                        "/map [名称或路径查询] /git [路径] /diff /compact\n"
+                        "/map [名称或路径查询] /git [路径] /diff [--staged] 路径 /compact\n"
                         "/summary（本地预览） /summary create [END]（逐次确认额外请求） /summary clear\n"
                         "/logs（当前会话日志） /log ID [OFFSET]（本地回查） /logs clear（逐次确认清理）\n"
                         "/history 消息编号 [字符偏移]（本地分页原文，系统提示与推理元数据不展示）\n"
@@ -2139,13 +2139,19 @@ class SprigApp(App[int]):
         if self.busy:
             self.append("\n该本地操作需要等待当前任务结束；可用 /cancel，或发送普通消息调整任务。\n")
             return
-        if argument and command not in {"/map", "/git", "/save", "/restore", "/delete", "/add", "/prune", "/worktree", "/remove-worktree", "/ref", "/unref", "/refs"}:
+        if argument and command not in {"/map", "/git", "/diff", "/save", "/restore", "/delete", "/add", "/prune", "/worktree", "/remove-worktree", "/ref", "/unref", "/refs"}:
             self.append("\n该命令不接受参数；输入 /help。\n")
             return
         if command in {"/save", "/restore", "/delete"} and argument:
             self.query_one("#session-name", Input).value = argument
         if command == "/git" and argument and not self.config.read_only:
             self.start(local=("git_status", {"path": argument}))
+        elif command == "/diff" and argument and not self.config.read_only:
+            from .git_status import diff_arguments
+            try:
+                self.start(local=("git_diff", diff_arguments(argument)))
+            except ValueError as error:
+                self.append("\n本地操作失败: " + self.safe(error) + "\n")
         elif command in {"/ref", "/unref", "/refs"}:
             if (command == "/refs" and argument != "clear") or (command != "/refs" and not argument):
                 self.append("\n用法：/ref 文件路径、/unref 文件路径、/refs 或 /refs clear；引用本身不触发模型。\n")
@@ -2208,7 +2214,10 @@ class SprigApp(App[int]):
             elif identity == "revise":
                 self.choose_revision()
             elif identity in {"diff", "git"}:
-                self.start(local=("run", {"argv": ["git", "diff", "--", "."]}) if identity == "diff" else ("git_status", {}))
+                if identity == "diff" and self.config.command_sandbox == "bubblewrap":
+                    self.append("\n命令隔离下请用 /diff 文件路径 或 /diff --staged 文件路径。\n")
+                else:
+                    self.start(local=("run", {"argv": ["git", "diff", "--", "."]}) if identity == "diff" else ("git_status", {}))
             elif identity == "map":
                 self.start(local=("project_map", {}))
             elif identity == "save":

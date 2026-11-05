@@ -509,7 +509,7 @@ api_key_env="CUSTOM_KEY"
         self.assertTrue(config.read_only)
         self.assertEqual(config.model, "agnes-3.0-flash")
         self.assertEqual(json.loads((root / "config.schema.json").read_text(encoding="utf-8")), configuration_schema())
-        self.assertEqual(set(configuration_schema()["properties"]["tools"]["properties"]), {"list_files", "glob", "read_file", "search", "grep", "project_map", "edit_file", "edit_lines", "file_action", "run", "update_plan", "read_history", "read_log", "question", "skill", "mcp", "web_fetch", "job", "lsp", "git_status"})
+        self.assertEqual(set(configuration_schema()["properties"]["tools"]["properties"]), {"list_files", "glob", "read_file", "search", "grep", "project_map", "edit_file", "edit_lines", "file_action", "run", "update_plan", "read_history", "read_log", "question", "skill", "mcp", "web_fetch", "job", "lsp", "git_status", "git_diff"})
 
     def test_baseline_setting_resolves_inherited_checks_and_cannot_be_weakened_by_project(self):
         self.write('''provider="x"

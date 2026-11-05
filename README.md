@@ -26,7 +26,7 @@
 - 九种语言按声明名读取源码，保留真实行号与版本绑定；见[命名读取](docs/named-reads.md)
 - 同一地图按名称查询语法调用位置及所属声明；见[调用线索与边界](docs/call-sites.md)
 - 用户固定验收命令：失败反馈修复，通过后才确认验收完成
-- `/git [路径]` 和模型工具 `git_status` 经批准后查看本地暂存、未暂存和未跟踪文件。 [Git 状态与隐私边界](docs/git-status.md)
+- `/git [路径]` 查看本地状态，`/diff [--staged] 文件路径` 查看逐文件差异。模型也可请求这些有界观察，每次需要批准。 [Git 状态、diff 与隐私边界](docs/git-status.md)
 - 可选本地会话保存与恢复
 - [请求统计保存与离线查看](docs/request-usage.md)：保存会话同时记录有界数值，恢复后区分本进程、会话与继承快照；中断请求保持未知，`--session-usage NAME` 不调用模型
 - TUI/chat [历史轮次分支](docs/conversation-branches.md)：明确确认后保留整轮对话，原会话和草稿保留，工作区文件不回滚

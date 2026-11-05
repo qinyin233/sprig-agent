@@ -127,3 +127,87 @@ class GitStatusTests(unittest.TestCase):
                 result = tools.execute("git_status", {})
         self.assertIn("error", result)
         self.assertEqual(self.approvals, [])
+
+    def test_diff_staged_and_worktree_separately_inside_linked_subdirectory(self):
+        linked = self.parent / "linked diff"
+        self.git("worktree", "add", "-q", "--detach", str(linked), "HEAD")
+        item = linked / "src" / "example.txt"
+        item.write_bytes(b"staged-version\n")
+        self.git("add", "src/example.txt", cwd=linked)
+        item.write_bytes(b"working-version\n")
+        index_before = self.git("ls-files", "--stage", cwd=linked)
+        with closing(self.tools(linked / "src", command_sandbox="bubblewrap")) as tools:
+            staged = tools.execute("git_diff", {"path": "example.txt", "staged": True})
+            live = tools.execute("git_diff", {"path": "example.txt"})
+        self.assertIn("+staged-version", staged.get("text", ""), staged)
+        self.assertNotIn("working-version", staged["text"])
+        self.assertIn("-staged-version\n+working-version", live.get("text", ""), live)
+        self.assertEqual(self.git("ls-files", "--stage", cwd=linked), index_before)
+        self.assertEqual(item.read_bytes(), b"working-version\n")
+        self.assertEqual(len(self.approvals), 2)
+
+    def test_diff_pages_reassemble_and_reject_changed_snapshot(self):
+        self.put("src/example.txt", "\n".join(f"{number} 中文行" for number in range(120)) + "\n")
+        path = {"path": "src/example.txt"}
+        with closing(self.tools()) as tools:
+            complete = tools.execute("git_diff", path)
+        with closing(self.tools(max_output=512)) as tools:
+            page = tools.execute("git_diff", path)
+            self.assertIsNotNone(page.get("next_offset"), page)
+            initial = {"offset": page["next_offset"], "snapshot": page["snapshot"]}
+            text = ""
+            while True:
+                self.assertLessEqual(len(json.dumps(page, ensure_ascii=False).encode()), 512)
+                self.assertEqual(page["offset"], len(text))
+                text += page["text"]
+                if page["next_offset"] is None:
+                    break
+                page = tools.execute("git_diff", {**path, "offset": page["next_offset"], "snapshot": page["snapshot"]})
+            self.assertEqual(text, complete["text"])
+            self.put("src/example.txt", "changed after observation\n")
+            result = tools.execute("git_diff", {**path, **initial})
+            self.assertIn("reopen at offset 0", result["error"])
+            self.assertNotIn("text", result)
+
+    def test_diff_rejects_hidden_binary_and_directory_records(self):
+        (self.repo / "blob.bin").write_bytes(b"\0binary fixture\0")
+        self.git("add", "blob.bin")
+        self.put("src/example.txt", "sk-" + "a" * 30 + "\n")
+        self.git("add", "src/example.txt")
+        self.git("rm", "-q", "-r", "-f", "src")
+        # The now-absent directory still expands to an indexed descendant.
+        with closing(self.tools()) as tools:
+            for arguments in ({"path": ".env"}, {"path": "blob.bin", "staged": True}, {"path": "src", "staged": True}):
+                result = tools.execute("git_diff", arguments)
+                self.assertIn("error", result)
+                self.assertNotIn("text", result)
+            deleted = tools.execute("git_diff", {"path": "src/example.txt", "staged": True})
+            self.assertIn("-base", deleted.get("text", ""), deleted)
+
+    def test_diff_rejects_protected_patch_or_stale_file_without_disclosing_text(self):
+        secret = "sk-" + "f" * 30
+        self.put("src/example.txt", secret + "\n")
+        self.git("add", "src/example.txt")
+        with closing(self.tools()) as tools:
+            result = tools.execute("git_diff", {"path": "src/example.txt", "staged": True})
+            self.assertIn("protected", result["error"])
+            self.assertNotIn(secret, json.dumps(result))
+
+            def approve(_):
+                self.put("src/example.txt", "changed during approval\n")
+                return True
+
+            tools.approve = approve
+            result = tools.execute("git_diff", {"path": "src/example.txt"})
+            self.assertIn("error", result)
+            self.assertNotIn("text", result)
+
+    def test_patch_rejects_stderr_diagnostics_after_diff_output(self):
+        from sprig_agent.git_status import _patch
+
+        combined = (":100644 100644 1234567 0000000 M\0src/example.txt\0\0"
+                    "diff --git a/src/example.txt b/src/example.txt\n"
+                    "--- a/src/example.txt\n+++ b/src/example.txt\n@@ -1 +1 @@\n-base\n+change\n"
+                    "warning: failed to read private object location\n")
+        with self.assertRaisesRegex(ValueError, "outside the text patch"):
+            _patch(combined, "src/example.txt")
