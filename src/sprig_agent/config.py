@@ -188,11 +188,15 @@ class Config:
     prompt_templates: tuple = field(default=(), repr=False)
     editor_command: tuple = field(default=(), repr=False)
     editor_timeout: float = 300
+    command_sandbox: str = "off"
+    sandbox_read_dirs: tuple = ()
     _runtime_credentials: RuntimeCredentials = field(default_factory=RuntimeCredentials, init=False, repr=False, compare=False)
 
     def __post_init__(self):
         from .prompt_templates import validate_templates
         validate_templates(self.prompt_templates)
+        if self.command_sandbox not in ("off", "bubblewrap"):
+            raise ValueError("execution.command_sandbox must be off or bubblewrap")
         if type(self.background_enabled) is not bool:
             raise ValueError("execution.background must be a boolean")
         if (type(self.background_timeout) not in (int, float) or not math.isfinite(self.background_timeout)
@@ -458,6 +462,15 @@ class Config:
                 if name == "command_log_dir" and any(secret in str(value) for secret in self.credential_secrets):
                     raise ValueError("configured credentials cannot appear in command log storage paths")
                 object.__setattr__(self, name, Path(value).expanduser().absolute())
+        if (not isinstance(self.sandbox_read_dirs, tuple) or len(self.sandbox_read_dirs) > 8
+                or any(not isinstance(path, (str, Path)) or not str(path) or len(str(path)) > 4096
+                       or "\0" in str(path) or any(secret in str(path) for secret in self.credential_secrets)
+                       for path in self.sandbox_read_dirs)):
+            raise ValueError("execution.sandbox_read_dirs requires at most eight credential-free paths")
+        if self.sandbox_read_dirs and self.command_sandbox != "bubblewrap":
+            raise ValueError("execution.sandbox_read_dirs requires the bubblewrap command sandbox")
+        object.__setattr__(self, "sandbox_read_dirs", tuple(dict.fromkeys(
+            Path(path).expanduser().absolute() for path in self.sandbox_read_dirs)))
         from .references import reference_paths
         selected = reference_paths(self.reference_files)
         if any(secret in path for path in selected for secret in self.secrets):
@@ -569,6 +582,9 @@ class Config:
                 binding[name] = list(getattr(self, name))
         if self.command_env:
             binding["command_env_names"] = sorted(name for name, _ in self.command_env)
+        if self.command_sandbox != "off":
+            binding["command_sandbox"] = self.command_sandbox
+            binding["sandbox_read_dirs"] = [str(path) for path in self.sandbox_read_dirs]
         if self.headers:
             binding["header_names"] = sorted(name.lower() for name, _ in self.headers)
         if self.api_key_header != "Authorization" or self.api_key_scheme != "bearer":

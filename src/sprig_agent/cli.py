@@ -672,7 +672,10 @@ def main(argv=None):
             else:
                 store.ensure_new(session_name)
         emit(f"Sprig | model: {config.model} | endpoint: {config.base_url} | workdir: {config.workdir}")
-        emit("Prompts and tool results are sent to this endpoint. Commands are NOT sandboxed and may access outside files/network. Writes and commands require approval.")
+        protection = ("The run tool requires the Linux bubblewrap sandbox. MCP, LSP and the external editor use separate policies."
+                      if config.command_sandbox == "bubblewrap" else
+                      "Commands are NOT sandboxed and may access outside files/network.")
+        emit(f"Prompts and tool results are sent to this endpoint. {protection} Writes and commands require approval.")
         if store:
             emit("Local transcript saving enabled (not encrypted). Resume never replays pending actions.")
         if config.preserve_reasoning or config.wire_api != "chat_completions":

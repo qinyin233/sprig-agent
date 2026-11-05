@@ -142,7 +142,7 @@ os.execvp(sys.argv[1], sys.argv[1:])
 """
 
 
-def _start_pty(argv, directory, env, size):
+def _start_pty(argv, directory, env, size, pass_fds):
     import pty
     master, slave = pty.openpty()
     try:
@@ -150,7 +150,7 @@ def _start_pty(argv, directory, env, size):
         os.set_blocking(master, False)
         child = subprocess.Popen([sys.executable, '-I', '-B', '-c', _PTY_EXEC, *argv],
                                  cwd=directory, env=env, stdin=slave, stdout=slave, stderr=slave,
-                                 start_new_session=True, shell=False)
+                                 start_new_session=True, shell=False, pass_fds=pass_fds)
         return child, master
     except BaseException:
         os.close(master)
@@ -160,7 +160,7 @@ def _start_pty(argv, directory, env, size):
 
 
 class Process:
-    def __init__(self, argv, directory, env, *, terminal=None):
+    def __init__(self, argv, directory, env, *, terminal=None, pass_fds=()):
         self.closed = False
         self.terminal = terminal is not None
         self.master = None
@@ -171,11 +171,11 @@ class Process:
             from .windows import StdioProcess
             self.child = StdioProcess(argv, directory, env, terminal=terminal)
         elif self.terminal:
-            self.child, self.master = _start_pty(argv, directory, env, terminal)
+            self.child, self.master = _start_pty(argv, directory, env, terminal, pass_fds)
         else:
             self.child = subprocess.Popen(argv, cwd=directory, env=env, stdin=subprocess.PIPE,
                                           stdout=subprocess.PIPE, stderr=subprocess.PIPE, bufsize=0,
-                                          start_new_session=True, shell=False)
+                                          start_new_session=True, shell=False, pass_fds=pass_fds)
             try:
                 for stream in (self.child.stdin, self.child.stdout, self.child.stderr):
                     os.set_blocking(stream.fileno(), False)

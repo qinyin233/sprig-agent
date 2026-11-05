@@ -305,7 +305,7 @@ uv run --locked sprig --project-config /trusted/private/project.toml
 
 `[skills].dirs` 最多八个明确的技能集合目录，相对路径以声明配置文件为基准，CLI 重复 `--skill-dir` 以工作区为基准并覆盖整个数组。用户和 profile 可以设置，项目层禁止改变目录；目录绑定会话。`--list-skills` 无须模型凭据即可离线检查，TUI/chat `/skills` 和 `/skill NAME [PATH [OFFSET PAGE_SHA256]]` 提供本地预览。详见[按需技能、分页与权限边界](skills.md)。
 
-MCP OAuth/订阅、插件、hooks、沙箱、自动批准等未提供后端的字段仍会报错。技能加载不会运行脚本或授予权限；后续扩展需要同时实现后端与安全测试，不能只添加一个可解析开关。
+可信用户或 profile 可通过 `[execution].command_sandbox = "bubblewrap"` 启用 [Linux 命令隔离](command-sandbox.md)。MCP OAuth/订阅、插件、hooks、自动批准等未提供后端的字段仍会报错。技能加载不会运行脚本或授予权限。
 
 模型协议由供应商表的 wire_api 选择，支持 chat_completions（默认）、messages、responses；CLI 对应 --wire-api。认证、生成参数映射、原生推理状态、会话绑定与限制见 [模型协议](provider-protocols.md)。
 

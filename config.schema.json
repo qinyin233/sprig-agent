@@ -260,6 +260,23 @@
     "execution": {
       "type": "object",
       "properties": {
+        "command_sandbox": {
+          "enum": [
+            "off",
+            "bubblewrap"
+          ],
+          "default": "off"
+        },
+        "sandbox_read_dirs": {
+          "type": "array",
+          "maxItems": 8,
+          "items": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 4096,
+            "pattern": "^[^\\x00-\\x1f]+$"
+          }
+        },
         "inherit_env": {
           "type": "boolean"
         },
@@ -1474,6 +1491,23 @@
           "execution": {
             "type": "object",
             "properties": {
+              "command_sandbox": {
+                "enum": [
+                  "off",
+                  "bubblewrap"
+                ],
+                "default": "off"
+              },
+              "sandbox_read_dirs": {
+                "type": "array",
+                "maxItems": 8,
+                "items": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 4096,
+                  "pattern": "^[^\\x00-\\x1f]+$"
+                }
+              },
               "inherit_env": {
                 "type": "boolean"
               },

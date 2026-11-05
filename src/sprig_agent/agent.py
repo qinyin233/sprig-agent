@@ -107,6 +107,10 @@ class Agent:
         terminal_jobs = background_jobs and tools.jobs.terminal_enabled()
         for schema in self.schemas:
             if schema["function"]["name"] == "run":
+                if config.command_sandbox == "bubblewrap":
+                    schema["function"]["description"] = (
+                        "Approve argv in the configured Linux sandbox. Host environment and network are blocked. "
+                        "Use existing local dependencies. Omit timeout for the configured cap.")
                 schema["function"]["parameters"]["properties"]["timeout"]["maximum"] = config.timeout
                 if background_jobs:
                     schema["function"]["parameters"]["properties"]["background"] = {"type": "boolean"}
@@ -483,6 +487,9 @@ class Agent:
 
     def _prompt(self):
         prompt = SYSTEM_PROMPT
+        if self.config.command_sandbox == "bubblewrap":
+            prompt = prompt.replace("run is NOT sandboxed: request only commands needed for the user's task, and do not",
+                                    "run requires Linux sandbox setup. Request only commands needed for the user's task, and do not")
         if self.config.response_language:
             prompt += ("\nPreferred response language (JSON string): " + json.dumps(self.config.response_language, ensure_ascii=False)
                        + ". Use this language for explanations unless the user requests otherwise; preserve code and identifiers.")

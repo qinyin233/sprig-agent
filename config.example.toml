@@ -117,6 +117,8 @@ enabled = false # user/profile opt-in, or --web; project cannot enable it
 exclude = ["private/", "*.local.json"] # additive with .sprigignore
 
 [execution]
+command_sandbox = "off" # Linux opt-in: "bubblewrap" requires /usr/bin/bwrap with --bind-fd
+# sandbox_read_dirs = ["~/.local/share/uv/python/cpython-3.13-linux-x86_64-gnu"]
 background = false # opt-in noninteractive owned commands; never restart on restore
 background_timeout = 300 # independent background cap, >0..3600 seconds
 # Raw command-output kill limit (default 1 MiB; 256..8388608 bytes).

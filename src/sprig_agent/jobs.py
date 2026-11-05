@@ -135,7 +135,7 @@ class Jobs:
             if any(row.state == "cleanup_failed" for row in self.records.values()):
                 raise ValueError("background cleanup is uncertain; inspect and close this conversation before starting commands")
 
-    def start(self, argv, directory, env, seconds, cap, *, epoch, stdin="closed", log=None, log_status=None):
+    def start(self, argv, directory, env, seconds, cap, *, epoch, stdin="closed", log=None, log_status=None, launch=None):
         if not isinstance(stdin, str) or stdin not in {"closed", "pipe", "pty"}:
             raise ValueError("invalid background stdin mode")
         self.available()
@@ -150,7 +150,11 @@ class Jobs:
                 del self.records[old]
             info = directory.stat()
             identity_cwd = (info.st_dev, info.st_ino)
-            process = Process(argv, directory, env, terminal=TERMINAL_SIZE if stdin == 'pty' else None)
+            terminal = TERMINAL_SIZE if stdin == 'pty' else None
+            if launch is None:
+                process = Process(argv, directory, env, terminal=terminal)
+            else:
+                process = Process(launch.argv, launch.cwd, launch.env, terminal=terminal, pass_fds=launch.pass_fds)
             try:
                 if stdin == "closed":
                     process.close_input()

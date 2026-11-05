@@ -124,7 +124,8 @@ def initialize_config(path, approve):
 
 GROUP_FIELDS = {
     "agent": set(AGENT_DEFAULTS), "generation": set(GENERATION_FIELDS), "tools": set(TOOL_NAMES),
-    "files": {"exclude"}, "execution": {"inherit_env", "timeout", "max_output", "output_limit", "env_allowlist", "env", "background", "background_timeout"},
+    "files": {"exclude"}, "execution": {"inherit_env", "timeout", "max_output", "output_limit", "env_allowlist", "env",
+                                         "background", "background_timeout", "command_sandbox", "sandbox_read_dirs"},
     "storage": {"session_dir", "change_history_dir", "command_log_dir", "auto_save_session", "session_max_age_days", "session_max_count"},
     "context": {"max_bytes", "compact", "trigger_ratio", "keep_recent_messages", "keep_read_bytes", "files"},
     "tui": {"theme", "sidebar", "editor_height", "steering_mode", "metrics", "keybindings"},
@@ -165,7 +166,9 @@ def _flatten(layer, directory):
     values = {**layer.get("agent", {}), **layer.get("generation", {})}
     values.update({CONTEXT_FIELDS[name]: value for name, value in layer.get("context", {}).items()})
     execution = layer.get("execution", {})
-    values.update({name: execution[name] for name in ("inherit_env", "timeout", "max_output") if name in execution})
+    values.update({name: execution[name] for name in ("inherit_env", "timeout", "max_output", "command_sandbox") if name in execution})
+    if "sandbox_read_dirs" in execution:
+        values["sandbox_read_dirs"] = tuple(directory / Path(path).expanduser() for path in execution["sandbox_read_dirs"])
     if "output_limit" in execution:
         values["command_output_limit"] = execution["output_limit"]
     if "background" in execution:
@@ -235,6 +238,9 @@ def _validate_layer(layer, directory):
         raise ValueError("execution env_allowlist must be an array")
     if "env" in execution and not isinstance(execution["env"], dict):
         raise ValueError("execution env must be a table")
+    if "sandbox_read_dirs" in execution and (not isinstance(execution["sandbox_read_dirs"], list)
+            or any(not _text(path) for path in execution["sandbox_read_dirs"])):
+        raise ValueError("execution sandbox_read_dirs must be an array of paths")
     if "exclude" in layer.get("files", {}) and not isinstance(layer["files"]["exclude"], list):
         raise ValueError("files exclude must be an array")
     if "files" in layer.get("instructions", {}) and not isinstance(layer["instructions"]["files"], list):
@@ -486,6 +492,7 @@ class Settings:
         sources = {name: "default" for name in {*AGENT_DEFAULTS, *GENERATION_FIELDS, *TRANSPORT_FIELDS,
                     *TUI_FIELDS.values(), "instruction_files", "response_language", "excluded_paths",
                     "session_dir", "change_history_dir", "command_log_dir", "auto_save_session", "env_allowlist", "command_env",
+                    "command_sandbox", "sandbox_read_dirs",
                     "session_max_age_days", "session_max_count", "command_output_limit", "background_enabled", "background_timeout", "prompt_templates", "editor_command", "editor_timeout", *CONTEXT_FIELDS.values()}}
         def apply(entries, label):
             if "prompt_templates" in entries:
@@ -637,6 +644,7 @@ def public_config(config, metadata):
             "mcp": {"servers": [server.public() for server in config.mcp_servers]},
             "lsp": {"servers": [server.public() for server in config.lsp_servers]},
             "execution": {"env_allowlist": config.env_allowlist, "env_names": [name for name, _ in config.command_env],
+                          "command_sandbox": config.command_sandbox, "sandbox_read_dirs": [str(path) for path in config.sandbox_read_dirs],
                           "max_output": config.max_output, "output_limit": config.command_output_limit or config.max_output},
             "storage": {"session_dir": str(config.session_dir) if config.session_dir else None,
                         "change_history_dir": str(config.change_history_dir) if config.change_history_dir else None,
@@ -645,4 +653,4 @@ def public_config(config, metadata):
                         "session_max_age_days": config.session_max_age_days, "session_max_count": config.session_max_count},
             "tui": {name: (dict(config.tui_keybindings) if name == "keybindings" else getattr(config, field)) for name, field in TUI_FIELDS.items()},
             "setting_sources": dict(config.setting_sources),
-            "approvals": "each write and command requires fresh approval", "command_sandbox": False}, config.secrets)
+            "approvals": "each write and command requires fresh approval", "command_sandbox": config.command_sandbox != "off"}, config.secrets)

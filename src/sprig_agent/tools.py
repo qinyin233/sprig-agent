@@ -1,6 +1,6 @@
-"""Bounded, approval-first tools; commands are NOT sandboxed."""
+"""Bounded, approval-first workspace tools."""
 
-from contextlib import contextmanager
+from contextlib import contextmanager, nullcontext
 import difflib
 import hashlib
 import io
@@ -17,6 +17,7 @@ import time
 import uuid
 
 from .config import TOOL_NAMES, redact, terminal_text
+from .command_sandbox import Launch, Sandbox, identity as directory_identity
 from .changes import ChangeError, ChangeHistory, unpack
 from .filesystem import Directory, is_link
 from .index import SymbolIndex, language_for
@@ -1392,17 +1393,20 @@ class Tools:
                 or not math.isfinite(seconds) or not 0 < seconds <= maximum):
             raise ToolError(f"command timeout must be positive and at most {maximum:g} seconds; omit timeout to use that configured limit")
         parts = self._parts(cwd)
-        with self._directory(parts):
-            pass
+        sandbox = None
+        with self._directory(parts) as pinned:
+            if self.config.command_sandbox == "bubblewrap":
+                sandbox = Sandbox(self.config, self.root, pinned, self.policy, self._check_cancelled)
         directory = self.config.workdir.joinpath(*parts)
         rules = self.instructions.prepare_action(parts)
         output_limit = self.config.command_output_limit or self.config.max_output
-        description = (f"RUN (NOT SANDBOXED; may access outside files/network)\n"
+        protection = sandbox.description() if sandbox else "RUN (NOT SANDBOXED; may access outside files/network)"
+        description = (f"{protection}\n"
                        f"cwd: {json.dumps(str(directory))}\nargv: {json.dumps(argv)}\n"
                        f"timeout: {seconds}s; output cap: {output_limit} bytes")
         if output_limit > self.config.max_output:
             description += f"; displayed output cap: {self.config.max_output} bytes, head/tail with omission notice"
-        if self.config.env_allowlist or self.config.command_env or self.config.inherit_env:
+        if sandbox is None and (self.config.env_allowlist or self.config.command_env or self.config.inherit_env):
             description += ("\nenvironment: " + ("expanded inheritance" if self.config.inherit_env else "minimal inheritance")
                             + "; additional inherited names: " + json.dumps(self.config.env_allowlist)
                             + "; override names: " + json.dumps([name for name, _ in self.config.command_env]))
@@ -1438,22 +1442,24 @@ class Tools:
         if not self.request_approval(description):
             return {"approved": False}
         self._check_cancelled()
-        # Unlike file tools, the approved program controls its own filesystem and network access.
         self._parts(cwd)
-        with self._directory(parts):
-            pass
-        env = command_environment(self.config)
+        with self._directory(parts) as pinned:
+            if sandbox is not None and directory_identity(os.fstat(pinned.fd)) != sandbox.cwd_identity:
+                raise ToolError("sandbox working directory changed during approval; request fresh approval")
+        if any(secret in arg for secret in self.config.credential_secrets for arg in argv):
+            raise ToolError("configured credentials cannot appear in command argv")
+        env = {} if sandbox else command_environment(self.config)
+        launch = sandbox.launch(argv) if sandbox else nullcontext(Launch(argv, directory, env, ()))
         self.instructions.recheck_action(parts, rules)
         if background:
-            if any(secret in arg for secret in self.config.credential_secrets for arg in argv):
-                raise ToolError("configured credentials cannot appear in background argv")
             self.read_versions.clear()
             try:
                 log = BackgroundLog(self.logs, preview) if preview is not None and "unavailable" not in preview else None
                 status = ({"saved": False, "pending": True} if log is not None else
                           {"saved": False, "reason": "command log storage unavailable before approval"} if preview is not None else None)
-                return self.jobs.start(argv, directory, env, seconds, output_limit, epoch=job_epoch, stdin=stdin,
-                                       log=log, log_status=status)
+                with launch as command:
+                    return self.jobs.start(argv, directory, env, seconds, output_limit, epoch=job_epoch, stdin=stdin,
+                                           log=log, log_status=status, launch=command if sandbox else None)
             finally:
                 self.read_versions.clear()
         sampled = output_limit > self.config.max_output
@@ -1479,9 +1485,10 @@ class Tools:
             if preview is not None and capture is None:
                 result["log"] = {"saved": False, "reason": "command log storage unavailable before approval"}
             return self._retain_log(preview, capture, result)
-        process = subprocess.Popen(argv, cwd=directory, env=env, stdin=subprocess.DEVNULL,
-                                   stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
-                                   start_new_session=True, shell=False)
+        with launch as command:
+            process = subprocess.Popen(command.argv, cwd=command.cwd, env=command.env, stdin=subprocess.DEVNULL,
+                                       stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+                                       start_new_session=True, shell=False, pass_fds=command.pass_fds)
         output = bytearray()
         reason = None
         deadline = time.monotonic() + seconds

@@ -57,15 +57,17 @@ class FilePolicy:
         patterns = [line.strip() for line in raw.decode("utf-8").splitlines() if line.strip() and not line.lstrip().startswith("#")]
         self.patterns = validate_exclusions((*self.config_patterns, *patterns))
 
-    def excluded(self, parts):
-        if os.name == "nt":
+    def excluded(self, parts, *, ignore_case=False):
+        ignore_case = ignore_case or os.name == "nt"
+        if ignore_case:
             parts = tuple(part.lower() for part in parts)
-        if tuple(parts) in self.config_parts:
+        if any(tuple(parts) == (tuple(part.lower() for part in path) if ignore_case else path)
+               for path in self.config_parts):
             return True
         if any(part in SENSITIVE or part.startswith(".env.") or part.endswith((".pem", ".p12", ".pfx", ".key")) for part in parts):
             return True
         for pattern in self.patterns:
-            if os.name == "nt":
+            if ignore_case:
                 pattern = pattern.lower()
             directory = pattern.endswith("/")
             pattern = pattern.rstrip("/")
