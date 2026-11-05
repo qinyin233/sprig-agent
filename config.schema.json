@@ -236,6 +236,9 @@
         },
         "lsp": {
           "type": "boolean"
+        },
+        "git_status": {
+          "type": "boolean"
         }
       },
       "additionalProperties": false
@@ -1466,6 +1469,9 @@
                 "type": "boolean"
               },
               "lsp": {
+                "type": "boolean"
+              },
+              "git_status": {
                 "type": "boolean"
               }
             },

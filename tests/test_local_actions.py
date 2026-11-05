@@ -96,6 +96,7 @@ class LocalActionTests(unittest.TestCase):
         validate_history(history)
 
     def test_git_cancel_before_approval_does_not_invent_effects(self):
+        init_repo(self.root)
         tools = self.tools()
         agent, history, store = self.agent(tools)
         def cancel_approval(_):
@@ -177,6 +178,26 @@ class LocalActionTuiTests(unittest.IsolatedAsyncioTestCase):
     asyncSetUp = ui.TuiTests.asyncSetUp
     until = ui.TuiTests.until
     click = ui.TuiTests.click
+
+    async def test_git_status_scopes_files_and_stays_local_after_approval(self):
+        init_repo(self.config.workdir)
+        (self.config.workdir / "inside").mkdir()
+        (self.config.workdir / "inside" / "visible.txt").write_text("dirty")
+        (self.config.workdir / "outside.txt").write_text("dirty")
+        self.config = replace(self.config, command_sandbox="bubblewrap")
+        provider = ui.ScriptedProvider([])
+        app = ui.TuiTests.app(self, provider)
+        with patch.object(app, "emit", wraps=app.emit) as emitted:
+            async with app.run_test(size=(100, 32)) as pilot:
+                app.slash_command("/git inside")
+                await self.until(pilot, lambda: isinstance(app.screen, ui.ApprovalScreen))
+                self.assertIn("GIT STATUS", app.screen.description)
+                await self.click(pilot, "#approve")
+                await self.until(pilot, lambda: not app.busy)
+        content = "\n".join(call.args[0] for call in emitted.call_args_list if call.args)
+        self.assertIn("inside/visible.txt", content)
+        self.assertNotIn("outside.txt", content)
+        self.assertEqual(provider.calls, [])
 
     async def test_job_stop_approval_invalidates_result_and_survives_failure(self):
         self.config = replace(self.config, background_enabled=True,

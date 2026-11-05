@@ -412,10 +412,10 @@ def chat(agent, task, messages, emit, *, autostart=True, model_selection=None, s
                 else:
                     raise ValueError("Use /logs, /logs clear or /log ID [OFFSET]")
                 emit(json.dumps(result, ensure_ascii=False, indent=2))
-            elif task in {"/diff", "/git"}:
-                argv = ["git", "diff", "--", "."] if task == "/diff" else ["git", "status", "--short", "--", "."]
+            elif task in {"/diff", "/git"} or task.startswith("/git "):
                 with local_command():
-                    result = agent.tools.execute("run", {"argv": argv})
+                    result = (agent.tools.execute("run", {"argv": ["git", "diff", "--", "."]}) if task == "/diff"
+                              else agent.tools.execute("git_status", {"path": task[5:]} if task.startswith("/git ") else {}))
                 if ("error" in result or result.get("approved") is False or result.get("returncode", 0) != 0) and status == 0:
                     status = 2
                 emit(json.dumps(redact(result, agent.config.secrets), ensure_ascii=False))

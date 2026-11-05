@@ -111,6 +111,8 @@ TOOL_SCHEMAS = [
            {"argv": {"type": "array", "items": STRING, "minItems": 1}, "cwd": STRING,
             "timeout": {"type": "number", "exclusiveMinimum": 0, "maximum": 120}}, ["argv"]),
 ]
+GIT_STATUS_SCHEMA = schema("git_status", "Approved Git status by literal path. Index/worktree codes; ?? untracked. No authorship inference.",
+                           {"path": STRING, "limit": {"type": "integer", "minimum": 1, "maximum": 512}})
 
 
 class ToolError(Exception):
@@ -338,7 +340,7 @@ class Tools:
                       "edit_file": self.edit_file, "edit_lines": self.edit_lines,
                       "run": self.run, "update_plan": self.update_plan, "file_action": self.file_action,
                       "read_log": self.read_log, "question": self.question, "skill": self.skill, "mcp": self.mcp,
-                      "web_fetch": self.web_fetch, "job": self.job, "lsp": self.lsp}.get(name)
+                      "web_fetch": self.web_fetch, "job": self.job, "lsp": self.lsp, "git_status": self.git_status}.get(name)
             if method is None:
                 raise ToolError("unknown tool")
             result = method(**arguments)
@@ -349,6 +351,17 @@ class Tools:
         if batch is not None:
             batch.finish(arguments, result)
         return redact(result, self.config.secrets)
+
+    def git_status(self, path=".", limit=128):
+        self._require_tool("git_status")
+        from .git_status import git_status
+        return git_status(self, path, limit)
+
+    def git_status_available(self):
+        if self.config.read_only or not all(self.config.tool_enabled(name) for name in ("git_status", "run")):
+            return False
+        from .git_status import checkout_available
+        return checkout_available(self.config.workdir)
 
     def edit_batch(self, requests, guard=None, *, model_action=True):
         return preflight(self, requests, guard, model_action=model_action)

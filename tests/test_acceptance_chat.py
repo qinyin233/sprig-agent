@@ -161,7 +161,7 @@ class ChatTests(unittest.TestCase):
             self.assertEqual(cli.chat(agent, None, None, emitted.append), 2)
         agent.run.assert_not_called()
         self.assertEqual([call.args for call in execute.call_args_list], [
-            ("run", {"argv": ["git", "diff", "--", "."]}), ("run", {"argv": ["git", "status", "--short", "--", "."]})])
+            ("run", {"argv": ["git", "diff", "--", "."]}), ("git_status", {})])
         self.assertNotIn("fake-secret", "".join(emitted))
 
     def test_incomplete_turn_preserves_exit_status(self):
@@ -319,7 +319,7 @@ class ChatRecoveryTests(unittest.TestCase):
             self.assertTrue(result["approved"])
             raise KeyboardInterrupt
         with patch.object(self.tools, "run", side_effect=interrupted), \
-                patch("builtins.input", side_effect=["/git", "/status", "/exit"]):
+                patch("builtins.input", side_effect=["/diff", "/status", "/exit"]):
             self.assertEqual(cli.chat(agent, "task", None, self.emitted.append), 130)
         self.assertEqual(len(self.requests), 1)
         self.assertIn("acceptance results are stale", self.store.load("chat")[-1]["content"])

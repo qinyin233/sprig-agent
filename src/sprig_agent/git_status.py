@@ -1,0 +1,291 @@
+"""Approved Git status using disposable index and reference metadata."""
+
+from contextlib import ExitStack
+from dataclasses import replace
+import json
+import os
+from pathlib import Path, PurePosixPath, PureWindowsPath
+import re
+import shutil
+import stat
+import tempfile
+
+from .config import redact
+from .policy import KEY_PATTERN
+from .worktrees import COMMIT, _PinnedDirectory, _identity, _safe_path
+
+
+MAX_INDEX = 16 * 1024 * 1024
+MAX_REF = 4096
+MAX_PACKED_REFS = 4 * 1024 * 1024
+STATUS = re.compile(r"(?:[ MADTUC]{2}|\?\?)\Z")
+
+
+def checkout_available(workspace):
+    for root in (workspace, *workspace.parents):
+        try:
+            info = (root / ".git").lstat()
+        except FileNotFoundError:
+            continue
+        except OSError:
+            return False
+        return not getattr(info, "st_file_attributes", 0) & 0x400 and (
+            stat.S_ISDIR(info.st_mode) or stat.S_ISREG(info.st_mode))
+    return False
+
+
+def _read(directory, name, limit):
+    try:
+        raw = directory.read(name, limit)
+    except FileNotFoundError:
+        return None
+    if len(raw) > limit:
+        raise ValueError("Git observation metadata exceeds its byte limit")
+    return raw
+
+
+def _read_ref(common, head):
+    if head is None:
+        raise ValueError("Git observation could not find HEAD")
+    try:
+        value = head.decode("utf-8").rstrip("\r\n")
+    except UnicodeDecodeError:
+        raise ValueError("Git HEAD is not supported UTF-8") from None
+    if COMMIT.fullmatch(value):
+        return value
+    ref = value.removeprefix("ref: ")
+    if not ref.startswith("refs/heads/") or value == ref:
+        raise ValueError("Git observation requires a detached commit or a local branch")
+    parts = ref.split("/")
+    if (".." in ref or "@{" in ref or any(char in r"~^:?*[\\" or ord(char) < 33 or ord(char) == 127 for char in ref)
+            or any(not part or part.startswith(".") or part.endswith((".", ".lock")) for part in parts)):
+        raise ValueError("Git HEAD has an invalid branch reference")
+    directory = common.directory
+    with ExitStack() as opened:
+        try:
+            for part in parts[:-1]:
+                directory = opened.enter_context(directory.child(part))
+            loose = _read(directory, parts[-1], MAX_REF)
+        except FileNotFoundError:
+            loose = None
+    if loose is not None:
+        candidate = loose.decode("ascii", errors="replace").rstrip("\r\n")
+        if not COMMIT.fullmatch(candidate):
+            raise ValueError("Git branch reference is not a supported commit")
+        return candidate
+    packed = _read(common.directory, "packed-refs", MAX_PACKED_REFS) or b""
+    encoded = ref.encode("utf-8")
+    for line in packed.splitlines():
+        oid, _, name = line.partition(b" ")
+        if name == encoded:
+            candidate = oid.decode("ascii", errors="replace")
+            if not COMMIT.fullmatch(candidate):
+                raise ValueError("Git packed branch reference is not a supported commit")
+            return candidate
+    return None  # Unborn branch.
+
+
+def _repo(workspace, stack):
+    for root in (workspace, *workspace.parents):
+        marker = root / ".git"
+        try:
+            mode = marker.lstat().st_mode
+        except FileNotFoundError:
+            continue
+        marker_identity = _identity(marker)
+        if stat.S_ISDIR(mode):
+            common = index = _PinnedDirectory(marker, stack, metadata=True)
+            binding = None
+        elif stat.S_ISREG(mode):
+            checkout = _PinnedDirectory(root, stack, metadata=True)
+            binding = _read(checkout.directory, ".git", MAX_REF)
+            if binding is None or not binding.startswith(b"gitdir: "):
+                raise ValueError("Git observation could not read the linked checkout registration")
+            location = binding[8:].decode("utf-8").rstrip("\r\n")
+            if os.name != "nt" and PureWindowsPath(location).drive:
+                raise ValueError("Git linked worktree uses a Windows path; open it with Windows Sprig")
+            link = _safe_path(location, root)
+            if link.parent.name != "worktrees":
+                raise ValueError("Git observation requires a registered linked worktree")
+            index = _PinnedDirectory(link, stack, metadata=True)
+            common = _PinnedDirectory(link.parent.parent, stack, metadata=True)
+            backlink = _read(index.directory, "gitdir", MAX_REF)
+            if (_read(index.directory, "commondir", MAX_REF) not in (b"../..\n", b"../..\r\n")
+                    or backlink is None or _safe_path(backlink.decode("utf-8").rstrip("\r\n"), link) != marker):
+                raise ValueError("Git linked worktree does not point back to this checkout")
+        else:
+            raise ValueError("Git observation requires ordinary repository metadata")
+        objects = _PinnedDirectory(common.path / "objects", stack, metadata=True)
+
+        def check():
+            if _identity(marker) != marker_identity:
+                raise ValueError("Git checkout registration changed during observation")
+            if binding is not None and _read(checkout.directory, ".git", MAX_REF) != binding:
+                raise ValueError("Git checkout registration changed during observation")
+            for pinned in (common, index, objects):
+                pinned.check()
+            if (common.path / "reftable").exists():
+                raise ValueError("Git observation does not support the reftable reference backend")
+            if any(os.path.lexists(objects.path / "info" / name) for name in ("alternates", "http-alternates")):
+                raise ValueError("Git observation refuses alternate object directories")
+
+        check()
+        return root, common, index, objects.path, check
+    raise ValueError("no Git checkout contains this workspace")
+
+
+def _prepare_shadow(path, common, index, commit, check_cancelled):
+    raw_index = _read(index.directory, "index", MAX_INDEX)
+    (path / "refs" / "heads").mkdir(parents=True)
+    (path / "objects").mkdir()
+    head = commit or "ref: refs/heads/sprig-unborn"
+    (path / "HEAD").write_bytes((head + "\n").encode("ascii"))
+    config = "[core]\n\tfilemode = " + ("false" if os.name == "nt" else "true") + "\n"
+    if commit and len(commit) == 64:
+        config += "\trepositoryformatversion = 1\n[extensions]\n\tobjectformat = sha256\n"
+    (path / "config").write_text(config, encoding="ascii")
+    try:
+        with common.directory.child("info") as info:
+            exclude = _read(info, "exclude", 32768)
+    except FileNotFoundError:
+        exclude = None
+    if exclude is not None:
+        (path / "info").mkdir()
+        (path / "info" / "exclude").write_bytes(exclude)
+    if raw_index is not None:
+        (path / "index").write_bytes(raw_index)
+    total = len(raw_index or b"")
+    # Split-index bases are addressed by their hash inside the copied index.
+    count = 0
+    with os.scandir(index.path) as entries:
+        for entry in entries:
+            check_cancelled()
+            if not re.fullmatch(r"sharedindex\.[0-9a-f]{40}(?:[0-9a-f]{24})?", entry.name):
+                continue
+            count += 1
+            if count > 32:
+                raise ValueError("Git observation supports at most 32 split index bases")
+            shared = _read(index.directory, entry.name, MAX_INDEX - total)
+            if shared is None:
+                raise ValueError("Git split index changed during observation")
+            total += len(shared)
+            (path / entry.name).write_bytes(shared)
+
+
+def _rows(output, prefix, policy, secrets):
+    if output and not output.endswith("\0"):
+        raise ValueError("Git returned an incomplete status")
+    rows = []
+    for entry in output[:-1].split("\0") if output else ():
+        xy, separator, name = entry[:2], entry[2:3], entry[3:]
+        if not STATUS.fullmatch(xy) or separator != " ":
+            raise ValueError("Git returned an unsupported status record")
+        path = PurePosixPath(name)
+        parts = path.parts
+        if (path.is_absolute() or not parts or ".." in parts or "\\" in name
+                or parts[:len(prefix)] != prefix or len(parts) == len(prefix)):
+            raise ValueError("Git returned a path outside the requested workspace")
+        visible = parts[len(prefix):]
+        name = "/".join(visible)
+        if (policy.excluded(visible, ignore_case=True) or KEY_PATTERN.search(name)
+                or "[REDACTED]" in name or "\ufffd" in name or redact(name, secrets) != name):
+            continue
+        rows.append({"path": name, "index": xy[0], "worktree": xy[1]})
+    return sorted(rows, key=lambda row: row["path"])
+
+
+def git_status(tools, path, limit):
+    from .tools import Tools
+
+    config = tools.config
+    if config.read_only or not config.tool_enabled("run"):
+        return {"approved": False, "error": "Git status requires enabled, approved command execution"}
+    if type(limit) is not int or not 1 <= limit <= 512:
+        raise ValueError("Git status limit must be from 1 to 512")
+    parts = tools._parts(path)
+    scope = "/".join(parts) or "."
+    executable = shutil.which("git")
+    if executable is None:
+        raise ValueError("Git executable not found on the process PATH")
+    executable = Path(executable).resolve()
+    with ExitStack() as stack:
+        root, common, index, objects, check = _repo(config.workdir, stack)
+        if executable.is_relative_to(root):
+            raise ValueError("Git observation refuses an executable inside the repository")
+        working = _PinnedDirectory(config.workdir, stack)
+        scratch = Path(stack.enter_context(tempfile.TemporaryDirectory(prefix="sprig-git-observe-"))).resolve()
+        if scratch.is_relative_to(root):
+            raise ValueError("Git observation requires a temporary directory outside the repository")
+        private = scratch / "private"
+        if os.name == "nt":
+            from .windows import private_directory
+            private_directory(private)
+        else:
+            private.mkdir(mode=0o700)
+        shadow = private / "snapshot.git"
+        state = None
+
+        def snapshot():
+            try:
+                index_path = index.path / "index"
+                index_identity = _identity(index_path)
+                info = index_path.lstat()
+                stamp = (index_identity, info.st_mtime_ns, info.st_size)
+            except FileNotFoundError:
+                stamp = None
+            return _read_ref(common, _read(index.directory, "HEAD", MAX_REF)), stamp
+
+        def confirm(description):
+            nonlocal state
+            proposal = ("GIT STATUS · fixed read-only host command with a temporary Git index\n"
+                        + "Repository: " + json.dumps(str(root)) + "\n" + description)
+            if not tools.request_approval(redact(proposal, config.secrets)):
+                return False
+            working.check()
+            check()
+            state = snapshot()
+            _prepare_shadow(shadow, common, index, state[0], tools._check_cancelled)
+            check()
+            return True
+
+        cap = min(1_000_000, config.command_output_limit or config.max_output)
+        env = (("GIT_CONFIG_NOSYSTEM", "1"), ("GIT_CONFIG_GLOBAL", os.devnull),
+               ("GIT_ATTR_NOSYSTEM", "1"), ("GIT_TERMINAL_PROMPT", "0"),
+               ("GIT_OPTIONAL_LOCKS", "0"), ("GIT_ALLOW_PROTOCOL", ""),
+               ("GIT_NO_LAZY_FETCH", "1"), ("GIT_OBJECT_DIRECTORY", str(objects)))
+        isolated = replace(config, command_sandbox="off", sandbox_read_dirs=(), inherit_env=False,
+                           env_allowlist=(), command_env=env, max_output=cap, command_output_limit=cap,
+                           command_log_dir=None)
+        runner = Tools(isolated, confirm, tools.cancel_event)
+        runner.instructions = tools.instructions
+        stack.callback(runner.close)
+        argv = [str(executable), "--no-pager", "--literal-pathspecs", "--git-dir", str(shadow),
+                "--work-tree", str(root), "-c", "core.fsmonitor=false", "-c", "core.hooksPath=" + os.devnull,
+                "-c", "core.attributesFile=" + os.devnull, "-c", "core.excludesFile=" + os.devnull,
+                "status", "--porcelain=v1", "-z", "--no-renames", "--untracked-files=all", "--ignore-submodules=all", "--", scope]
+        outcome = runner.execute("run", {"argv": argv})
+        if outcome.get("approved") is False:
+            return {"approved": False}
+        if outcome.get("returncode") != 0 or outcome.get("timed_out") or outcome.get("output_limited") or "error" in outcome:
+            return {"approved": outcome.get("approved", False), "error": "Git status did not complete within its safety limits; try a narrower path",
+                    "timed_out": bool(outcome.get("timed_out")), "output_limited": bool(outcome.get("output_limited"))}
+        check()
+        working.check()
+        if state != snapshot():
+            raise ValueError("Git HEAD or index changed during observation; request a fresh status")
+        tools.policy.reload()
+        prefix = tuple(config.workdir.relative_to(root).parts)
+        rows = _rows(outcome["output"], prefix, tools.policy, config.secrets)
+        payload = {"approved": True, "scope": scope, "head": state[0], "entries": [],
+                   "total": len(rows), "truncated": True}
+        used = len(json.dumps(payload, ensure_ascii=True))
+        if used + 1 > config.max_output:
+            return {"approved": True, "error": "Git status scope is too long for the display limit"}
+        page = payload["entries"]
+        for row in rows[:limit]:
+            used += len(json.dumps(row, ensure_ascii=True)) + 2
+            if used + 1 > config.max_output:
+                break
+            page.append(row)
+        payload["truncated"] = len(page) < len(rows)
+        return payload
