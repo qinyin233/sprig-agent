@@ -1799,6 +1799,7 @@ class SprigApp(App[int]):
                         "/job input ID \"原文\\n\" /job eof ID（各自新批准）；/job status|output|wait|cancel ID\n"
                         "/lsp（本地状态） /lsp definition|references|implementation|hover SERVER PATH 行 列；symbols|diagnostics SERVER PATH；workspace_symbols SERVER QUERY\n"
                         "/lsp rename SERVER PATH 行 列 新名称（计算后逐文件批准；可撤销）\n"
+                        "/lsp code_actions SERVER PATH 行 列 [结束行 结束列]；/lsp apply_code_action ID（新批准选择并逐文件审阅）\n"
                         "/continue /new /files /add 文件路径 /ref 文件路径 /unref 文件路径 /refs [clear]\n"
                         "/verify（仅固定检查；逐次批准，观察进入会话；不调用模型或自动继续）\n"
                         "/map [名称或路径查询] /git /diff /compact\n"

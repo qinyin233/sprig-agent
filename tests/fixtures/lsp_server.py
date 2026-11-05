@@ -56,7 +56,10 @@ def publish(uri):
     if active == "stale_diagnostics":
         send({"jsonrpc": "2.0", "method": "textDocument/publishDiagnostics", "params": {
             "uri": uri, "version": version - 1, "diagnostics": [{"range": span(), "message": "STALE_REPORT"}]}})
-    params = {"uri": uri, "diagnostics": [{"range": span(), "message": "fixture diagnostic", "severity": 1}]}
+    diagnostic_file = state / 'diagnostics.json'
+    items = json.loads(diagnostic_file.read_text(encoding='utf-8')) if diagnostic_file.exists() else [
+        {"range": span(), "message": "fixture diagnostic", "severity": 1}]
+    params = {"uri": uri, "diagnostics": items}
     if active != "versionless":
         params["version"] = version
     send({"jsonrpc": "2.0", "method": "textDocument/publishDiagnostics", "params": params})
@@ -79,7 +82,8 @@ while True:
         capabilities = {"textDocumentSync": {"openClose": True, "change": 1 if active == "full_sync" else 2},
                         "definitionProvider": True, "referencesProvider": True, "implementationProvider": True,
                         "hoverProvider": True, "documentSymbolProvider": True, "workspaceSymbolProvider": True,
-                        "renameProvider": {"prepareProvider": True} if active in {"rename_prepare","rename_prepare_null"} else True}
+                        "renameProvider": {"prepareProvider": True} if active in {"rename_prepare","rename_prepare_null"} else True,
+                        "codeActionProvider": True if active == 'no_action_resolve' else {'resolveProvider': True}}
         if active == "pull":
             capabilities["diagnosticProvider"] = {}
         if active == "utf8":
@@ -94,6 +98,8 @@ while True:
             capabilities.pop("workspaceSymbolProvider")
         if active == "no_rename":
             capabilities.pop("renameProvider")
+        if active == 'no_code_actions':
+            capabilities.pop('codeActionProvider')
         result = {"capabilities": capabilities}
     elif method in {"textDocument/didOpen", "textDocument/didChange"}:
         doc = params["textDocument"]
@@ -120,6 +126,13 @@ while True:
         result = json.loads(fixture.read_text(encoding="utf-8")) if fixture.exists() else [
             {"name": "symbol", "kind": 12, "containerName": "fixture", "location": {
                 "uri": Path(os.getcwd(), "main.cpp").as_uri(), "range": span()}, "data": {"command": "not executable"}}]
+    elif method == 'codeAction/resolve':
+        if active == 'waiting':
+            continue
+        if active == 'pause':
+            while not (state/'release').exists():
+                time.sleep(.005)
+        result = json.loads((state/'resolved-action.json').read_text(encoding='utf-8'))
     elif method and method.startswith("textDocument/"):
         if active == "waiting":
             continue
@@ -145,7 +158,12 @@ while True:
             for index, name in enumerate(("workspace/applyEdit", "workspace/executeCommand", "client/registerCapability", "workspace/configuration")):
                 send({"jsonrpc": "2.0", "id": "server-" + str(index), "method": name, "params": {"items": [{"section": "secret"}]}})
         uri = params["textDocument"]["uri"]
-        if method == "textDocument/prepareRename":
+        if method == 'textDocument/codeAction':
+            actions_file = state/'actions.json'
+            result = json.loads(actions_file.read_text(encoding='utf-8')) if actions_file.exists() else []
+            if active == 'context_required' and not params.get('context', {}).get('diagnostics'):
+                result = []
+        elif method == "textDocument/prepareRename":
             result = None if active == 'rename_prepare_null' else {"range":span(),"placeholder":"symbol"}
         elif method == "textDocument/rename":
             rename_file=state/'rename.json'

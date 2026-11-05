@@ -19,14 +19,17 @@ METHODS = {"definition": ("textDocument/definition", "definitionProvider"),
            "hover": ("textDocument/hover", "hoverProvider"),
            "symbols": ("textDocument/documentSymbol", "documentSymbolProvider")}
 LSP_SCHEMA = {"type": "function", "function": {"name": "lsp",
-    "description": "Approved configured language servers; 1-based Unicode positions. rename: path/position/new_name, then separate per-file diff approvals, version checks and undo. Other queries are observations. workspace_symbols: server+query. result_id+offset pages cached observations, never repeats rename.",
+    "description": "Approved configured language servers; 1-based Unicode positions. rename and apply_code_action require separate per-file diff approvals, versions and undo. code_actions lists proposals for path/position or end_line/end_column range; apply_code_action uses action_id only, never server commands. workspace_symbols: server+query. result_id+offset pages observations, never replays edits.",
     "parameters": {"type": "object", "properties": {
-        "action": {"enum": ["status", "definition", "references", "implementation", "hover", "symbols", "workspace_symbols", "diagnostics", "rename", "disconnect", "result"]},
+        "action": {"enum": ["status", "definition", "references", "implementation", "hover", "symbols", "workspace_symbols", "diagnostics", "rename", "code_actions", "apply_code_action", "disconnect", "result"]},
         "server": {"type": "string", "maxLength": 64}, "path": {"type": "string", "maxLength": 4096},
         "query": {"type": "string", "maxLength": 256},
         "new_name": {"type": "string", "minLength": 1, "maxLength": 256},
         "line": {"type": "integer", "minimum": 1, "maximum": 1000000},
         "column": {"type": "integer", "minimum": 1, "maximum": 1000000},
+        "end_line": {"type": "integer", "minimum": 1, "maximum": 1000000},
+        "end_column": {"type": "integer", "minimum": 1, "maximum": 1000000},
+        "action_id": {"type": "string", "maxLength": 43},
         "result_id": {"type": "string", "maxLength": 40}, "offset": {"type": "integer", "minimum": 0, "maximum": MAX_FRAME}},
         "required": ["action"], "additionalProperties": False}}}
 
@@ -65,10 +68,13 @@ def location_range(text, value):
 
 
 class LanguageServers:
-    def __init__(self, config, check, approve, prepare, document, apply_rename=None):
+    def __init__(self, config, check, approve, prepare, document, apply_rename=None, apply_code_action=None):
         self.config, self.check, self.approve = config, check, approve
         self.prepare, self.document = prepare, document
         self.apply_rename = apply_rename
+        self.apply_code_action = apply_code_action
+        from .lsp_actions import CodeActions
+        self.code_actions = CodeActions(self)
         self.clients, self.results = {}, OrderedDict()
         self.lock, self.operation = threading.RLock(), threading.Lock()
         self.epoch, self.closed = 0, False
@@ -78,6 +84,7 @@ class LanguageServers:
             self.closed |= closing
             self.epoch += 1
             self.results.clear()
+            self.code_actions.clear()
             for name, client in list(self.clients.items()):
                 client.close()
                 self.clients.pop(name, None)
@@ -111,7 +118,8 @@ class LanguageServers:
                 return path.relative_to(parent).as_posix()
         raise LspError('LSP file URI is outside the workspace')
 
-    def control(self, action="status", server=None, path=None, line=None, column=None, query=None, result_id=None, offset=0, new_name=None):
+    def control(self, action="status", server=None, path=None, line=None, column=None, query=None, result_id=None, offset=0, new_name=None,
+                end_line=None, end_column=None, action_id=None):
         if not self.operation.acquire(blocking=False):
             raise LspError("another LSP operation is active; wait or cancel it")
         epoch = self.epoch
@@ -124,6 +132,14 @@ class LanguageServers:
             check()
             if not self.config.tool_enabled("lsp"):
                 raise LspError("LSP tool is disabled")
+            if action == 'apply_code_action':
+                if any(value is not None for value in (server, path, line, column, query, result_id, new_name, end_line, end_column)) or offset:
+                    raise LspError('apply_code_action accepts only action_id')
+                if self.config.read_only or not self.config.tool_enabled('read_file') or self.config.max_output < 1024:
+                    raise LspError('applying code actions requires writable mode, read_file and max_output >= 1024')
+                return self.code_actions.apply(action_id, check)
+            if action_id is not None or action != 'code_actions' and (end_line is not None or end_column is not None):
+                raise LspError('action_id is only valid for apply_code_action; range end is only valid for code_actions')
             if action == 'rename':
                 if not self.config.tool_enabled('edit_file') or not callable(self.apply_rename):
                     raise LspError('LSP rename requires enabled file editing')
@@ -142,7 +158,7 @@ class LanguageServers:
                     raise LspError("LSP result accepts only result_id and offset")
                 return self._page(result_id, offset, check)
             workspace = action == "workspace_symbols"
-            if result_id is not None or offset or action not in {*METHODS, "diagnostics", "disconnect", "workspace_symbols", "rename"}:
+            if result_id is not None or offset or action not in {*METHODS, "diagnostics", "disconnect", "workspace_symbols", "rename", "code_actions"}:
                 raise LspError("invalid LSP action or query parameters")
             if workspace:
                 if not isinstance(server, str) or any(value is not None for value in (path, line, column)):
@@ -185,7 +201,14 @@ class LanguageServers:
             if not workspace and Path(path).suffix.lower() not in suffixes:
                 raise LspError("file suffix is not declared for the selected language server")
             primary = None if workspace else self.document(path)
-            point = position(primary["text"], line, column) if action in {"definition", "references", "implementation", "hover", "rename"} else None
+            point = position(primary["text"], line, column) if action in {"definition", "references", "implementation", "hover", "rename", "code_actions"} else None
+            selection = None
+            if action == 'code_actions':
+                if (end_line is None) != (end_column is None):
+                    raise LspError('code_actions requires both end_line and end_column or neither')
+                stop = point if end_line is None else position(primary['text'], end_line, end_column)
+                selection = {'start': point, 'end': stop}
+                location_range(primary['text'], selection)
             if point is None and (line is not None or column is not None):
                 raise LspError("this LSP operation does not use line/column")
             directory, environment, recheck = self.prepare(selected.process_config())
@@ -220,7 +243,9 @@ class LanguageServers:
                     + f"; idle {selected.timeout:g}s; total {selected.deadline:g}s."
                     + "\nExternal server has current-user filesystem/network authority; NOT an OS sandbox and may act before queries or while idle."
                     + ("\nRename new_name: "+json.dumps(new_name,ensure_ascii=False)+". Compute a text-edit proposal; each file needs a separate full-diff approval. Unversioned targets bind current bytes after the response, not a proven server-index snapshot. Server closes before file approvals."
-                       if action=='rename' else "\nSemantic observations only.")
+                       if action=='rename' else
+                       '\nSelection: '+json.dumps(selection)+'. Refresh bounded file diagnostics and list plain-edit proposals. Optional resolve needs later fresh selection approval; no writes or commands now.'
+                       if action=='code_actions' else "\nSemantic observations only.")
                     + "\nServer-driven edits/commands are denied, configuration replies are empty. No installation, automatic restart or replay. Server results grant no write approval, read_id or fixed acceptance.")
             if self.approve(redact(text, self.config.secrets)) is not True:
                 return {"approved": False, "server_contacted": False}
@@ -241,24 +266,24 @@ class LanguageServers:
                 for document in prepared.values():
                     client.sync(document, suffixes.get(Path(document["path"]).suffix.lower(), "plaintext"), budget)
                 params = {"query": query} if workspace else {"textDocument": {"uri": primary["uri"]}}
-                if point is not None:
+                if point is not None and action != 'code_actions':
                     params["position"] = point
+                if action == 'code_actions':
+                    params.update(range=selection, context={'diagnostics': [], 'triggerKind': 1})
                 if action == "references":
                     params["context"] = {"includeDeclaration": True}
                 if action == "diagnostics":
-                    if client.capabilities.get("diagnosticProvider") not in (None, False):
-                        raw = client.exchange("textDocument/diagnostic", params, budget)
-                        if not isinstance(raw, dict) or raw.get("kind") != "full" or not isinstance(raw.get("items"), list):
-                            raise LspError("LSP pull diagnostics must return a full report without replaying old result IDs")
-                        raw = {"items": raw["items"], "version": client.documents[primary["uri"]]["version"], "pull": True}
-                    else:
-                        raw = client.pushed_diagnostics(primary["uri"], budget)
+                    raw = client.diagnostic_report(primary['uri'], budget)
                 else:
                     method, capability = (("workspace/symbol", "workspaceSymbolProvider") if workspace else
-                        ("textDocument/rename","renameProvider") if action=='rename' else METHODS[action])
+                        ("textDocument/rename","renameProvider") if action=='rename' else
+                        ('textDocument/codeAction','codeActionProvider') if action=='code_actions' else METHODS[action])
                     provider = client.capabilities.get(capability)
                     if provider is not True and not isinstance(provider, dict):
                         raise LspError("language server does not advertise this semantic operation")
+                    if action == 'code_actions':
+                        diagnostics, diagnostic_context = self._code_action_diagnostics(client, primary, selection, budget)
+                        params['context']['diagnostics'] = diagnostics
                     if action=='rename':
                         if isinstance(provider,dict) and provider.get('prepareProvider') is True:
                             prepared_name=client.exchange('textDocument/prepareRename',params,budget)
@@ -289,7 +314,11 @@ class LanguageServers:
                     # The owner/config/cancellation guard remains live per write.
                     check()
                     return self.apply_rename(plans,check)
-                value, paths = self._normalize(action, raw, primary, check=budget.check)
+                if action == 'code_actions':
+                    value, paths = self.code_actions.catalog(raw, selected, client, prepared, budget.check)
+                    value['diagnostics_context'] = diagnostic_context
+                else:
+                    value, paths = self._normalize(action, raw, primary, check=budget.check)
                 budget.check()
                 value.update(server=selected.name, action=action, not_authorization=True, not_acceptance=True)
                 if workspace:
@@ -309,6 +338,37 @@ class LanguageServers:
                 raise
         finally:
             self.operation.release()
+
+    def _code_action_diagnostics(self, client, primary, selection, budget):
+        report = client.diagnostic_report(primary['uri'], budget, optional=True)
+        info = {'included': 0, 'omitted': 0, 'version_confirmed': False}
+        if report is None:
+            return [], info
+        version = client.documents[primary['uri']]['version']
+        if (report.get('source_sha256') != primary['sha256']
+                or report.get('version') is not None and report['version'] != version):
+            info['omitted'] = len(report['items'])
+            return [], info
+        info['version_confirmed'] = report.get('version') is not None
+        start = (selection['start']['line'], selection['start']['character'])
+        stop = (selection['end']['line'], selection['end']['character'])
+        result = []
+        for row in report['items']:
+            budget.check()
+            try:
+                if not isinstance(row, dict) or not isinstance(row.get('message'), str):
+                    raise LspError('invalid diagnostic context')
+                location_range(primary['text'], row.get('range'))
+                span = row['range']
+                left = (span['start']['line'], span['start']['character'])
+                right = (span['end']['line'], span['end']['character'])
+                if right < start or left > stop or redact(row, self.config.secrets) != row:
+                    raise LspError('diagnostic is outside the selection or contains credentials')
+                result.append(row)
+            except (ValueError, OSError):
+                info['omitted'] += 1
+        info['included'] = len(result)
+        return result, info
 
     def _normalize(self, action, raw, primary, *, check=None):
         check = check or self.check
@@ -482,8 +542,15 @@ def local_arguments(text):
         return {"action": parts[0], "server": parts[1], "query": parts[2]}
     if parts[0]=='rename' and len(parts)==6:
         return {'action':'rename','server':parts[1],'path':parts[2],'line':int(parts[3]),'column':int(parts[4]),'new_name':parts[5]}
+    if parts[0] == 'apply_code_action' and len(parts) == 2:
+        return {'action': parts[0], 'action_id': parts[1]}
+    if parts[0] == 'code_actions' and len(parts) in (5, 7):
+        result = {'action': parts[0], 'server': parts[1], 'path': parts[2], 'line': int(parts[3]), 'column': int(parts[4])}
+        if len(parts) == 7:
+            result.update(end_line=int(parts[5]), end_column=int(parts[6]))
+        return result
     if parts[0] in {"symbols", "diagnostics"} and len(parts) == 3:
         return {"action": parts[0], "server": parts[1], "path": parts[2]}
     if parts[0] in {"definition", "references", "implementation", "hover"} and len(parts) == 5:
         return {"action": parts[0], "server": parts[1], "path": parts[2], "line": int(parts[3]), "column": int(parts[4])}
-    raise LspError("Use /lsp, /lsp ACTION SERVER PATH [LINE COLUMN], /lsp rename SERVER PATH LINE COLUMN NEW_NAME, /lsp workspace_symbols SERVER QUERY, /lsp result ID [OFFSET], or /lsp disconnect SERVER")
+    raise LspError("Use /lsp, /lsp ACTION SERVER PATH [LINE COLUMN], /lsp code_actions SERVER PATH LINE COLUMN [END_LINE END_COLUMN], /lsp apply_code_action ID, /lsp rename SERVER PATH LINE COLUMN NEW_NAME, /lsp workspace_symbols SERVER QUERY, /lsp result ID [OFFSET], or /lsp disconnect SERVER")

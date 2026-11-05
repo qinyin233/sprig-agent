@@ -160,7 +160,7 @@ class Client:
             if len(params["diagnostics"]) > 256:
                 raise LspError("LSP diagnostics exceed 256 entries")
             bounded(params["diagnostics"], 131072, depth=24, nodes=16384)
-            self.diagnostics[uri] = {"version": version, "items": params["diagnostics"]}
+            self.diagnostics[uri] = {"version": version, "source_sha256": doc["sha256"], "items": params["diagnostics"]}
         return None
 
     def _pump(self, budget):
@@ -251,12 +251,16 @@ class Client:
                 "window": {"workDoneProgress": False},
                 "textDocument": {"synchronization": {"dynamicRegistration": False, "didSave": False},
                     "rename": {"dynamicRegistration": False, "prepareSupport": True, "prepareSupportDefaultBehavior": 1, "honorsChangeAnnotations": False},
+                    "codeAction": {"dynamicRegistration": False, "codeActionLiteralSupport": {"codeActionKind": {
+                        "valueSet": ['', 'quickfix', 'refactor', 'refactor.extract', 'refactor.inline', 'refactor.rewrite', 'source', 'source.organizeImports', 'source.fixAll']}},
+                        "isPreferredSupport": True, "disabledSupport": True, "dataSupport": True,
+                        "resolveSupport": {"properties": ['edit']}, "honorsChangeAnnotations": False},
                     "definition": {"dynamicRegistration": False, "linkSupport": True},
                     "references": {"dynamicRegistration": False}, "implementation": {"dynamicRegistration": False, "linkSupport": True},
                     "hover": {"dynamicRegistration": False, "contentFormat": ["plaintext"]},
                     "documentSymbol": {"dynamicRegistration": False, "hierarchicalDocumentSymbolSupport": True},
                     "diagnostic": {"dynamicRegistration": False, "relatedDocumentSupport": False},
-                    "publishDiagnostics": {"versionSupport": True, "relatedInformation": False}}}}, budget)
+                    "publishDiagnostics": {"versionSupport": True, "dataSupport": True, "relatedInformation": False}}}}, budget)
         if not isinstance(result, dict) or not isinstance(result.get("capabilities"), dict):
             raise LspError("LSP initialize requires server capabilities")
         bounded(result["capabilities"], 65536, depth=24, nodes=8192)
@@ -296,8 +300,25 @@ class Client:
         self.documents.move_to_end(uri)
         return version
 
-    def pushed_diagnostics(self, uri, budget):
-        until = min(budget.deadline, time.monotonic() + min(5, self.server.timeout))
+    def diagnostic_report(self, uri, budget, *, optional=False):
+        if self.capabilities.get('diagnosticProvider') not in (None, False):
+            report = self.exchange('textDocument/diagnostic', {'textDocument': {'uri': uri}}, budget)
+            if not isinstance(report, dict) or report.get('kind') != 'full' or not isinstance(report.get('items'), list):
+                raise LspError('LSP pull diagnostics must return a full report without replaying old result IDs')
+            if len(report['items']) > 256:
+                raise LspError('LSP diagnostics exceed 256 entries')
+            bounded(report['items'], 131072, depth=24, nodes=16384)
+            document = self.documents[uri]
+            return {'items': report['items'], 'version': document['version'],
+                    'source_sha256': document['sha256'], 'pull': True}
+        wait = None
+        if optional:
+            budget.check()
+            wait = max(0, min(budget.deadline, budget.last + budget.idle) - time.monotonic()) / 2
+        return self.pushed_diagnostics(uri, budget, wait=wait)
+
+    def pushed_diagnostics(self, uri, budget, *, wait=None):
+        until = min(budget.deadline, time.monotonic() + min(5, self.server.timeout, wait if wait is not None else 5))
         while True:
             budget.check()
             for _ in range(64):

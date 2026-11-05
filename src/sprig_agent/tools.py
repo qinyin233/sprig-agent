@@ -143,7 +143,7 @@ class Tools:
         self.mcp_manager = McpManager(config, self._check_mcp, self.request_approval, self._prepare_mcp_process)
         self.web = WebFetcher(config, self._check_mcp, self.request_approval)
         self.jobs = Jobs(config, self._check_mcp)
-        self.lsp_manager = LanguageServers(config, self._check_mcp, self.request_approval, self._prepare_mcp_process, self._lsp_document, self._lsp_rename)
+        self.lsp_manager = LanguageServers(config, self._check_mcp, self.request_approval, self._prepare_mcp_process, self._lsp_document, self._lsp_rename, self._lsp_code_action)
         self._jobs_revision = self.jobs.revision
 
     def _check_mcp(self):
@@ -454,6 +454,13 @@ class Tools:
                 self.index.clear()
 
     def _lsp_rename(self, plans, guard):
+        return self._lsp_text_edits(plans, guard, 'rename')
+
+    def _lsp_code_action(self, plans, guard):
+        return self._lsp_text_edits(plans, guard, 'apply_code_action')
+
+    def _lsp_text_edits(self, plans, guard, action):
+        label = 'rename' if action == 'rename' else 'code action'
         requests=[]
         for plan in plans:
             doc=plan['document']
@@ -465,7 +472,7 @@ class Tools:
             after=plan['after'][1:] if doc['text'].startswith('\ufeff') else plan['after']
             requests.append(('edit_file',{'path':doc['path'],'sha256':doc['sha256'],
                 'line_edits':[{'start_line':1,'end_line':total,'new':after}]},None))
-        result={'action':'rename','approved':True,'changed':False,'changed_files':0,'requested_files':len(requests),
+        result={'action':action,'approved':True,'changed':False,'changed_files':0,'requested_files':len(requests),
                 'unversioned_target_files':sum(not plan['version_confirmed'] for plan in plans),'not_acceptance':True}
         if not requests:
             guard();return result
@@ -485,14 +492,14 @@ class Tools:
             try:
                 guard()
             except (ValueError,OSError) as error:
-                result.update(error='LSP rename owner expired; inspect completed files and backups before continuing',
+                result.update(error=f'LSP {label} owner expired; inspect completed files and backups before continuing',
                     reason='owner_expired',partial=result['changed'],detail=detail({'error':str(error)}))
                 return True
             return False
         with self.edit_batch(requests,guard,model_action=self.instructions.model_action_active) as blocked:
             if blocked is not None:
                 failed=next((value for value in blocked if value.get('batch_preflight')=='failed'),blocked[0])
-                return bounded({**result,'error':'LSP rename batch preflight failed; no rename writes executed','reason':'preflight','detail':detail(failed)})
+                return bounded({**result,'error':f'LSP {label} batch preflight failed; no writes executed','reason':'preflight','detail':detail(failed)})
             result['batch_id']=self._edit_batch.identity
             for index,(name,arguments,_) in enumerate(requests):
                 if expired():return bounded(result)
@@ -504,7 +511,7 @@ class Tools:
                     result.update(partial=result['changed'] or uncertain,stopped_file_index=index+1,
                         reason='rejected' if value.get('approved') is False else 'file_error',
                         detail=detail(value),
-                        error='LSP rename stopped; inspect the changed prefix and backups before requesting a new operation')
+                        error=f'LSP {label} stopped; inspect the changed prefix and backups before requesting a new operation')
                     if value.get('approved') is False:result['approved']=False
                     if uncertain:result['outcome']='uncertain'
                     return bounded(result)

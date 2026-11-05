@@ -127,7 +127,9 @@ class Agent:
             lsp_schema=copy.deepcopy(LSP_SCHEMA)
             if not config.tool_enabled('edit_file'):
                 lsp_schema['function']['parameters']['properties']['action']['enum'].remove('rename')
+                lsp_schema['function']['parameters']['properties']['action']['enum'].remove('apply_code_action')
                 lsp_schema['function']['parameters']['properties'].pop('new_name')
+                lsp_schema['function']['parameters']['properties'].pop('action_id')
                 lsp_schema['function']['description']='Approved configured language-server queries only; file editing disabled. 1-based Unicode positions. result_id+offset pages cached observations.'
             self.schemas.append(lsp_schema)
         self._job_notified = set()
@@ -1074,7 +1076,7 @@ class Agent:
                             self.references.files = selected
                             self.references.observed = [row for row in self.references.observed
                                                         if row["path"] in selected and row["path"] != arguments.get("destination")]
-                    if ((name in {"edit_file", "edit_lines", "file_action"} or name=="lsp" and result.get("action")=="rename") and result.get("approved") is True
+                    if ((name in {"edit_file", "edit_lines", "file_action"} or name=="lsp" and result.get("action") in {'rename','apply_code_action'}) and result.get("approved") is True
                             and result.get("changed") is True and "error" not in result
                             and not any(result.get(flag) for flag in ("outcome", "skipped", "cancelled", "interrupted"))):
                         edited = True

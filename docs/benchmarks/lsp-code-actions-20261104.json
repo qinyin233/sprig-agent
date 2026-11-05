@@ -1,0 +1,142 @@
+{
+  "schema": 1,
+  "implementation_date": "2026-11-04",
+  "validation_date": "2026-11-05",
+  "base_commit": "b51652611592a685637b5a1f18b3283da16ad9a5",
+  "scope": "Diagnosis-aware LSP code action proposals and explicit selection of existing-file text edits.",
+  "source_seal": {
+    "files": 281,
+    "sha256": "a8c700b773dd158f585761f5fc2d5d0756ffbf3eca164f29ca403d63fcac840b",
+    "selection": "Tracked and new Python, project, lock, fixture and CI inputs. Docs and local environments excluded."
+  },
+  "checks": {
+    "windows_full": {
+      "step": "full",
+      "exit_code": 0,
+      "seconds": 863.46,
+      "log_sha256": "8a0b0bc884b626303d2d28b10afb2dd4a735f0208851522311da92706a749235",
+      "total": 1790,
+      "passed": 1757,
+      "skipped": 33,
+      "test_seconds": 855.508
+    },
+    "windows_build": {
+      "step": "build",
+      "exit_code": 0,
+      "seconds": 22.24,
+      "log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "windows_help": {
+      "step": "help",
+      "exit_code": 0,
+      "seconds": 0.41,
+      "log_sha256": "3911d13e8f67ab9f61aeec404262227e65739be4bafbb90a9ffd7e4bca097fbd"
+    },
+    "windows_editable": {
+      "step": "editable",
+      "exit_code": 0,
+      "seconds": 20.88,
+      "log_sha256": "9135f5d3734c04d8f64fb339db926c8d5eb4230d6ccecd4cba4ca587c10c5c7f"
+    },
+    "windows_mini": {
+      "step": "mini",
+      "exit_code": 0,
+      "seconds": 60.17,
+      "log_sha256": "b8fe7cb37fa908c8f0b0978f52a7a16c26a5c151f08af3283d0c116f92ae3cc6",
+      "total": 30,
+      "passed": 30,
+      "skipped": 0,
+      "test_seconds": 55.407
+    },
+    "windows_py311": {
+      "step": "py311",
+      "exit_code": 0,
+      "seconds": 17.29,
+      "log_sha256": "77cdda62b5dd0d3903ce77b2aae12dad26aa3a441818961b5713c3da2f758196",
+      "total": 25,
+      "passed": 25,
+      "skipped": 0,
+      "test_seconds": 13.314
+    },
+    "wsl_full": {
+      "step": "full",
+      "exit_code": 0,
+      "seconds": 694.52,
+      "log_sha256": "ba325dfb8698a1e5cd246f89146440e380fa7be6acc0be41d42bf68ac466e5fa",
+      "total": 1790,
+      "passed": 1765,
+      "skipped": 25,
+      "test_seconds": 672.745
+    },
+    "wsl_mini": {
+      "step": "mini",
+      "exit_code": 0,
+      "seconds": 432.59,
+      "log_sha256": "13110e9fbb2fd01f74f537435c2ff9f8d1b3d377a39dfb40a348689f5973ecd6",
+      "total": 30,
+      "passed": 30,
+      "skipped": 0,
+      "test_seconds": 250.03
+    }
+  },
+  "package": {
+    "modules": 86,
+    "wheel_matches_source": true,
+    "sdist_matches_source": true,
+    "fresh_locked_wheel_import": {
+      "imported_modules": 85,
+      "version": "3.13.0"
+    },
+    "fresh_console_help": true
+  },
+  "new_test_methods": 25,
+  "related_tests_passed": 42,
+  "tool_schema": {
+    "configured_schemas_checked": 11,
+    "lsp_compact_json_bytes": 1302,
+    "fixture_request_byte_limit": 16384
+  },
+  "model_transports": {
+    "protocols": [
+      "chat_completions",
+      "messages",
+      "responses"
+    ],
+    "encodings": [
+      "json",
+      "sse"
+    ],
+    "scripted_loopback_cases": 6,
+    "external_model_requests": 0
+  },
+  "real_clangd_windows": {
+    "passed": true,
+    "engine_sha256": "695b84de39702b15f1ba10ae2db7ed67d287d235c78796ed22e8d5c4af4e6edb",
+    "changed_files": 1,
+    "unversioned_target_files": 0,
+    "diagnostic_context": {
+      "included": 1,
+      "omitted": 0,
+      "version_confirmed": true
+    },
+    "post_fix_diagnostics_empty": true,
+    "no_prior_diagnostics_query": true,
+    "bom_crlf_unicode_preserved": true,
+    "undo_redo_exact": true,
+    "approved_operations": 6,
+    "server_stopped_before_writes": true,
+    "external_model_requests": 0,
+    "scope": "real clangd quick fix on disposable C++; not a model or repository coding benchmark"
+  },
+  "original_drafts_preserved": 9,
+  "native_ci_at_recording": {
+    "recording_boundary": "local pre-push validation",
+    "required_gate": "Offline tests for the feature commit SHA",
+    "prior_gate": {
+      "run_id": 41838726729,
+      "commit": "b51652611592a685637b5a1f18b3283da16ad9a5",
+      "required_jobs_passed": 15
+    }
+  },
+  "evidence_boundary": "Disposable compiler quick fix and integration verification. Repository task and model capability scores remain separate."
+}

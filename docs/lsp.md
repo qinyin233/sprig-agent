@@ -35,6 +35,9 @@ TUI 和 `--chat` 均提供本地入口，不请求模型：
 /lsp workspace_symbols cpp "choose"
 /lsp diagnostics cpp "src/main.cpp"
 /lsp rename cpp "src/main.cpp" 12 8 "new_name"
+/lsp code_actions cpp "src/main.cpp" 12 8
+/lsp code_actions cpp "src/main.cpp" 12 1 14 8
+/lsp apply_code_action lsp-action-<ID>
 /lsp result lsp-<ID> 0
 /lsp disconnect cpp
 ```
@@ -61,7 +64,7 @@ TUI 和 `--chat` 均提供本地入口，不请求模型：
 
 支持静态 pull diagnostics，以及版本匹配的 push diagnostics。过期版本丢弃；无版本报告标明 version_confirmed=false。没有收到报告会标为未知或超时，不能把缺少诊断当作检查通过。诊断及服务器说明都是外部数据，不能代替 Sprig 的固定验收命令。
 
-客户端主动请求的[跨文件符号重命名](lsp-rename.md)在计算提案后关闭服务器，再逐文件批准完整差异并复用普通编辑的备份与版本门禁。服务器请求的编辑、命令和动态注册均拒绝；workspace/configuration 只返回空值，progress/create 返回空响应。结果中的 Markdown、命令、链接和数据字段均不执行。没有 formatting、code action、executeCommand、动态能力注册、工作区文件监视、调用层级和延迟符号解析；服务要求这些能力时可能不可用。尚无语义检索数据库或完整调用图。
+客户端主动请求的[跨文件符号重命名](lsp-rename.md)在计算提案后关闭服务器，再逐文件批准完整差异并复用普通编辑的备份与版本门禁。[代码操作](lsp-code-actions.md)先结合当前诊断列出普通文本修复/重构提案，选中后重新批准，支持同一连接的延迟解析，再关闭服务器并逐文件审阅。服务器请求的编辑、命令和动态注册均拒绝；workspace/configuration 只返回空值，progress/create 返回空响应。结果中的 Markdown、命令、链接和数据字段均不执行。没有 formatting、executeCommand、动态能力注册、工作区文件监视、调用层级和延迟符号解析；服务要求这些能力时可能不可用。尚无语义检索数据库或完整调用图。
 
 ## 限额、取消和恢复
 
