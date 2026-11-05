@@ -3,6 +3,7 @@ include config.example.toml config.schema.json
 recursive-include docs *.md *.json
 include tests/fixtures/mcp_stdio_server.py
 include tests/fixtures/lsp_server.py
+include tests/fixtures/owned_session.py
 include tests/fixtures/external_editor_terminal.py
 recursive-include examples/skills *.md
 recursive-include scripts *.py *.ps1

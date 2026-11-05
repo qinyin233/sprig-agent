@@ -30,7 +30,7 @@ from .command_logs import BackgroundLog, CommandLogs, LogCapture
 from .questions import answer_result, validate_questions
 from .skills import Skills
 from .mcp import McpManager
-from .mcp_process import poll_unreaped, signal_group
+from .mcp_process import finish_session, poll_unreaped
 from .web_fetch import WebFetcher
 from .jobs import Jobs
 from .lsp import LanguageServers
@@ -1505,11 +1505,11 @@ class Tools:
                         time.sleep(min(0.01, remaining))
         finally:
             self.read_versions.clear()
-            # Also clean up descendants that inherited the process group / pipe.
-            signal_group(process, signal.SIGKILL)
-            process.wait()
-            process.stdout.close()
-            self.read_versions.clear()
+            try:
+                finish_session(process)
+            finally:
+                process.stdout.close()
+                self.read_versions.clear()
         summary = stream.finish()
         result = {"approved": True, "returncode": process.returncode, "streamed": bool(self.emit_output),
                 "output": output.decode("utf-8", errors="replace"),

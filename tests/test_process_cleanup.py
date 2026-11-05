@@ -2,6 +2,7 @@
 import os
 from pathlib import Path
 import signal
+import subprocess
 import sys
 import tempfile
 import time
@@ -11,6 +12,23 @@ from unittest.mock import Mock, patch
 
 from sprig_agent.console_process import ConsoleProcess
 from sprig_agent.mcp_process import Process, poll_unreaped, signal_group, _darwin_wait, _darwin_poll
+
+
+@unittest.skipUnless(sys.platform == 'linux', 'Linux process descriptors and procfs')
+class OwnedSessionTests(unittest.TestCase):
+    def verify_cleanup(self, mode):
+        fixture = Path(__file__).with_name('fixtures') / 'owned_session.py'
+        result = subprocess.run([sys.executable, '-I', '-B', str(fixture), mode],
+                                capture_output=True, text=True, timeout=20)
+        if result.returncode == 77:
+            self.skipTest('Linux fixture requires procfs and pidfd support')
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+
+    def test_foreground_exit_cleans_a_second_process_group(self):
+        self.verify_cleanup('exit')
+
+    def test_background_cancel_cleans_a_second_process_group(self):
+        self.verify_cleanup('cancel')
 
 
 @unittest.skipIf(os.name == 'nt', 'POSIX process groups; Windows uses owned job handles')

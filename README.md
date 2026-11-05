@@ -447,7 +447,7 @@ uv run python scripts/live-tui-smoke.py
 - 文件工具的路径检查不构成面对恶意并发文件修改、硬链接或任意命令的完整安全边界。需要隔离时，请另外使用受限账户或容器
 - 支持文本与静态图片输入、普通 function tools、MCP HTTP/stdio 和公开网页文本读取；尚无 PDF/音频、浏览器操作或多代理；上下文压缩需要用户明确启用
 - `--max-steps` 限制循环步数，`--max-context-bytes` 限制发送大小；均不是精确 token / 费用预算，也不保证适合每个模型的上下文窗口
-- 网络请求默认不重试，临时 HTTP 错误可明确启用有界重试，不重发不完整响应；POSIX 命令使用进程组终止机制，不承诺清理主动脱离进程组的进程；Windows 命令使用 Job Object
+- 网络请求默认不重试，临时 HTTP 错误可明确启用有界重试。Windows 命令使用 Job Object，POSIX 使用进程组。Linux 的 pidfd 和 `/proc` 可用时，同一归属会话内的其他进程组也会回收。独立会话和外部服务有自己的生命周期。[进程清理](docs/background-jobs.md)
 - HTTP 超时是 socket 等待超时，持续缓慢返回的响应可能超过所设秒数；响应仍有 2 MiB 大小限制，可用 Ctrl-C 中断
 - “OpenAI-compatible” 不保证模型、工具格式和响应行为兼容；所选服务与模型必须支持配置的协议和客户端函数工具
 - Windows 需要支持受保护 DACL 的文件系统及 Job Object API（Windows 10+）；不支持 FAT/exFAT 会话目录，或权限/作业策略禁止必要 API 的环境

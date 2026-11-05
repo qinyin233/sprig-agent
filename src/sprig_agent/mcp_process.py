@@ -95,6 +95,26 @@ def signal_group(child, sig):
     return True
 
 
+def finish_session(child, *, kill_group=True):
+    """Finish a command started with start_new_session and reap its leader."""
+    if kill_group:
+        signal_group(child, signal.SIGKILL)
+    deadline = time.monotonic() + 5
+    try:
+        if sys.platform == 'linux' and child.returncode is None:
+            from .linux_session import stop_members
+            while poll_unreaped(child) is None:
+                if time.monotonic() >= deadline:
+                    raise TimeoutError('owned session leader did not exit after termination')
+                time.sleep(.01)
+            stop_members(child.pid, deadline)
+    finally:
+        try:
+            child.wait(timeout=max(0, deadline - time.monotonic()))
+        except subprocess.TimeoutExpired:
+            raise TimeoutError('owned process did not exit after termination') from None
+
+
 class Process:
     def __init__(self, argv, directory, env):
         self.closed = False
@@ -188,11 +208,10 @@ class Process:
             if group_present:
                 time.sleep(.02)
         finally:
-            if group_present:
-                signal_group(self.child, signal.SIGKILL)
             try:
-                self.child.wait(timeout=5)
+                finish_session(self.child, kill_group=group_present)
             finally:
-                self.closed = True
-                self.child.stdout.close()
-                self.child.stderr.close()
+                if self.child.returncode is not None:
+                    self.closed = True
+                    self.child.stdout.close()
+                    self.child.stderr.close()
