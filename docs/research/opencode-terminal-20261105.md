@@ -13,3 +13,5 @@ Sprig 已有逐次批准的后台管道输入、有限输出和完成日志。�
 产品接入后用真实终端验证 CLI 中文输入、TUI Enter、单键、尺寸变化、拒绝批准及重置后的后代回收。另一组一次性测试分别在 Windows 和 WSL 输出 4096 条记录和独立末尾标记。按每页 4 KiB 的序列化预算读取，各得到 63 页，能找回全部记录和末尾标记。PTY 流含终端控制及物理换行，显示经过转义，整屏重绘仍需屏幕渲染器。[终端操作](../background-jobs.md#受管终端会话)
 
 OpenCode 自身的 TUI 使用 `EmbeddedTerminalRenderable`，与 GUI 的 `ghostty-web` 界面分开。终端面板接收快照、按顺序应用输出和尺寸事件，尺寸切换可带画面检查点。键盘处理仅在终端取得焦点时接管，并保留应用前导键。Sprig 后续画面视图需要保留这三种边界，即有界画面状态、尺寸与输出的顺序、明确的键盘焦点。模型输入仍经现有批准路径。[OpenCode TUI 面板](https://github.com/anomalyco/opencode/blob/32e70a84edca690612d3b1760b0c4782537b4b93/packages/tui/src/component/terminal-pane.tsx)
+
+Sprig 使用锁定的 pyte 0.8.2 维护文本画面，加入有限控制序列、备用屏和全帧凭据复查。画面尺寸只跟随获批的 PTY 调整，读取不执行程序输入。实测 Windows `more.com` 和 WSL `less` 的真实翻页与退出，两端模型可读快照均精确限制到 1024 序列化字节。原生 TUI 回归另验证备用屏重绘、Enter 焦点和任务重置后的清空。宽字符局部覆盖可在 pyte 留下空续格，Sprig 的有界显示遍历会处理孤立续格。[pyte 发布源码](https://pypi.org/project/pyte/0.8.2/)

@@ -131,6 +131,7 @@ class Agent:
             if not terminal_jobs:
                 props = job_schema['function']['parameters']['properties']
                 props['action']['enum'].remove('resize')
+                props['action']['enum'].remove('screen')
                 props.pop('columns')
                 props.pop('rows')
                 job_schema['function']['description'] = ('Owned background jobs. Fresh approval for cancel, input and EOF. '

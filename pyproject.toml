@@ -14,6 +14,7 @@ dependencies = [
     "google-re2==1.1.20251105",
     "jsonschema>=4.26",
     "pillow>=12.2,<14",
+    "pyte==0.8.2",
     "pyyaml>=6.0.3",
     "textual>=8.2.8",
     "tree-sitter==0.25.2",

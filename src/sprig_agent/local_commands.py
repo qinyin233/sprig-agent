@@ -21,7 +21,7 @@ COMMANDS = {
     "mcp": "查看外部服务状态；connect 和每次 RPC 单独批准",
     "web": "本地网页缓存状态；URL 逐次批准 GET，result 按句柄分页",
     "jobs": "列出当前对话的后台命令；完成不等于验收",
-    "job": "后台任务或 PTY。input、resize、管道 eof 各自新批准",
+    "job": "后台任务与 PTY 画面。input、resize、管道 eof 各自新批准",
     "lsp": "语义查询、code_actions 提案；apply_code_action/rename 逐文件批准，可撤销",
     "discard-history": "清除修改备份", "sessions": "列出会话", "save": "保存会话",
     "restore": "恢复会话", "delete": "删除会话", "prune": "清理旧会话",

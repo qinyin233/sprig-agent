@@ -19,9 +19,9 @@ MAX_INPUT, MAX_JOB_INPUT, INPUT_TIMEOUT = 4096, 65536, 2
 TERMINAL_SIZE = (80, 24)
 INPUT_FAILURE = "background stdin delivery failed; effects may be incomplete; no input was replayed"
 JOB_SCHEMA = {"type": "function", "function": {
-    "name": "job", "description": "Owned jobs: list/status/output/wait (<=30s). Freshly approve cancel, exact UTF-8 input (<=4KiB), pipe EOF, or PTY resize. Input requires run(background=true,stdin='pipe' or 'pty'). Output offsets are UTF-8 bytes. Keep end for a stable prefix. Finished jobs may have log.log_id. Exit is not fixed acceptance.",
+    "name": "job", "description": "Owned jobs: list/status/output/wait (<=30s) and screen for the current PTY frame. Freshly approve cancel, exact UTF-8 input (<=4KiB), pipe EOF, or PTY resize. Output offsets are UTF-8 bytes. Keep end for a stable prefix. Exit is not fixed acceptance.",
     "parameters": {"type": "object", "properties": {
-        "action": {"enum": ["list", "status", "output", "wait", "cancel", "input", "eof", "resize"]},
+        "action": {"enum": ["list", "status", "output", "wait", "cancel", "input", "eof", "resize", "screen"]},
         "job_id": {"type": "string", "maxLength": 40},
         "text": {"type": "string", "minLength": 1, "maxLength": MAX_INPUT},
         "columns": {"type": "integer", "minimum": 20, "maximum": 200},
@@ -43,11 +43,15 @@ class InputProposal:
 
 
 class Output:
-    def __init__(self, secrets, log=None):
+    def __init__(self, secrets, log=None, terminal=None):
         self.decoders = {name: codecs.getincrementaldecoder("utf-8")(errors="replace") for name in ("stdout", "stderr")}
         self.data = bytearray()
         self.limited, self.suppressed = False, False
         self.log = log
+        self.screen = None
+        if terminal is not None:
+            from .terminal_screen import TerminalScreen
+            self.screen = TerminalScreen(*terminal)
         self.streams = {name: TextOutput(self._accept, secrets) for name in self.decoders}
 
     def _accept(self, text):
@@ -55,6 +59,8 @@ class Output:
             return
         if self.log is not None:
             self.log.write(text)
+        if self.screen is not None:
+            self.screen.feed(text)
         raw = text.encode("utf-8")
         remaining = MAX_RETAINED - len(self.data)
         self.data.extend(raw[:remaining])
@@ -85,13 +91,14 @@ class Job:
         self.started = time.monotonic()
         self.cancel, self.done = threading.Event(), threading.Event()
         self.state, self.code, self.bytes = "running", None, 0
-        self.output = Output(secrets, log)
+        self.terminal_size = TERMINAL_SIZE if stdin == 'pty' else None
+        self.output = Output(secrets, log, self.terminal_size)
         self.log, self.log_status = log, log_status
         self.thread = None
         self.error = None
         self.cwd, self.directory_identity = directory, identity_cwd
         self.stdin_mode, self.stdin_open = stdin, stdin != 'closed'
-        self.terminal_size = TERMINAL_SIZE if stdin == 'pty' else None
+        self.terminal_io = threading.Lock()
         self.stdin_bytes, self.input_version = 0, 0
         self.input_failure = False
         self.input_stop = False
@@ -243,10 +250,15 @@ class Jobs:
                 if time.monotonic() >= until:
                     raise TimeoutError("stdin write deadline expired")
                 if proposal.size is not None:
-                    if row.process.resize(*proposal.size, nonblocking=True):
-                        with self.lock:
-                            row.terminal_size = proposal.size
-                        return result(True)
+                    if row.terminal_io.acquire(blocking=False):
+                        try:
+                            if row.process.resize(*proposal.size, nonblocking=True):
+                                with self.lock:
+                                    row.output.screen.resize(*proposal.size)
+                                    row.terminal_size = proposal.size
+                                return result(True)
+                        finally:
+                            row.terminal_io.release()
                 elif proposal.data is None:
                     if row.process.close_input(nonblocking=True):
                         with self.lock:
@@ -299,20 +311,22 @@ class Jobs:
                     for _ in range(16):
                         if row.cancel.is_set() or time.monotonic() - row.started >= row.seconds:
                             break
-                        data = row.process.read(channel)
+                        with row.terminal_io:
+                            data = row.process.read(channel)
+                            if data:
+                                with self.lock:
+                                    remaining = row.cap - row.bytes
+                                    row.bytes += len(data)
+                                    row.output.write(channel, data[:max(remaining, 0)])
                         if data is None:
                             break
                         if not data:
                             channels.remove(channel)
                             break
                         received = True
-                        with self.lock:
-                            remaining = row.cap - row.bytes
-                            row.bytes += len(data)
-                            row.output.write(channel, data[:max(remaining, 0)])
-                            if len(data) > remaining:
-                                state = "output_limited"
-                                break
+                        if len(data) > remaining:
+                            state = "output_limited"
+                            break
                     if state == "output_limited":
                         break
                 if state == "output_limited":
@@ -430,16 +444,47 @@ class Jobs:
     def close(self):
         self.reset(closing=True)
 
+    def terminal_frame(self, job_id):
+        self.check()
+        with self.lock:
+            if self.closed or self.resetting or not self.enabled():
+                raise ValueError('terminal observation owner is unavailable')
+            row = self._find(job_id)
+            if row.output.screen is None:
+                raise ValueError('screen requires an owned PTY job')
+            frame = row.output.screen.frame(self.config.secrets)
+            if row.output.suppressed:
+                frame.update(withheld=True, content='')
+            return {**frame, 'job_id': job_id, 'state': row.state, 'untrusted': True, 'not_authorization': True}
+
     def control(self, action="list", job_id=None, offset=0, end=None, seconds=0):
         self.check()
         if not self.enabled():
             raise ValueError("background job controls are disabled")
-        if (action not in {"list", "status", "output", "wait", "cancel"} or type(offset) is not int or offset < 0
+        if (action not in {"list", "status", "output", "wait", "cancel", "screen"} or type(offset) is not int or offset < 0
                 or end is not None and (type(end) is not int or end < 0)
                 or type(seconds) not in (int, float) or not math.isfinite(seconds) or not 0 <= seconds <= 30):
             raise ValueError("invalid background action, offset, end or wait duration")
         if action != "output" and end is not None or action not in {"list", "output"} and offset or action != "wait" and seconds:
             raise ValueError("end/offset/wait duration do not apply to this background action")
+        if action == 'screen':
+            frame = self.terminal_frame(job_id)
+            limit = min(self.config.max_output, 16384)
+            frame['clipped'] = False
+            if self._size(frame) > limit:
+                text = frame['content']
+                frame.update(content='', clipped=True)
+                low, high = 0, len(text)
+                while low < high:
+                    count = (low + high + 1) // 2
+                    if self._size({**frame, 'content': text[:count]}) <= limit:
+                        low = count
+                    else:
+                        high = count - 1
+                frame['content'] = text[:low]
+            if self._size(frame) > limit:
+                raise ValueError('terminal frame metadata exceeds max_output')
+            return frame
         if action == "list":
             if job_id is not None:
                 raise ValueError("job list accepts only an optional offset")
@@ -528,7 +573,7 @@ def local_arguments(text):
         return "job", {"action": "list"}
     if len(parts) == 2 and parts[0] == "list":
         return "job", {"action": "list", "offset": int(parts[1])}
-    if len(parts) == 2 and parts[0] in {"status", "cancel", "eof"}:
+    if len(parts) == 2 and parts[0] in {"status", "cancel", "eof", "screen"}:
         return "job", {"action": parts[0], "job_id": parts[1]}
     if len(parts) == 4 and parts[0] == 'resize':
         return 'job', {'action': 'resize', 'job_id': parts[1], 'columns': int(parts[2]), 'rows': int(parts[3])}
@@ -537,4 +582,4 @@ def local_arguments(text):
     if 2 <= len(parts) <= 4 and parts[0] == "output":
         return "job", {"action": "output", "job_id": parts[1], **({"offset": int(parts[2])} if len(parts) >= 3 else {}),
                        **({"end": int(parts[3])} if len(parts) == 4 else {})}
-    raise ValueError('Use /jobs or /job start|list|status|output|wait|cancel|input|eof|resize. Resize uses ID COLUMNS ROWS.')
+    raise ValueError('Use /jobs or /job start|list|status|output|screen|wait|cancel|input|eof|resize. Resize uses ID COLUMNS ROWS.')

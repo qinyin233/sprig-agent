@@ -330,6 +330,8 @@ class SprigApp(App[int]):
     #chat { width: 1fr; padding: 0 1; }
     .pane-title { height: 1; text-style: bold; color: $accent; }
     #transcript { height: 1fr; border: round $primary; }
+    #terminal-title { height: 1; display: none; color: $accent; }
+    #terminal-frame { height: 1fr; display: none; border: round $primary; }
     #task { height: 5; border: round $accent; }
     #task-buttons { height: 3; }
     #task-buttons Button { width: 1fr; min-width: 8; margin-right: 1; }
@@ -384,6 +386,7 @@ class SprigApp(App[int]):
         self.recovered_inputs = input_state()
         self._input_retry = None
         self._job_seen = set()
+        self._terminal_view = None
         self._draft_submission = None
         self._revision_editor = None
         self._revision_ready = False
@@ -458,6 +461,8 @@ class SprigApp(App[int]):
             with Vertical(id="chat"):
                 yield Static("对话", classes="pane-title", markup=False)
                 yield TextArea(read_only=True, show_cursor=False, id="transcript")
+                yield Static('', id='terminal-title', markup=False)
+                yield TextArea(read_only=True, show_cursor=False, soft_wrap=False, id='terminal-frame')
                 yield TaskInput(placeholder="Enter 发送，Shift+Enter 换行；@关键词 + Tab 选本轮文件；执行中可追加文字", id="task")
                 with Horizontal(id="task-buttons"):
                     yield Button("发送 / Enter", id="send", variant="primary")
@@ -555,6 +560,54 @@ class SprigApp(App[int]):
                 self._job_seen.add(row["job_id"])
                 self.append("\n[后台任务状态；不是验收结果] " + json.dumps(row) + "；/job output ID 查看内存输出，log_id 可用 /log 回查。\n")
                 self.event("后台命令已结束；当前工作区仍需独立检查")
+        self.refresh_terminal_view()
+
+    def close_terminal_view(self):
+        self._terminal_view = None
+        self.query_one('#terminal-title', Static).display = False
+        frame = self.query_one('#terminal-frame', TextArea)
+        frame.load_text('')
+        frame.display = False
+        self.query_one('#transcript', TextArea).display = True
+
+    def open_terminal_view(self, job_id):
+        owner = self.tools.jobs
+        frame = owner.terminal_frame(job_id)
+        self._terminal_view = (owner, job_id)
+        self.query_one('#transcript', TextArea).display = False
+        self.query_one('#terminal-title', Static).display = True
+        self.query_one('#terminal-frame', TextArea).display = True
+        self.show_terminal_frame(frame)
+
+    def show_terminal_frame(self, frame):
+        cursor = frame['cursor']
+        position = f" ({cursor['row']},{cursor['column']})" if cursor['visible'] else ''
+        self.query_one('#terminal-title', Static).update(
+            f"PTY {frame['state']} {frame['columns']}×{frame['rows']}{position}  /job view 关闭")
+        if frame['withheld']:
+            text = '[画面因凭据检查而隐藏]'
+        elif not frame['available']:
+            text = '[画面不可用，可用 /job output 查看文本]'
+        else:
+            text = frame['content']
+        view = self.query_one('#terminal-frame', TextArea)
+        text = self.safe(text)
+        if view.text != text:
+            view.load_text(text)
+
+    def refresh_terminal_view(self):
+        if self._terminal_view is None:
+            return
+        owner, identity = self._terminal_view
+        if owner is not self.tools.jobs:
+            self.close_terminal_view()
+            return
+        try:
+            frame = owner.terminal_frame(identity)
+        except (ValueError, OSError, KeyboardInterrupt):
+            self.close_terminal_view()
+            return
+        self.show_terminal_frame(frame)
 
     def safe(self, text):
         return terminal_text(redact(str(text), self.config.secrets))
@@ -1588,6 +1641,8 @@ class SprigApp(App[int]):
         return self.store
 
     def show_history(self):
+        if self._terminal_view is not None:
+            self.close_terminal_view()
         self.append("".join("\n" + ("context" if application_origin(message) else message["role"]) + "> " + message["content"] + "\n"
                             for message in self.messages or []
                             if message["role"] in {"user", "assistant"} and message.get("content")))
@@ -1663,6 +1718,8 @@ class SprigApp(App[int]):
             self.session_name = None
             self.messages = None
             self.agent.reset_runtime()
+            if self._terminal_view is not None:
+                self.close_terminal_view()
             self.agent.restore_plan(None)
             self.agent.restore_references()
             self.agent.restore_summary()
@@ -1797,6 +1854,7 @@ class SprigApp(App[int]):
                         "/web（本地缓存） /web URL（逐次批准公开网页） /web result ID [UTF8偏移]（缓存分页）\n"
                         "/jobs /job start {\"argv\":[\"程序\"],\"stdin\":\"pipe\"}（新批准）\n"
                         "/job start 可选 stdin=pty（支持的宿主），/job resize ID 列 行（新批准）\n"
+                        "/job view ID 实时画面，/job view 关闭，/job screen ID 读取当前帧\n"
                         "/job input ID \"原文\\n\" /job eof ID（仅管道，各自新批准） /job status|output|wait|cancel ID\n"
                         "/lsp（本地状态） /lsp definition|references|implementation|hover SERVER PATH 行 列；symbols|diagnostics SERVER PATH；workspace_symbols SERVER QUERY\n"
                         "/lsp rename SERVER PATH 行 列 新名称（计算后逐文件批准；可撤销）\n"
@@ -1942,6 +2000,18 @@ class SprigApp(App[int]):
                 self.notify(self.safe(error), severity="warning")
             return
         if command in {"/jobs", "/job"}:
+            if command == '/job' and argument.split()[:1] == ['view']:
+                parts = argument.split()
+                try:
+                    if len(parts) == 1:
+                        self.close_terminal_view()
+                    elif len(parts) == 2:
+                        self.open_terminal_view(parts[1])
+                    else:
+                        raise ValueError('用法为 /job view ID，省略 ID 关闭画面')
+                except (ValueError, OSError, KeyboardInterrupt) as error:
+                    self.notify(self.safe(error), severity='warning')
+                return
             if self.busy:
                 self.notify("请等待当前操作结束；Ctrl+C 可取消当前与后台任务", severity="warning")
                 return
