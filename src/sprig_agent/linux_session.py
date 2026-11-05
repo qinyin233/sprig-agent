@@ -71,16 +71,22 @@ def _stop_member(pid, leader, opener, sender):
         return False
 
 
-def stop_members(leader, deadline):
-    """Sweep a stopped session while its unreaped leader reserves the ID."""
+def session_cleanup_available():
     try:
         if os.readlink('/proc/self') != str(os.getpid()):
-            return
+            return False
     except (FileNotFoundError, PermissionError):
+        return False
+    return _pidfd_calls() is not None
+
+
+def stop_members(leader, deadline, *, required=False):
+    """Sweep a stopped session while its unreaped leader reserves the ID."""
+    if not session_cleanup_available():
+        if required:
+            raise OSError('Linux terminal session cleanup is unavailable')
         return
     calls = _pidfd_calls()
-    if calls is None:
-        return
     if os.getsid(leader) != leader:
         raise OSError('process is no longer the owned Linux session leader')
     while True:

@@ -9,3 +9,7 @@ Sprig 已有逐次批准的后台管道输入、有限输出和完成日志。�
 在一次性 WSL 夹具中，父进程退出或后台任务获批取消后，同会话的另一个进程组仍继续运行。两条测试都通过实际工具入口复现。Linux 清理现在在保留会话组长期间回收这些后代，使用 pidfd 约束信号目标，实际测试同时验证另一个独立会话仍可运行。独立 `setsid`、系统隔离、macOS 会话清理和终端显示属于后续边界。[Linux pidfd 信号接口](https://man7.org/linux/man-pages/man2/pidfd_send_signal.2.html) · [Sprig 后台任务](../background-jobs.md)
 
 两端分别运行了一次性原型。Windows 以 `STARTF_USESTDHANDLES` 和空标准句柄建立 ConPTY，子进程使用控制台句柄。省略这个标志时，当前重定向宿主中的 Python 夹具收到无效的控制台尺寸句柄。正确设置后，uv 环境里的 Python 能识别终端、读取单个按键并观察尺寸从 80×24 变为 92×27。父进程自然退出后，归属 Job 回收仍在运行的子进程。WSL 原型由独立进程建立控制终端，验证 `/dev/tty`、同样的按键和尺寸变化，并用本批清理后端回收另一个进程组。这些原型为 TUI 接入和有界终端渲染提供接口依据。[node-pty 的 Windows 启动参数](https://github.com/microsoft/node-pty/blob/35c28c7d68a192699e70b1e6a142908bdccd9212/src/win/conpty.cc#L399-L449)
+
+产品接入后用真实终端验证 CLI 中文输入、TUI Enter、单键、尺寸变化、拒绝批准及重置后的后代回收。另一组一次性测试分别在 Windows 和 WSL 输出 4096 条记录和独立末尾标记。按每页 4 KiB 的序列化预算读取，各得到 63 页，能找回全部记录和末尾标记。PTY 流含终端控制及物理换行，显示经过转义，整屏重绘仍需屏幕渲染器。[终端操作](../background-jobs.md#受管终端会话)
+
+OpenCode 自身的 TUI 使用 `EmbeddedTerminalRenderable`，与 GUI 的 `ghostty-web` 界面分开。终端面板接收快照、按顺序应用输出和尺寸事件，尺寸切换可带画面检查点。键盘处理仅在终端取得焦点时接管，并保留应用前导键。Sprig 后续画面视图需要保留这三种边界，即有界画面状态、尺寸与输出的顺序、明确的键盘焦点。模型输入仍经现有批准路径。[OpenCode TUI 面板](https://github.com/anomalyco/opencode/blob/32e70a84edca690612d3b1760b0c4782537b4b93/packages/tui/src/component/terminal-pane.tsx)

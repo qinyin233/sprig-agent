@@ -361,13 +361,15 @@ class Tools:
             self.instructions.recheck_action((), rules)
         return self.web.fetch(url, result_id, offset, format, recheck=recheck)
 
-    def job(self, action="list", job_id=None, offset=0, end=None, seconds=0, text=None):
+    def job(self, action="list", job_id=None, offset=0, end=None, seconds=0, text=None, columns=None, rows=None):
         self._require_tool("job")
         self._check_cancelled()
-        if action in {"input", "eof"}:
+        if action != 'resize' and (columns is not None or rows is not None):
+            raise ToolError('terminal dimensions apply only to resize')
+        if action in {"input", "eof", "resize"}:
             if type(offset) is not int or offset != 0 or end is not None or type(seconds) not in (int, float) or seconds != 0:
-                raise ToolError("stdin operations accept only job_id and input text")
-            return self._job_input(action, job_id, text)
+                raise ToolError("job input and resize do not accept output offsets or wait durations")
+            return self._job_input(action, job_id, text, (columns, rows) if action == 'resize' else None)
         if text is not None:
             raise ToolError("text applies only to job input")
         if action == "cancel":
@@ -381,8 +383,8 @@ class Tools:
             result["approved"] = True
         return result
 
-    def _job_input(self, action, identity, text):
-        proposal = self.jobs.prepare_input(action, identity, text)
+    def _job_input(self, action, identity, text, size=None):
+        proposal = self.jobs.prepare_input(action, identity, text, size)
         if self.config is not proposal.config:
             raise ToolError("stdin policy changed; request fresh approval")
         row = proposal.row
@@ -404,14 +406,18 @@ class Tools:
                     raise ToolError("configured credentials must not appear in stdin input")
                 self.instructions.recheck_action(parts, rules)
             recheck()
-            description = ("SEND UTF-8 STDIN to owned background command " + str(identity) if action == "input"
-                           else "SEND EOF to owned background command " + str(identity))
+            if action == 'resize':
+                description = f'RESIZE owned terminal {identity} to {size[0]} columns × {size[1]} rows'
+            elif action == 'input':
+                description = 'SEND UTF-8 ' + ('TERMINAL INPUT' if row.terminal_size else 'STDIN') + ' to owned background command ' + str(identity)
+            else:
+                description = 'SEND EOF to owned background command ' + str(identity)
             description += ("\ncwd: " + json.dumps(cwd, ensure_ascii=False)
                             + "\ncommand preview" + (" (truncated)" if row.command_truncated else "") + ": "
                             + terminal_text(redact(row.label, self.config.secrets)))
-            description += ("\nMay cause the approved program to perform further filesystem/network actions. "
-                            "Original job deadline/output caps remain; no PTY or replay. "
-                            "Failed/partial input stops the job; prior effects may be incomplete.")
+            description += ("\nThe program may perform further filesystem or network actions. "
+                            "The original job deadline and output caps still apply. "
+                            "A failed or partial operation stops the job and can leave incomplete effects.")
             if text is not None:
                 description += ("\nUTF-8 input bytes: " + str(len(proposal.data)) + "; previously written: " + str(row.stdin_bytes)
                                 + "/65536\nExact text (no newline added): " + json.dumps(text, ensure_ascii=False))
@@ -1365,10 +1371,12 @@ class Tools:
             return {"approved": False, "error": "read-only mode blocks command execution"}
         if type(background) is not bool:
             raise ToolError("background must be a boolean")
-        if not isinstance(stdin, str) or stdin not in {"closed", "pipe"} or stdin == "pipe" and not background:
-            raise ToolError("stdin must be closed or an explicitly opted-in background pipe")
+        if not isinstance(stdin, str) or stdin not in {"closed", "pipe", "pty"} or stdin != "closed" and not background:
+            raise ToolError("stdin must be closed or an explicitly opted-in background pipe or PTY")
         if background:
             self.jobs.available()
+            if stdin == 'pty' and not self.jobs.terminal_enabled():
+                raise ToolError('owned terminal sessions are unavailable on this host')
             job_epoch = self.jobs.epoch
         if (not isinstance(argv, list) or not argv or len(argv) > 256
                 or any(not isinstance(arg, str) or "\0" in arg for arg in argv) or not argv[0]):
@@ -1400,11 +1408,15 @@ class Tools:
                             + "; override names: " + json.dumps([name for name, _ in self.config.command_env]))
         preview = None
         if background:
+            modes = {
+                'closed': 'Non-interactive stdin is closed. ',
+                'pipe': 'STDIN PIPE stays open. Text and EOF each require fresh approval. ',
+                'pty': 'PTY starts at 80 columns × 24 rows with merged output. Input and resize each require fresh approval. ',
+            }
             description += ("\nBACKGROUND: returns an owned job handle. "
-                            + ("STDIN PIPE stays open: later text/EOF needs separate fresh approval; <=4 KiB per input, <=64 KiB per job. "
-                               if stdin == "pipe" else "Non-interactive stdin is closed. ")
-                            + "No PTY. "
-                            "At most four active / eight retained records, <=1 MiB redacted output per job in memory. "
+                            + modes[stdin]
+                            + ('' if stdin == 'closed' else 'Input is limited to 4 KiB per approval and 64 KiB per job. ')
+                            + "At most four active / eight retained records, <=1 MiB redacted output per job in memory. "
                             "Completion only notifies locally, without automatic model requests or acceptance. "
                             "Cancellation/reset/exit stops the process tree. Not resumed or replayed after restore.")
         if self.config.command_log_dir is not None:

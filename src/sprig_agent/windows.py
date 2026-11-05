@@ -14,6 +14,7 @@ import re
 import shutil
 import stat
 import subprocess
+import threading
 import time
 
 
@@ -292,6 +293,10 @@ class ProcessInfo(c.Structure):
     _fields_ = [("process", w.HANDLE), ("thread", w.HANDLE), ("pid", w.DWORD), ("tid", w.DWORD)]
 
 
+class ConsoleSize(c.Structure):
+    _fields_ = [('columns', c.c_short), ('rows', c.c_short)]
+
+
 def stop_job(job):
     """Termination is asynchronous: wait for every descendant to release resources."""
     class Accounting(c.Structure):
@@ -375,9 +380,12 @@ def check_command_launcher(executable):
 
 class StdioProcess:
     """Launch into a kill-on-close job before any child instruction executes."""
-    def __init__(self, argv, directory, env, *, console=False):
+    def __init__(self, argv, directory, env, *, console=False, terminal=None):
+        if console and terminal is not None:
+            raise ValueError('inherited console and pseudoconsole are mutually exclusive')
         self.job, self.process = None, None
         self.stdin = self.stdout = self.stderr = None
+        self.pseudoconsole = None
         program = argv[0]
         if os.path.dirname(program) and not os.path.isabs(program):
             program = str(Path(directory) / program)
@@ -406,7 +414,8 @@ class StdioProcess:
             limits = ExtendedLimits()
             limits.basic.flags = 0x2000
             checked(set_job(self.job, 9, c.byref(limits), c.sizeof(limits)))
-            for descriptor, name in enumerate(("stdin", "stdout", "stderr")):
+            names = ('stdin', 'stdout') if terminal is not None else ('stdin', 'stdout', 'stderr')
+            for descriptor, name in enumerate(names):
                 if console:
                     child = descriptor
                 else:
@@ -414,9 +423,10 @@ class StdioProcess:
                     parent, child = (write_fd, read_fd) if name == "stdin" else (read_fd, write_fd)
                     setattr(self, name, parent)
                     child_fds.append(child)
-                handle = w.HANDLE()
-                checked(duplicate(current, msvcrt.get_osfhandle(child), current, c.byref(handle), 0, True, 2))
-                inherited.append(handle.value)
+                if terminal is None:
+                    handle = w.HANDLE()
+                    checked(duplicate(current, msvcrt.get_osfhandle(child), current, c.byref(handle), 0, True, 2))
+                    inherited.append(handle.value)
                 if not console:
                     mode = w.DWORD(1)  # PIPE_NOWAIT, including Python 3.11.
                     checked(set_mode(msvcrt.get_osfhandle(parent), c.byref(mode), None, None))
@@ -425,18 +435,39 @@ class StdioProcess:
             attributes = c.create_string_buffer(size.value)
             checked(init(attributes, 2, 0, c.byref(size)))
             attributes_initialized = True
-            jobs, handles = (w.HANDLE * 1)(self.job), (w.HANDLE * 3)(*inherited)
+            jobs = (w.HANDLE * 1)(self.job)
             checked(update(attributes, 0, 0x2000D, jobs, c.sizeof(jobs), None, None))
-            checked(update(attributes, 0, 0x20002, handles, c.sizeof(handles), None, None))
             startup = StartupEx()
-            startup.info.size, startup.info.flags = c.sizeof(startup), 0x100 if console else 0x101
-            startup.info.stdin, startup.info.stdout, startup.info.stderr = inherited
+            startup.info.size = c.sizeof(startup)
+            if terminal is not None:
+                # Empty standard handles plus STARTF_USESTDHANDLES let ConPTY
+                # supply console handles even when Sprig itself is redirected.
+                startup.info.flags = 0x100
+                make = api(kernel, 'CreatePseudoConsole', c.c_long, ConsoleSize, w.HANDLE, w.HANDLE,
+                           w.DWORD, c.POINTER(w.HANDLE))
+                handle = w.HANDLE()
+                if make(ConsoleSize(*terminal), *(msvcrt.get_osfhandle(fd) for fd in child_fds), 0, c.byref(handle)) < 0:
+                    raise OSError('Windows pseudoconsole creation failed')
+                self.pseudoconsole = handle.value
+                checked(update(attributes, 0, 0x20016, handle, c.sizeof(handle), None, None))
+            else:
+                handles = (w.HANDLE * 3)(*inherited)
+                checked(update(attributes, 0, 0x20002, handles, c.sizeof(handles), None, None))
+                startup.info.flags = 0x100 if console else 0x101
+                startup.info.stdin, startup.info.stdout, startup.info.stderr = inherited
             startup.attributes = c.cast(attributes, PTR)
             environment = c.create_unicode_buffer("\0".join(f"{key}={value}" for key, value in sorted(env.items(), key=lambda item: item[0].upper())) + "\0\0")
-            checked(create(executable, c.create_unicode_buffer(command), None, None, True,
-                           (0 if console else 0x08000000) | 0x00080000 | 0x400, environment, str(directory), c.byref(startup), c.byref(info)))
+            flags = 0x00080000 | 0x400
+            if not console and terminal is None:
+                flags |= 0x08000000
+            checked(create(executable, c.create_unicode_buffer(command), None, None, terminal is None,
+                           flags, environment, str(directory), c.byref(startup), c.byref(info)))
             self.process, info.process = info.process, None
         except BaseException:
+            if terminal is not None:
+                for fd in child_fds:
+                    os.close(fd)
+                child_fds.clear()
             self.close()
             raise
         finally:
@@ -460,9 +491,12 @@ class StdioProcess:
         return None
 
     def read(self, channel):
+        fd = getattr(self, channel)
+        if fd is None:
+            return b''
         data, count = c.create_string_buffer(4096), w.DWORD()
         read = api(kernel, "ReadFile", w.BOOL, w.HANDLE, PTR, w.DWORD, c.POINTER(w.DWORD), PTR)
-        if not read(msvcrt.get_osfhandle(getattr(self, channel)), data, 4096, c.byref(count), None):
+        if not read(msvcrt.get_osfhandle(fd), data, 4096, c.byref(count), None):
             code = c.get_last_error()
             if code == 232:  # PIPE_NOWAIT has no data; CRT errno differs on Python 3.11.
                 return None
@@ -482,6 +516,24 @@ class StdioProcess:
             raise c.WinError(code)
         return count.value
 
+    def resize(self, columns, rows):
+        resize = api(kernel, 'ResizePseudoConsole', c.c_long, w.HANDLE, ConsoleSize)
+        if not self.pseudoconsole or resize(self.pseudoconsole, ConsoleSize(columns, rows)) < 0:
+            raise OSError('Windows pseudoconsole resize failed')
+
+    def _close_pseudoconsole(self):
+        handle, self.pseudoconsole = self.pseudoconsole, None
+        close = api(kernel, 'ClosePseudoConsole', None, w.HANDLE)
+        worker = threading.Thread(target=close, args=(handle,), daemon=True)
+        worker.start()
+        deadline = time.monotonic() + 1
+        # Older hosts wait for output to drain during ClosePseudoConsole.
+        while worker.is_alive() and time.monotonic() < deadline:
+            if not self.read('stdout'):
+                worker.join(.01)
+        if worker.is_alive():
+            raise TimeoutError('Windows pseudoconsole close did not settle')
+
     def close(self):
         if self.stdin is not None:
             os.close(self.stdin)
@@ -500,11 +552,15 @@ class StdioProcess:
                 api(kernel, "WaitForSingleObject", w.DWORD, w.HANDLE, w.DWORD)(self.process, 5000)
                 close_handle(self.process)
                 self.process = None
-            for name in ("stdout", "stderr"):
-                fd = getattr(self, name)
-                if fd is not None:
-                    os.close(fd)
-                    setattr(self, name, None)
+            try:
+                if self.pseudoconsole:
+                    self._close_pseudoconsole()
+            finally:
+                for name in ("stdout", "stderr"):
+                    fd = getattr(self, name)
+                    if fd is not None:
+                        os.close(fd)
+                        setattr(self, name, None)
 
 
 def run_command(argv, directory, env, seconds, cap, cancel_event=None, on_output=None):

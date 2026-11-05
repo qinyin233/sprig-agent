@@ -95,7 +95,7 @@ def signal_group(child, sig):
     return True
 
 
-def finish_session(child, *, kill_group=True):
+def finish_session(child, *, kill_group=True, require_session_cleanup=False):
     """Finish a command started with start_new_session and reap its leader."""
     if kill_group:
         signal_group(child, signal.SIGKILL)
@@ -107,7 +107,7 @@ def finish_session(child, *, kill_group=True):
                 if time.monotonic() >= deadline:
                     raise TimeoutError('owned session leader did not exit after termination')
                 time.sleep(.01)
-            stop_members(child.pid, deadline)
+            stop_members(child.pid, deadline, required=require_session_cleanup)
     finally:
         try:
             child.wait(timeout=max(0, deadline - time.monotonic()))
@@ -115,13 +115,63 @@ def finish_session(child, *, kill_group=True):
             raise TimeoutError('owned process did not exit after termination') from None
 
 
+def terminal_available():
+    if os.name == 'nt':
+        from .windows import kernel
+        return all(hasattr(kernel, name) for name in ('CreatePseudoConsole', 'ResizePseudoConsole', 'ClosePseudoConsole'))
+    if sys.platform == 'linux':
+        from .linux_session import session_cleanup_available
+        return session_cleanup_available()
+    return False
+
+
+def _resize_pty(fd, columns, rows):
+    import fcntl
+    import struct
+    import termios
+    fcntl.ioctl(fd, termios.TIOCSWINSZ, struct.pack('HHHH', rows, columns, 0, 0))
+
+
+# Establish the controlling terminal in a separate interpreter. Running this in
+# a Popen preexec_fn would fork into the threaded TUI with inherited locks.
+_PTY_EXEC = """\
+import fcntl, os, sys, termios
+fcntl.ioctl(0, termios.TIOCSCTTY, 0)
+os.tcsetpgrp(0, os.getpgrp())
+os.execvp(sys.argv[1], sys.argv[1:])
+"""
+
+
+def _start_pty(argv, directory, env, size):
+    import pty
+    master, slave = pty.openpty()
+    try:
+        _resize_pty(slave, *size)
+        os.set_blocking(master, False)
+        child = subprocess.Popen([sys.executable, '-I', '-B', '-c', _PTY_EXEC, *argv],
+                                 cwd=directory, env=env, stdin=slave, stdout=slave, stderr=slave,
+                                 start_new_session=True, shell=False)
+        return child, master
+    except BaseException:
+        os.close(master)
+        raise
+    finally:
+        os.close(slave)
+
+
 class Process:
-    def __init__(self, argv, directory, env):
+    def __init__(self, argv, directory, env, *, terminal=None):
         self.closed = False
+        self.terminal = terminal is not None
+        self.master = None
         self._lock = threading.RLock()
+        if self.terminal and not terminal_available():
+            raise ValueError('owned terminal sessions are unavailable on this host')
         if os.name == "nt":
             from .windows import StdioProcess
-            self.child = StdioProcess(argv, directory, env)
+            self.child = StdioProcess(argv, directory, env, terminal=terminal)
+        elif self.terminal:
+            self.child, self.master = _start_pty(argv, directory, env, terminal)
         else:
             self.child = subprocess.Popen(argv, cwd=directory, env=env, stdin=subprocess.PIPE,
                                           stdout=subprocess.PIPE, stderr=subprocess.PIPE, bufsize=0,
@@ -149,7 +199,7 @@ class Process:
                 raise ValueError("process pipes are closed")
             if os.name == "nt":
                 return self.child.write(raw)
-            fd = self.child.stdin.fileno()
+            fd = self.master if self.master is not None else self.child.stdin.fileno()
             try:
                 return os.write(fd, raw)
             except BlockingIOError:
@@ -163,12 +213,31 @@ class Process:
                 raise ValueError("process pipes are closed")
             if os.name == "nt":
                 return self.child.read(channel)
-            stream = getattr(self.child, channel)
-            fd = stream.fileno()
+            if self.master is not None and channel == 'stderr':
+                return b''
+            fd = self.master if self.master is not None else getattr(self.child, channel).fileno()
             try:
                 return os.read(fd, 4096)
             except BlockingIOError:
                 return None
+            except OSError as error:
+                if self.master is not None and error.errno == errno.EIO:
+                    return b''  # The terminal's slave has closed.
+                raise
+
+    def resize(self, columns, rows, *, nonblocking=False):
+        if not self._lock.acquire(blocking=not nonblocking):
+            return False
+        try:
+            if self.closed or not self.terminal or self.poll() is not None:
+                raise ValueError('owned terminal is no longer running')
+            if os.name == 'nt':
+                self.child.resize(columns, rows)
+            else:
+                _resize_pty(self.master, columns, rows)
+            return True
+        finally:
+            self._lock.release()
 
     def close_input(self, *, nonblocking=False):
         """Non-interactive commands receive EOF; MCP leaves this pipe open."""
@@ -177,6 +246,8 @@ class Process:
         try:
             if self.closed:
                 raise ValueError("process pipes are closed")
+            if self.terminal:
+                raise ValueError('terminal input has no separate EOF channel')
             if os.name == "nt":
                 if self.child.stdin is not None:
                     os.close(self.child.stdin)
@@ -200,7 +271,8 @@ class Process:
             return
         group_present = True
         try:
-            self.child.stdin.close()
+            if self.master is None:
+                self.child.stdin.close()
             until = time.monotonic() + .2
             while self.poll() is None and time.monotonic() < until:
                 time.sleep(.01)
@@ -209,9 +281,13 @@ class Process:
                 time.sleep(.02)
         finally:
             try:
-                finish_session(self.child, kill_group=group_present)
+                finish_session(self.child, kill_group=group_present, require_session_cleanup=self.terminal)
             finally:
                 if self.child.returncode is not None:
                     self.closed = True
-                    self.child.stdout.close()
-                    self.child.stderr.close()
+                    if self.master is None:
+                        self.child.stdout.close()
+                        self.child.stderr.close()
+                    else:
+                        os.close(self.master)
+                        self.master = None

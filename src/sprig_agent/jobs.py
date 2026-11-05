@@ -11,18 +11,21 @@ import time
 import uuid
 
 from .config import redact, terminal_text
-from .mcp_process import Process
+from .mcp_process import Process, terminal_available
 from .streaming import TextOutput
 
 MAX_ACTIVE, MAX_RECORDS, MAX_RETAINED = 4, 8, 1024 * 1024
 MAX_INPUT, MAX_JOB_INPUT, INPUT_TIMEOUT = 4096, 65536, 2
+TERMINAL_SIZE = (80, 24)
 INPUT_FAILURE = "background stdin delivery failed; effects may be incomplete; no input was replayed"
 JOB_SCHEMA = {"type": "function", "function": {
-    "name": "job", "description": "Owned background commands: list/status/output/wait (<=30s); freshly approve cancel, input (exact UTF-8 <=4KiB), or eof. Input requires run(background=true,stdin='pipe'); no PTY/replay. Output offsets are UTF-8 bytes; keep end for a stable prefix. Finished status may contain log.log_id for read_log. Exit is not fixed acceptance.",
+    "name": "job", "description": "Owned jobs: list/status/output/wait (<=30s). Freshly approve cancel, exact UTF-8 input (<=4KiB), pipe EOF, or PTY resize. Input requires run(background=true,stdin='pipe' or 'pty'). Output offsets are UTF-8 bytes. Keep end for a stable prefix. Finished jobs may have log.log_id. Exit is not fixed acceptance.",
     "parameters": {"type": "object", "properties": {
-        "action": {"enum": ["list", "status", "output", "wait", "cancel", "input", "eof"]},
+        "action": {"enum": ["list", "status", "output", "wait", "cancel", "input", "eof", "resize"]},
         "job_id": {"type": "string", "maxLength": 40},
         "text": {"type": "string", "minLength": 1, "maxLength": MAX_INPUT},
+        "columns": {"type": "integer", "minimum": 20, "maximum": 200},
+        "rows": {"type": "integer", "minimum": 5, "maximum": 80},
         "offset": {"type": "integer", "minimum": 0, "maximum": MAX_RETAINED},
         "end": {"type": "integer", "minimum": 0, "maximum": MAX_RETAINED},
         "seconds": {"type": "number", "minimum": 0, "maximum": 30}},
@@ -36,6 +39,7 @@ class InputProposal:
     version: int
     config: object
     data: object
+    size: tuple | None = None
 
 
 class Output:
@@ -86,7 +90,8 @@ class Job:
         self.thread = None
         self.error = None
         self.cwd, self.directory_identity = directory, identity_cwd
-        self.stdin_pipe, self.stdin_open = stdin == "pipe", stdin == "pipe"
+        self.stdin_mode, self.stdin_open = stdin, stdin != 'closed'
+        self.terminal_size = TERMINAL_SIZE if stdin == 'pty' else None
         self.stdin_bytes, self.input_version = 0, 0
         self.input_failure = False
         self.input_stop = False
@@ -106,6 +111,9 @@ class Jobs:
         return (self.config.background_enabled and not self.config.read_only
                 and self.config.tool_enabled("run") and self.config.tool_enabled("job"))
 
+    def terminal_enabled(self):
+        return self.enabled() and terminal_available()
+
     def available(self):
         self.check()
         with self.lock:
@@ -121,7 +129,7 @@ class Jobs:
                 raise ValueError("background cleanup is uncertain; inspect and close this conversation before starting commands")
 
     def start(self, argv, directory, env, seconds, cap, *, epoch, stdin="closed", log=None, log_status=None):
-        if not isinstance(stdin, str) or stdin not in {"closed", "pipe"}:
+        if not isinstance(stdin, str) or stdin not in {"closed", "pipe", "pty"}:
             raise ValueError("invalid background stdin mode")
         self.available()
         with self.lock:
@@ -135,7 +143,7 @@ class Jobs:
                 del self.records[old]
             info = directory.stat()
             identity_cwd = (info.st_dev, info.st_ino)
-            process = Process(argv, directory, env)
+            process = Process(argv, directory, env, terminal=TERMINAL_SIZE if stdin == 'pty' else None)
             try:
                 if stdin == "closed":
                     process.close_input()
@@ -167,9 +175,16 @@ class Jobs:
         if not reserved and proposal.data is not None and row.stdin_bytes + len(proposal.data) > MAX_JOB_INPUT:
             raise ValueError("background stdin exceeds its 64 KiB lifetime input budget")
 
-    def prepare_input(self, action, job_id, text):
+    def prepare_input(self, action, job_id, text, size=None):
         data = None
-        if action == "input":
+        if action == 'resize':
+            if (text is not None or not isinstance(size, tuple) or len(size) != 2
+                    or type(size[0]) is not int or not 20 <= size[0] <= 200
+                    or type(size[1]) is not int or not 5 <= size[1] <= 80):
+                raise ValueError('terminal resize requires 20–200 columns and 5–80 rows')
+        elif size is not None:
+            raise ValueError('terminal dimensions apply only to resize')
+        elif action == "input":
             if not isinstance(text, str) or not text:
                 raise ValueError("stdin input must be nonempty UTF-8 text without NUL")
             if len(text) > MAX_INPUT:
@@ -188,7 +203,11 @@ class Jobs:
             raise ValueError("EOF accepts no text")
         with self.lock:
             row = self._find(job_id)
-            proposal = InputProposal(row, self.epoch, row.input_version, self.config, data)
+            if action == 'resize' and row.terminal_size is None:
+                raise ValueError('resize requires an owned PTY job')
+            if action == 'eof' and row.terminal_size is not None:
+                raise ValueError('terminal input has no separate EOF channel')
+            proposal = InputProposal(row, self.epoch, row.input_version, self.config, data, size)
             self._input_ready(proposal)
             if row.input_lock.locked():
                 raise ValueError("another stdin operation is in progress; no input was queued")
@@ -200,6 +219,10 @@ class Jobs:
             raise ValueError("another stdin operation is in progress; request fresh approval")
         def result(complete):
             with self.lock:
+                if proposal.size is not None:
+                    columns, rows = row.terminal_size
+                    return {"job_id": row.identity, "state": row.state, "approved": True, "resized": complete,
+                            "terminal": {"columns": columns, "rows": rows}, "task_completed": False}
                 return {"job_id": row.identity, "state": row.state, "approved": True,
                         "stdin": "failed" if row.input_failure else "open" if row.stdin_open else "closed",
                         "input_bytes": len(proposal.data) if proposal.data is not None else 0,
@@ -219,7 +242,12 @@ class Jobs:
                     self._input_ready(proposal, reserved=True)
                 if time.monotonic() >= until:
                     raise TimeoutError("stdin write deadline expired")
-                if proposal.data is None:
+                if proposal.size is not None:
+                    if row.process.resize(*proposal.size, nonblocking=True):
+                        with self.lock:
+                            row.terminal_size = proposal.size
+                        return result(True)
+                elif proposal.data is None:
                     if row.process.close_input(nonblocking=True):
                         with self.lock:
                             row.stdin_open = False
@@ -248,13 +276,16 @@ class Jobs:
             if not isinstance(error, (OSError, ValueError)):
                 raise
             return {**result(False), "outcome": "uncertain",
-                    "error": "stdin delivery failed or expired; job stopping, effects may be partial. Inspect state; input was not replayed."}
+                    "error": ('terminal resize failed or expired; job stopping, effects may be partial. No resize was replayed.'
+                              if proposal.size is not None else
+                              'stdin delivery failed or expired; job stopping, effects may be partial. Inspect state; input was not replayed.')}
         finally:
             row.input_lock.release()
 
     def _run(self, row, epoch):
         state, code = "exited", None
         channels = {"stdout", "stderr"}
+        exited_at = None
         try:
             while True:
                 if row.cancel.is_set():
@@ -287,8 +318,12 @@ class Jobs:
                 if state == "output_limited":
                     break
                 code = row.process.poll()
-                if code is not None and not received:
-                    break  # Clean descendants even when they still hold a pipe.
+                if code is not None:
+                    if exited_at is None:
+                        exited_at = time.monotonic()
+                    # ConPTY output can arrive after the client process exits.
+                    if not received and (row.terminal_size is None or not channels or time.monotonic() - exited_at >= .1):
+                        break  # Descendants may still hold the terminal or pipe.
                 row.cancel.wait(.02)
         except BaseException:
             state = "failed"
@@ -339,10 +374,13 @@ class Jobs:
                           output_limited=row.state == "output_limited")
         if row.error:
             result.update(error=row.error, outcome="uncertain")
-        if row.stdin_pipe:
+        if row.stdin_mode != 'closed':
             result.update(stdin="failed" if row.input_failure else "open" if row.stdin_open else "closed", stdin_bytes=row.stdin_bytes)
             if row.input_failure:
                 result.update(stdin_failed=True, outcome="uncertain")
+        if row.terminal_size is not None:
+            columns, rows = row.terminal_size
+            result['terminal'] = {'columns': columns, 'rows': rows}
         if row.log_status is not None:
             result["log"] = row.log_status
         return result
@@ -492,9 +530,11 @@ def local_arguments(text):
         return "job", {"action": "list", "offset": int(parts[1])}
     if len(parts) == 2 and parts[0] in {"status", "cancel", "eof"}:
         return "job", {"action": parts[0], "job_id": parts[1]}
+    if len(parts) == 4 and parts[0] == 'resize':
+        return 'job', {'action': 'resize', 'job_id': parts[1], 'columns': int(parts[2]), 'rows': int(parts[3])}
     if len(parts) in {2, 3} and parts[0] == "wait":
         return "job", {"action": "wait", "job_id": parts[1], "seconds": float(parts[2]) if len(parts) == 3 else 1}
     if 2 <= len(parts) <= 4 and parts[0] == "output":
         return "job", {"action": "output", "job_id": parts[1], **({"offset": int(parts[2])} if len(parts) >= 3 else {}),
                        **({"end": int(parts[3])} if len(parts) == 4 else {})}
-    raise ValueError('Use /jobs or /job start|list|status|output|wait|cancel|input|eof; input uses ID "JSON string"')
+    raise ValueError('Use /jobs or /job start|list|status|output|wait|cancel|input|eof|resize. Resize uses ID COLUMNS ROWS.')

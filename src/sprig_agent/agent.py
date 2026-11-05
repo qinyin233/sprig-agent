@@ -103,14 +103,19 @@ class Agent:
         self.schemas = [copy.deepcopy(schema) for schema in TOOL_SCHEMAS
                         if config.tool_enabled(schema["function"]["name"])
                         and (not config.read_only or schema["function"]["name"] not in {"edit_file", "edit_lines", "file_action", "run"})]
+        background_jobs = isinstance(tools, Tools) and tools.jobs.enabled()
+        terminal_jobs = background_jobs and tools.jobs.terminal_enabled()
         for schema in self.schemas:
             if schema["function"]["name"] == "run":
                 schema["function"]["parameters"]["properties"]["timeout"]["maximum"] = config.timeout
-                if isinstance(tools, Tools) and tools.jobs.enabled():
+                if background_jobs:
                     schema["function"]["parameters"]["properties"]["background"] = {"type": "boolean"}
-                    schema["function"]["parameters"]["properties"]["stdin"] = {"enum": ["closed", "pipe"]}
+                    modes = ["closed", "pipe", "pty"] if terminal_jobs else ["closed", "pipe"]
+                    schema["function"]["parameters"]["properties"]["stdin"] = {"enum": modes}
                     schema["function"]["parameters"]["properties"]["timeout"]["maximum"] = max(config.timeout, config.background_timeout)
                     schema["function"]["description"] += " background=true starts an owned job; stdin='pipe' explicitly permits separately approved input/EOF. Timeout cap " + str(config.background_timeout) + "s. Foreground keeps its existing cap."
+                    if terminal_jobs:
+                        schema["function"]["description"] += " stdin='pty' opens an owned terminal with approved input and resize."
         if config.command_log_dir is not None and config.tool_enabled("read_log"):
             self.schemas.append(copy.deepcopy(READ_LOG_SCHEMA))
         if isinstance(tools, Tools) and callable(getattr(tools, "ask", None)) and config.tool_enabled("question"):
@@ -121,8 +126,16 @@ class Agent:
             self.schemas.append(copy.deepcopy(MCP_SCHEMA))
         if isinstance(tools, Tools) and config.web_enabled and config.tool_enabled("web_fetch") and not config.read_only:
             self.schemas.append(copy.deepcopy(WEB_SCHEMA))
-        if isinstance(tools, Tools) and tools.jobs.enabled():
-            self.schemas.append(copy.deepcopy(JOB_SCHEMA))
+        if background_jobs:
+            job_schema = copy.deepcopy(JOB_SCHEMA)
+            if not terminal_jobs:
+                props = job_schema['function']['parameters']['properties']
+                props['action']['enum'].remove('resize')
+                props.pop('columns')
+                props.pop('rows')
+                job_schema['function']['description'] = ('Owned background jobs. Fresh approval for cancel, input and EOF. '
+                                                        'Input requires stdin=pipe. Output uses UTF-8 byte offsets.')
+            self.schemas.append(job_schema)
         if isinstance(tools, Tools) and config.lsp_servers and config.tool_enabled("lsp") and config.tool_enabled("read_file") and not config.read_only:
             lsp_schema=copy.deepcopy(LSP_SCHEMA)
             if not config.tool_enabled('edit_file'):

@@ -22,6 +22,7 @@ def terminal_group(group):
 class ConsoleProcess(Process):
     def __init__(self, argv, directory, env):
         self.closed, self.foreground = False, None
+        self.terminal, self.master = False, None
         self._lock = threading.RLock()
         if os.name == 'nt':
             from .windows import StdioProcess

@@ -39,7 +39,7 @@ TUI/chat 本地入口：
 
 状态区分 running/exited/cancelled/timed_out/output_limited/failed/cleanup_failed。只有实际观察到自然退出时才有可靠退出码；取消、超时或清理失败不能伪装成退出 0。启动结果标为 started、task_completed=false；任务句柄不是可重放的命令，也不允许用任意 PID 停止其他进程。状态里的 command 是有截断标记的短预览，完整批准文本才是原 argv。
 
-stdout/stderr 分别进行增量 UTF-8 解码和跨块脱敏，再合并为观察顺序的文字；不保证两路的全局时间顺序。命令应输出 UTF-8，其他编码按替代字符处理，不会自动修改任意程序的编码设置。stdin 默认立即关闭；后文说明显式开启的标准输入管道。PTY 和终端仿真仍未提供。
+普通任务的 stdout/stderr 分别进行增量 UTF-8 解码和跨块脱敏，再按观察顺序合并。PTY 从原生终端读取合并流。命令应输出 UTF-8，其他编码按替代字符处理。stdin 默认立即关闭，可为单个任务显式选择下文的管道或 PTY。
 
 原始总输出仍受 output_limit 或 max_output 限制，超限会停止进程树。另有独立的**内存回查上限**：每任务最多 1 MiB 脱敏正文、最多 8 条记录，至多 4 条同时运行。超出内存上限明确标 retention_limited，程序可在原输出限制内继续；不要把未保留正文当成命令失败。新启动可淘汰已结束的旧记录，不能淘汰正在运行的所有权。
 
@@ -87,6 +87,25 @@ output 返回 UTF-8 字节 offset、end、next_offset、脱敏快照前缀 SHA-2
 输入绑定当前对话的任务对象、策略、工作目录身份及输入版本。重置、模型/策略变化、另一条已获批输入使旧提案失效；输入前后清除旧读取标识与代码地图缓存。模型产生的输入还会复查当前项目指导。完成的输入不会恢复授权，保存/分支/恢复仍不重启或附着进程。默认关闭后台功能时不会增加普通模型请求的工具定义。
 
 [本批验证记录](benchmarks/background-stdin-20261027.json)包含三协议 JSON/SSE 的实际管道→两段输入→EOF→输出→独立验收，Enter 提交的 CLI / 80×24 TUI、拒绝和新要求、部分写入、满额、自然退出竞态及锁竞争反例。固定回复不构成真实模型能力或性能成绩；远程 CI 仍按 11 月 1 日前冻结的要求待验证。
+
+## 受管终端会话
+
+开启后台任务后，在 Windows ConPTY 可用的宿主或支持 pidfd 与匹配 `/proc` 的 Linux 上，显式启动需要终端的程序。每条命令在 TUI 或 CLI 输入并按 Enter。
+
+```text
+/job start {"argv":["python","-i"],"stdin":"pty"}
+/job output job-<ID> 0
+/job resize job-<ID> 100 28
+/job input job-<ID> "print('hello')\r"
+/job wait job-<ID> 2
+/job cancel job-<ID>
+```
+
+初始尺寸为 80 列 24 行。resize 接受 20–200 列和 5–80 行，进程能读取更新后的实际终端尺寸。模型用 `run(background=true,stdin="pty")` 和 `job(action="resize",job_id=...,columns=...,rows=...)`，输入仍用 `job(action="input",job_id=...,text=...)`。宿主缺少归属清理或原生接口时，工具定义隐藏相应操作，直接调用也在审批前拒绝。macOS 当前使用原有管道路径。
+
+启动、调整尺寸、输入和取消分别批准。终端接收明确输入的 UTF-8 字节，仍受每次 4 KiB、累计 64 KiB、任务总期限和输出上限约束。终端行规程或控制台可以处理控制键、换行和回显。使用 JSON 转义发送具体字符，Enter 本身仍提交 Sprig 消息或本地命令。PTY 输入用单个双向终端，`/job eof` 适用于管道。程序的提示与回显可能进入有界工具结果或已启用的私有日志，请用普通任务文本操作。
+
+当前界面通过 `/job output` 查看受控文本页，终端控制字符转义显示。全屏程序的光标移动和画面重绘需要后续终端渲染器。任务退出、取消、超限、对话重置或关闭会回收归属进程。所有权、版本和目录检查继续适用于 resize 与输入。部分或失败操作会停止任务并报告不确定状态，私有会话只保留已观察历史。[源码对照](research/opencode-terminal-20261105.md)
 
 ## 所有权与退出边界
 
