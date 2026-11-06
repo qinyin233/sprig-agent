@@ -27,6 +27,36 @@ def replies(protocol, streamed):
 
 
 class LinePatchProtocolTests(unittest.TestCase):
+    def test_disjoint_read_to_versioned_edit_across_protocols(self):
+        for protocol in ('chat_completions', 'messages', 'responses'):
+            for streamed in (False, True):
+                with self.subTest(protocol=protocol, stream=streamed), tempfile.TemporaryDirectory() as temp:
+                    root = Path(temp)
+                    source = root / 'source.txt'
+                    source.write_bytes(b'before\r\nunrequested\r\nlast')
+                    captured, approvals = [], []
+
+                    def edit(data):
+                        result = next(item for item in values(data) if item.get('range_complete') is True)
+                        self.assertEqual(result['content'], '1: before\r\n3: last')
+                        return answer(protocol, streamed, calls=[('edit', 'edit_lines', {
+                            'path': source.name, 'read_id': result['read_id'],
+                            'edits': [{'start_line': 3, 'end_line': 3, 'new': 'updated'}],
+                        })])
+
+                    replies = [answer(protocol, streamed, calls=[('read', 'read_file', {
+                        'path': source.name, 'ranges': [[1, 1], [3, 3]],
+                    })]), edit, answer(protocol, streamed, text='Done')]
+                    with backend(protocol, replies, captured, stream=streamed) as url:
+                        config = Config(root, 'fixture', base_url=url, wire_api=protocol, stream=streamed,
+                                        max_steps=3, max_context_bytes=16384)
+                        with closing(Tools(config, lambda prompt: approvals.append(prompt) or True)) as tools:
+                            _, complete = Agent(config, Provider(config), tools, lambda _: None).run('Update the last line')
+                    self.assertTrue(complete)
+                    self.assertEqual(len(captured), 3)
+                    self.assertEqual(len(approvals), 1)
+                    self.assertEqual(source.read_bytes(), b'before\r\nunrequested\r\nupdated')
+
     def test_three_protocols_json_sse_read_patch_stage_check_and_final_acceptance(self):
         for protocol in ('chat_completions','messages','responses'):
             for streamed in (False,True):

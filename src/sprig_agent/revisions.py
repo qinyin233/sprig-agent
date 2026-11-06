@@ -27,14 +27,18 @@ class ReadVersions:
             if path == tuple(parts):
                 del self._entries[identity]
 
-    def remember(self, parts, digest):
+    def remember(self, parts, digest, *, validate=None):
         path = tuple(parts)
         for identity, recorded in list(self._entries.items()):
             if recorded == (path, digest):
+                if validate is not None:
+                    validate(identity)
                 self._entries.move_to_end(identity)
                 return identity
+        identity = self._prefix + str(self._sequence + 1)
+        if validate is not None:
+            validate(identity)
         self._sequence += 1
-        identity = self._prefix + str(self._sequence)
         self._entries[identity] = (path, digest)
         if len(self._entries) > MAX_READ_VERSIONS:
             self._entries.popitem(last=False)

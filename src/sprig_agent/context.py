@@ -191,7 +191,7 @@ def _read_digest(result, path):
 def _complete_read(result, arguments):
     """A complete observed window, never a prefix or an unvalidated byte page."""
     if (not _read_digest(result, arguments.get("path")) or not result["content"]
-            or not valid_read_id(result.get("read_id")) or "cursor" in arguments
+            or not valid_read_id(result.get("read_id")) or "cursor" in arguments or "ranges" in arguments
             or result.get("line_truncated", False) is not False):
         return False
     if "offset" not in result:

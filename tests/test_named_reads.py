@@ -55,6 +55,64 @@ class NamedReadTests(unittest.TestCase):
     def read(self, path="source.py", symbol="Service.run", **kwargs):
         return self.tools.execute("read_file", {"path": path, "symbol": symbol, **kwargs})
 
+    def test_disjoint_ranges_use_one_validated_snapshot_for_approved_edits(self):
+        raw = "\ufefffirst\r\n中🙂\rskip\nlast".encode()
+        path = self.root / "source.txt"
+        path.write_bytes(raw)
+        arguments = {"path": path.name, "ranges": [[1, 2], [4, 4]]}
+        with patch.object(self.tools, "_read_validated", wraps=self.tools._read_validated) as scan:
+            result = self.tools.execute("read_file", arguments)
+            scan.assert_called_once_with(path.name)
+        self.assertEqual(result["content"], "1: \ufefffirst\r\n2: 中🙂\r4: last")
+        self.assertEqual(result["ranges"], arguments["ranges"])
+        self.assertTrue(result["range_complete"])
+        self.assertEqual(result["sha256"], hashlib.sha256(raw).hexdigest())
+        self.approve.assert_not_called()
+        proposal = {"path": path.name, "read_id": result["read_id"],
+                    "edits": [{"start_line": 4, "end_line": 4, "new": "updated"}]}
+        path.write_bytes(raw.replace(b"skip", b"changed elsewhere"))
+        self.assertIn("error", self.tools.execute("edit_lines", proposal))
+        self.approve.assert_not_called()
+        proposal["read_id"] = self.tools.execute("read_file", arguments)["read_id"]
+        self.assertTrue(self.tools.execute("edit_lines", proposal)["changed"])
+        self.approve.assert_called_once()
+        self.assertEqual(path.read_bytes(), "\ufefffirst\r\n中🙂\rchanged elsewhere\nupdated".encode())
+
+    def test_range_read_rejects_invalid_selectors_privacy_and_incomplete_results(self):
+        path = self.root / "source.txt"
+        valid = {"path": path.name, "ranges": [[1, 1], [3, 3]]}
+        with patch.object(self.tools, "_read_validated") as scan:
+            for ranges in ([], None, [[True, 1]], [[2, 1]], [[3, 3], [1, 1]], [[1, 2], [2, 3]],
+                           [[1, 10001]], [[1, 1000001]], [[i, i] for i in range(1, 10)]):
+                self.assertIn("error", self.tools.execute("read_file", {**valid, "ranges": ranges}))
+            for extra in ({"image": True}, {"symbol": "x"}, {"cursor": "start"}, {"offset": 2},
+                          {"limit": 3}, {"line_numbers": False}, {"path": ".env"}):
+                self.assertIn("error", self.tools.execute("read_file", {**valid, **extra}))
+            scan.assert_not_called()
+        path.write_bytes(b"first\nsecond\n")
+        self.assertEqual(set(self.tools.execute("read_file", valid)), {"error"})
+        path.write_bytes(b"first\n" + b"sk-" + b"z" * 30 + b"\nthird\n")
+        self.assertEqual(set(self.tools.execute("read_file", valid)), {"error"})
+        secret = "fixture-private-value"
+        path.write_bytes(f"first\n{secret}\nthird\n".encode())
+        with closing(Tools(replace(self.config, api_key=secret), self.approve)) as tools:
+            result = tools.execute("read_file", valid)
+            self.assertTrue(result["range_complete"])
+            self.assertNotIn("sha256", result)
+            self.assertNotIn("read_id", result)
+            self.assertNotIn(secret, json.dumps(result))
+        path.write_bytes(b'"' * 100 + b"\nsecond\nthird\n")
+        with closing(Tools(replace(self.config, max_output=256), self.approve)) as tools:
+            self.assertEqual(set(tools.execute("read_file", valid)), {"error"})
+            path.write_bytes(b"first\nsecond\nthird\n")
+            result = tools.execute("read_file", valid)
+            self.assertTrue(result["read_id"].endswith("-1"))
+            self.assertLessEqual(len(json.dumps(result).encode()), 256)
+        self.cancel.set()
+        with self.assertRaises(KeyboardInterrupt):
+            self.tools.execute("read_file", valid)
+        self.approve.assert_not_called()
+
     def test_all_nine_languages_select_expected_physical_lines_and_revision(self):
         for path, name, source, start, end in SOURCES:
             with self.subTest(language=path):

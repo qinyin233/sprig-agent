@@ -88,6 +88,21 @@ class ReadRetentionTests(unittest.TestCase):
                     self.assertEqual(selected[5], history[5])
                 self.assertEqual(history, original)
 
+    def test_disjoint_read_is_never_retained_as_complete_file_coverage(self):
+        history = self.history()[:2]
+        ranges = [[1, 1], [10, 10]]
+        content = "1: " + "long selected line " * 20 + "\n10: last\n"
+        self.append(history, "ranges", "a.py", {"path": "a.py", "content": content,
+                    "ranges": ranges, "line_numbers": True, "range_complete": True, "truncated": False,
+                    "read_id": "r0123456789ab-1", "sha256": "a" * 64}, ranges=ranges)
+        history.extend({"role": "user", "content": "constraint"} for _ in range(6))
+        selected, info = self.compact(history)
+        result = json.loads(selected[3]["content"])
+        self.assertTrue(result["context_elided"])
+        self.assertNotIn("read_id", result)
+        self.assertNotIn("content", result)
+        self.assertEqual(info["retained_reads"], [])
+
     def test_disjoint_and_partially_overlapping_windows_of_the_same_version_survive_a_recent_read(self):
         for old_start, old_end, new_start, new_end, restored in (
             (1, 20, 21, 40, True), (1, 20, 10, 30, True), (5, 15, 1, 20, False),

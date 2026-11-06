@@ -70,9 +70,10 @@ TOOL_SCHEMAS = [
     schema("glob", "Case-sensitive glob relative to path; basename any depth, ** dirs. Check flags.",
            {"pattern": STRING, "path": STRING,
             "hidden": {"type": "boolean"}, "limit": {"type": "integer"}}, ["pattern"]),
-    schema("read_file", "UTF-8 lines/symbol or cursor='start'/next_cursor. range_complete/symbol_complete; truncated may mean later lines. Partial lines/images lack read_id; image=true asks run-only pixels.",
+    schema("read_file", "Lines or ranges=[[start,end],...]; symbol; cursor='start'/next_cursor; image=true; range_complete/symbol_complete",
            {"path": STRING, "offset": {"type": "integer", "minimum": 1, "maximum": 1000000},
             "limit": {"type": "integer", "minimum": 1, "maximum": 10000}, "line_numbers": {"type": "boolean"},
+            "ranges": {"type": "array", "items": {"type": "array", "items": {"type": "integer"}}},
             "cursor": {"type": "string", "maxLength": 80},
             "symbol": {"type": "string", "minLength": 1, "maxLength": 1024}, "image": {"type": "boolean"}}, ["path"]),
     schema("grep", "RE2 (ASCII \\w/\\d/\\b; no lookaround/backrefs; simple folding). literal=true for text; physical CR/LF lines. Check truncated/timed_out/skipped.",
@@ -625,12 +626,14 @@ class Tools:
             raise ToolError("glob scope exceeds 32 path components; narrow the workspace")
         return discover_files(self, parts, matcher, hidden, limit, skip_directory)
 
-    def read_file(self, path, offset=1, limit=None, *, line_numbers=_MISSING, cursor=_MISSING, symbol=_MISSING, image=False):
+    def read_file(self, path, offset=1, limit=None, *, line_numbers=_MISSING, cursor=_MISSING, symbol=_MISSING,
+                  ranges=_MISSING, image=False):
         self._require_tool("read_file")
         if type(image) is not bool:
             raise ToolError("image must be a boolean")
         if image:
-            if offset != 1 or type(offset) is not int or limit is not None or any(value is not _MISSING for value in (line_numbers, cursor, symbol)):
+            if (offset != 1 or type(offset) is not int or limit is not None
+                    or any(value is not _MISSING for value in (line_numbers, cursor, symbol, ranges))):
                 raise ToolError("image=true cannot be combined with text range, symbol or formatting options")
             return read_image(self, path)
         if type(offset) is not int or not 1 <= offset <= 1000000:
@@ -648,11 +651,16 @@ class Tools:
                 raise ToolError("symbol cannot be combined with offset, limit or cursor; continue using ordinary line reads")
         if cursor is not _MISSING and (offset != 1 or limit is not None or line_numbers is not _MISSING):
             raise ToolError("cursor cannot be combined with line options")
+        if ranges is not _MISSING and (offset != 1 or limit is not None
+                                      or any(value is not _MISSING for value in (line_numbers, cursor, symbol))):
+            raise ToolError("ranges is a separate, numbered line read; omit other selectors")
         ranged = offset != 1 or limit is not None
         numbered = ranged if line_numbers is _MISSING else line_numbers
         parts = self._parts(path)
         if self.config.project_instructions:
             self.instructions.register(parts[:-1])
+        if ranges is not _MISSING:
+            return self._read_ranges(path, parts, ranges)
         if symbol is not _MISSING:
             return self._read_result(parts, self._read_symbol(path, symbol,
                                      line_numbers=True if line_numbers is _MISSING else line_numbers))
@@ -749,6 +757,58 @@ class Tools:
         result = self._line_page(path, raw, text, offset, limit, line_numbers=line_numbers)
         requested_end = min(result["total_lines"], offset + limit - 1)
         result["range_complete"] = not result["line_truncated"] and result["end_line"] >= requested_end
+        return result
+
+    def _read_ranges(self, path, parts, ranges):
+        if not isinstance(ranges, list) or not 1 <= len(ranges) <= 8:
+            raise ToolError("ranges requires one to eight [start, end] pairs")
+        previous_end, line_count = 0, 0
+        for pair in ranges:
+            if (not isinstance(pair, list) or len(pair) != 2 or any(type(line) is not int for line in pair)
+                    or not previous_end < pair[0] <= pair[1] <= 1000000):
+                raise ToolError("ranges must be ordered, non-overlapping, inclusive lines from 1 to 1000000")
+            start, previous_end = pair
+            line_count += previous_end - start + 1
+        if line_count > 10000:
+            raise ToolError("ranges selects more than 10000 lines; request fewer lines")
+
+        raw, text = self._read_validated(path)
+        selected, content_bytes, range_index = [], 0, 0
+        output_error = "ranges exceeds max-output; request fewer lines or use byte pages for long lines"
+        for number, line in enumerate(io.StringIO(text, newline=""), 1):
+            if number % 256 == 0:
+                self._check_cancelled()
+            start, end = ranges[range_index]
+            if number < start:
+                continue
+            displayed = f"{number}: {line}"
+            content_bytes += len(displayed.encode("utf-8"))
+            if content_bytes > self.config.max_output:
+                raise ToolError(output_error)
+            selected.append(displayed)
+            if number == end:
+                range_index += 1
+                if range_index == len(ranges):
+                    break
+        if range_index != len(ranges):
+            raise ToolError("a requested range extends beyond the end of the file")
+
+        self._check_cancelled()
+        self._parts(path)
+        result = {"path": path, "content": "".join(selected), "ranges": ranges, "line_numbers": True,
+                  "range_complete": True}
+        secrets = self.config.secrets
+
+        def check_output(value):
+            if max(encoded_size(value), encoded_size(redact(value, secrets))) > self.config.max_output:
+                raise ToolError(output_error)
+
+        if any(secret in text for secret in secrets):
+            check_output(result)
+        else:
+            result["sha256"] = hashlib.sha256(raw).hexdigest()
+            result["read_id"] = self.read_versions.remember(
+                parts, result["sha256"], validate=lambda identity: check_output({**result, "read_id": identity}))
         return result
 
     def _read_symbol(self, path, symbol, *, line_numbers):
