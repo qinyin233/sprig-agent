@@ -35,6 +35,7 @@ local_free = api(kernel, "LocalFree", PTR, PTR)
 create_file = api(kernel, "CreateFileW", w.HANDLE, w.LPCWSTR, w.DWORD, w.DWORD,
                   PTR, w.DWORD, w.DWORD, w.HANDLE)
 get_file_info = api(kernel, "GetFileInformationByHandle", w.BOOL, w.HANDLE, PTR)
+get_file_info_ex = api(kernel, "GetFileInformationByHandleEx", w.BOOL, w.HANDLE, c.c_int, PTR, w.DWORD)
 get_final_path = api(kernel, "GetFinalPathNameByHandleW", w.DWORD, w.HANDLE, w.LPWSTR, w.DWORD, w.DWORD)
 get_long_path = api(kernel, "GetLongPathNameW", w.DWORD, w.LPCWSTR, w.LPWSTR, w.DWORD)
 
@@ -66,6 +67,16 @@ class FileInfo(c.Structure):
     _fields_ = [("attributes", w.DWORD), ("creation", w.FILETIME), ("access", w.FILETIME),
                 ("write", w.FILETIME), ("volume", w.DWORD), ("size_high", w.DWORD),
                 ("size_low", w.DWORD), ("links", w.DWORD), ("index_high", w.DWORD), ("index_low", w.DWORD)]
+
+
+class FileIdInfo(c.Structure):
+    _fields_ = [("volume", c.c_uint64), ("identifier", c.c_ubyte * 16)]
+
+
+def file_identity(handle):
+    info = FileIdInfo()
+    checked(get_file_info_ex(handle, 18, c.byref(info), c.sizeof(info)))  # FileIdInfo
+    return info.volume, bytes(info.identifier)
 
 
 class SecurityAttributes(c.Structure):

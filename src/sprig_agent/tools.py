@@ -1,13 +1,13 @@
 """Bounded, approval-first workspace tools."""
 
-from contextlib import contextmanager, nullcontext
+from contextlib import ExitStack, contextmanager, nullcontext
 import difflib
 import hashlib
 import io
 import json
 import math
 import os
-from pathlib import PurePosixPath, PureWindowsPath
+from pathlib import Path, PurePosixPath, PureWindowsPath
 import selectors
 import signal
 import stat
@@ -17,7 +17,7 @@ import time
 import uuid
 
 from .config import TOOL_NAMES, redact, terminal_text
-from .command_sandbox import Launch, Sandbox, identity as directory_identity
+from .command_sandbox import Launch, Sandbox
 from .changes import ChangeError, ChangeHistory, unpack
 from .filesystem import Directory, is_link
 from .index import SymbolIndex, language_for
@@ -293,21 +293,70 @@ class Tools:
         return parsed.parts
 
     @contextmanager
-    def _directory(self, parts):
-        self.root.ensure_open()
-        directory = self.root
+    def _directory(self, parts, *, root=None, identities=None):
+        directory = self.root if root is None else root
+        directory.ensure_open()
         opened = []
         try:
+            if identities is not None:
+                identities.append(directory.identity())
             for index, part in enumerate(parts):
                 try:
                     directory = directory.child(part)
                 except FileNotFoundError:
                     raise _WorkspacePathMissing(parts[:index]) from None
                 opened.append(directory)
+                if identities is not None:
+                    identities.append(directory.identity())
             yield directory
         finally:
             for directory in reversed(opened):
                 directory.close()
+
+    @contextmanager
+    def _command_directory(self, parts, expected=None):
+        changed = "command working directory changed; request fresh approval"
+        with ExitStack() as stack:
+            try:
+                named_root = stack.enter_context(Directory(self.root.path))
+            except (OSError, ValueError):
+                raise ToolError(changed) from None
+            if named_root.identity() != self.root.identity():
+                raise ToolError(changed)
+            try:
+                identities = []
+                cwd = stack.enter_context(self._directory(parts, root=named_root, identities=identities))
+            except (OSError, ValueError):
+                if expected is None:
+                    raise
+                raise ToolError(changed) from None
+            chain = tuple(identities)
+            if expected is not None and chain != expected:
+                raise ToolError(changed)
+            yield cwd, chain
+
+    @contextmanager
+    def _command_launch(self, directory, argv, env):
+        if sys.platform != "linux":
+            self._check_cancelled()
+            yield Launch(argv, directory.path, env, ())
+            return
+        import fcntl
+        # Popen uses cwd before closing the child descriptors. Keep the
+        # reference above the stdio slots and close it before user code runs.
+        fd = fcntl.fcntl(directory.fd, fcntl.F_DUPFD_CLOEXEC, 3)
+        try:
+            path = Path(f"/proc/self/fd/{fd}")
+            try:
+                info = path.stat()
+            except OSError:
+                raise ToolError("cannot bind command working directory through /proc/self/fd") from None
+            if (info.st_dev, info.st_ino) != directory.identity():
+                raise ToolError("cannot bind command working directory through /proc/self/fd")
+            self._check_cancelled()
+            yield Launch(argv, path, env, ())
+        finally:
+            os.close(fd)
 
     @contextmanager
     def _parent(self, path):
@@ -452,17 +501,15 @@ class Tools:
         cwd = row.cwd.relative_to(self.config.workdir).as_posix()
         parts = self._parts(cwd)
         rules = self.instructions.prepare_action(parts)
-        with self._directory(parts) as directory:
+        with self._command_directory(parts, row.cwd_chain):
             def recheck():
                 self._check_mcp()
                 self._require_tool("job")
                 if self.config is not proposal.config:
                     raise ToolError("stdin policy changed; request fresh approval")
                 self._parts(cwd)
-                for info in (directory.stat("."), os.stat(directory.path, follow_symlinks=False)):
-                    if (not stat.S_ISDIR(info.st_mode) or (info.st_dev, info.st_ino) != row.directory_identity
-                            or getattr(info, "st_file_attributes", 0) & getattr(stat, "FILE_ATTRIBUTE_REPARSE_POINT", 0x400)):
-                        raise ToolError("background working directory changed; input was not replayed")
+                with self._command_directory(parts, row.cwd_chain):
+                    pass
                 if text is not None and any(secret in text for secret in self.config.credential_secrets):
                     raise ToolError("configured credentials must not appear in stdin input")
                 self.instructions.recheck_action(parts, rules)
@@ -1505,6 +1552,7 @@ class Tools:
             raise ToolError("background must be a boolean")
         if not isinstance(stdin, str) or stdin not in {"closed", "pipe", "pty"} or stdin != "closed" and not background:
             raise ToolError("stdin must be closed or an explicitly opted-in background pipe or PTY")
+        job_epoch = None
         if background:
             self.jobs.available()
             if stdin == 'pty' and not self.jobs.terminal_enabled():
@@ -1524,11 +1572,17 @@ class Tools:
                 or not math.isfinite(seconds) or not 0 < seconds <= maximum):
             raise ToolError(f"command timeout must be positive and at most {maximum:g} seconds; omit timeout to use that configured limit")
         parts = self._parts(cwd)
+        with ExitStack() as directories:
+            pinned, cwd_chain = directories.enter_context(self._command_directory(parts))
+            return self._run_in_directory(argv, parts, pinned, cwd_chain, seconds, stdin, job_epoch, directories)
+
+    def _run_in_directory(self, argv, parts, pinned, cwd_chain, seconds, stdin, job_epoch, directories):
+        config, version = self.config, self._conversation_version
+        background = job_epoch is not None
         sandbox = None
-        with self._directory(parts) as pinned:
-            if self.config.command_sandbox == "bubblewrap":
-                sandbox = Sandbox(self.config, self.root, pinned, self.policy, self._check_cancelled)
-        directory = self.config.workdir.joinpath(*parts)
+        if config.command_sandbox == "bubblewrap":
+            sandbox = Sandbox(config, self.root, pinned, self.policy, self._check_cancelled)
+        directory = pinned.path
         rules = self.instructions.prepare_action(parts)
         output_limit = self.config.command_output_limit or self.config.max_output
         protection = sandbox.description() if sandbox else "RUN (NOT SANDBOXED; may access outside files/network)"
@@ -1578,16 +1632,22 @@ class Tools:
                 description += " This may replace in-memory log " + previous + "."
         if not self.request_approval(description):
             return {"approved": False}
-        self._check_cancelled()
-        self._parts(cwd)
-        with self._directory(parts) as pinned:
-            if sandbox is not None and directory_identity(os.fstat(pinned.fd)) != sandbox.cwd_identity:
-                raise ToolError("sandbox working directory changed during approval; request fresh approval")
+        self._require_tool("run")
+        if self.config is not config or self._conversation_version != version:
+            raise ToolError("command owner or policy changed; request fresh approval")
+        self._parts("/".join(parts) or ".")
         if any(secret in arg for secret in self.config.credential_secrets for arg in argv):
             raise ToolError("configured credentials cannot appear in command argv")
         env = {} if sandbox else command_environment(self.config)
-        launch = sandbox.launch(argv) if sandbox else nullcontext(Launch(argv, directory, env, ()))
         self.instructions.recheck_action(parts, rules)
+        current, _ = directories.enter_context(self._command_directory(parts, cwd_chain))
+        launch = sandbox.launch(argv) if sandbox else self._command_launch(current, argv, env)
+        return self._execute_command(argv, directory, cwd_chain, launch, seconds, output_limit, stdin, job_epoch,
+                                     preview, memory_generation, directories)
+
+    def _execute_command(self, argv, directory, cwd_chain, launch, seconds, output_limit, stdin, job_epoch,
+                         preview, memory_generation, directories):
+        background = job_epoch is not None
         if background:
             self.read_versions.clear()
             try:
@@ -1595,8 +1655,9 @@ class Tools:
                 status = ({"saved": False, "pending": True} if log is not None else
                           {"saved": False, "reason": "command log storage unavailable before approval"} if preview is not None else None)
                 with launch as command:
-                    return self.jobs.start(argv, directory, env, seconds, output_limit, epoch=job_epoch, stdin=stdin,
-                                           log=log, log_status=status, launch=command if sandbox else None)
+                    return self.jobs.start(argv, directory, cwd_chain, command, seconds, output_limit,
+                                           epoch=job_epoch, stdin=stdin, log=log, log_status=status,
+                                           directory_guard=directories if os.name == "nt" else None)
             finally:
                 self.read_versions.clear()
         sampled = output_limit > self.config.max_output
@@ -1611,7 +1672,9 @@ class Tools:
         if os.name == "nt":
             from .windows import run_command
             try:
-                result = run_command(argv, directory, env, seconds, output_limit, self.cancel_event, emit_chunk)
+                with launch as command:
+                    result = run_command(command.argv, command.cwd, command.env, seconds, output_limit,
+                                         self.cancel_event, emit_chunk)
             finally:
                 self.read_versions.clear()
             return self._finish_foreground(result, stream, preview, capture, memory_generation)

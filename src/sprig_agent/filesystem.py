@@ -44,6 +44,14 @@ class Directory:
         if self.fd is None:
             raise OSError("directory handle is closed")
 
+    def identity(self):
+        self.ensure_open()
+        if os.name == "nt":
+            from .windows import file_identity
+            return file_identity(self.fd)
+        info = os.fstat(self.fd)
+        return info.st_dev, info.st_ino
+
     def scandir(self):
         self.ensure_open()
         return os.scandir(self.path if os.name == "nt" else self.fd)

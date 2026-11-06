@@ -84,7 +84,8 @@ class Output:
 
 
 class Job:
-    def __init__(self, identity, process, label, truncated, seconds, cap, secrets, directory, identity_cwd, stdin, log=None, log_status=None):
+    def __init__(self, identity, process, label, truncated, seconds, cap, secrets, directory, cwd_chain, stdin,
+                 log=None, log_status=None, directory_guard=None):
         self.identity, self.process, self.label = identity, process, label
         self.seconds, self.cap = seconds, cap
         self.command_truncated = truncated
@@ -96,7 +97,8 @@ class Job:
         self.log, self.log_status = log, log_status
         self.thread = None
         self.error = None
-        self.cwd, self.directory_identity = directory, identity_cwd
+        self.cwd, self.cwd_chain = directory, cwd_chain
+        self.directory_guard = directory_guard
         self.stdin_mode, self.stdin_open = stdin, stdin != 'closed'
         self.terminal_io = threading.Lock()
         self.stdin_bytes, self.input_version = 0, 0
@@ -135,7 +137,8 @@ class Jobs:
             if any(row.state == "cleanup_failed" for row in self.records.values()):
                 raise ValueError("background cleanup is uncertain; inspect and close this conversation before starting commands")
 
-    def start(self, argv, directory, env, seconds, cap, *, epoch, stdin="closed", log=None, log_status=None, launch=None):
+    def start(self, argv, directory, cwd_chain, launch, seconds, cap, *, epoch, stdin="closed", log=None,
+              log_status=None, directory_guard=None):
         if not isinstance(stdin, str) or stdin not in {"closed", "pipe", "pty"}:
             raise ValueError("invalid background stdin mode")
         self.available()
@@ -148,20 +151,19 @@ class Jobs:
                 if old is None:
                     raise ValueError("background record capacity reached")
                 del self.records[old]
-            info = directory.stat()
-            identity_cwd = (info.st_dev, info.st_ino)
             terminal = TERMINAL_SIZE if stdin == 'pty' else None
-            if launch is None:
-                process = Process(argv, directory, env, terminal=terminal)
-            else:
-                process = Process(launch.argv, launch.cwd, launch.env, terminal=terminal, pass_fds=launch.pass_fds)
+            process = Process(launch.argv, launch.cwd, launch.env, terminal=terminal, pass_fds=launch.pass_fds)
+            owned_directories = None
             try:
                 if stdin == "closed":
                     process.close_input()
                 self.check()
                 label = terminal_text(redact(json.dumps([os.path.basename(argv[0]), *argv[1:]], ensure_ascii=False), self.config.secrets)).encode("utf-8")
+                if directory_guard is not None:
+                    # Windows may resolve its initial cwd after CreateProcess returns.
+                    owned_directories = directory_guard.pop_all()
                 row = Job("job-" + uuid.uuid4().hex, process, label[:160].decode("utf-8", errors="ignore"), len(label) > 160,
-                          seconds, cap, self.config.secrets, directory, identity_cwd, stdin, log, log_status)
+                          seconds, cap, self.config.secrets, directory, cwd_chain, stdin, log, log_status, owned_directories)
                 row.thread = threading.Thread(target=self._run, args=(row, epoch), name="sprig-" + row.identity, daemon=False)
                 self.records[row.identity] = row
                 self.revision += 1
@@ -169,7 +171,11 @@ class Jobs:
             except BaseException:
                 if 'row' in locals():
                     self.records.pop(row.identity, None)
-                process.close()
+                try:
+                    process.close()
+                finally:
+                    if owned_directories is not None:
+                        owned_directories.close()
                 raise
             return {**self._info(row), "approved": True, "started": True, "task_completed": False}
 
@@ -347,7 +353,11 @@ class Jobs:
             state = "failed"
         finally:
             try:
-                row.process.close()
+                try:
+                    row.process.close()
+                finally:
+                    if row.directory_guard is not None:
+                        row.directory_guard.close()
             except BaseException:
                 state = "cleanup_failed"
             with self.lock:

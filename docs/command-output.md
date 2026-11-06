@@ -37,6 +37,8 @@ CLI 对应 `--command-output-limit 1048576`；其优先级高于 profile 和用�
 
 每个命令仍需一次新批准；批准界面同时显示原始输出上限、展示预算和首尾模式。只读、工具禁用、工作目录、环境过滤、超时、取消、POSIX 进程组和 Windows Job Object 清理继续执行。默认及显式总输出上限都加入新会话的绑定；恢复时更改或去掉该数值会拒绝复用原会话。后台命令也使用该采集上限，原有每项最多 1 MiB 脱敏输出内存保留限制独立存在。
 
+`run` 和固定检查会在审批期间持有从工作区根到目标目录的句柄，批准后复查整条目录链。即使目标目录本身未换，只要它所在的父目录被替换，旧批准也会失效。后台管道输入、EOF 和 PTY 调整还会复查启动时的目录链。Windows 使用原生文件 ID，并在命令运行期间保留允许读写共享的防重命名句柄。Linux 的普通命令通过 `/proc/self/fd` 在已核对的目录中启动，子进程在执行用户程序前关闭目录描述符。其他 POSIX 平台在启动前复查身份，仍通过路径设置子进程工作目录。关闭沙箱时，获批进程仍按当前账户权限运行。 [Windows 文件 ID](https://learn.microsoft.com/en-us/windows/win32/api/winbase/ns-winbase-file_id_info) · [Windows 共享模式](https://learn.microsoft.com/en-us/windows/win32/api/fileapi/nf-fileapi-createfilew) · [Linux procfs](https://docs.kernel.org/filesystems/proc.html) · [CPython 子进程启动](https://github.com/python/cpython/blob/v3.13.0/Modules/_posixsubprocess.c#L694-L763)
+
 UTF-8 解码和已知凭据脱敏在选择首尾之前连续进行，包含跨管道分块的密钥；这样省略边界不会把完整密钥切成无法匹配的片段。展示边界不切出无效 UTF-8，终端控制字符仍转成可见表示。输出开头可立即展示，末尾在命令结束或停止后补齐，省略量如实报告。
 
 执行层仍可能在进程内存保留至多总输出上限的原始字节；首尾缓冲合计不超过 `max_output` 的 1.5 倍，另有当前分块和解码/脱敏状态。超出展示预算的完整日志不会由此写入工作区或持久化会话，保存的工具正文是脱敏后的有界结果。现有命令权限允许的文件/网络副作用仍由用户审阅批准；这项配置不提供操作系统沙箱。
