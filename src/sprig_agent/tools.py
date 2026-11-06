@@ -122,6 +122,12 @@ class ToolError(Exception):
     pass
 
 
+class _WorkspacePathMissing(FileNotFoundError):
+    def __init__(self, directory_parts):
+        super().__init__("Workspace path not found.")
+        self.directory_parts = directory_parts
+
+
 def protected(name):
     return name == ".git" or name == ".env" or name.startswith(".env.")
 
@@ -290,8 +296,11 @@ class Tools:
         directory = self.root
         opened = []
         try:
-            for part in parts:
-                directory = directory.child(part)
+            for index, part in enumerate(parts):
+                try:
+                    directory = directory.child(part)
+                except FileNotFoundError:
+                    raise _WorkspacePathMissing(parts[:index]) from None
                 opened.append(directory)
             yield directory
         finally:
@@ -308,6 +317,31 @@ class Tools:
 
     def _read(self, parent, name, limit):
         return parent.read(name, limit)
+
+    @staticmethod
+    def _scope_stat(parent, parts):
+        if not parts:
+            return None
+        try:
+            return parent.stat(parts[-1])
+        except FileNotFoundError:
+            raise _WorkspacePathMissing(parts[:-1]) from None
+
+    def _missing_path_result(self, error):
+        self._check_cancelled()
+        result = {"error": str(error)}
+        directory = "/".join(error.directory_parts) or "."
+        if (self.policy.excluded(error.directory_parts) or "\n" in directory or terminal_text(directory) != directory
+                or redact(directory, self.config.secrets) != directory):
+            return result
+        try:
+            self.policy.check_text(directory)
+        except ValueError:
+            return result
+        hint = {**result, "suggested_directory": directory}
+        if self.config.tool_enabled("list_files"):
+            hint["guidance"] = "Use list_files at suggested_directory to choose a path."
+        return hint if encoded_size(hint) <= self.config.max_output else result
 
     @staticmethod
     def _revision(info):
@@ -348,6 +382,8 @@ class Tools:
             if method is None:
                 raise ToolError("unknown tool")
             result = method(**arguments)
+        except _WorkspacePathMissing as exc:
+            result = self._missing_path_result(exc)
         except (OSError, ToolError, ChangeError, TypeError, ValueError) as exc:
             result = {"error": str(exc)}
         if isinstance(result, (EditPreview, ImageReadResult)):
@@ -911,7 +947,7 @@ class Tools:
 
         self._check_cancelled()
         with self._directory(parts[:-1]) as parent:
-            info = parent.stat(parts[-1]) if parts else None
+            info = self._scope_stat(parent, parts)
             if info is not None and stat.S_ISREG(info.st_mode):
                 scan_file(parent, parts[-1], parts[:-1])
             else:
@@ -1028,7 +1064,7 @@ class Tools:
                         truncated = True
 
         with self._directory(parts[:-1]) as parent:
-            info = parent.stat(parts[-1]) if parts else None
+            info = self._scope_stat(parent, parts)
             if info is not None and stat.S_ISREG(info.st_mode):
                 # A file lookup is not a complete sweep: retain unrelated cache entries.
                 scan_file(parent, parts[-1], parts[:-1])

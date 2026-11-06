@@ -60,6 +60,42 @@ class GrepTests(unittest.TestCase):
         self.assertEqual(missed["matches"], [])
         self.assertNotIn("search_guidance", missed)
 
+    def test_missing_scope_suggests_a_pinned_directory_without_widening(self):
+        source = self.root / "src"
+        source.mkdir()
+        (source / "sample.py").write_text("alpha\n", encoding="utf-8")
+        for name, arguments in (("grep", {"pattern": "alpha"}), ("search", {"query": "alpha"}),
+                                ("project_map", {}), ("glob", {"pattern": "*.py"}), ("list_files", {})):
+            for path, nearest in (("docs", "."), ("src/missing", "src"), ("src/missing/deeper", "src")):
+                with self.subTest(tool=name, path=path), patch.object(self.tools, "_read") as read:
+                    result = self.tools.execute(name, {**arguments, "path": path})
+                    self.assertEqual(result, {"error": "Workspace path not found.", "suggested_directory": nearest,
+                                              "guidance": "Use list_files at suggested_directory to choose a path."})
+                    read.assert_not_called()
+        recovered = self.tools.execute("grep", {"pattern": "alpha", "path": "src"})
+        self.assertEqual([row["path"] for row in recovered["matches"]], ["src/sample.py"])
+        self.approve.assert_not_called()
+
+    def test_missing_scope_hint_obeys_privacy_tool_availability_and_budget(self):
+        secret = "sk-" + "z" * 30
+        configured = "fixture-private-value"
+        long_name = "p" * 180
+        for name in (secret, configured, long_name):
+            (self.root / name).mkdir()
+        (self.root / ".sprigignore").write_text("ignored/\n", encoding="utf-8")
+        self.tools.config = replace(self.config, api_key=configured, max_output=256)
+        for path in (".env/missing", "../missing", "ignored/missing", f"{secret}/missing",
+                     f"{configured}/missing", f"{long_name}/missing"):
+            with self.subTest(path=path):
+                result = self.tools.execute("grep", {"pattern": "alpha", "path": path})
+                self.assertEqual(set(result), {"error"})
+                self.assertNotIn(secret, result["error"])
+                self.assertNotIn(configured, result["error"])
+        self.tools.config = replace(self.config, disabled_tools=("list_files",))
+        self.assertEqual(self.tools.execute("grep", {"pattern": "alpha", "path": "docs"}),
+                         {"error": "Workspace path not found.", "suggested_directory": "."})
+        self.approve.assert_not_called()
+
     def test_invalid_flags_patterns_and_limits_fail_before_file_reads(self):
         invalid = [{"literal": value} for value in (None, 0, 1, "false", [], {})]
         invalid += [{"pattern": value} for value in ("", None, "x" * 1001, "(?=alpha)", r"(a)\1")]
