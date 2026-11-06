@@ -171,6 +171,7 @@ class Agent:
             self.tools._conversation_version += 1
             self.tools.jobs.reset()
             self.tools.lsp_manager.reset()
+            self.tools.logs.reset_memory()
         self.runtime_state = None
         self.work_progress = WorkProgress()
         self._tool_images = []
@@ -208,7 +209,7 @@ class Agent:
                     "check_total": len(self.config.checks) if check else 0}
         self._event("tool", **metadata)
         self._check_cancelled()
-        if self._running and name in TOOL_NAMES and not any(schema["function"]["name"] == name for schema in self.schemas):
+        if self._running and name in TOOL_NAMES and not any(schema["function"]["name"] == name for schema in self._offered_schemas):
             # Batch preflight may bypass dispatch. Track unavailable model tools
             # at their shared boundary without changing execution diagnostics.
             self.had_rejected_action = True
@@ -785,6 +786,21 @@ class Agent:
                 messages[0] = original
         return messages
 
+    def _request_schemas(self, messages, report):
+        if (self.config.command_log_dir is not None or not self.config.tool_enabled("read_log")
+                or not isinstance(self.tools, Tools) or not self.tools.logs.has_memory_log()):
+            return self.schemas
+        schemas = [*self.schemas, copy.deepcopy(READ_LOG_SCHEMA)]
+        size = request_size(self.config, messages, schemas, check_cancelled=self._check_cancelled)
+        if size > self.config.max_context_bytes:
+            return self.schemas
+        if (self.compact_context and not report["compaction_triggered"]
+                and size >= self.config.max_context_bytes * self.config.context_trigger_ratio):
+            return self.schemas
+        report["before_bytes"] += size - report["after_bytes"]
+        report["after_bytes"] = size
+        return schemas
+
     def _complete(self, messages, *, step):
         self._event("preparing")
         history = messages
@@ -794,6 +810,8 @@ class Agent:
                                            check_cancelled=self._check_cancelled)
         if not report["within_budget"]:
             raise ProviderError("context byte budget exceeded; no request sent. Review /context and explicitly /compact, or increase --max-context-bytes.")
+        schemas = self._request_schemas(messages, report)
+        self._offered_schemas = schemas
         if self.references.observed != self._prepared_reference_observations:
             self.references.observed = self._prepared_reference_observations
             self._checkpoint(history)  # Metadata only; never save the projected file bodies.
@@ -814,7 +832,7 @@ class Agent:
         options = {"check_cancelled": self._check_cancelled, "on_retry": retry_notice,
                    'on_measurement': self._usage_observer(history)} if isinstance(self.provider, Provider) else {}
         if not self.config.stream or self.emit_delta is None:
-            return self.provider.complete(messages, self.schemas, **options)
+            return self.provider.complete(messages, schemas, **options)
         displayed = False
 
         def on_text(text):
@@ -823,7 +841,7 @@ class Agent:
             self.emit_delta(text)
 
         try:
-            return self.provider.complete(messages, self.schemas, on_text=on_text, **options)
+            return self.provider.complete(messages, schemas, on_text=on_text, **options)
         finally:
             if displayed:
                 self.emit_delta("\n")
@@ -906,6 +924,7 @@ class Agent:
             raise ValueError("another task or verification is already running")
         self._run_id, self._sequence, self._step, self._action = uuid.uuid4().hex, 0, 0, 0
         self._stop_reason = None
+        self._offered_schemas = self.schemas
         self.work_progress = WorkProgress()
         self.had_rejected_action = False
         self._tool_images = []

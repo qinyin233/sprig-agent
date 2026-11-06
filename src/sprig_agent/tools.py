@@ -203,6 +203,7 @@ class Tools:
         self.web.reset()
         self.read_versions.clear()
         self.index.clear()
+        self.logs.reset_memory()
         self.config = config
         self.skills.config = config
         self.logs.config = config
@@ -1451,9 +1452,9 @@ class Tools:
             return {"answered": False, "dismissed": True, "not_authorization": True}
         return answer_result(questions, answers, self.config.max_output, self.config.secrets)
 
-    def read_log(self, log_id, offset=0):
+    def read_log(self, log_id, offset=0, *, query=None):
         self._require_tool("read_log")
-        return self.logs.read(log_id, offset)
+        return self.logs.read(log_id, offset, query=query)
 
     def log_control(self, action="list", **arguments):
         self.root.ensure_open()
@@ -1483,6 +1484,18 @@ class Tools:
             # fails, including an uncertain replace/sync outcome.
             result["log"] = {"saved": False, "outcome": "unknown", "reason": "command log save failed; inspect /logs before relying on retention"}
         return result
+
+    def _finish_foreground(self, result, stream, preview, capture, memory_generation):
+        summary = stream.finish()
+        if summary is not None:
+            if memory_generation is not None and summary["output_truncated"]:
+                result["log"] = self.logs.retain_memory(memory_generation, result)
+            result.update(summary)
+        if self.emit_output:
+            result["streamed"] = True
+        if preview is not None and capture is None:
+            result["log"] = {"saved": False, "reason": "command log storage unavailable before approval"}
+        return self._retain_log(preview, capture, result)
 
     def run(self, argv, cwd=".", timeout=None, background=False, stdin="closed"):
         self._require_tool("run")
@@ -1528,7 +1541,7 @@ class Tools:
             description += ("\nenvironment: " + ("expanded inheritance" if self.config.inherit_env else "minimal inheritance")
                             + "; additional inherited names: " + json.dumps(self.config.env_allowlist)
                             + "; override names: " + json.dumps([name for name, _ in self.config.command_env]))
-        preview = None
+        preview = memory_generation = None
         if background:
             modes = {
                 'closed': 'Non-interactive stdin is closed. ',
@@ -1557,6 +1570,12 @@ class Tools:
                             + json.dumps([] if background else preview.get("retention_candidates", [])))
             if "unavailable" in preview:
                 description += "\nLogging is unavailable; this command will run without a retained log."
+        elif not background and output_limit > self.config.max_output:
+            memory_generation, previous = self.logs.memory_preview()
+            description += ("\nIf the output preview omits text, keep up to 1 MiB of redacted output in this conversation's memory. "
+                            "Pages read by the model may be saved in session history.")
+            if previous is not None:
+                description += " This may replace in-memory log " + previous + "."
         if not self.request_approval(description):
             return {"approved": False}
         self._check_cancelled()
@@ -1595,14 +1614,7 @@ class Tools:
                 result = run_command(argv, directory, env, seconds, output_limit, self.cancel_event, emit_chunk)
             finally:
                 self.read_versions.clear()
-            summary = stream.finish()
-            if sampled:
-                result.update(summary)
-            if self.emit_output:
-                result["streamed"] = True
-            if preview is not None and capture is None:
-                result["log"] = {"saved": False, "reason": "command log storage unavailable before approval"}
-            return self._retain_log(preview, capture, result)
+            return self._finish_foreground(result, stream, preview, capture, memory_generation)
         with launch as command:
             process = subprocess.Popen(command.argv, cwd=command.cwd, env=command.env, stdin=subprocess.DEVNULL,
                                        stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
@@ -1647,12 +1659,7 @@ class Tools:
             finally:
                 process.stdout.close()
                 self.read_versions.clear()
-        summary = stream.finish()
         result = {"approved": True, "returncode": process.returncode, "streamed": bool(self.emit_output),
                 "output": output.decode("utf-8", errors="replace"),
                 "timed_out": reason == "timeout", "output_limited": reason == "output_limit"}
-        if sampled:
-            result.update(summary)
-        if preview is not None and capture is None:
-            result["log"] = {"saved": False, "reason": "command log storage unavailable before approval"}
-        return self._retain_log(preview, capture, result)
+        return self._finish_foreground(result, stream, preview, capture, memory_generation)

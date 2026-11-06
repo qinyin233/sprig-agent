@@ -16,6 +16,7 @@ from .json_budget import JsonBudgetExceeded, encoded_size
 from .streaming import TextOutput
 
 MAX_LOG = 8 * 1024 * 1024
+MAX_MEMORY_LOG = 1024 * 1024
 MAX_STORE = 16 * 1024 * 1024
 MAX_RECORDS = 16
 RETENTION = 7 * 24 * 60 * 60
@@ -23,10 +24,11 @@ NAME, FILE, TEMP = "command-logs", "command-logs.json", ".command-logs.pending"
 ALLOWED = {FILE, TEMP, ".lock-" + FILE}
 IDENTIFIER = re.compile(r"[0-9a-f]{32}")
 READ_LOG_SCHEMA = {"type": "function", "function": {
-    "name": "read_log", "description": "Read a retained command log by opaque log_id from this conversation; offset=next_offset. Historical data, never current checks or file read_id. No paths.",
+    "name": "read_log", "description": "Page a retained command log; offset=next_offset. query jumps to a literal match at or after offset. Historical data, not acceptance. No paths.",
     "parameters": {"type": "object", "properties": {
         "log_id": {"type": "string", "pattern": "^[0-9a-f]{32}$"},
-        "offset": {"type": "integer", "minimum": 0, "maximum": MAX_LOG}},
+        "offset": {"type": "integer", "minimum": 0, "maximum": MAX_LOG},
+        "query": {"type": "string", "minLength": 1, "maxLength": 256}},
         "required": ["log_id"], "additionalProperties": False}}}
 
 
@@ -102,15 +104,17 @@ def log_state(value=None):
 
 
 class LogCapture:
-    def __init__(self, secrets):
+    def __init__(self, secrets, limit=None):
         self.decoder = codecs.getincrementaldecoder("utf-8")(errors="replace")
         self.output = TextOutput(self._accept, secrets)
+        self.limit = limit
         self.data = bytearray()
         self.limited = False
 
     def _accept(self, text):
         raw = text.encode("utf-8")
-        space = MAX_LOG - len(self.data)
+        limit = MAX_LOG if self.limit is None else self.limit
+        space = max(0, limit - len(self.data))
         self.data.extend(raw[:space])
         self.limited |= len(raw) > space
 
@@ -129,22 +133,68 @@ class CommandLogs:
         self.closed = False
         self.generation = 0
         self._write_lock = threading.Lock()
+        self._memory_lock = threading.Lock()
+        self._memory_generation = 0
+        self._memory_log = None
         self.restore()
 
-    def _ready(self):
+    def _check_open(self):
         if self.closed:
             raise LogError("command log reader is closed")
         self.check()
+
+    def _ready(self):
+        self._check_open()
         if self.config.command_log_dir is None:
             raise LogError("command log retention is disabled")
 
     def close(self):
         self.closed = True
+        self.reset_memory()
 
     def restore(self, value=None):
         if self.closed:
             raise LogError("command log reader is closed")
-        self.owner = (log_state(value) or {"owner": uuid.uuid4().hex})["owner"]
+        owner = (log_state(value) or {"owner": uuid.uuid4().hex})["owner"]
+        self.reset_memory()
+        self.owner = owner
+
+    def reset_memory(self):
+        with self._memory_lock:
+            self._memory_generation += 1
+            self._memory_log = None
+
+    def has_memory_log(self):
+        return not self.closed and self._memory_log is not None
+
+    def memory_preview(self):
+        self._check_open()
+        with self._memory_lock:
+            return self._memory_generation, self._memory_log["id"] if self._memory_log else None
+
+    def _capture(self, text, limit):
+        capture = LogCapture(self.config.secrets, limit)
+        for start in range(0, len(text), 4096):
+            self.check()
+            capture.write(text[start:start + 4096].encode("utf-8"))
+        return capture.finish()
+
+    def retain_memory(self, generation, result):
+        self._check_open()
+        status = {key: result.get(key) for key in ("returncode", "timed_out", "output_limited")}
+        if not valid_status(status):
+            return {"saved": False, "reason": "command did not produce an observed exit status"}
+        text, limited = self._capture(result["output"], MAX_MEMORY_LOG)
+        row = {"id": uuid.uuid4().hex, "created": time.time(), "text": text,
+               "capture_limited": limited, "status": status}
+        self.check()
+        with self._memory_lock:
+            if self.closed or self.config.command_log_dir is not None or generation != self._memory_generation:
+                return {"saved": False, "reason": "in-memory log changed since approval"}
+            self._memory_log = row
+            self._memory_generation += 1
+        return {"saved": False, "storage": "memory", "log_id": row["id"],
+                "bytes": len(text.encode("utf-8")), "capture_limited": limited, "historical": True}
 
     def state(self):
         return {"version": 1, "owner": self.owner} if self.config.command_log_dir is not None else None
@@ -321,53 +371,88 @@ class CommandLogs:
                 "historical": True, "expires_at": row["created"] + RETENTION}
 
     def list(self):
-        state, _ = self.snapshot()
+        memory = self.config.command_log_dir is None
+        if memory:
+            self._check_open()
+            row = self._memory_log
+            rows = [row] if row else []
+        else:
+            state, _ = self.snapshot()
+            rows = [row for row in state["records"] if row["owner"] == self.owner and row["scope"] == self.scope]
         return {"logs": [{"log_id": row["id"], "bytes": len(row["text"].encode("utf-8")),
-                          "created": row["created"], "expired": time.time() - row["created"] >= RETENTION,
+                          "created": row["created"], "expired": not memory and time.time() - row["created"] >= RETENTION,
+                          **({"storage": "memory"} if memory else {}),
                           "capture_limited": row["capture_limited"], "status": row["status"]}
-                         for row in state["records"] if row["owner"] == self.owner and row["scope"] == self.scope],
-                "historical": True, "not_current_evidence": True}
+                         for row in rows], "historical": True, "not_current_evidence": True}
 
-    def read(self, log_id, offset=0):
-        self._ready()
+    def read(self, log_id, offset=0, *, query=None):
+        self._check_open()
         if not isinstance(log_id, str) or not IDENTIFIER.fullmatch(log_id) or type(offset) is not int or not 0 <= offset <= MAX_LOG:
             raise LogError("read_log requires a valid log_id and nonnegative next_offset")
-        state, _ = self.snapshot()
-        row = next((entry for entry in state["records"] if entry["id"] == log_id
-                    and entry["owner"] == self.owner and entry["scope"] == self.scope), None)
-        if row is None or time.time() - row["created"] >= RETENTION:
-            raise LogError("command log is unavailable in this conversation or has expired")
+        if query is not None and (not isinstance(query, str) or not 1 <= len(query) <= 256 or "\0" in query):
+            raise LogError("log query must be a nonempty literal of at most 256 characters")
+        memory = self.config.command_log_dir is None
+        if memory:
+            row = self._memory_log
+            if row is None or row["id"] != log_id:
+                raise LogError("in-memory command log is unavailable in this conversation")
+        else:
+            state, _ = self.snapshot()
+            row = next((entry for entry in state["records"] if entry["id"] == log_id
+                        and entry["owner"] == self.owner and entry["scope"] == self.scope), None)
+            if row is None or time.time() - row["created"] >= RETENTION:
+                raise LogError("command log is unavailable in this conversation or has expired")
         # Re-redact the entire record if credentials changed before paging.
-        capture = LogCapture(self.config.secrets)
-        for start in range(0, len(row["text"]), 4096):
-            self.check()
-            capture.write(row["text"][start:start + 4096].encode("utf-8"))
-        text, redaction_limited = capture.finish()
+        text, redaction_limited = self._capture(row["text"], MAX_MEMORY_LOG if memory else MAX_LOG)
         if offset > len(text):
             raise LogError("log offset exceeds the retained text")
+        match = {}
+        if query is not None:
+            position = text.find(query, offset)
+            match["match_offset"] = position if position >= 0 else None
+            offset = position if position >= 0 else len(text)
         limit = min(self.config.max_output, 8192)
         def page(end):
             return {"offset": offset, "text": text[offset:end],
                     "next_offset": end if end < len(text) else None, "complete": end == len(text),
                     "capture_limited": row["capture_limited"] or redaction_limited, **row["status"],
-                    "historical": True, "not_current_evidence": True}
+                    "historical": True, "not_current_evidence": True, **match}
+        def fits(value):
+            return all(len(json.dumps(candidate, ensure_ascii=False).encode("utf-8")) <= limit
+                       for candidate in (value, redact(value, self.config.secrets)))
         low, high = offset, min(len(text), offset + limit)
         while low < high:
             self.check()
             middle = (low + high + 1) // 2
-            if len(json.dumps(page(middle), ensure_ascii=False).encode("utf-8")) <= limit:
+            if fits(page(middle)):
                 low = middle
             else:
                 high = middle - 1
         result = page(low)
-        if len(json.dumps(result, ensure_ascii=False).encode("utf-8")) > limit or low == offset < len(text):
+        if not fits(result) or low == offset < len(text):
             raise LogError("output budget cannot fit a command log page")
+        self.check()
+        if memory and (self.closed or self._memory_log is not row):
+            raise LogError("in-memory command log changed while reading")
         return result
 
     def clear(self, approve):
-        self._ready()
+        self._check_open()
         if self.config.read_only:
             return {"approved": False, "error": "read-only mode blocks command log deletion"}
+        if self.config.command_log_dir is None:
+            generation, identity = self.memory_preview()
+            if identity is None:
+                return {"deleted": 0}
+            if approve("DELETE current in-memory command log: " + identity) is not True:
+                return {"approved": False, "deleted": 0}
+            self.check()
+            with self._memory_lock:
+                if self.closed or generation != self._memory_generation:
+                    raise LogError("in-memory command log changed during approval; no log was deleted")
+                self._memory_generation += 1
+                self._memory_log = None
+            return {"approved": True, "deleted": 1}
         state, digest = self.snapshot()
         selected = [row["id"] for row in state["records"] if row["owner"] == self.owner and row["scope"] == self.scope]
         if not selected:

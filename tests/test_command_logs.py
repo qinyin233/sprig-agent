@@ -18,7 +18,7 @@ from sprig_agent.agent import Agent
 from sprig_agent import cli
 from sprig_agent.command_logs import CommandLogs, LogCapture, LogError, MAX_STORE, RETENTION, FILE, TEMP, NAME
 from sprig_agent.config import Config
-from sprig_agent.context import prepare_context
+from sprig_agent.context import prepare_context, request_size
 from sprig_agent.filesystem import Directory
 from sprig_agent.provider import Provider
 from sprig_agent.session import SessionStore, SessionError
@@ -26,8 +26,8 @@ from sprig_agent.settings import Settings, public_config
 from sprig_agent.tools import Tools
 from sprig_agent.tui import ApprovalScreen, TaskInput
 from tests import test_tui as fixture
-from tests.test_generation_options import envelope
-from tests.test_native_protocols import backend, native
+from tests.test_glob_protocols import answer, values
+from tests.test_native_protocols import backend
 
 
 STATUS = {"returncode": 0, "timed_out": False, "output_limited": False}
@@ -91,6 +91,99 @@ class CommandLogTests(unittest.TestCase):
         self.assertIn("MIDDLE_FAILURE_MARKER", text)
         self.assertEqual(len(approvals), 1)
         self.assertEqual(result["returncode"], 0)
+
+    def test_default_memory_log_pages_redacted_failure_and_ends_with_the_conversation(self):
+        key = "fixture-private-memory-value"
+        (self.root / "fixture.txt").write_text("A" * 2048 + key + "MIDDLE_FAILURE_MARKER" + "B" * 2048,
+                                              encoding="utf-8")
+        config = replace(self.config, command_log_dir=None, api_key=key)
+        approvals = []
+        tools = self.tools(config, lambda text: approvals.append(text) or True)
+        argv = [sys.executable, "-I", "-B", "-c", "from pathlib import Path; import sys; "
+                "sys.stdout.write(Path('fixture.txt').read_text()); sys.exit(7)"]
+        result = tools.execute("run", {"argv": argv})
+        self.assertEqual(result["returncode"], 7)
+        self.assertNotIn("MIDDLE_FAILURE_MARKER", result["output"])
+        self.assertEqual(result["log"]["storage"], "memory")
+        self.assertFalse(result["log"]["saved"])
+        self.assertIn("conversation's memory", approvals[0])
+        identity = result["log"]["log_id"]
+        self.assertEqual(tools.log_control()["logs"][0]["log_id"], identity)
+        page = tools.log_control("read", log_id=identity, offset=2000)
+        self.assertLessEqual(len(json.dumps(page, ensure_ascii=False).encode()), config.max_output)
+        self.assertIn("[REDACTED]MIDDLE_FAILURE_MARKER", page["text"])
+        self.assertNotIn(key, json.dumps(page))
+        self.assertEqual(page["returncode"], 7)
+        match = tools.execute("read_log", {"log_id": identity, "query": "MIDDLE_FAILURE_MARKER"})
+        self.assertEqual(match["offset"], match["match_offset"])
+        self.assertTrue(match["text"].startswith("MIDDLE_FAILURE_MARKER"))
+        missing = tools.execute("read_log", {"log_id": identity, "offset": match["offset"] + 1,
+                                             "query": "MIDDLE_FAILURE_MARKER"})
+        self.assertIsNone(missing["match_offset"])
+        self.assertEqual(missing["text"], "")
+        self.assertEqual(len(approvals), 1)
+        self.assertIsNone(tools.logs.state())
+        self.assertFalse(self.config.command_log_dir.exists())
+        Agent(config, None, tools, lambda _: None).reset_runtime()
+        self.assertIn("error", tools.execute("read_log", {"log_id": identity}))
+        self.assertEqual(tools.log_control()["logs"], [])
+
+    def test_memory_log_replacement_and_deletion_respect_the_approved_generation(self):
+        config = replace(self.config, command_log_dir=None)
+        tools = self.tools(config)
+        completed = {**STATUS, "output": "newer private command result"}
+        generation, _ = tools.logs.memory_preview()
+        first = tools.logs.retain_memory(generation, completed)["log_id"]
+        self.assertIn("reason", tools.logs.retain_memory(generation, completed))
+        self.assertEqual(tools.log_control()["logs"][0]["log_id"], first)
+
+        def approve_stale_clear(_):
+            generation, _ = tools.logs.memory_preview()
+            tools.logs.retain_memory(generation, completed)
+            return True
+
+        with self.assertRaisesRegex(LogError, "changed during approval"):
+            tools.logs.clear(approve_stale_clear)
+        current = tools.log_control()["logs"][0]["log_id"]
+        self.assertNotEqual(first, current)
+        self.assertIn("error", tools.execute("read_log", {"log_id": first}))
+        self.assertEqual(tools.logs.clear(lambda _: False), {"approved": False, "deleted": 0})
+        self.assertEqual(tools.logs.clear(lambda _: True), {"approved": True, "deleted": 1})
+
+    def test_memory_cap_is_independent_of_a_successful_command_output_cap(self):
+        config = replace(self.config, command_log_dir=None, command_output_limit=2 * 1024 * 1024)
+        tools = self.tools(config)
+        result = tools.execute("run", {"argv": [sys.executable, "-I", "-B", "-c",
+                                                "import sys;sys.stdout.buffer.write(b'A' * 1100000 + b'TAIL')"]})
+        self.assertEqual(result["returncode"], 0)
+        self.assertFalse(result["output_limited"])
+        self.assertTrue(result["output"].endswith("TAIL"))
+        self.assertEqual(result["log"]["bytes"], 1024 * 1024)
+        self.assertTrue(result["log"]["capture_limited"])
+        tail = tools.read_log(result["log"]["log_id"], query="TAIL")
+        self.assertIsNone(tail["match_offset"])
+        self.assertTrue(tail["capture_limited"])
+
+    def test_memory_tool_schema_respects_existing_request_budget(self):
+        config = replace(self.config, command_log_dir=None)
+        tools = self.tools(config)
+        generation, _ = tools.logs.memory_preview()
+        tools.logs.retain_memory(generation, {**STATUS, "output": "fixture"})
+        messages = [{"role": "system", "content": "fixture"}, {"role": "user", "content": "task"}]
+        agent = Agent(config, None, tools, lambda _: None)
+        before = request_size(config, messages, agent.schemas)
+        for mode in ("hard limit", "compaction", "disabled", "available"):
+            with self.subTest(mode=mode):
+                constrained = (replace(config, max_context_bytes=before) if mode == "hard limit" else
+                               replace(config, compact_context=True, max_context_bytes=before + 1024,
+                                       context_trigger_ratio=(before + 10) / (before + 1024)) if mode == "compaction" else
+                               replace(config, disabled_tools=("read_log",)) if mode == "disabled" else config)
+                agent = Agent(constrained, None, tools, lambda _: None)
+                projected, report = prepare_context(constrained, messages, agent.schemas, constrained.compact_context)
+                schemas = agent._request_schemas(projected, report)
+                names = [schema["function"]["name"] for schema in schemas]
+                self.assertEqual("read_log" in names, mode == "available")
+                self.assertEqual(report["after_bytes"], request_size(constrained, projected, schemas))
 
     def test_unicode_controls_redaction_across_blocks_and_rotated_keys_before_paging(self):
         key = "fixture-secret-abcdefgh"
@@ -415,37 +508,34 @@ class CommandLogTests(unittest.TestCase):
 
     def test_actual_protocol_loop_recovers_middle_without_more_command_approvals(self):
         script = "import sys;sys.stdout.write('A'*2048+'MIDDLE_FAILURE_MARKER'+'B'*2048)"
-        def tool(protocol, identity, name, arguments):
-            if protocol == "chat_completions":
-                return envelope(fixture.call(identity, name, arguments))
-            return native(protocol, None, [(identity, name, arguments)], reasoning=False)
-        def objects(value):
-            if isinstance(value, dict):
-                yield value
-                for child in value.values():
-                    yield from objects(child)
-            elif isinstance(value, list):
-                for child in value:
-                    yield from objects(child)
-            elif isinstance(value, str) and value.startswith("{"):
-                try:
-                    yield from objects(json.loads(value))
-                except ValueError:
-                    pass
-        for protocol in ("chat_completions", "messages", "responses"):
-            with self.subTest(protocol=protocol):
+        cases = ((protocol, persistent, streamed) for protocol in ("chat_completions", "messages", "responses")
+                 for persistent, streamed in ((True, False), (False, False), (False, True)))
+        for protocol, persistent, streamed in cases:
+            with self.subTest(protocol=protocol, persistent=persistent, stream=streamed):
                 captured, approvals = [], []
+
+                def start_request(data):
+                    self.assertEqual(any(row.get("name") == "read_log" for row in values(data)), persistent)
+                    return answer(protocol, streamed, calls=[("run", "run", {"argv": [sys.executable, "-c", script]})])
+
                 def read_request(data):
-                    result = next(row for row in objects(data) if isinstance(row.get("log"), dict) and row["log"].get("saved"))
+                    result = next(row for row in values(data) if isinstance(row.get("log"), dict) and row["log"].get("log_id"))
+                    self.assertTrue(any(row.get("name") == "read_log" for row in values(data)))
+                    self.assertEqual(result["log"]["saved"], persistent)
                     self.assertNotIn("MIDDLE_FAILURE_MARKER", result["output"])
-                    return tool(protocol, "read-log", "read_log", {"log_id": result["log"]["log_id"], "offset": 2000})
+                    return answer(protocol, streamed, calls=[("read-log", "read_log", {
+                        "log_id": result["log"]["log_id"], "query": "MIDDLE_FAILURE_MARKER"})])
+
                 def finish_request(data):
-                    page = next(row for row in objects(data) if row.get("historical") is True and "text" in row)
-                    self.assertIn("MIDDLE_FAILURE_MARKER", page["text"])
-                    return envelope(fixture.response("examined")) if protocol == "chat_completions" else native(protocol, "examined", reasoning=False)
-                with backend(protocol, [tool(protocol, "run", "run", {"argv": [sys.executable, "-c", script]}), read_request, finish_request], captured) as url:
+                    page = next(row for row in values(data) if row.get("historical") is True and "text" in row)
+                    self.assertTrue(page["text"].startswith("MIDDLE_FAILURE_MARKER"))
+                    self.assertEqual(page["match_offset"], 2048)
+                    return answer(protocol, streamed, text="examined")
+
+                with backend(protocol, [start_request, read_request, finish_request], captured, stream=streamed) as url:
                     config = replace(self.config, base_url=url, wire_api=protocol, proxy="direct", max_steps=3,
-                                     command_log_dir=self.parent / ("logs-" + protocol), max_context_bytes=16000)
+                                     command_log_dir=self.parent / ("logs-" + protocol) if persistent else None,
+                                     max_context_bytes=16000, stream=streamed)
                     tools = self.tools(config, lambda message: approvals.append(message) or True)
                     messages, done = Agent(config, Provider(config), tools, lambda _: None).run("inspect the command failure detail")
                     self.assertTrue(done)
