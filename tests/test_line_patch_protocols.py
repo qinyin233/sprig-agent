@@ -18,10 +18,11 @@ from tests import test_tui as ui
 PATCH = '@@ -1,2 +1,3 @@\n-before\n+中文🙂\n+insert\n keep\n'
 
 
-def replies(protocol, streamed):
+def replies(protocol, streamed, edit_args=None):
     def edit(data):
         read_id = next(item['read_id'] for item in values(data) if valid_read_id(item.get('read_id')))
-        return answer(protocol,streamed,calls=[('edit','edit_lines',{'path':'source.txt','read_id':read_id,'patch':PATCH})])
+        args = {'patch': PATCH} if edit_args is None else edit_args
+        return answer(protocol, streamed, calls=[('edit', 'edit_lines', {'path': 'source.txt', 'read_id': read_id, **args})])
     return [answer(protocol,streamed,calls=[('read','read_file',{'path':'source.txt','line_numbers':True})]),
             edit,answer(protocol,streamed,text='Done')]
 
@@ -41,7 +42,8 @@ class LinePatchProtocolTests(unittest.TestCase):
                         self.assertEqual(result['content'], '1: before\r\n3: last')
                         return answer(protocol, streamed, calls=[('edit', 'edit_lines', {
                             'path': source.name, 'read_id': result['read_id'],
-                            'edits': [{'start_line': 3, 'end_line': 3, 'new': 'updated'}],
+                            'edits': [{'start_line': 1, 'end_line': 1, 'lines': ['更新🙂', '']},
+                                      {'start_line': 3, 'end_line': 3, 'new': 'updated'}],
                         })])
 
                     replies = [answer(protocol, streamed, calls=[('read', 'read_file', {
@@ -55,7 +57,7 @@ class LinePatchProtocolTests(unittest.TestCase):
                     self.assertTrue(complete)
                     self.assertEqual(len(captured), 3)
                     self.assertEqual(len(approvals), 1)
-                    self.assertEqual(source.read_bytes(), b'before\r\nunrequested\r\nupdated')
+                    self.assertEqual(source.read_bytes(), '更新🙂\r\n\r\nunrequested\r\nupdated'.encode())
 
     def test_three_protocols_json_sse_read_patch_stage_check_and_final_acceptance(self):
         for protocol in ('chat_completions','messages','responses'):
@@ -84,8 +86,9 @@ class LinePatchProtocolTests(unittest.TestCase):
                 requests=[]
                 for name in ('first.txt','second.txt'):
                     identity=tools.read_file(name)['read_id']
-                    patch=PATCH if name=='first.txt' else PATCH.replace('-before','-wrong')
-                    requests.append(('edit_lines',{'path':name,'read_id':identity,'patch':patch},None))
+                    args = ({'edits': [{'start_line': 1, 'end_line': 1, 'lines': ['first updated']}]}
+                            if name == 'first.txt' else {'patch': PATCH.replace('-before', '-wrong')})
+                    requests.append(('edit_lines', {'path': name, 'read_id': identity, **args}, None))
                 with tools.edit_batch(requests) as failure:
                     self.assertIsNotNone(failure)
                     self.assertTrue(all(item.get('batch_writes_completed')==0 for item in failure))
@@ -98,14 +101,15 @@ class LinePatchProtocolTests(unittest.TestCase):
 class LinePatchTuiTests(unittest.IsolatedAsyncioTestCase):
     until = ui.TuiTests.until
 
-    async def test_enter_approval_and_patch_result_use_the_real_tui_backend(self):
+    async def test_enter_approval_and_line_array_result_use_the_real_tui_backend(self):
         from textual.widgets import TextArea
         from sprig_agent.tui import SprigApp
         from tests.test_tui import TuiTests
         with tempfile.TemporaryDirectory() as temp:
             root=Path(temp)/'workspace';root.mkdir();(root/'source.txt').write_bytes(b'before\nkeep\n')
             captured=[]
-            with backend('chat_completions',replies('chat_completions',False),captured) as url:
+            args = {'edits': [{'start_line': 1, 'end_line': 1, 'lines': ['中文🙂', 'insert']}]}
+            with backend('chat_completions', replies('chat_completions', False, args), captured) as url:
                 config=Config(root,'fixture',base_url=url,max_steps=3,max_context_bytes=16384)
                 app=SprigApp(config,provider=Provider(config),session_dir=Path(temp)/'sessions')
                 try:

@@ -63,6 +63,54 @@ class LineEditTests(unittest.TestCase):
         self.assertEqual(self.prompts, [])
         self.assertEqual(self.tools.history.summary()["records"], [])
 
+    def test_line_array_repairs_missing_terminator_with_fresh_approval(self):
+        for ending in ("\n", "\r\n", "\r"):
+            with self.subTest(ending=ending):
+                original = "\ufeff" + ending.join(("class Old:", "    pass", "", "class Keep:", "    pass", ""))
+                self.path.write_bytes(original.encode())
+                read_id = self.tools.read_file("source.txt")["read_id"]
+                args = {"path": "source.txt", "read_id": read_id, "edits": [
+                    {"start_line": 1, "end_line": 3, "lines": ["class 新:", "    pass", ""]},
+                ]}
+                before_reviews = len(self.prompts)
+                result = self.tools.execute("edit_lines", args)
+                self.assertTrue(result.get("changed"), result)
+                self.assertEqual(len(self.prompts), before_reviews + 1)
+                expected = original.replace("class Old:", "class 新:")
+                self.assertEqual(self.path.read_bytes(), expected.encode())
+                self.assertTrue(self.tools.change_action("undo")["changed"])
+                self.assertEqual(self.path.read_bytes(), original.encode())
+
+    def test_line_array_rejects_ambiguous_endings_and_invalid_items_before_review(self):
+        args = {"start_line": 1, "end_line": 1}
+        for proposal in ({"lines": ["changed"]}, {"lines": "changed"}, {"lines": [None]},
+                         {"lines": ["split\nline"]}, {"lines": ["split\rline"]}, {"lines": ["nul\0"]},
+                         {"new": "changed\n", "lines": ["changed"]}):
+            with self.subTest(proposal=proposal):
+                result = self.edit([{**args, **proposal}])
+                self.assertIn("error", result)
+                self.assertEqual(self.path.read_bytes(), self.original)
+        self.assertFalse(self.prompts)
+        self.assertTrue(self.edit([{**args, "lines": []}])["changed"])
+        self.assertEqual(self.path.read_bytes(), "\ufeff重复🙂\r\n重复🙂\rlast".encode())
+
+    def test_line_array_handles_empty_source_and_rejects_oversize_expansion(self):
+        args = {"path": "source.txt"}
+        self.path.write_bytes(b"")
+        read_id = self.tools.read_file("source.txt")["read_id"]
+        result = self.tools.execute("edit_lines", {**args, "read_id": read_id, "edits": [
+            {"start_line": 1, "end_line": 0, "lines": ["first", ""]},
+        ]})
+        self.assertTrue(result.get("changed"), result)
+        self.assertEqual(self.path.read_bytes(), b"first\n\n")
+        self.original = b"old\r\n"
+        self.path.write_bytes(self.original)
+        reviews = len(self.prompts)
+        result = self.edit([{"start_line": 1, "end_line": 1, "lines": ["x" * (MAX_FILE - 1)]}])
+        self.assertIn("exceeds 512 KiB", result["error"])
+        self.assertEqual(self.path.read_bytes(), self.original)
+        self.assertEqual(len(self.prompts), reviews)
+
     def test_explicit_line_terminators_eof_and_empty_deletion_preserve_literal_bytes(self):
         for ending in ("\n", "\r\n", "\r"):
             self.original = ("one" + ending + "keep" + ending).encode()

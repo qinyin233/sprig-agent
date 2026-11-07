@@ -2,7 +2,7 @@
 import io
 import re
 
-from .line_edits import replace_lines
+from .line_edits import line_ending, replace_lines
 
 HEADER = re.compile(r"@@ -([0-9]{1,7})(?:,([0-9]{1,7}))? \+([0-9]{1,7})(?:,([0-9]{1,7}))? @@(?: .*)?")
 NO_NEWLINE = "\\ No newline at end of file"
@@ -18,7 +18,7 @@ def apply(text, patch, maximum, check):
     for index, line in enumerate(io.StringIO(text[marker:], newline='')):
         if index % 256 == 0:
             check()
-        ending = '\r\n' if line.endswith('\r\n') else line[-1:] if line.endswith(('\r', '\n')) else ''
+        ending = line_ending(line)
         source.append((line[:-len(ending)] if ending else line, ending))
         if ending:
             endings.add(ending)

@@ -91,14 +91,15 @@ TOOL_SCHEMAS = [
             "edits": {"type": "array", "minItems": 1, "maxItems": MAX_EDITS,
                       "items": {"type": "object", "properties": {"old": STRING, "new": STRING},
                                 "required": ["old", "new"], "additionalProperties": False}}}, ["path"]),
-    schema("edit_lines", "Current read_id. Use edits (1-based inclusive; insert end=start-1) OR patch (strict unified @@ hunks, no file headers). Preserve EOL.",
+    schema("edit_lines", "1-based inclusive; insert end=start-1. new text or lines[] (adds EOL). patch: @@ hunks.",
            {"path": STRING, "read_id": {"type": "string", "pattern": READ_ID_PATTERN, "maxLength": 64},
             "patch": STRING,
             "edits": {"type": "array", "minItems": 1, "maxItems": MAX_EDITS,
                            "items": {"type": "object", "properties": {
                                "start_line": {"type": "integer", "minimum": 1, "maximum": 1000000},
-                               "end_line": {"type": "integer", "minimum": 0, "maximum": 1000000}, "new": STRING},
-                               "required": ["start_line", "end_line", "new"], "additionalProperties": False}}}, ["path", "read_id"]),
+                               "end_line": {"type": "integer", "minimum": 0, "maximum": 1000000},
+                               "new": STRING, "lines": {"type": "array", "items": STRING}},
+                               "required": ["start_line", "end_line"], "additionalProperties": False}}}, ["path", "read_id"]),
     schema("update_plan", "Plan <=16, <=1 in_progress; [] clears. Not approval/acceptance.",
            {"plan": {"type": "array", "maxItems": 16, "items": {"type": "object", "properties": {
                "step": {"type": "string", "minLength": 1, "maxLength": 256},
