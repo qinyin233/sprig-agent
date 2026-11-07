@@ -7,6 +7,8 @@ import time
 
 REGEX_MEMORY = 1024 * 1024
 REGEX_SECONDS = 1.0
+MAX_READ_RANGES = 8
+MAX_RANGE_LINES = 10000
 
 
 class RegexBudgetExceeded(Exception):
@@ -133,3 +135,24 @@ def matching_lines(text, query, ignore_case, context, check_cancelled, matcher=N
     for record in pending:
         check_cancelled()
         yield record
+
+
+def match_windows(matches, limit):
+    """Merge match context into a bounded set of complete physical windows."""
+    ranges, included, lines = [], 0, 0
+    for match in matches:
+        number = match["line"]
+        start = number - len(match.get("before", ()))
+        end = number + len(match.get("after", ()))
+        adjacent = bool(ranges) and start <= ranges[-1][1] + 1
+        added = max(0, end - ranges[-1][1]) if adjacent else end - start + 1
+        if (included == limit or lines + added > MAX_RANGE_LINES
+                or (not adjacent and len(ranges) == MAX_READ_RANGES)):
+            return ranges, included, True
+        if adjacent:
+            ranges[-1][1] = max(ranges[-1][1], end)
+        else:
+            ranges.append([start, end])
+        lines += added
+        included += 1
+    return ranges, included, False

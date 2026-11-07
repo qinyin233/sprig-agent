@@ -354,9 +354,13 @@ def prepare_context(config, messages, tools, compact=False, *, force=False, chec
             if read[1].get("function", {}).get("name") == "read_log" and "text" in result:
                 fields.append("text")
                 note = "Older historical command log excerpt omitted; use read_log to page the retained log again. This is not current evidence or approval."
-            read_arguments = _result(read[1].get("function", {}).get("arguments"))
+            read_function = read[1].get("function", {})
+            read_name = read_function.get("name")
+            read_arguments = _result(read_function.get("arguments"))
+            search_read = (read_name in {"grep", "search"} and read_arguments is not None
+                           and read_arguments.get("output_mode") == result.get("output_mode") == "read")
             if ("content" in fields and identity not in ambiguous and read[0] < index
-                    and read[1].get("function", {}).get("name") == "read_file"
+                    and (read_name == "read_file" or search_read)
                     and read_arguments is not None and isinstance(result.get("path"), str)
                     and read_arguments.get("path") == result["path"]):
                 # A discarded read body is not current edit evidence. Keep its
@@ -364,7 +368,7 @@ def prepare_context(config, messages, tools, compact=False, *, force=False, chec
                 fields.extend(name for name in ("sha256", "read_id", "line_numbers", "offset", "end_line", "total_lines",
                                                 "next_offset", "path", "symbol", "symbol_start_line", "symbol_end_line") if name in result)
                 note = "Past read omitted; reread source. Full history saved."
-                if config.context_keep_read_bytes and _complete_read(result, read_arguments):
+                if read_name == "read_file" and config.context_keep_read_bytes and _complete_read(result, read_arguments):
                     read_candidates.append((index, identity, message["content"], result["path"],
                                             result["sha256"], _read_span(result), "symbol" in read_arguments))
             if index in plan_results and index != latest_plan:

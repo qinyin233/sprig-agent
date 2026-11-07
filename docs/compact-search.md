@@ -1,6 +1,6 @@
 # 按文件发现与计数
 
-`search` 增加可选的 `output_mode`，便于先找出相关文件，再读取实现。默认 `content` 的匹配行格式保持不变；`files` 和 `count` 不返回源码正文，也不增加文件扫描、输出或模型请求预算。
+`search` 的 `output_mode` 便于先找出相关文件，再读取实现。默认 `content` 返回匹配行，`files` 和 `count` 省去源码正文。已知文件路径时也可使用单文件搜索读取模式。[单文件搜索读取](grep.md#在单个文件内搜索并读取)
 
 ```json
 {"query":"NoSuchCommand|NoSuchOption","regex":true,"glob":"*.py","output_mode":"files"}
@@ -16,7 +16,7 @@
 
 | 参数或结果 | 语义 |
 | --- | --- |
-| `output_mode` | `content`（默认）、`files`、`count`；非法值在读取前拒绝 |
+| `output_mode` | 目录检索可用 `content`（默认）、`files`、`count` |
 | `context` | 内容模式仍为 0–10；文件/计数模式必须为 0，冲突时明确拒绝 |
 | `limit` | 默认 100、最多 1000 条结果；内容模式按匹配行、另两种模式按匹配文件计算 |
 | `glob`、`path` | 复用现有工作区路径、大小写敏感 glob 和隐私过滤，在读取不相关文件前筛选 |

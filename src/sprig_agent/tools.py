@@ -40,7 +40,8 @@ from .edit_match import failure_details
 from .edit_batch import EditPreview, digest, preflight
 from .line_edits import replace_lines, validate_edits
 from .line_patch import apply as apply_line_patch
-from .search import FileGlob, RegexBudgetExceeded, RegexMatcher, matching_lines
+from .search import (FileGlob, MAX_RANGE_LINES, MAX_READ_RANGES, RegexBudgetExceeded,
+                     RegexMatcher, match_windows, matching_lines)
 from .syntax import IndexUnavailable
 from .image_reads import ImageReadResult, read_image
 from .file_glob import discover as discover_files
@@ -76,13 +77,13 @@ TOOL_SCHEMAS = [
             "ranges": {"type": "array", "items": {"type": "array", "items": {"type": "integer"}}},
             "cursor": {"type": "string", "maxLength": 80},
             "symbol": {"type": "string", "minLength": 1, "maxLength": 1024}, "image": {"type": "boolean"}}, ["path"]),
-    schema("grep", "RE2 (ASCII \\w/\\d/\\b; no lookaround/backrefs; simple folding). literal=true for text; physical CR/LF lines. Check truncated/timed_out/skipped.",
+    schema("grep", "RE2 ASCII \\w/\\d/\\b, no lookaround/backrefs, simple folding; literal=true; physical CR/LF. read=one file. Check timed_out/truncated.",
            {"pattern": {"type": "string", "minLength": 1, "maxLength": 1000}, "path": STRING,
             "glob": {"type": "string", "minLength": 1, "maxLength": 256},
             "ignore_case": {"type": "boolean"}, "literal": {"type": "boolean"},
             "context": {"type": "integer", "minimum": 0, "maximum": 10},
             "limit": {"type": "integer", "minimum": 1, "maximum": 1000},
-            "output_mode": {"enum": ["content", "files", "count"]}}, ["pattern"]),
+            "output_mode": {"enum": ["content", "files", "count", "read"]}}, ["pattern"]),
     schema("project_map", "File/dir declarations; literal name/path. include_calls: syntax, not resolved refs. Check flags; read source.",
            {"path": STRING, "query": {"type": "string", "minLength": 1, "maxLength": 256},
             "include_calls": {"type": "boolean"}}),
@@ -794,7 +795,7 @@ class Tools:
             raise ToolError("invalid source scan limit")
         raw = bytearray()
         error = ("ranged read exceeds the 8 MiB scan limit" if scan_limit == MAX_READ else
-                 "symbol read exceeds the 512 KiB scan limit; use ordinary ranged reads or byte pages")
+                 "read exceeds the 512 KiB scan limit; use ordinary ranged reads or byte pages")
         with self._parent(path) as (directory, name), directory.open_read(name) as handle:
             if os.fstat(handle.fileno()).st_size > scan_limit:
                 raise ToolError(error)
@@ -853,7 +854,7 @@ class Tools:
         return result
 
     def _read_ranges(self, path, parts, ranges):
-        if not isinstance(ranges, list) or not 1 <= len(ranges) <= 8:
+        if not isinstance(ranges, list) or not 1 <= len(ranges) <= MAX_READ_RANGES:
             raise ToolError("ranges requires one to eight [start, end] pairs")
         previous_end, line_count = 0, 0
         for pair in ranges:
@@ -862,41 +863,45 @@ class Tools:
                 raise ToolError("ranges must be ordered, non-overlapping, inclusive lines from 1 to 1000000")
             start, previous_end = pair
             line_count += previous_end - start + 1
-        if line_count > 10000:
+        if line_count > MAX_RANGE_LINES:
             raise ToolError("ranges selects more than 10000 lines; request fewer lines")
 
         raw, text = self._read_validated(path)
+        return self._render_ranges(path, parts, ranges, raw, text)
+
+    def _render_ranges(self, path, parts, ranges, raw, text, **metadata):
         selected, content_bytes, range_index = [], 0, 0
-        output_error = "ranges exceeds max-output; request fewer lines or use byte pages for long lines"
-        for number, line in enumerate(io.StringIO(text, newline=""), 1):
-            if number % 256 == 0:
-                self._check_cancelled()
-            start, end = ranges[range_index]
-            if number < start:
-                continue
-            displayed = f"{number}: {line}"
-            content_bytes += len(displayed.encode("utf-8"))
-            if content_bytes > self.config.max_output:
-                raise ToolError(output_error)
-            selected.append(displayed)
-            if number == end:
-                range_index += 1
-                if range_index == len(ranges):
-                    break
+        output_error = "ranges exceeds max-output; select fewer lines or matches, or use byte pages"
+        if ranges:
+            for number, line in enumerate(io.StringIO(text, newline=""), 1):
+                if number % 256 == 0:
+                    self._check_cancelled()
+                start, end = ranges[range_index]
+                if number < start:
+                    continue
+                displayed = f"{number}: {line}"
+                content_bytes += len(displayed.encode("utf-8"))
+                if content_bytes > self.config.max_output:
+                    raise ToolError(output_error)
+                selected.append(displayed)
+                if number == end:
+                    range_index += 1
+                    if range_index == len(ranges):
+                        break
         if range_index != len(ranges):
             raise ToolError("a requested range extends beyond the end of the file")
 
         self._check_cancelled()
         self._parts(path)
         result = {"path": path, "content": "".join(selected), "ranges": ranges, "line_numbers": True,
-                  "range_complete": True}
+                  "range_complete": True, **metadata}
         secrets = self.config.secrets
 
         def check_output(value):
             if max(encoded_size(value), encoded_size(redact(value, secrets))) > self.config.max_output:
                 raise ToolError(output_error)
 
-        if any(secret in text for secret in secrets):
+        if not ranges or any(secret in text for secret in secrets):
             check_output(result)
         else:
             result["sha256"] = hashlib.sha256(raw).hexdigest()
@@ -985,6 +990,21 @@ class Tools:
         result.pop("search_guidance", None)
         return result
 
+    def _search_read(self, query, path, ignore_case, context, limit, matcher):
+        self._require_tool("read_file")
+        parts = self._parts(path)
+        if self.config.project_instructions:
+            self.instructions.register(parts[:-1])
+        raw, text = self._read_validated(path, scan_limit=MAX_FILE)
+        matches = matching_lines(text, query, ignore_case, context, self._check_cancelled, matcher)
+        try:
+            ranges, count, truncated = match_windows(matches, limit)
+        except RegexBudgetExceeded:
+            return {"error": "read mode reached the regex work budget; no source window returned",
+                    "truncated": True, "timed_out": True}
+        return self._render_ranges(path, parts, ranges, raw, text, output_mode="read",
+                                   matched_lines=count, truncated=truncated, timed_out=False)
+
     def search(self, query, path=".", *, glob=_MISSING, ignore_case=False, regex=False, context=0, limit=100, output_mode="content"):
         self._require_tool("search")
         if not isinstance(query, str) or not query or len(query) > 1000:
@@ -998,10 +1018,15 @@ class Tools:
                             "then read_file offset/limit or symbol for more surrounding code")
         if isinstance(limit, bool) or not isinstance(limit, int) or not 1 <= limit <= 1000:
             raise ToolError("limit must be an integer between 1 and 1000")
-        if not isinstance(output_mode, str) or output_mode not in ("content", "files", "count"):
-            raise ToolError("output_mode must be content, files or count")
-        if output_mode != "content" and context:
-            raise ToolError("files/count output requires context=0; use content output for surrounding lines")
+        if not isinstance(output_mode, str) or output_mode not in ("content", "files", "count", "read"):
+            raise ToolError("output_mode must be content, files, count or read")
+        if output_mode in ("files", "count") and context:
+            raise ToolError("files/count output requires context=0; use content or read for surrounding lines")
+        if output_mode == "read":
+            if glob is not _MISSING:
+                raise ToolError("read mode requires a single explicit file path; omit glob")
+            matcher = RegexMatcher(query, ignore_case, self._check_cancelled) if regex else None
+            return self._search_read(query, path, ignore_case, context, limit, matcher)
         file_glob = FileGlob(glob) if glob is not _MISSING else None
         matcher = RegexMatcher(query, ignore_case, self._check_cancelled) if regex else None
         parts = self._parts(path)

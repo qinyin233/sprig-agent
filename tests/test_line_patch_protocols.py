@@ -28,6 +28,40 @@ def replies(protocol, streamed, edit_args=None):
 
 
 class LinePatchProtocolTests(unittest.TestCase):
+    def test_search_read_supplies_versioned_source_for_approved_edit_across_protocols(self):
+        for protocol in ('chat_completions', 'messages', 'responses'):
+            for streamed in (False, True):
+                with self.subTest(protocol=protocol, stream=streamed), tempfile.TemporaryDirectory() as temp:
+                    root = Path(temp)
+                    source = root / 'source.txt'
+                    source.write_bytes(b'before\r\nkeep\r\nlast\r\n')
+                    captured, approvals = [], []
+
+                    def edit(data):
+                        observed = next(item for item in values(data)
+                                        if item.get('output_mode') == 'read' and valid_read_id(item.get('read_id')))
+                        self.assertEqual(observed['content'], '1: before\r\n3: last\r\n')
+                        return answer(protocol, streamed, calls=[('edit', 'edit_lines', {
+                            'path': source.name, 'read_id': observed['read_id'],
+                            'edits': [{'start_line': 1, 'end_line': 1, 'lines': ['fixed']}],
+                        })])
+
+                    replies = [answer(protocol, streamed, calls=[('find', 'grep', {
+                        'path': source.name, 'pattern': '^before$|^last$', 'output_mode': 'read',
+                    })]), edit, answer(protocol, streamed, text='Done')]
+                    expected = b'fixed\r\nkeep\r\nlast\r\n'
+                    check = (sys.executable, '-I', '-B', '-c',
+                             "from pathlib import Path; assert Path('source.txt').read_bytes() == " + repr(expected))
+                    with backend(protocol, replies, captured, stream=streamed) as url:
+                        config = Config(root, 'fixture', base_url=url, wire_api=protocol, stream=streamed,
+                                        max_steps=3, max_context_bytes=16384, checks=(check,))
+                        with closing(Tools(config, lambda prompt: approvals.append(prompt) or True)) as tools:
+                            _, complete = Agent(config, Provider(config), tools, lambda _: None).run('Fix the first line')
+                    self.assertTrue(complete)
+                    self.assertEqual(len(captured), 3)
+                    self.assertEqual(len(approvals), 2)
+                    self.assertEqual(source.read_bytes(), expected)
+
     def test_disjoint_read_to_versioned_edit_across_protocols(self):
         for protocol in ('chat_completions', 'messages', 'responses'):
             for streamed in (False, True):

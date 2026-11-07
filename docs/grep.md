@@ -6,7 +6,23 @@
 {"pattern":"^def (?:load|save)_item\\(","path":"src","glob":"*.py","context":1}
 ```
 
-`output_mode` 可选 `content`、`files`、`count`；后两种要求 `context=0`。结果仍包含覆盖范围、跳过、截断和超时信息。搜索不能提供写入的读取标识，修改前要通过 `read_file` 取得当前版本并重新批准。
+`output_mode` 可选 `content`、`files`、`count` 和 `read`。文件与计数模式要求 `context=0`。普通检索返回覆盖、跳过、截断和超时信息。要修改普通检索命中的文件，先通过 `read_file` 取得当前版本，再提交差异供审批。
+
+## 在单个文件内搜索并读取
+
+当文件路径已知时，`read` 模式一次完成匹配和编号源码读取。
+
+```json
+{"pattern":"NoSuchCommand|NoSuchOption","path":"src/example.py","output_mode":"read","context":4,"limit":10}
+```
+
+此模式要求启用 `read_file`，只接受一个明确的工作区文件路径。它使用同一份完整校验的 UTF-8 快照匹配并读取，合并相邻和重叠窗口，保留原行号和换行字节。每次最多返回八段、合计 10000 行，`context` 仍为 0 至 10。`limit` 限制用于生成窗口的命中行数。命中计数 `matched_lines` 只统计这些行，窗口内还可能包含其他命中。
+
+命中超出窗口或条数上限时，`truncated=true` 表示还有匹配未处理。成功结果的 `range_complete=true` 表示已返回的窗口完整。未命中、凭据需遮盖、匹配超时或完整输出超限时，没有可用的 `read_id`。超限可减少 `context` 或 `limit`，很长的单行可走字节分页。
+
+成功返回的 `read_id` 可直接用于同一文件的 `edit_lines`。写入仍展示完整差异、需要新批准，并复查文件版本和策略。历史压缩省略源码正文时会一并移除摘要和读取标识。[读取绑定编辑](read-bound-edits.md)
+
+在固定 Click 初始快照的 `src/click/core.py` 上，用同一正则定位六个 `invoke` 或 `resolve_command` 声明。普通 grep 和随后一次编号读取共返回 4699 字节 JSON。单次搜索读取返回 2163 字节，包含相同的四段源码和相同文件版本。该离线测量只统计工具结果，不包括模型请求、token 或任务完成率。[固定快照](repository-task-benchmark.md)
 
 当指定路径不存在时，检索返回 `error`，并可在 `suggested_directory` 提供已确认的最近上级目录，工作区根目录表示为 `.`。可用 `list_files` 查看该目录，再显式选择检索路径。排除规则、敏感路径检查和输出大小限制同样约束此提示。
 
@@ -14,7 +30,7 @@
 
 `[tools] search=false`、`grep=false` 或相应 `--disable-tool` 任一个均同时禁用两者；另一入口的 true 不能抵消合并策略中仍存在的 false。受限项目配置不能通过另一名称重新开启用户/profile 禁用的检索。生效设置来源会显示别名禁用的原因。文件排除作用于整个文件读取层，关闭单个工具不等于禁止其他读取工具或隔离获批命令。
 
-执行复用现有本地 RE2 和文件扫描器：完整受限文件隐私校验、工作区句柄、取消、512 KiB 单文件、8 MiB 总读取、5000 条目、32 层目录，以及序列化输出限制均保留。RE2 不支持 lookaround、回溯引用或跨物理 CR/LF 行匹配；1 MiB 引擎预算与协作式 1 秒工作预算的精确定义见[正则搜索](regex-search.md)。只读搜索不请求批准，文件写入和命令仍逐次批准；未修改原生 OS 后端。
+检索复用现有本地 RE2 和文件扫描器。各模式都进行完整文件的隐私校验，保留工作区路径限制、取消、512 KiB 单文件上限和序列化输出限制。目录检索另外受 8 MiB 总读取、5000 条目和 32 层目录限制。RE2 不支持 lookaround、回溯引用或跨物理 CR/LF 行匹配。1 MiB 引擎预算与协作式 1 秒工作预算的精确定义见[正则搜索](regex-search.md)。只读搜索无需批准，文件写入和命令仍需逐次批准。
 
 来源为固定 OpenCode `dev@9d90d892dcbfc52b47e95b2ea31b8aba877128fd` 的 [grep 输入实现](https://github.com/anomalyco/opencode/blob/9d90d892dcbfc52b47e95b2ea31b8aba877128fd/packages/core/src/tool/plugin/grep.ts)，借鉴明确的 `pattern` 与 `literal` 语义；Sprig 继续使用自己的受限扫描器和审批策略。源码阅读范围见[调研文档](research/opencode-source-reading-20261020.md)。
 

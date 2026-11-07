@@ -20,6 +20,7 @@ class ToolDiagnostics:
         for field in ("returncode", "files_read", "bytes_read", "entries_scanned", "skipped_files", "skipped_entries"):
             if type(result.get(field)) is int:
                 summary[field] = result[field]
+        search_read = name in {"grep", "search"} and result.get("output_mode") == "read"
         if name in {"search", "grep"}:
             if isinstance(result.get("matches"), list):
                 summary["matched_lines"] = len(result["matches"])
@@ -29,10 +30,13 @@ class ToolDiagnostics:
                 if result["output_mode"] == "count" and all(isinstance(row, dict) and type(row.get("count")) is int
                                                           and row["count"] > 0 for row in result["files"]):
                     summary["matched_lines"] = sum(row["count"] for row in result["files"])
+            elif search_read and type(result.get("matched_lines")) is int:
+                summary["output_mode"] = "read"
+                summary["matched_lines"] = result["matched_lines"]
             flag = "literal" if name == "grep" else "regex"
             if isinstance(arguments, dict) and type(arguments.get(flag, False)) is bool:
                 summary["regex"] = not arguments.get(flag, False) if name == "grep" else arguments.get(flag, False)
-        if name == "read_file" and isinstance(result.get("content"), str):
+        if (name == "read_file" or search_read) and isinstance(result.get("content"), str):
             summary["content_bytes"] = len(result["content"].encode("utf-8"))
             digest = result.get("sha256")
             read_id = result.get("read_id")
@@ -58,7 +62,7 @@ class ToolDiagnostics:
         if name in {"read_file", "search", "grep", "list_files", "glob", "project_map"} and not summary["error"]:
             # Equality of bounded tool output does not imply a complete or
             # unchanged workspace. Never cache or skip the actual inspection.
-            inspected = {key: value for key, value in result.items() if name != "read_file" or key != "read_id"}
+            inspected = {key: value for key, value in result.items() if key != "read_id"}
             digest = hashlib.sha256(json.dumps([name, arguments, inspected], sort_keys=True,
                                                ensure_ascii=True).encode()).digest()
             repeats = self._recent.pop(digest, 0)

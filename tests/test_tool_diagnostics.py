@@ -74,6 +74,17 @@ class ToolDiagnosticsTests(unittest.TestCase):
         for flag in (1, "private", None):
             self.assertNotIn("range_complete", tracker.record("read_file", {}, {"range_complete": flag}))
 
+    def test_search_read_reports_match_and_revision_counts_without_private_source(self):
+        tracker = module.ToolDiagnostics()
+        args = {"path": "private-file", "pattern": "private-query", "output_mode": "read"}
+        result = {"output_mode": "read", "matched_lines": 2, "range_complete": True,
+                  "content": "private-source", "sha256": "a" * 64, "read_id": "r0123456789ab-1"}
+        report = tracker.record("grep", args, result)
+        self.assertEqual((report["output_mode"], report["matched_lines"]), ("read", 2))
+        self.assertTrue(report["read_id_available"] and report["revision_available"])
+        self.assertNotIn("private", json.dumps(report))
+        self.assertEqual(tracker.record("grep", args, {**result, "read_id": "r0123456789ab-2"})["same_output_repeats"], 1)
+
     def test_retained_window_is_bounded_and_non_numeric_results_cannot_leak(self):
         tracker = module.ToolDiagnostics()
         for index in range(129):
