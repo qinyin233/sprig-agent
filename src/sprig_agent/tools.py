@@ -49,6 +49,8 @@ from .file_glob import discover as discover_files
 MAX_FILE = 512 * 1024
 MAX_READ = 8 * 1024 * 1024
 MAX_EDITS = 32
+MAX_SEARCH_WINDOW_FILES = 8
+MAX_SEARCH_WINDOW_BYTES = 4096
 DIRECTORY_GUIDANCE = "For optional directory arguments, omit the field or use '.' for the selected workspace; paths in argv do not define cwd."
 _MISSING = object()
 SKIP_DIRS = {"node_modules", ".venv", "__pycache__"}
@@ -77,14 +79,14 @@ TOOL_SCHEMAS = [
             "ranges": {"type": "array", "items": {"type": "array", "items": {"type": "integer"}}},
             "cursor": {"type": "string", "maxLength": 80},
             "symbol": {"type": "string", "minLength": 1, "maxLength": 1024}, "image": {"type": "boolean"}}, ["path"]),
-    schema("grep", "RE2 ASCII \\w/\\d/\\b; no lookaround/backrefs; simple folding; literal=true; physical CR/LF; read=file; timed_out",
+    schema("grep", "RE2 ASCII \\w/\\d/\\b; no lookaround/backrefs; simple folding; literal=true; physical CR/LF; timed_out",
            {"pattern": {"type": "string", "minLength": 1, "maxLength": 1000}, "path": STRING,
             "glob": {"type": "string", "minLength": 1, "maxLength": 256},
             "ignore_case": {"type": "boolean"}, "literal": {"type": "boolean"},
             "context": {"type": "integer", "minimum": 0, "maximum": 10},
             "limit": {"type": "integer", "minimum": 1, "maximum": 1000},
             "cursor": STRING,
-            "output_mode": {"enum": ["content", "files", "count", "read"]}}, ["pattern"]),
+            "output_mode": {"enum": ["content", "files", "count", "read", "windows"]}}, ["pattern"]),
     schema("project_map", "File/dir declarations; literal name/path. include_calls: syntax, not resolved refs. Check flags; read source.",
            {"path": STRING, "query": {"type": "string", "minLength": 1, "maxLength": 256},
             "include_calls": {"type": "boolean"}}),
@@ -880,7 +882,8 @@ class Tools:
         raw, text = self._read_validated(path)
         return self._render_ranges(path, parts, ranges, raw, text)
 
-    def _render_ranges(self, path, parts, ranges, raw, text, **metadata):
+    def _render_ranges(self, path, parts, ranges, raw, text, *, output_cap=None, **metadata):
+        output_cap = self.config.max_output if output_cap is None else output_cap
         selected, content_bytes, range_index = [], 0, 0
         output_error = "ranges exceeds max-output; select fewer lines or matches, or use byte pages"
         if ranges:
@@ -892,7 +895,7 @@ class Tools:
                     continue
                 displayed = f"{number}: {line}"
                 content_bytes += len(displayed.encode("utf-8"))
-                if content_bytes > self.config.max_output:
+                if content_bytes > output_cap:
                     raise _RangeOutputLimit(output_error)
                 selected.append(displayed)
                 if number == end:
@@ -909,7 +912,7 @@ class Tools:
         secrets = self.config.secrets
 
         def check_output(value):
-            if max(encoded_size(value), encoded_size(redact(value, secrets))) > self.config.max_output:
+            if max(encoded_size(value), encoded_size(redact(value, secrets))) > output_cap:
                 raise _RangeOutputLimit(output_error)
 
         if not ranges or any(secret in text for secret in secrets):
@@ -1003,6 +1006,12 @@ class Tools:
         result.pop("search_guidance", None)
         return result
 
+    def _search_cursor(self, parts, raw, query, ignore_case, context, regex, line):
+        binding = (str(self.root.path), parts, hashlib.sha256(raw).hexdigest(), query,
+                   ignore_case, context, regex, line)
+        payload = json.dumps(binding, ensure_ascii=True, separators=(",", ":")).encode()
+        return f"s{hashlib.sha256(payload).hexdigest()}:{line}"
+
     def _search_read(self, query, path, ignore_case, context, limit, matcher, cursor):
         self._require_tool("read_file")
         start_line = 1
@@ -1021,12 +1030,8 @@ class Tools:
         if self.config.project_instructions:
             self.instructions.register(parts[:-1])
         raw, text = self._read_validated(path, scan_limit=MAX_FILE)
-        binding = (str(self.root.path), parts, hashlib.sha256(raw).hexdigest(), query,
-                   ignore_case, context, matcher is not None)
-
         def page_cursor(line):
-            payload = json.dumps((*binding, line), ensure_ascii=True, separators=(",", ":")).encode()
-            return f"s{hashlib.sha256(payload).hexdigest()}:{line}"
+            return self._search_cursor(parts, raw, query, ignore_case, context, matcher is not None, line)
 
         if resume and (cursor != page_cursor(start_line) or any(secret in text for secret in self.config.secrets)):
             raise ToolError("file or search settings changed; restart with cursor='start'")
@@ -1068,8 +1073,8 @@ class Tools:
                             "then read_file offset/limit or symbol for more surrounding code")
         if isinstance(limit, bool) or not isinstance(limit, int) or not 1 <= limit <= 1000:
             raise ToolError("limit must be an integer between 1 and 1000")
-        if not isinstance(output_mode, str) or output_mode not in ("content", "files", "count", "read"):
-            raise ToolError("output_mode must be content, files, count or read")
+        if not isinstance(output_mode, str) or output_mode not in ("content", "files", "count", "read", "windows"):
+            raise ToolError("output_mode must be content, files, count, read or windows")
         if output_mode in ("files", "count") and context:
             raise ToolError("files/count output requires context=0; use content or read for surrounding lines")
         if cursor is not _MISSING and output_mode != "read":
@@ -1079,6 +1084,9 @@ class Tools:
                 raise ToolError("read mode requires a single explicit file path; omit glob")
             matcher = RegexMatcher(query, ignore_case, self._check_cancelled) if regex else None
             return self._search_read(query, path, ignore_case, context, limit, matcher, cursor)
+        if output_mode == "windows":
+            self._require_tool("read_file")
+            limit = min(limit, MAX_SEARCH_WINDOW_FILES)
         file_glob = FileGlob(glob) if glob is not _MISSING else None
         matcher = RegexMatcher(query, ignore_case, self._check_cancelled) if regex else None
         parts = self._parts(path)
@@ -1108,6 +1116,31 @@ class Tools:
             remaining -= size
             return True
 
+        def add_window(path, file_parts, raw, text, matches):
+            nonlocal stopped
+            prefixes, following = match_window_prefixes(matches, 1)
+            if not prefixes:
+                return
+            if len(result[field]) >= limit:
+                result["truncated"] = stopped = True
+                return
+            line, ranges = prefixes[0]
+            metadata = {"matched_lines": 1, "truncated": following is not None}
+            if following is not None:
+                metadata["next_cursor"] = self._search_cursor(file_parts, raw, query, ignore_case,
+                                                              context, regex, following)
+            if self.config.project_instructions:
+                self.instructions.register(file_parts[:-1])
+            try:
+                record = self._render_ranges(path, file_parts, ranges, raw, text,
+                                             output_cap=min(MAX_SEARCH_WINDOW_BYTES, remaining - 2), **metadata)
+            except _RangeOutputLimit:
+                # Keep a location even when one complete window cannot fit.
+                result["truncated"] = True
+                self._parts(path)
+                record = {"path": path, "line": line, "window_omitted": True}
+            add_record(record)
+
         def scan_file(directory, name, prefix):
             nonlocal budget, stopped
             self._check_cancelled()
@@ -1129,7 +1162,9 @@ class Tools:
             try:
                 matched = matching_lines(text, query, ignore_case, context, self._check_cancelled, matcher)
                 path = "/".join((*prefix, name))
-                if output_mode == "content":
+                if output_mode == "windows":
+                    add_window(path, (*prefix, name), raw, text, matched)
+                elif output_mode == "content":
                     for hit in matched:
                         self._check_cancelled()
                         if not add_record({"path": path, **hit}):
@@ -1183,6 +1218,18 @@ class Tools:
                 with self._directory(parts) as fd:
                     walk(fd, parts, 0)
         self._check_cancelled()
+        if output_mode == "windows" and result[field]:
+            self.policy.reload()
+            visible = []
+            for record in result[field]:
+                file_parts = PurePosixPath(record["path"]).parts
+                if self.policy.excluded(file_parts):
+                    self.read_versions.discard(file_parts)
+                    result["truncated"] = True
+                    result["skipped_files"] += 1
+                else:
+                    visible.append(record)
+            result[field] = visible
         if not result[field] and not regex and any(char in query for char in "|^$[]().*+?{}\\"):
             guidance = "Literal query; set regex=true for patterns. Not retried."
             if measure({**result, "search_guidance": guidance}) <= self.config.max_output:

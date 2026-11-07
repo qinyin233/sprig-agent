@@ -71,6 +71,9 @@ def _read(child, parts, name, arguments):
         return {"error": "path is invalid or outside the approved exploration directory"}
     result = child.execute(name, arguments)
     result.pop("read_id", None)
+    if name == "grep" and result.get("output_mode") == "windows":
+        for window in result["files"]:
+            window.pop("read_id", None)
     return result
 
 

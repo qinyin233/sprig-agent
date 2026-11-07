@@ -205,18 +205,87 @@ class GrepTests(unittest.TestCase):
             self.assertLessEqual(len(json.dumps(result).encode()), 384)
         self.approve.assert_not_called()
 
-    def test_read_mode_does_not_publish_partial_source_on_regex_timeout(self):
+    def test_source_modes_do_not_publish_partial_source_on_regex_timeout(self):
         search = RegexMatcher._search
         def limited(matcher, line):
             if line == "beta":
                 raise RegexBudgetExceeded
             return search(matcher, line)
-        with patch.object(RegexMatcher, "_search", limited):
-            result = self.tools.grep("alpha", "source.py", output_mode="read")
-        self.assertTrue(result["timed_out"] and result["truncated"])
-        self.assertNotIn("content", result)
-        self.assertNotIn("read_id", result)
+        for mode in ("read", "windows"):
+            with self.subTest(mode=mode), patch.object(RegexMatcher, "_search", limited):
+                result = self.tools.grep("alpha", "source.py", output_mode=mode)
+            self.assertTrue(result["timed_out"] and result["truncated"])
+            self.assertFalse(result.get("files"))
+            self.assertNotIn("content", result)
+            self.assertNotIn("read_id", result)
         self.approve.assert_not_called()
+
+    def test_windows_return_versioned_source_for_each_file_and_resume_single_file(self):
+        nested = self.root / "src"
+        nested.mkdir()
+        (nested / "a.py").write_bytes("before\r\nalpha界\rafter\n\nalpha again".encode())
+        (nested / "b.py").write_bytes(b"alpha\nlast")
+        (nested / "ignored.txt").write_bytes(b"alpha")
+        with patch.object(self.tools, "_read", wraps=self.tools._read) as read:
+            result = self.tools.grep("alpha", "src", glob="*.py", output_mode="windows", context=1)
+            self.assertEqual(read.call_count, 2)
+        self.assertFalse(result["truncated"])
+        a, b = sorted(result["files"], key=lambda row: row["path"])
+        self.assertEqual(a["content"], "1: before\r\n2: alpha界\r3: after\n")
+        self.assertEqual(b["content"], "1: alpha\n2: last")
+        self.assertTrue(a["truncated"] and a["range_complete"])
+        self.assertFalse(b["truncated"])
+        self.assertNotEqual(a["read_id"], b["read_id"])
+        self.assertEqual(self.tools.read_file(a["path"], ranges=a["ranges"])["read_id"], a["read_id"])
+        resumed = self.tools.grep("alpha", a["path"], output_mode="read", context=1, cursor=a["next_cursor"])
+        self.assertEqual(resumed["read_id"], a["read_id"])
+        self.assertEqual(resumed["ranges"], [[4, 5]])
+        self.assertFalse(resumed["truncated"])
+        self.assertIn("error", self.tools.execute("grep", {"pattern": "alpha", "path": "src",
+                                                           "output_mode": "windows", "cursor": a["next_cursor"]}))
+        limited = self.tools.grep("alpha", "src", glob="*.py", output_mode="windows", limit=1)
+        self.assertEqual(len(limited["files"]), 1)
+        self.assertTrue(limited["truncated"])
+        self.approve.assert_not_called()
+
+    def test_windows_enforce_aggregate_budget_and_privacy_before_issuing_versions(self):
+        (self.root / "src").mkdir()
+        (self.root / "src" / "large.py").write_bytes(("alpha " + "界" * 4000).encode())
+        (self.root / "src" / "small.py").write_bytes(b"alpha\r\n")
+        secret = "fixture-private-marker"
+        (self.root / "src" / "redacted.py").write_bytes(f"alpha\nalpha\n{secret}".encode())
+        (self.root / "src" / ".env").write_bytes(b"alpha\n")
+        with closing(Tools(replace(self.config, max_output=1024, api_key=secret), self.approve)) as tools:
+            result = tools.execute("grep", {"pattern": "alpha", "path": "src", "output_mode": "windows"})
+            rows = {row["path"]: row for row in result["files"]}
+            self.assertEqual(set(rows), {"src/large.py", "src/small.py", "src/redacted.py"})
+            self.assertEqual(rows["src/large.py"], {"path": "src/large.py", "line": 1, "window_omitted": True})
+            self.assertEqual(rows["src/small.py"]["content"], "1: alpha\r\n")
+            self.assertTrue(rows["src/small.py"]["read_id"].endswith("-1"))
+            self.assertFalse({"read_id", "sha256", "next_cursor"} & rows["src/redacted.py"].keys())
+            self.assertTrue(result["truncated"])
+            self.assertLessEqual(len(json.dumps(result, ensure_ascii=False).encode()), 1024)
+        with closing(Tools(replace(self.config, disabled_tools=("read_file",)), self.approve)) as tools:
+            self.assertIn("disabled", tools.execute("grep", {"pattern": "alpha", "output_mode": "windows"})["error"])
+        self.approve.assert_not_called()
+
+    def test_windows_drop_a_result_excluded_after_it_was_read(self):
+        render = self.tools._render_ranges
+        ids = []
+
+        def exclude(*args, **kwargs):
+            window = render(*args, **kwargs)
+            ids.append(window["read_id"])
+            (self.root / ".sprigignore").write_bytes(b"source.py\n")
+            return window
+
+        with patch.object(self.tools, "_render_ranges", side_effect=exclude):
+            result = self.tools.grep("alpha", "source.py", output_mode="windows")
+        self.assertEqual(result["files"], [])
+        self.assertEqual(result["skipped_files"], 1)
+        self.assertTrue(result["truncated"])
+        self.assertEqual(len(ids), 1)
+        self.assertIsNone(self.tools.read_versions.resolve(ids[0], ("source.py",)))
 
     def test_missing_scope_suggests_a_pinned_directory_without_widening(self):
         source = self.root / "src"
@@ -331,6 +400,46 @@ class GrepTests(unittest.TestCase):
             self.assertEqual([row["line"] for row in find["matches"]], [1, 2])
             validate_history(saved)
 
+    def test_windows_support_two_revision_bound_edits_on_all_three_wire_protocols(self):
+        from tests.test_glob_protocols import answer, values
+        from tests.test_native_protocols import backend as native_backend
+
+        source = self.root / "src"
+        source.mkdir()
+        for protocol in ("chat_completions", "messages", "responses"):
+            for stream in (False, True):
+                for name in ("a.py", "b.py"):
+                    (source / name).write_bytes(b"old_value = 0\n")
+                approvals, captured = [], []
+
+                def edit(payload):
+                    windows = next(row["files"] for row in values(payload) if row.get("output_mode") == "windows"
+                                   and "files" in row)
+                    proposals = [("edit-" + str(index), "edit_lines", {"path": window["path"],
+                                  "read_id": window["read_id"], "edits": [
+                                      {"start_line": 1, "end_line": 1, "new": "new_value = 1\n"}]})
+                                 for index, window in enumerate(windows)]
+                    return answer(protocol, stream, calls=proposals)
+
+                replies = [answer(protocol, stream, calls=[("inspect", "grep", {
+                    "path": "src", "pattern": "^old_value", "output_mode": "windows"})]),
+                    edit, answer(protocol, stream, text="Done")]
+                with (self.subTest(protocol=protocol, stream=stream),
+                      native_backend(protocol, replies, captured, stream=stream) as url):
+                    check = (sys.executable, "-I", "-B", "-c", "from pathlib import Path; "
+                             "assert all(Path('src', name).read_bytes() == b'new_value = 1\\n' for name in ('a.py','b.py'))")
+                    config = Config(self.root, "fixture", wire_api=protocol, base_url=url, proxy="direct", stream=stream,
+                                    max_steps=3, max_context_bytes=16384, checks=(check,))
+                    with closing(Tools(config, lambda text: approvals.append(text) or True)) as tools:
+                        history, complete = Agent(config, Provider(config), tools, lambda _: None).run("Update both values")
+                    self.assertTrue(complete)
+                    self.assertEqual(len(captured), 3)
+                    self.assertEqual(len(approvals), 3)
+                    self.assertEqual((source / "a.py").read_bytes(), b"new_value = 1\n")
+                    self.assertEqual((source / "b.py").read_bytes(), b"new_value = 1\n")
+                    self.assertTrue(any(row.get("sprig_check") == "acceptance" for row in history))
+                    validate_history(history)
+
 
 class GrepConfigurationTests(unittest.TestCase):
     setUp = settings_fixtures.SettingsTests.setUp
@@ -354,6 +463,22 @@ class GrepFoldingTests(unittest.TestCase):
     setUp = folding.InspectionFoldingTests.setUp
     append = folding.InspectionFoldingTests.append
     project = folding.InspectionFoldingTests.project
+
+    def test_old_cross_file_windows_drop_nested_provenance_with_the_body(self):
+        history = [{"role": "system", "content": "fixture"}, {"role": "user", "content": "Keep constraints"}]
+        for n in range(16):
+            self.append(history, str(n), "grep", {"pattern": "alpha", "path": "src", "output_mode": "windows"},
+                        {"output_mode": "windows", "truncated": False, "files": [{"path": "src/a.py",
+                         "content": "alpha" * 600, "read_id": "r0123456789ab-1", "next_cursor": "s" + "b" * 64 + ":2"}]})
+        history.extend({"role": "user", "content": "Keep this"} for _ in range(6))
+        original = copy.deepcopy(history)
+        selected, report = self.project(history, replace(self.config, max_context_bytes=6000))
+        self.assertTrue(report["within_budget"])
+        self.assertEqual(len(folding.projected_inspections(selected)), 16)
+        self.assertNotIn("r0123456789ab-1", json.dumps(selected))
+        self.assertNotIn("next_cursor", json.dumps(selected))
+        self.assertEqual(history, original)
+        validate_history(selected)
 
     def test_old_search_reads_fold_without_retaining_revision_ids(self):
         history = [{"role": "system", "content": "fixture"}, {"role": "user", "content": "Keep constraints"}]

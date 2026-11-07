@@ -286,7 +286,7 @@ CLI 与 TUI 都实时显示命令输出，保留 UTF-8 分段，遮盖跨片段�
 | --- | --- |
 | `list_files(path=".")` | 列出目录内容 |
 | `read_file(path, offset=1, limit=..., line_numbers=..., cursor=...)` | UTF-8 行范围或版本绑定的字节页；范围默认显示行号，cursor 模式用于超长单行 |
-| `grep(pattern, path=".", glob=..., ignore_case=False, literal=False, context=0, limit=100)` | 搜索指定文件或目录，默认 RE2 正则；`literal=True` 使用字面字符串，可筛选文件、忽略大小写并返回上下文 |
+| `grep(pattern, path=".", glob=..., ignore_case=False, literal=False, context=0, limit=100)` | 搜索指定文件或目录，默认 RE2 正则；`output_mode="windows"` 一次返回多个命中文件的编号源码窗口和读取版本 |
 | `project_map(path=".", query=...)` | 映射目录或单个文件，返回有界路径及九种语言的声明名称与行号；支持字面筛选，优先保留精确匹配；不支持的语言只列路径 |
 | `edit_file(path, old, new)` 或 `edit_file(path, edits=[...])` | 单片段或同文件多片段替换，展示合并 diff，经确认后一次写入 |
 | `edit_lines(path, read_id, edits=[...])` 或 `patch="@@ ..."` | 读取绑定的整行替换或[紧凑补丁](docs/line-patches.md)；内部核对完整摘要，仍需完整 diff 和新批准 |

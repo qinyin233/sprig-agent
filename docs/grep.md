@@ -6,7 +6,19 @@
 {"pattern":"^def (?:load|save)_item\\(","path":"src","glob":"*.py","context":1}
 ```
 
-`output_mode` 可选 `content`、`files`、`count` 和 `read`。文件与计数模式要求 `context=0`。普通检索返回覆盖、跳过、截断和超时信息。要修改普通检索命中的文件，先通过 `read_file` 取得当前版本，再提交差异供审批。
+`output_mode` 可选 `content`、`files`、`count`、`read` 和 `windows`。文件与计数模式要求 `context=0`。普通检索返回覆盖、跳过、截断和超时信息。要修改普通检索命中的文件，先通过 `read_file` 取得当前版本，再提交差异供审批。
+
+## 一次查看多个文件的命中窗口
+
+`windows` 从每个命中文件返回首个匹配及其上下文，适合同时查看定义、导出和调用点。可用 `path` 和 `glob` 缩小范围，也可用 `limit` 控制文件数量，最多八个。
+
+```json
+{"pattern":"^class NoSuchOption\\(|^\\s+def resolve_command\\(","path":"src/click","glob":"*.py","output_mode":"windows","context":3}
+```
+
+每条 `files` 记录返回完整编号窗口以及适用时的 `read_id`。这两个结果来自同一份文件内容，可直接用版本标识提议 `edit_lines`。各文件独立取样和审批。若某窗口超出单文件 4096 字节或总输出预算，只给出路径、命中行和 `window_omitted=true`，可减小 `context` 或用 `read_file` 读取该处。外层 `truncated` 表示检索范围或输出受限，单文件内的 `truncated` 表示还有匹配。若有 `next_cursor`，切换到该文件的 `read` 模式，沿用查询及匹配选项并省略目录 `glob`。这两种源码模式均要求启用 `read_file`。
+
+在[固定 Click 初始快照](repository-task-benchmark.md)中，以 `NoSuchOption` 的公开导出、定义、抛出和 `resolve_command` 的定义为锚点，比较 `files` 后逐文件 `read(limit=1)` 与一次 `windows`，上下文均为前后三行。两边得到四个完全相同的源码窗口和版本标识。工具调用从 5 次降为 1 次，完整文件读取从 21 次降为 17 次，工具结果 JSON 从 2828 字节降为 2530 字节。快照在回放前后通过同一摘要校验。这些是离线工具指标，真实模型完成率仍需实测。
 
 ## 在单个文件内搜索并读取
 
@@ -28,7 +40,7 @@
 
 当指定路径不存在时，检索返回 `error`，并可在 `suggested_directory` 提供已确认的最近上级目录，工作区根目录表示为 `.`。可用 `list_files` 查看该目录，再显式选择检索路径。排除规则、敏感路径检查和输出大小限制同样约束此提示。
 
-旧会话和嵌入调用的 `search(query, regex=false, ...)` 仍按字面值搜索，显式 `regex=true` 才启用正则。只向新模型请求公布 `grep`，不把同一搜索工具的两种入口同时加入工具列表。默认非交互任务仍为九种模型工具，全开最多十七种；配置接受十八个名称，含兼容入口。
+旧会话和嵌入调用的 `search(query, regex=false, ...)` 仍按字面值搜索，显式 `regex=true` 才启用正则。新模型请求只公布 `grep`，配置同时接受两个名称。
 
 `[tools] search=false`、`grep=false` 或相应 `--disable-tool` 任一个均同时禁用两者；另一入口的 true 不能抵消合并策略中仍存在的 false。受限项目配置不能通过另一名称重新开启用户/profile 禁用的检索。生效设置来源会显示别名禁用的原因。文件排除作用于整个文件读取层，关闭单个工具不等于禁止其他读取工具或隔离获批命令。
 

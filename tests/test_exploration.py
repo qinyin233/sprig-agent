@@ -42,7 +42,7 @@ class ExplorationTests(unittest.TestCase):
                             "task": "Inspect the module", "path": "src", "requests": 2})]),
                         answer(protocol, streaming, calls=[
                             ("read", "read_file", {"path": "src/code.py", "line_numbers": True}),
-                            ("grep", "grep", {"pattern": "private_child_source", "literal": True}),
+                            ("grep", "grep", {"pattern": "private_child_source", "literal": True, "output_mode": "windows"}),
                             ("escape", "read_file", {"path": "outside.txt"}),
                             ("command", "run", {"argv": ["never-execute-this"]})]),
                         answer(protocol, streaming, text="src/code.py:1 sets 42"),
@@ -73,7 +73,8 @@ class ExplorationTests(unittest.TestCase):
                     payloads = list(values(final))
                     self.assertTrue(any("private_child_source" in item.get("content", "")
                                         for item in payloads if isinstance(item.get("content"), str)))
-                    self.assertTrue(any(item.get("matches") for item in payloads))
+                    windows = next(item["files"] for item in payloads if item.get("output_mode") == "windows" and "files" in item)
+                    self.assertEqual([window["path"] for window in windows], ["src/code.py"])
                     self.assertIn({"error": "path is invalid or outside the approved exploration directory"}, payloads)
                     self.assertIn({"error": "exploration allows only workspace inspection tools"}, payloads)
                     self.assertNotIn("read_id", json.dumps(final))
