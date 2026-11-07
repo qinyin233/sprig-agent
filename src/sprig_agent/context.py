@@ -367,6 +367,8 @@ def prepare_context(config, messages, tools, compact=False, *, force=False, chec
                 # coverage flags; obtain provenance/pagination again by rereading.
                 fields.extend(name for name in ("sha256", "read_id", "line_numbers", "offset", "end_line", "total_lines",
                                                 "next_offset", "path", "symbol", "symbol_start_line", "symbol_end_line") if name in result)
+                if search_read and "next_cursor" in result:
+                    fields.append("next_cursor")
                 note = "Past read omitted; reread source. Full history saved."
                 if read_name == "read_file" and config.context_keep_read_bytes and _complete_read(result, read_arguments):
                     read_candidates.append((index, identity, message["content"], result["path"],

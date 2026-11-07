@@ -41,7 +41,7 @@ from .edit_batch import EditPreview, digest, preflight
 from .line_edits import replace_lines, validate_edits
 from .line_patch import apply as apply_line_patch
 from .search import (FileGlob, MAX_RANGE_LINES, MAX_READ_RANGES, RegexBudgetExceeded,
-                     RegexMatcher, match_windows, matching_lines)
+                     RegexMatcher, match_window_prefixes, matching_lines)
 from .syntax import IndexUnavailable
 from .image_reads import ImageReadResult, read_image
 from .file_glob import discover as discover_files
@@ -77,12 +77,13 @@ TOOL_SCHEMAS = [
             "ranges": {"type": "array", "items": {"type": "array", "items": {"type": "integer"}}},
             "cursor": {"type": "string", "maxLength": 80},
             "symbol": {"type": "string", "minLength": 1, "maxLength": 1024}, "image": {"type": "boolean"}}, ["path"]),
-    schema("grep", "RE2 ASCII \\w/\\d/\\b, no lookaround/backrefs, simple folding; literal=true; physical CR/LF. read=one file. Check timed_out/truncated.",
+    schema("grep", "RE2 ASCII \\w/\\d/\\b; no lookaround/backrefs; simple folding; literal=true; physical CR/LF; read=file; timed_out",
            {"pattern": {"type": "string", "minLength": 1, "maxLength": 1000}, "path": STRING,
             "glob": {"type": "string", "minLength": 1, "maxLength": 256},
             "ignore_case": {"type": "boolean"}, "literal": {"type": "boolean"},
             "context": {"type": "integer", "minimum": 0, "maximum": 10},
             "limit": {"type": "integer", "minimum": 1, "maximum": 1000},
+            "cursor": STRING,
             "output_mode": {"enum": ["content", "files", "count", "read"]}}, ["pattern"]),
     schema("project_map", "File/dir declarations; literal name/path. include_calls: syntax, not resolved refs. Check flags; read source.",
            {"path": STRING, "query": {"type": "string", "minLength": 1, "maxLength": 256},
@@ -123,6 +124,10 @@ GIT_DIFF_SCHEMA = schema("git_diff", "Approved single-file Git patch. staged=tru
 
 class ToolError(Exception):
     pass
+
+
+class _RangeOutputLimit(ToolError):
+    """The complete numbered payload exceeds the configured output cap."""
 
 
 class _WorkspacePathMissing(FileNotFoundError):
@@ -882,7 +887,7 @@ class Tools:
                 displayed = f"{number}: {line}"
                 content_bytes += len(displayed.encode("utf-8"))
                 if content_bytes > self.config.max_output:
-                    raise ToolError(output_error)
+                    raise _RangeOutputLimit(output_error)
                 selected.append(displayed)
                 if number == end:
                     range_index += 1
@@ -899,9 +904,10 @@ class Tools:
 
         def check_output(value):
             if max(encoded_size(value), encoded_size(redact(value, secrets))) > self.config.max_output:
-                raise ToolError(output_error)
+                raise _RangeOutputLimit(output_error)
 
         if not ranges or any(secret in text for secret in secrets):
+            result.pop("next_cursor", None)
             check_output(result)
         else:
             result["sha256"] = hashlib.sha256(raw).hexdigest()
@@ -980,32 +986,70 @@ class Tools:
             result["sha256"] = hashlib.sha256(raw).hexdigest()
         return result
 
-    def grep(self, pattern, path=".", *, glob=_MISSING, ignore_case=False, literal=False, context=0, limit=100, output_mode="content"):
+    def grep(self, pattern, path=".", *, glob=_MISSING, ignore_case=False, literal=False, context=0, limit=100,
+             output_mode="content", cursor=_MISSING):
         self._require_tool("grep")
         if type(literal) is not bool:
             raise ToolError("literal must be a boolean; false uses RE2 regex, true uses exact text")
         result = self.search(pattern, path, glob=glob, ignore_case=ignore_case, regex=not literal,
-                             context=context, limit=limit, output_mode=output_mode)
+                             context=context, limit=limit, output_mode=output_mode, cursor=cursor)
         # Legacy search's regex=true suggestion does not apply to this API.
         result.pop("search_guidance", None)
         return result
 
-    def _search_read(self, query, path, ignore_case, context, limit, matcher):
+    def _search_read(self, query, path, ignore_case, context, limit, matcher, cursor):
         self._require_tool("read_file")
+        start_line = 1
+        resume = cursor is not _MISSING and cursor != "start"
+        if resume:
+            invalid = "read cursor must be 'start' or a returned next_cursor"
+            if not isinstance(cursor, str) or len(cursor) > 72:
+                raise ToolError(invalid)
+            signature, separator, position = cursor.rpartition(":")
+            if (not separator or len(signature) != 65 or not signature.startswith("s")
+                    or any(char not in "0123456789abcdef" for char in signature[1:])
+                    or not position.isascii() or not position.isdecimal() or not 1 <= int(position) <= MAX_FILE):
+                raise ToolError(invalid)
+            start_line = int(position)
         parts = self._parts(path)
         if self.config.project_instructions:
             self.instructions.register(parts[:-1])
         raw, text = self._read_validated(path, scan_limit=MAX_FILE)
-        matches = matching_lines(text, query, ignore_case, context, self._check_cancelled, matcher)
+        binding = (str(self.root.path), parts, hashlib.sha256(raw).hexdigest(), query,
+                   ignore_case, context, matcher is not None)
+
+        def page_cursor(line):
+            payload = json.dumps((*binding, line), ensure_ascii=True, separators=(",", ":")).encode()
+            return f"s{hashlib.sha256(payload).hexdigest()}:{line}"
+
+        if resume and (cursor != page_cursor(start_line) or any(secret in text for secret in self.config.secrets)):
+            raise ToolError("file or search settings changed; restart with cursor='start'")
+        matches = matching_lines(text, query, ignore_case, context, self._check_cancelled, matcher,
+                                 start_line=start_line)
         try:
-            ranges, count, truncated = match_windows(matches, limit)
+            prefixes, following = match_window_prefixes(matches, limit)
         except RegexBudgetExceeded:
             return {"error": "read mode reached the regex work budget; no source window returned",
                     "truncated": True, "timed_out": True}
-        return self._render_ranges(path, parts, ranges, raw, text, output_mode="read",
-                                   matched_lines=count, truncated=truncated, timed_out=False)
+        count = len(prefixes)
+        while True:
+            ranges = prefixes[count - 1][1] if count else []
+            next_line = prefixes[count][0] if count < len(prefixes) else following
+            metadata = {"output_mode": "read", "matched_lines": count, "truncated": next_line is not None,
+                        "timed_out": False}
+            if next_line is not None:
+                metadata["next_cursor"] = page_cursor(next_line)
+            try:
+                return self._render_ranges(path, parts, ranges, raw, text, **metadata)
+            except _RangeOutputLimit:
+                if count <= 1:
+                    raise
+                # Retry rendering smaller complete prefixes without repeating
+                # matching or creating a read_id for rejected output.
+                count //= 2
 
-    def search(self, query, path=".", *, glob=_MISSING, ignore_case=False, regex=False, context=0, limit=100, output_mode="content"):
+    def search(self, query, path=".", *, glob=_MISSING, ignore_case=False, regex=False, context=0, limit=100,
+               output_mode="content", cursor=_MISSING):
         self._require_tool("search")
         if not isinstance(query, str) or not query or len(query) > 1000:
             raise ToolError("query must be a nonempty string (at most 1000 characters)")
@@ -1022,11 +1066,13 @@ class Tools:
             raise ToolError("output_mode must be content, files, count or read")
         if output_mode in ("files", "count") and context:
             raise ToolError("files/count output requires context=0; use content or read for surrounding lines")
+        if cursor is not _MISSING and output_mode != "read":
+            raise ToolError("cursor requires output_mode='read'")
         if output_mode == "read":
             if glob is not _MISSING:
                 raise ToolError("read mode requires a single explicit file path; omit glob")
             matcher = RegexMatcher(query, ignore_case, self._check_cancelled) if regex else None
-            return self._search_read(query, path, ignore_case, context, limit, matcher)
+            return self._search_read(query, path, ignore_case, context, limit, matcher, cursor)
         file_glob = FileGlob(glob) if glob is not _MISSING else None
         matcher = RegexMatcher(query, ignore_case, self._check_cancelled) if regex else None
         parts = self._parts(path)

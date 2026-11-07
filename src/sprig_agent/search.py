@@ -108,13 +108,15 @@ class FileGlob:
         return self.parts[-1] == "**" and len(parts) in possible
 
 
-def matching_lines(text, query, ignore_case, context, check_cancelled, matcher=None):
+def matching_lines(text, query, ignore_case, context, check_cancelled, matcher=None, *, start_line=1):
     """Preserve physical CR/LF lines with at most 10 previous/pending rows."""
     needle = query.casefold() if ignore_case else query
     if not context:
         # Ordinary searches do not allocate or maintain context queues.
         for number, line in enumerate(io.StringIO(text, newline=""), 1):
             check_cancelled()
+            if number < start_line:
+                continue
             line = line.rstrip("\r\n")
             if (matcher(line) if matcher is not None else
                     needle in (line.casefold() if ignore_case else line)):
@@ -128,8 +130,8 @@ def matching_lines(text, query, ignore_case, context, check_cancelled, matcher=N
             record["after"].append(line)
         if pending and len(pending[0]["after"]) == context:
             yield pending.popleft()
-        if (matcher(line) if matcher is not None else
-                needle in (line.casefold() if ignore_case else line)):
+        if number >= start_line and (matcher(line) if matcher is not None else
+                                     needle in (line.casefold() if ignore_case else line)):
             pending.append({"line": number, "text": line, "before": list(previous), "after": []})
         previous.append(line)
     for record in pending:
@@ -137,22 +139,22 @@ def matching_lines(text, query, ignore_case, context, check_cancelled, matcher=N
         yield record
 
 
-def match_windows(matches, limit):
-    """Merge match context into a bounded set of complete physical windows."""
-    ranges, included, lines = [], 0, 0
+def match_window_prefixes(matches, limit):
+    """Record bounded prefixes and the first omitted match's physical line."""
+    ranges, prefixes, lines = [], [], 0
     for match in matches:
         number = match["line"]
         start = number - len(match.get("before", ()))
         end = number + len(match.get("after", ()))
         adjacent = bool(ranges) and start <= ranges[-1][1] + 1
         added = max(0, end - ranges[-1][1]) if adjacent else end - start + 1
-        if (included == limit or lines + added > MAX_RANGE_LINES
+        if (len(prefixes) == limit or lines + added > MAX_RANGE_LINES
                 or (not adjacent and len(ranges) == MAX_READ_RANGES)):
-            return ranges, included, True
+            return prefixes, number
         if adjacent:
-            ranges[-1][1] = max(ranges[-1][1], end)
+            ranges = [*ranges[:-1], [ranges[-1][0], max(ranges[-1][1], end)]]
         else:
-            ranges.append([start, end])
+            ranges = [*ranges, [start, end]]
         lines += added
-        included += 1
-    return ranges, included, False
+        prefixes.append((number, ranges))
+    return prefixes, None

@@ -103,6 +103,71 @@ class GrepTests(unittest.TestCase):
         self.assertEqual(capped["matched_lines"], 476)
         self.assertTrue(capped["truncated"] and capped["range_complete"])
 
+    def test_read_mode_pages_complete_matches_when_the_output_is_too_large(self):
+        path = self.root / "source.py"
+        body = b"alpha " + b"x" * 130 + b"\n"
+        path.write_bytes((body + b"skip\n") * 6)
+        args = {"pattern": "alpha", "path": path.name, "output_mode": "read"}
+        with closing(Tools(replace(self.config, max_output=600), self.approve)) as tools:
+            page = tools.execute("grep", args)
+            self.assertTrue(page.get("next_cursor"), page)
+            identity = page["read_id"]
+            shown = []
+            for _ in range(6):
+                self.assertTrue(page["range_complete"])
+                self.assertEqual(page["read_id"], identity)
+                self.assertLessEqual(len(json.dumps(page, ensure_ascii=False).encode()), 600)
+                shown.extend(page["ranges"])
+                cursor = page.get("next_cursor")
+                if cursor is None:
+                    self.assertFalse(page["truncated"])
+                    break
+                self.assertTrue(page["truncated"])
+                page = tools.execute("grep", {**args, "cursor": cursor})
+            else:
+                self.fail("search pages did not reach the end")
+        self.assertEqual(shown, [[line, line] for line in range(1, 12, 2)])
+
+    def test_read_cursor_binds_query_options_path_position_and_file_version(self):
+        path = self.root / "source.py"
+        args = {"pattern": "alpha", "path": path.name, "output_mode": "read", "limit": 1}
+        first = self.tools.execute("grep", args)
+        cursor = first["next_cursor"]
+        (self.root / "same.py").write_bytes(path.read_bytes())
+        for extra in ({"path": "same.py"}, {"pattern": "beta"}, {"ignore_case": True},
+                      {"literal": True}, {"context": 1}, {"cursor": cursor.rsplit(":", 1)[0] + ":2"},
+                      {"output_mode": "content"}):
+            with self.subTest(extra=extra):
+                result = self.tools.execute("grep", {**args, "cursor": cursor, **extra})
+                self.assertIn("error", result)
+                self.assertNotIn("content", result)
+                self.assertNotIn("read_id", result)
+        resumed = self.tools.execute("grep", {**args, "cursor": cursor, "limit": 2})
+        self.assertEqual(resumed["ranges"], [[3, 3]])
+        self.assertEqual(resumed["read_id"], first["read_id"])
+        self.assertNotIn("next_cursor", resumed)
+        path.write_bytes(path.read_bytes() + b"alpha\n")
+        stale = self.tools.execute("grep", {**args, "cursor": cursor})
+        self.assertIn("restart", stale["error"])
+        self.assertNotIn("content", stale)
+
+    def test_read_cursor_preserves_context_without_matching_the_previous_prefix_again(self):
+        path = self.root / "source.py"
+        path.write_bytes(b"alpha first\r\nalpha second")
+        args = {"pattern": "alpha", "path": path.name, "output_mode": "read", "limit": 1, "context": 1}
+        first = self.tools.execute("grep", args)
+        checked = []
+        original = RegexMatcher._search
+        def observe(matcher, line):
+            checked.append(line)
+            return original(matcher, line)
+        with patch.object(RegexMatcher, "_search", observe):
+            second = self.tools.execute("grep", {**args, "cursor": first["next_cursor"]})
+        self.assertEqual(checked, ["alpha second"])
+        self.assertEqual(second["content"], first["content"])
+        self.assertEqual(second["matched_lines"], 1)
+        self.assertFalse(second["truncated"])
+
     def test_read_mode_respects_scope_privacy_limits_and_the_read_tool_gate(self):
         args = {"pattern": "alpha", "path": "source.py", "output_mode": "read"}
         (self.root / "sub").mkdir()
@@ -117,12 +182,18 @@ class GrepTests(unittest.TestCase):
         path.write_bytes(b"alpha\n" + b"sk-" + b"z" * 30)
         self.assertIn("error", self.tools.execute("grep", args))
         secret = "fixture-private-marker"
-        path.write_bytes(b"alpha\n" + secret.encode())
+        path.write_bytes(b"alpha\nalpha\n" + secret.encode())
+        before_protection = self.tools.execute("grep", {**args, "limit": 1})
         with closing(Tools(replace(self.config, api_key=secret), self.approve)) as tools:
-            result = tools.execute("grep", args)
+            result = tools.execute("grep", {**args, "limit": 1})
             self.assertEqual(result["content"], "1: alpha\n")
+            self.assertTrue(result["truncated"])
             self.assertNotIn("read_id", result)
             self.assertNotIn("sha256", result)
+            self.assertNotIn("next_cursor", result)
+            protected = tools.execute("grep", {**args, "cursor": before_protection["next_cursor"]})
+            self.assertIn("error", protected)
+            self.assertNotIn("content", protected)
         path.write_bytes(b"alpha" + b"x" * 800 + b"\n")
         with closing(Tools(replace(self.config, max_output=384), self.approve)) as tools:
             result = tools.execute("grep", args)
@@ -291,7 +362,8 @@ class GrepFoldingTests(unittest.TestCase):
             self.append(history, str(n), name, {field: "alpha", "path": "source.py", "output_mode": "read"},
                         {"path": "source.py", "content": "alpha" * 600, "ranges": [[1, 1]],
                          "output_mode": "read", "range_complete": True, "matched_lines": 1,
-                         "truncated": False, "sha256": "a" * 64, "read_id": "r0123456789ab-1"})
+                         "truncated": True, "sha256": "a" * 64, "read_id": "r0123456789ab-1",
+                         "next_cursor": "s" + "b" * 64 + ":2"})
         history.extend({"role": "user", "content": "Keep this"} for _ in range(6))
         original = copy.deepcopy(history)
         selected, report = self.project(history, replace(self.config, max_context_bytes=6000))
@@ -302,7 +374,7 @@ class GrepFoldingTests(unittest.TestCase):
         for _, _, result in shown.values():
             self.assertTrue(result["range_complete"])
             self.assertEqual(result["ranges"], [[1, 1]])
-            self.assertFalse({"read_id", "sha256", "content"} & result.keys())
+            self.assertFalse({"read_id", "sha256", "content", "next_cursor"} & result.keys())
         self.assertEqual(history, original)
         validate_history(selected)
 

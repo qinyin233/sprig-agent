@@ -28,7 +28,7 @@ def replies(protocol, streamed, edit_args=None):
 
 
 class LinePatchProtocolTests(unittest.TestCase):
-    def test_search_read_supplies_versioned_source_for_approved_edit_across_protocols(self):
+    def test_search_read_pages_supply_versioned_source_for_approved_edit_across_protocols(self):
         for protocol in ('chat_completions', 'messages', 'responses'):
             for streamed in (False, True):
                 with self.subTest(protocol=protocol, stream=streamed), tempfile.TemporaryDirectory() as temp:
@@ -36,29 +36,37 @@ class LinePatchProtocolTests(unittest.TestCase):
                     source = root / 'source.txt'
                     source.write_bytes(b'before\r\nkeep\r\nlast\r\n')
                     captured, approvals = [], []
+                    search = {'path': source.name, 'pattern': '^before$|^last$', 'output_mode': 'read', 'limit': 1}
+
+                    def next_page(data):
+                        observed = next(item for item in values(data) if item.get('next_cursor'))
+                        self.assertEqual(observed['content'], '1: before\r\n')
+                        return answer(protocol, streamed, calls=[('page', 'grep', {
+                            **search, 'cursor': observed['next_cursor'],
+                        })])
 
                     def edit(data):
                         observed = next(item for item in values(data)
-                                        if item.get('output_mode') == 'read' and valid_read_id(item.get('read_id')))
-                        self.assertEqual(observed['content'], '1: before\r\n3: last\r\n')
+                                        if item.get('output_mode') == 'read' and not item.get('truncated', True)
+                                        and valid_read_id(item.get('read_id')))
+                        self.assertEqual(observed['content'], '3: last\r\n')
                         return answer(protocol, streamed, calls=[('edit', 'edit_lines', {
                             'path': source.name, 'read_id': observed['read_id'],
-                            'edits': [{'start_line': 1, 'end_line': 1, 'lines': ['fixed']}],
+                            'edits': [{'start_line': 3, 'end_line': 3, 'lines': ['fixed']}],
                         })])
 
-                    replies = [answer(protocol, streamed, calls=[('find', 'grep', {
-                        'path': source.name, 'pattern': '^before$|^last$', 'output_mode': 'read',
-                    })]), edit, answer(protocol, streamed, text='Done')]
-                    expected = b'fixed\r\nkeep\r\nlast\r\n'
+                    replies = [answer(protocol, streamed, calls=[('find', 'grep', search)]),
+                               next_page, edit, answer(protocol, streamed, text='Done')]
+                    expected = b'before\r\nkeep\r\nfixed\r\n'
                     check = (sys.executable, '-I', '-B', '-c',
                              "from pathlib import Path; assert Path('source.txt').read_bytes() == " + repr(expected))
                     with backend(protocol, replies, captured, stream=streamed) as url:
                         config = Config(root, 'fixture', base_url=url, wire_api=protocol, stream=streamed,
-                                        max_steps=3, max_context_bytes=16384, checks=(check,))
+                                        max_steps=4, max_context_bytes=16384, checks=(check,))
                         with closing(Tools(config, lambda prompt: approvals.append(prompt) or True)) as tools:
-                            _, complete = Agent(config, Provider(config), tools, lambda _: None).run('Fix the first line')
+                            _, complete = Agent(config, Provider(config), tools, lambda _: None).run('Fix the last line')
                     self.assertTrue(complete)
-                    self.assertEqual(len(captured), 3)
+                    self.assertEqual(len(captured), 4)
                     self.assertEqual(len(approvals), 2)
                     self.assertEqual(source.read_bytes(), expected)
 
