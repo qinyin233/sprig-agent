@@ -111,9 +111,10 @@ TOOL_SCHEMAS = [
     schema("file_action", "mkdir; delete/move UTF-8 <=512KiB with read_id. No overwrite/recursive delete; move asks twice and may leave both files.",
            {"action": {"enum": ["mkdir", "delete", "move"]}, "path": STRING, "destination": STRING,
             "read_id": STRING}, ["action", "path"]),
-    schema("run", "Approve argv; NOT sandboxed (outside files/network). Omit timeout for configured cap.",
+    schema("run", "Approve argv; NOT sandboxed.",
            {"argv": {"type": "array", "items": STRING, "minItems": 1}, "cwd": STRING,
-            "timeout": {"type": "number", "exclusiveMinimum": 0, "maximum": 120}}, ["argv"]),
+            "timeout": {"type": "number", "exclusiveMinimum": 0, "maximum": 120},
+            "backup": {"type": "array", "items": STRING}}, ["argv"]),
 ]
 GIT_STATUS_SCHEMA = schema("git_status", "Approved Git status by literal path. Index/worktree codes; ?? untracked. No authorship inference.",
                            {"path": STRING, "limit": {"type": "integer", "minimum": 1, "maximum": 512}})
@@ -1660,7 +1661,7 @@ class Tools:
             result["log"] = {"saved": False, "reason": "command log storage unavailable before approval"}
         return self._retain_log(preview, capture, result)
 
-    def run(self, argv, cwd=".", timeout=None, background=False, stdin="closed"):
+    def run(self, argv, cwd=".", timeout=None, background=False, stdin="closed", *, backup=_MISSING):
         self._require_tool("run")
         if self.config.read_only:
             return {"approved": False, "error": "read-only mode blocks command execution"}
@@ -1668,6 +1669,8 @@ class Tools:
             raise ToolError("background must be a boolean")
         if not isinstance(stdin, str) or stdin not in {"closed", "pipe", "pty"} or stdin != "closed" and not background:
             raise ToolError("stdin must be closed or an explicitly opted-in background pipe or PTY")
+        if backup is not _MISSING and background:
+            raise ToolError("backup is available only for foreground commands")
         job_epoch = None
         if background:
             self.jobs.available()
@@ -1690,9 +1693,13 @@ class Tools:
         parts = self._parts(cwd)
         with ExitStack() as directories:
             pinned, cwd_chain = directories.enter_context(self._command_directory(parts))
-            return self._run_in_directory(argv, parts, pinned, cwd_chain, seconds, stdin, job_epoch, directories)
+            observation = None
+            if backup is not _MISSING:
+                from .command_changes import CommandChanges
+                observation = CommandChanges(self, backup)
+            return self._run_in_directory(argv, parts, pinned, cwd_chain, seconds, stdin, job_epoch, directories, observation)
 
-    def _run_in_directory(self, argv, parts, pinned, cwd_chain, seconds, stdin, job_epoch, directories):
+    def _run_in_directory(self, argv, parts, pinned, cwd_chain, seconds, stdin, job_epoch, directories, observation):
         config, version = self.config, self._conversation_version
         background = job_epoch is not None
         sandbox = None
@@ -1711,6 +1718,8 @@ class Tools:
             description += ("\nenvironment: " + ("expanded inheritance" if self.config.inherit_env else "minimal inheritance")
                             + "; additional inherited names: " + json.dumps(self.config.env_allowlist)
                             + "; override names: " + json.dumps([name for name, _ in self.config.command_env]))
+        if observation is not None:
+            description += observation.description()
         preview = memory_generation = None
         if background:
             modes = {
@@ -1757,9 +1766,15 @@ class Tools:
         env = {} if sandbox else command_environment(self.config)
         self.instructions.recheck_action(parts, rules)
         current, _ = directories.enter_context(self._command_directory(parts, cwd_chain))
+        if observation is not None:
+            observation.check_before()
         launch = sandbox.launch(argv) if sandbox else self._command_launch(current, argv, env)
-        return self._execute_command(argv, directory, cwd_chain, launch, seconds, output_limit, stdin, job_epoch,
-                                     preview, memory_generation, directories)
+        result = self._execute_command(argv, directory, cwd_chain, launch, seconds, output_limit, stdin, job_epoch,
+                                       preview, memory_generation, directories)
+        if observation is not None:
+            result["command_changes"] = (observation.finish() if type(result.get("returncode")) is int
+                                         else {"recorded": 0, "status": "unavailable"})
+        return result
 
     def _execute_command(self, argv, directory, cwd_chain, launch, seconds, output_limit, stdin, job_epoch,
                          preview, memory_generation, directories):

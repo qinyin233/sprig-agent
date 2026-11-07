@@ -29,7 +29,7 @@ class ChangeReviewScreen(ModalScreen):
 
     def compose(self):
         with Vertical(id='change-review'):
-            yield Static('文件工具保留的历史差异；不含全部命令/Git 改动，不代表验收。选择记录后 Enter；主草稿保持。',
+            yield Static('保留的历史差异，包括显式命令备份。选择记录后 Enter；主草稿保持。',
                          id='review-notice', markup=False)
             yield OptionList(id='review-records', markup=False, compact=True)
             yield Static('', id='review-status', markup=False)
@@ -51,6 +51,7 @@ class ChangeReviewScreen(ModalScreen):
         options.clear_options()
         options.add_options([(('[?] ' if row['applied'] is None else '[已应用] ' if row['applied'] else '[已撤销] ')
                               + row['path'] + ('…' if row['path_truncated'] else '')
+                              + (' [命令备份]' if row.get('origin') == 'command' else '')
                               + (f" [批次 {row['batch']['id'][:8]} #{row['batch']['index']}]" if 'batch' in row else '')) for row in self.rows])
         if page and 'error' not in page:
             if self.navigation == 'next' and self.view:

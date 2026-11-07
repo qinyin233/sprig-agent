@@ -78,6 +78,8 @@ class ChangeHistory:
                 for field in ("before", "after"):
                     if record[field] is not None and (not isinstance(record[field], str) or len(unpack(record[field])) > 512 * 1024):
                         raise ValueError
+                if "origin" in record and record["origin"] != "command":
+                    raise ValueError
                 label = record.get("batch")
                 if "batch" in record:
                     if (not isinstance(label, dict) or set(label) != {"id", "index"}
@@ -149,25 +151,55 @@ class ChangeHistory:
                              "before_bytes": None if record["before"] is None else len(unpack(record["before"])),
                              "after_bytes": None if record["after"] is None else len(unpack(record["after"]))}
                             | ({"batch": copy.deepcopy(record["batch"])} if "batch" in record else {})
+                            | ({"origin": record["origin"]} if "origin" in record else {})
                             for index, record in enumerate(self.state["records"])]}
 
-    def begin_edit(self, path, before, after, mode, revision, *, batch=None):
+    @staticmethod
+    def _entry(path, before, after, mode):
+        return {"id": uuid.uuid4().hex, "path": path, "before": pack(before), "after": pack(after), "mode": mode}
+
+    def _append(self, records, revisions):
         self._ready()
         state = copy.deepcopy(self.state)
         state["records"] = state["records"][:state["cursor"]]
-        state["records"].append({"id": uuid.uuid4().hex, "path": path, "before": pack(before), "after": pack(after), "mode": mode})
-        if batch is not None:
-            state["records"][-1]["batch"] = copy.deepcopy(batch)
+        state["records"].extend(records)
         while len(state["records"]) > MAX_RECORDS or sum(map(backup_size, state["records"])) > MAX_BACKUPS:
             state["records"].pop(0)
         state["cursor"] = len(state["records"])
         paths = {record["path"] for record in state["records"]}
+        state["anchors"].update({path: None if revision is None else list(revision)
+                                 for path, revision in revisions.items()})
         state["anchors"] = {key: value for key, value in state["anchors"].items() if key in paths}
-        state["anchors"][path] = None if revision is None else list(revision)
+        return state
+
+    def begin_edit(self, path, before, after, mode, revision, *, batch=None):
+        record = self._entry(path, before, after, mode)
+        if batch is not None:
+            record["batch"] = copy.deepcopy(batch)
+        state = self._append([record], {path: revision})
         state["pending"] = {"action": "edit", "path": path}
         if batch is not None:
             self.validate(state)  # A malformed association must fail before a journal or workspace write.
         self._save(state)
+
+    def record_command(self, observed):
+        """Commit a settled command's observed file deltas as one journal update."""
+        identity = uuid.uuid4().hex
+        records, revisions = [], {}
+        for index, (path, before, after, mode, revision) in enumerate(observed, 1):
+            records.append(self._entry(path, before, after, mode)
+                           | {"origin": "command", "batch": {"id": identity, "index": index}})
+            revisions[path] = revision
+        if not records or len(records) > MAX_RECORDS or sum(map(backup_size, records)) > MAX_BACKUPS:
+            raise ChangeError("command backups exceed the retained history limits")
+        state = self.validate(self._append(records, revisions))
+        try:
+            self._save(state)
+        except BaseException:
+            state["pending"] = {"action": "edit", "path": records[0]["path"]}
+            self.state = state
+            raise
+        return identity
 
     def plan_batch(self, action):
         state = self.validate(copy.deepcopy(self.state))
