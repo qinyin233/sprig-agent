@@ -69,6 +69,85 @@ class BatchRestoreTests(unittest.TestCase):
         self.assertEqual(len(self.prompts), 3)
         self.assert_bytes()
 
+    def test_restore_to_record_crosses_batches_and_repeated_paths(self):
+        self.batch()
+        self.assertTrue(self.tools.edit_file('a.txt', old='new文', new='later')['changed'])
+        self.assertTrue(self.tools.edit_file('extra.txt', old='', new='created\n')['changed'])
+        first, *_, last = self.tools.history.state['records']
+        self.prompts.clear()
+
+        result = self.tools.change_action('undo-to', target=first['id'])
+        self.assertTrue(result.get('complete'), result)
+        self.assertEqual((result['completed'], result['total']), (5, 5))
+        self.assertEqual(result['target_id'], first['id'])
+        self.assertEqual(len(self.prompts), 5)
+        self.assertIn('extra.txt', self.prompts[0])
+        self.assertIn('c.txt', self.prompts[0])
+        self.assert_bytes('old中', 'old中', 'old中')
+        self.assertFalse((self.root / 'extra.txt').exists())
+
+        self.prompts.clear()
+        result = self.tools.change_action('redo-to', target=last['id'])
+        self.assertTrue(result.get('complete'), result)
+        self.assertEqual((result['completed'], result['total']), (5, 5))
+        self.assertEqual(len(self.prompts), 5)
+        self.assert_bytes('later', 'new文', 'new文')
+        self.assertEqual((self.root / 'extra.txt').read_bytes(), b'created\n')
+
+    def test_restore_range_with_unrecorded_change_between_edits_stops_before_approval(self):
+        self.batch()
+        first = self.tools.history.state['records'][0]['id']
+        (self.root / 'a.txt').write_bytes(b'external\r\n')
+        self.assertTrue(self.tools.edit_file('a.txt', old='external', new='latest')['changed'])
+        self.prompts.clear()
+        result = self.tools.change_action('undo-to', target=first)
+        self.assertFalse(result.get('changed'), result)
+        self.assertIn('discontinuous', result['error'])
+        self.assertEqual(self.prompts, [])
+        self.assert_bytes('latest', 'new文', 'new文')
+
+    def test_restore_to_partial_refusal_can_resume_the_same_path(self):
+        self.assertTrue(self.tools.edit_file('a.txt', old='old中', new='middle')['changed'])
+        self.assertTrue(self.tools.edit_file('a.txt', old='middle', new='latest')['changed'])
+        first = self.tools.history.state['records'][0]['id']
+        self.prompts.clear()
+        self.tools.approve = lambda text: self.prompts.append(text) or len(self.prompts) == 1
+        result = self.tools.change_action('undo-to', target=first)
+        self.assertEqual((result['completed'], result['total']), (1, 2))
+        self.assertFalse(result['complete'])
+        self.assertEqual((self.root / 'a.txt').read_bytes(), b'middle\r\n')
+        self.tools.approve = lambda text: self.prompts.append(text) or True
+        resumed = self.tools.change_action('undo-to', target=first)
+        self.assertTrue(resumed['complete'])
+        self.assertEqual((resumed['completed'], resumed['total']), (1, 1))
+        self.assert_bytes('old中', 'old中', 'old中')
+
+    def test_restore_to_rejects_aliases_or_invalid_direction_before_prompting(self):
+        self.assertTrue(self.tools.edit_file('./a.txt', old='old中', new='middle')['changed'])
+        self.assertTrue(self.tools.edit_file('a.txt', old='middle', new='latest')['changed'])
+        first = self.tools.history.state['records'][0]['id']
+        self.prompts.clear()
+        alias = self.tools.change_action('undo-to', target=first)
+        self.assertIn('path spellings', alias['error'])
+        for target in (None, first[:8], '0' * 32):
+            self.assertIn('error', self.tools.change_action('undo-to', target=target))
+        self.assertIn('redo side', self.tools.change_action('redo-to', target=first)['error'])
+        self.assertEqual(self.prompts, [])
+        self.assert_bytes('latest', 'old中', 'old中')
+
+    def test_restore_to_keeps_reference_when_a_later_step_recreates_the_file(self):
+        path = self.root / 'extra.txt'
+        path.write_bytes(b'original\n')
+        identity = self.tools.read_file(path.name)['read_id']
+        self.assertTrue(self.tools.file_action('delete', path.name, read_id=identity)['changed'])
+        self.assertTrue(self.tools.edit_file(path.name, old='', new='replacement\n')['changed'])
+        first, last = self.tools.history.state['records']
+        for action, target, expected in (('undo-to', first, b'original\n'), ('redo-to', last, b'replacement\n')):
+            result = self.tools.change_action(action, target=target['id'])
+            self.assertTrue(result['complete'], result)
+            self.assertEqual(result.removed_paths, ())
+            self.assertEqual(path.read_bytes(), expected)
+
     def test_conflict_in_later_restore_target_blocks_the_first_restore(self):
         self.batch()
         (self.root / 'a.txt').write_bytes(b'external\r\n')
@@ -329,6 +408,31 @@ class BatchRestoreTests(unittest.TestCase):
 
 class BatchRestoreChatTests(unittest.TestCase):
     setUp = settings_fixture.SettingsTests.setUp
+
+    def test_chat_restore_to_uses_history_without_a_model_request(self):
+        from contextlib import closing
+        from unittest.mock import Mock
+        from sprig_agent.cli import chat
+        path = self.root / 'source.txt'
+        path.write_bytes(b'one\n')
+        config = Config(self.root, 'offline')
+        approvals, output = [], []
+        provider = Mock()
+        with closing(Tools(config, lambda text: approvals.append(text) or True)) as tools:
+            self.assertTrue(tools.edit_file(path.name, old='one', new='two')['changed'])
+            self.assertTrue(tools.edit_file(path.name, old='two', new='three')['changed'])
+            first, last = tools.history.state['records']
+            approvals.clear()
+            messages = [{'role': 'system', 'content': 'fixture'}, {'role': 'user', 'content': 'Change source'}]
+            agent = Agent(config, provider, tools, output.append)
+            inputs = [f"/undo-to {first['id']}", f"/redo-to {last['id']}", '/exit']
+            with patch('builtins.input', side_effect=inputs):
+                status = chat(agent, None, messages, output.append, autostart=False)
+        self.assertEqual(status, 2)
+        self.assertEqual(len(approvals), 4)
+        self.assertEqual(path.read_bytes(), b'three\n')
+        self.assertIn('redo-to (2/2 retained edits)', messages[-1]['content'])
+        provider.complete.assert_not_called()
 
     def test_six_protocol_paths_read_edit_batch_restore_and_reverify_without_model_replay(self):
         from contextlib import redirect_stdout, redirect_stderr

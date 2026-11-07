@@ -1351,7 +1351,7 @@ class Tools:
                 return {"error": "change review exceeds the output budget"}
             return result
 
-    def change_action(self, action):
+    def change_action(self, action, *, target=None):
         """Local user controls only; deliberately absent from model tool schemas."""
         try:
             self._check_cancelled()
@@ -1365,9 +1365,9 @@ class Tools:
                     self._check_cancelled()
                     self.history.discard()
                     result = {"approved": True, "discarded": True}
-            elif action in {"undo-batch", "redo-batch"}:
+            elif action in {"undo-batch", "redo-batch", "undo-to", "redo-to"}:
                 from .batch_restore import restore
-                return restore(self, action.split("-")[0])
+                return restore(self, action, target=target)
             else:
                 result = self._restore_change(action)
             return redact(result, self.config.secrets)

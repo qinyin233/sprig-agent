@@ -1019,8 +1019,8 @@ class SprigApp(App[int]):
                     if "error" in catalog or page and "error" in page:
                         result["error"] = catalog.get("error") or page["error"]
                     message = "历史文件差异审阅；主草稿保留，未重新验收"
-                elif name in {"changes", "undo", "redo", "undo-batch", "redo-batch", "discard-history"}:
-                    result = self.tools.change_action(name)
+                elif name in {"changes", "undo", "redo", "undo-batch", "redo-batch", "undo-to", "redo-to", "discard-history"}:
+                    result = self.tools.change_action(name, **arguments)
                     if result.get("changed") or result.get("outcome") == "uncertain" or getattr(result, "uncertain", False):
                         # Invalidate before checkpointing: a failed save cannot
                         # make a successful file restoration appear verified.
@@ -1867,6 +1867,7 @@ class SprigApp(App[int]):
                         "/logs（当前会话日志） /log ID [OFFSET]（本地回查） /logs clear（逐次确认清理）\n"
                         "/history 消息编号 [字符偏移]（本地分页原文，系统提示与推理元数据不展示）\n"
                         "/changes /undo /redo /undo-batch /redo-batch /discard-history /sessions /prune [--dry-run]\n"
+                        "/undo-to ID 撤销至记录之前；/redo-to ID 重做到该记录；逐文件批准。\n"
                         "/changes review 打开只读差异；/changes show ID|latest [字符偏移 快照] 分页，不请求模型或重新验收。\n"
                         "/save [名称] /restore [名称] /delete [名称]\n"
                         "/pending 查看；/pending manage 管理；show ID [字符偏移] 查看原文；edit ID JSON字符串、drop ID、move ID 位置逐次确认。\n"
@@ -2130,6 +2131,7 @@ class SprigApp(App[int]):
         actions = {"/continue": "continue", "/new": "new", "/map": "map", "/git": "git", "/diff": "diff",
                    "/context": "context-budget", "/usage": "usage", "/compact": "compact",
                    "/changes": "changes", "/undo": "undo", "/redo": "redo", "/undo-batch": "undo-batch", "/redo-batch": "redo-batch", "/discard-history": "discard-history",
+                   "/undo-to": "undo-to", "/redo-to": "redo-to",
                    "/sessions": "sessions", "/save": "save", "/restore": "restore", "/delete": "delete", "/add": "attach", "/prune": "prune-sessions",
                    "/worktrees": "worktree-list", "/worktree": "worktree-create", "/remove-worktree": "worktree-remove"}
         actions.update({"/ref": "references", "/unref": "references", "/refs": "references"})
@@ -2139,7 +2141,7 @@ class SprigApp(App[int]):
         if self.busy:
             self.append("\n该本地操作需要等待当前任务结束；可用 /cancel，或发送普通消息调整任务。\n")
             return
-        if argument and command not in {"/map", "/git", "/diff", "/save", "/restore", "/delete", "/add", "/prune", "/worktree", "/remove-worktree", "/ref", "/unref", "/refs"}:
+        if argument and command not in {"/map", "/git", "/diff", "/save", "/restore", "/delete", "/add", "/prune", "/worktree", "/remove-worktree", "/ref", "/unref", "/refs", "/undo-to", "/redo-to"}:
             self.append("\n该命令不接受参数；输入 /help。\n")
             return
         if command in {"/save", "/restore", "/delete"} and argument:
@@ -2176,6 +2178,11 @@ class SprigApp(App[int]):
             self.start(local=("attach", {"paths": [argument]}))
         elif command == "/map" and argument:
             self.start(local=("project_map", {"query": argument}))
+        elif command in {"/undo-to", "/redo-to"}:
+            if not argument:
+                self.append("\n用法：/undo-to ID 或 /redo-to ID；从 /changes 获取完整记录 ID。\n")
+                return
+            self.start(local=(actions[command], {"target": argument}))
         else:
             try:
                 self.local_control(actions[command])

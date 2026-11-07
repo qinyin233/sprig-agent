@@ -13,7 +13,7 @@ from .session import SessionStore
 MAX_BACKUPS = 4 * 1024 * 1024
 MAX_JOURNAL = 8 * 1024 * 1024
 MAX_RECORDS = 16
-BATCH_ID = re.compile(r"[a-f0-9]{32}")
+RECORD_ID = re.compile(r"[a-f0-9]{32}")
 
 
 class ChangeError(Exception):
@@ -81,7 +81,7 @@ class ChangeHistory:
                 label = record.get("batch")
                 if "batch" in record:
                     if (not isinstance(label, dict) or set(label) != {"id", "index"}
-                            or not isinstance(label["id"], str) or not BATCH_ID.fullmatch(label["id"])
+                            or not isinstance(label["id"], str) or not RECORD_ID.fullmatch(label["id"])
                             or type(label["index"]) is not int or not 1 <= label["index"] <= 16):
                         raise ValueError
                     identity, position = label["id"], label["index"]
@@ -186,9 +186,25 @@ class ChangeHistory:
             stop += 1
         if records[start]["batch"]["index"] != 1:
             raise ChangeError("batch backups are incomplete after retention; use individual undo/redo")
-        selected = list(reversed(records[start:cursor])) if action == "undo" else records[cursor:stop]
-        return identity, [(record, None if state["anchors"][record["path"]] is None else tuple(state["anchors"][record["path"]]))
-                          for record in selected]
+        return identity, list(reversed(records[start:cursor])) if action == "undo" else records[cursor:stop]
+
+    def plan_to(self, action, identity):
+        self._ready()
+        if action not in {"undo", "redo"}:
+            raise ChangeError("unknown history range action")
+        if not isinstance(identity, str) or not RECORD_ID.fullmatch(identity):
+            raise ChangeError("use the full change ID from /changes or /changes review")
+        state = self.validate(copy.deepcopy(self.state))
+        cursor, records = state["cursor"], state["records"]
+        matches = [index for index, record in enumerate(records) if record["id"] == identity]
+        if len(matches) != 1:
+            raise ChangeError("the requested change ID is not uniquely retained")
+        index = matches[0]
+        if action == "undo" and index < cursor:
+            return list(reversed(records[index:cursor]))
+        if action == "redo" and index >= cursor:
+            return records[cursor:index + 1]
+        raise ChangeError("the requested record is not on the " + action + " side of the history cursor")
 
     def plan(self, action):
         self._ready()

@@ -603,8 +603,11 @@ class Agent:
                 self.references.observed = [row for row in self.references.observed if row["path"] in selected]
         uncertain = result.uncertain if batch else result.get("outcome") == "uncertain"
         if messages and (result.get("changed") or uncertain):
-            subject = (result.restore_action + f" ({result['completed']}/{result['total']} retained batch edits)" if batch
-                       else result["action"] + " of " + json.dumps(result["path"]))
+            if batch:
+                kind = "retained batch edits" if result.restore_action.endswith("-batch") else "retained edits"
+                subject = f"{result.restore_action} ({result['completed']}/{result['total']} {kind})"
+            else:
+                subject = result["action"] + " of " + json.dumps(result["path"])
             messages.append({"role": "user", ORIGIN: "application", "content": redact(
                 "User local " + subject +
                 (" has an uncertain outcome" if uncertain else " changed the workspace") +

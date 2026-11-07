@@ -59,7 +59,9 @@ class ChangeReviewTuiTests(unittest.IsolatedAsyncioTestCase):
             with patch.object(app.tools, 'approve', side_effect=self.fail):
                 await self.click(pilot, '#review-changes')
                 screen = await self.opened(app, pilot)
-                self.assertIn('-old\n+new\n', screen.query_one('#review-text', TextArea).text)
+                shown = screen.query_one('#review-text', TextArea).text
+                self.assertIn(screen.view['id'], shown)
+                self.assertIn('-old\n+new\n', shown)
                 screen.query_one('#review-text', TextArea).focus()
                 await pilot.press('enter')
                 self.assertEqual(provider.calls, [])

@@ -67,7 +67,7 @@ class ChangeReviewScreen(ModalScreen):
             self.query_one('#review-status', Static).update(self.host.safe(
                 state + f"；字符位置 {page['offset']}；" + ('本记录已读完' if page['complete'] else '还有后续页')
                 + '；控制字符已转义，差异可能不是最小形式'))
-            self.query_one('#review-text', TextArea).load_text(self.host.safe(page['text']))
+            self.query_one('#review-text', TextArea).load_text(self.host.safe(f"记录 ID {self.selected}\n\n{page['text']}"))
         else:
             self.view, self.back = None, []
             self.query_one('#review-text', TextArea).load_text('')

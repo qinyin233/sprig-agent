@@ -1181,6 +1181,39 @@ class TuiTests(unittest.IsolatedAsyncioTestCase):
             self.assertEqual(len(provider.calls), 2)
             self.assertEqual(app.last_status, 2)
 
+    async def test_enter_restores_to_a_history_record_across_model_responses(self):
+        path = self.root / 'source.txt'
+        path.write_bytes(b'one\n')
+        provider = ScriptedProvider([
+            call('first', 'edit_file', {'path': path.name, 'old': 'one', 'new': 'two'}),
+            call('second', 'edit_file', {'path': path.name, 'old': 'two', 'new': 'three'}),
+            response(),
+        ])
+        app = self.app(provider)
+        async with app.run_test(size=(80, 24)) as pilot:
+            await self.send_text(pilot, 'Change the same file twice')
+            for _ in range(2):
+                await self.until(pilot, lambda: isinstance(app.screen, ApprovalScreen))
+                previous = app.screen
+                await self.click(pilot, '#approve')
+                await self.until(pilot, lambda: app.screen is not previous)
+            await self.until(pilot, lambda: not app.busy)
+            self.assertEqual(path.read_bytes(), b'three\n')
+            identity = app.tools.history.state['records'][0]['id']
+            await self.send_text(pilot, f'/undo-to {identity}')
+            for stage, before in enumerate((b'three\n', b'two\n'), 1):
+                await self.until(pilot, lambda: isinstance(app.screen, ApprovalScreen))
+                previous = app.screen
+                self.assertIn(f'{stage}/2', previous.description)
+                self.assertEqual(path.read_bytes(), before)
+                await self.click(pilot, '#approve')
+                await self.until(pilot, lambda: app.screen is not previous)
+            await self.until(pilot, lambda: not app.busy)
+            self.assertEqual(path.read_bytes(), b'one\n')
+            self.assertEqual(len(provider.calls), 3)
+            self.assertEqual(app.last_status, 2)
+            self.assertIn('undo-to (2/2 retained edits)', app.messages[-1]['content'])
+
     async def test_multi_file_preflight_closes_invalid_batch_without_publishing_internal_previews(self):
         for name in ('a.txt', 'b.txt'):
             (self.root / name).write_bytes(b'old')

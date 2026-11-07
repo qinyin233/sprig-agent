@@ -245,6 +245,7 @@ def chat(agent, task, messages, emit, *, autostart=True, model_selection=None, s
                 emit("/summary previews an optional lossy checkpoint; /summary create [END] makes one extra model request after approval; /summary clear restores the full request view. /history MESSAGE [OFFSET] locally pages original data.")
                 emit("/verify runs only configured fixed checks with fresh approval for each; observations enter this conversation. No model request or automatic continuation.")
                 emit("/changes review lists retained file-edit comparisons; /changes show ID|latest [OFFSET SNAPSHOT] pages the historical diff locally. Read-only TUI viewer preserves the composer; review is not a new verification result.")
+                emit("/undo-to ID restores the state before a retained edit; /redo-to ID reapplies through it. Every restore needs fresh file approval.")
                 emit("/logs lists this conversation's retained output; /log ID [OFFSET] pages historical text; /logs clear requires fresh approval. Disk retention is opt-in via --command-log-dir or storage.command_log_dir.")
                 emit("/ref PATH adds a live file reference; /unref PATH removes it; /refs lists metadata; /refs clear removes all. No model request is sent. Small complete files refresh before requests; larger files provide path/size only.")
                 emit("/worktrees lists checkouts; /worktree PATH creates one; /remove-worktree PATH retains HEAD in a recovery branch and removes a clean linked checkout after fresh approvals. The current conversation stays here.")
@@ -392,8 +393,10 @@ def chat(agent, task, messages, emit, *, autostart=True, model_selection=None, s
                     emit("Change review cancelled; conversation and workspace retained. No model request sent.")
                 except ValueError as error:
                     emit(redact(str(error), agent.config.secrets))
-            elif task in {"/changes", "/undo", "/redo", "/undo-batch", "/redo-batch", "/discard-history"}:
-                result = agent.tools.change_action(task[1:])
+            elif (task in {"/changes", "/undo", "/redo", "/undo-batch", "/redo-batch", "/discard-history"}
+                  or task.split(None, 1)[0] in {"/undo-to", "/redo-to"}):
+                command, *target = task.split(None, 1)
+                result = agent.tools.change_action(command[1:], **({"target": target[0]} if target else {}))
                 if result.get("changed") or result.get("outcome") == "uncertain" or getattr(result, "uncertain", False):
                     status = 2
                 elif ("error" in result or result.get("approved") is False) and status == 0:
