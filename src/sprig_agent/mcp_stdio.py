@@ -15,6 +15,7 @@ class StdioClient(HttpClient):
     def __init__(self, server, check, launch):
         self.server, self.check = server, check
         self.launch = launch
+        self.check_directory = launch.check_directory
         self.session, self.process = None, None
         self.ready, self.capabilities = False, {}
         self.catalog_changed, self.catalog_version = False, 0
@@ -99,6 +100,7 @@ class StdioClient(HttpClient):
             time.sleep(.001)
         if self.expected_catalog is not None and self.expected_catalog != self.catalog_version:
             raise McpError("MCP catalog changed before sending; discover tools and approve a fresh proposal")
+        self.check_directory()
         raw = bounded(self._message(method, params, identity), 65536) + b"\n"
         idle = time.monotonic() + (0.1 if cleanup else self.server.timeout)
         self.pending, self.result, self.notifications = identity, EMPTY, 0
@@ -154,9 +156,10 @@ class StdioClient(HttpClient):
         self.check()
         if self.server.missing_env or any(name not in dict(self.server.env) for name, _ in self.server.env_from):
             raise McpError("MCP process environment reference is missing")
-        directory, env, recheck = self.launch
-        recheck()
-        self.process = Process(list(self.server.command), directory, env)
+        preparation, self.launch = self.launch, None
+        with preparation.launch() as (command, directories):
+            self.process = Process(command.argv, command.cwd, command.env, pass_fds=command.pass_fds,
+                                   directory_guard=directories)
         try:
             return super().connect()
         except BaseException:

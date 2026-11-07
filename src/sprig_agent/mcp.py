@@ -1,5 +1,6 @@
 """Approval-first MCP gateway and conversation-local result pages."""
 from collections import OrderedDict
+from contextlib import ExitStack
 import hashlib
 import json
 import shlex
@@ -10,6 +11,7 @@ from .config import redact
 from .mcp_http import HttpClient, McpError, header_value
 from .mcp_schema import bounded, header_paths, prepare, valid_arguments
 from .mcp_payload import payload, safe_redact
+from .mcp_process import StdioApprovalExpired
 
 ACTIONS = ("status", "connect", "disconnect", "tools", "call", "resources", "templates", "read_resource", "prompts", "get_prompt", "result")
 MCP_SCHEMA = {"type": "function", "function": {
@@ -164,11 +166,12 @@ class McpManager:
         if not self._operation_lock.acquire(blocking=False):
             raise McpError("another MCP operation is already active; wait or cancel it before issuing another")
         try:
-            return self._control(*args, **kwargs)
+            with ExitStack() as scope:
+                return self._control(scope, *args, **kwargs)
         finally:
             self._operation_lock.release()
 
-    def _control(self, action="status", server=None, name=None, arguments=None, uri=None, cursor=None,
+    def _control(self, scope, action="status", server=None, name=None, arguments=None, uri=None, cursor=None,
                 catalog_id=None, result_id=None, offset=0):
         self.check()
         if action == "status":
@@ -207,6 +210,14 @@ class McpManager:
                 client.close()
                 self.tools.pop(server, None)
                 self.states[server] = "stopped; explicitly reconnect"
+            elif client.ready and action != "disconnect":
+                try:
+                    client.check_directory()
+                except StdioApprovalExpired:
+                    client.close()
+                    self.tools.pop(server, None)
+                    self.states[server] = "stopped; explicitly reconnect"
+                    raise
         epoch = getattr(client, "catalog_version", 0)
         launch = None
         method, params, mirrored = None, {}, {}
@@ -221,7 +232,7 @@ class McpManager:
             if selected.transport == "stdio":
                 if self.prepare_stdio is None:
                     raise McpError("MCP stdio launch preparation is unavailable")
-                launch = self.prepare_stdio(selected)
+                launch = scope.enter_context(self.prepare_stdio(selected))
         elif action == "disconnect":
             if not client:
                 return {"connected": False, "not_authorization": True}
@@ -336,7 +347,9 @@ class McpManager:
                     self.config._runtime_credentials.remember(client.session)
                 client.close()
             if isinstance(error, Exception):
-                issue = error if isinstance(error, McpError) else McpError("MCP response failed client validation or storage; delivery may be unknown")
+                issue = error if isinstance(error, McpError) else McpError(
+                    str(error) if isinstance(error, StdioApprovalExpired)
+                    else "MCP response failed client validation or storage; delivery may be unknown")
                 return {"approved": True, "error": str(issue), "http_status": issue.status, "rpc_code": issue.rpc_code,
                         "outcome": "uncertain", "not_authorization": True, "automatic_retry": False}
             raise

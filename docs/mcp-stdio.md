@@ -23,7 +23,7 @@ env = { NODE_ENV = "production" }
 env_from = { API_TOKEN = "MY_MCP_TOKEN" }
 ```
 
-`cwd` 必须在当前工作区内，复用路径排除、无链接目录检查和模型提案的 AGENTS.md 版本复查；批准后、启动前重新检查。argv 可指向工作区外的解释器或服务程序，确认展示实际 argv、启动 cwd、环境变量名称和限制。程序可自行访问其他目录，cwd 检查不限制其内部行为。
+`cwd` 必须在当前工作区内。Sprig 在连接批准前持有从工作区根到 `cwd` 的目录句柄，启动前复查目录身份、路径排除和 AGENTS.md。已连接时，发送 RPC 前也会核对启动时的目录链。Windows 的防重命名句柄随连接释放，Linux 通过核对后的目录描述符启动。argv 可指向工作区外的解释器或服务程序，程序可按当前账户权限访问其他目录。 [目录审批说明](command-output.md)
 
 `env` 用于非秘密固定值，`env_from` 将指定的进程环境变量作为秘密快照传入目标名称；缺失引用阻止连接。自定义秘密名称请用 `env_from`，不要依赖名称推断。常见 KEY/TOKEN/SECRET/PASSWORD/AUTH 等凭据名称的字面值也纳入保护。普通 DEBUG=1、NODE_ENV、PYTHONPATH 不被误判成鉴权 token。凭据参与输出脱敏、参数阻止和其他命令的环境过滤，包括未激活 profile 中的声明。
 

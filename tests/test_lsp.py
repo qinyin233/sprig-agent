@@ -64,6 +64,54 @@ class LspTests(unittest.TestCase):
         self.assertTrue(result["complete"], result)
         return json.loads(result["content"])
 
+    def test_startup_cwd_chain_is_bound_to_the_query_approval(self):
+        parent = self.root / "configured"
+        cwd = parent / "working"
+        cwd.mkdir(parents=True)
+        moved = self.root / "original"
+
+        def approve(_):
+            if os.name == "nt":
+                with self.assertRaises(OSError):
+                    parent.rename(moved)
+            else:
+                parent.rename(moved)
+                parent.mkdir()
+                (moved / cwd.name).rename(cwd)
+            return True
+
+        tools = self.tools(server=self.server(cwd="configured/working"), approve=approve)
+        result = self.query(tools)
+        if os.name == "nt":
+            self.assertNotIn("error", result)
+            with self.assertRaises(OSError):
+                parent.rename(moved)
+            tools.approve = lambda _: True
+            self.assertTrue(tools.execute("lsp", {"action": "disconnect", "server": "cpp"})["disconnected"])
+            parent.rename(moved)
+        else:
+            self.assertIn("working directory changed", result["error"])
+            self.assertEqual(rows(self.state), [])
+
+    @unittest.skipUnless(os.name == "posix", "POSIX permits directory replacement while a process holds cwd")
+    def test_existing_lsp_server_rejects_query_when_cwd_changes_during_approval(self):
+        cwd = self.root / "configured"
+        cwd.mkdir()
+        tools = self.tools(server=self.server(cwd=cwd.name))
+        self.assertNotIn("error", self.query(tools))
+        previous = rows(self.state)
+
+        def approve(_):
+            cwd.rename(self.root / "original")
+            cwd.mkdir()
+            return True
+
+        tools.approve = approve
+        result = self.query(tools, "hover")
+        self.assertIn("working directory changed", result["error"])
+        self.assertEqual(rows(self.state), previous)
+        self.assertNotIn("cpp", tools.lsp_manager.clients)
+
     def test_config_resolution_privacy_profiles_and_minimal_environment(self):
         data = {"provider": "p", "providers": {"p": {"model": "fixture", "api_key_env": "OPENAI_API_KEY"}},
                 "lsp": {"servers": {"cpp": {"command": list(self.server().command), "languages": {".cpp": "cpp"},

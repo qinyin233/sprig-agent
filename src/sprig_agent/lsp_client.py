@@ -63,8 +63,9 @@ class Budget:
 
 
 class Client:
-    def __init__(self, server, directory, environment, root_uri, check):
+    def __init__(self, server, preparation, root_uri, check):
         self.server, self.check, self.root_uri = server, check, root_uri
+        self.check_directory = preparation.check_directory
         self.buffer = bytearray()
         self.expected = None
         self.stdout_bytes = self.stderr_bytes = self.notifications = 0
@@ -74,7 +75,9 @@ class Client:
         self.discarded_diagnostics = self.denied_requests = 0
         self.closed = False
         self.check()
-        self.process = Process(server.command, directory, environment)
+        with preparation.launch() as (command, directories):
+            self.process = Process(command.argv, command.cwd, command.env, pass_fds=command.pass_fds,
+                                   directory_guard=directories)
 
     def close(self):
         if not self.closed:
@@ -188,6 +191,8 @@ class Client:
             budget.activity()
 
     def _send(self, message, budget):
+        budget.check()
+        self.check_directory()
         raw = encode(message)
         offset = 0
         while offset < len(raw):

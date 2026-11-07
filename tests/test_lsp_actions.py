@@ -156,6 +156,21 @@ class CodeActionTests(unittest.TestCase):
                 self.assertIn(identity, tools.lsp_manager.code_actions.entries)
                 tools.close()
 
+    def test_cached_action_cannot_be_applied_after_its_server_cwd_is_replaced(self):
+        cwd = self.root / 'configured'
+        cwd.mkdir()
+        self.actions([{'title': 'Fix', 'edit': self.source(False)}])
+        tools = self.tools(server=self.server(cwd=cwd.name))
+        identity = self.unpack(self.query(tools))['actions'][0]['action_id']
+        self.assertTrue(tools.execute('lsp', {'action': 'disconnect', 'server': 'cpp'})['disconnected'])
+        cwd.rename(self.root / 'original')
+        cwd.mkdir()
+
+        result = self.select(tools, identity)
+        self.assertIn('working directory changed', result['error'])
+        self.assertEqual(len(self.approvals), 2)
+        self.assertEqual((self.root / 'main.cpp').read_bytes(), fixture.SOURCE.encode())
+
     def test_query_range_is_unicode_based_and_default_is_a_point(self):
         self.actions([]); tools = self.tools()
         self.unpack(self.query(tools, end_line=1, end_column=8))

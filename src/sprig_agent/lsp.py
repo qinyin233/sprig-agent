@@ -1,5 +1,6 @@
 """Approved semantic queries with private paths, current source snapshots and pages."""
 from collections import OrderedDict
+from contextlib import ExitStack
 import json
 import os
 from pathlib import Path
@@ -128,6 +129,7 @@ class LanguageServers:
             self.check()
             if self.closed or epoch != self.epoch or self.config is not config:
                 raise LspError("LSP operation expired after owner reset/close")
+        scope = ExitStack()
         try:
             check()
             if not self.config.tool_enabled("lsp"):
@@ -137,7 +139,7 @@ class LanguageServers:
                     raise LspError('apply_code_action accepts only action_id')
                 if self.config.read_only or not self.config.tool_enabled('read_file') or self.config.max_output < 1024:
                     raise LspError('applying code actions requires writable mode, read_file and max_output >= 1024')
-                return self.code_actions.apply(action_id, check)
+                return self.code_actions.apply(action_id, check, scope)
             if action_id is not None or action != 'code_actions' and (end_line is not None or end_column is not None):
                 raise LspError('action_id is only valid for apply_code_action; range end is only valid for code_actions')
             if action == 'rename':
@@ -211,7 +213,7 @@ class LanguageServers:
                 location_range(primary['text'], selection)
             if point is None and (line is not None or column is not None):
                 raise LspError("this LSP operation does not use line/column")
-            directory, environment, recheck = self.prepare(selected.process_config())
+            preparation = scope.enter_context(self.prepare(selected.process_config()))
             with self.lock:
                 client = self.clients.get(selected.name)
                 if client is not None and not client.status()["running"]:
@@ -220,6 +222,8 @@ class LanguageServers:
                     client = None
                 # Refresh only explicitly opened documents; cap four snapshots.
                 try:
+                    if client is not None:
+                        client.check_directory()
                     opened = list(client.documents.values()) if client else []
                     if primary is not None and client and primary["uri"] not in client.documents:
                         opened = opened[-3:]
@@ -237,7 +241,7 @@ class LanguageServers:
                     "version": 1, "text": document["text"]}}})
             listing = [{"path": row["path"], "sha256": row["sha256"], "bytes": row["bytes"]} for row in prepared.values()]
             text = (f"LSP {action} via {selected.name}\n" + ("START " if client is None else "REUSE ") + json.dumps(list(selected.command))
-                    + "\ncwd: " + json.dumps(str(directory)) + "\nEnvironment names: " + json.dumps([key for key, _ in (*selected.env, *selected.env_from)])
+                    + "\ncwd: " + json.dumps(str(preparation.directory)) + "\nEnvironment names: " + json.dumps([key for key, _ in (*selected.env, *selected.env_from)])
                     + "\nSynchronize current UTF-8 source snapshots: " + json.dumps(listing, ensure_ascii=False)
                     + ("\nQuery: " + json.dumps(query, ensure_ascii=False) if workspace else "\nPosition: " + json.dumps(point))
                     + f"; idle {selected.timeout:g}s; total {selected.deadline:g}s."
@@ -250,17 +254,19 @@ class LanguageServers:
             if self.approve(redact(text, self.config.secrets)) is not True:
                 return {"approved": False, "server_contacted": False}
             check()
-            recheck()
             for document in prepared.values():
                 if self.document(document["path"])["sha256"] != document["sha256"]:
                     raise LspError("LSP source changed during approval; no query sent")
             budget = Budget(selected, check)
-            with self.lock:
-                check()
-                if client is None:
-                    client = Client(selected, directory, environment, self.config.workdir.as_uri(), check)
-                    self.clients[selected.name] = client
             try:
+                with self.lock:
+                    check()
+                    if client is None:
+                        client = Client(selected, preparation, self.config.workdir.as_uri(), check)
+                        self.clients[selected.name] = client
+                    else:
+                        preparation.recheck()
+                client.check_directory()
                 if not client.capabilities:
                     client.initialize(budget, require_sync=bool(prepared))
                 for document in prepared.values():
@@ -312,8 +318,12 @@ class LanguageServers:
                         self.clients.pop(selected.name,None)
                     # Human file-review time is outside the completed RPC budget.
                     # The owner/config/cancellation guard remains live per write.
-                    check()
-                    return self.apply_rename(plans,check)
+                    def application_guard():
+                        check()
+                        client.check_directory()
+
+                    application_guard()
+                    return self.apply_rename(plans, application_guard)
                 if action == 'code_actions':
                     value, paths = self.code_actions.catalog(raw, selected, client, prepared, budget.check)
                     value['diagnostics_context'] = diagnostic_context
@@ -329,7 +339,7 @@ class LanguageServers:
                 return self._save(value, tuple(dict.fromkeys((*[row["path"] for row in prepared.values()], *paths))), budget.check, approved=True)
             except BaseException:
                 with self.lock:
-                    if self.clients.get(selected.name) is client:
+                    if client is not None and self.clients.get(selected.name) is client:
                         try:
                             client.close()
                         finally:
@@ -337,7 +347,10 @@ class LanguageServers:
                                 self.clients.pop(selected.name, None)
                 raise
         finally:
-            self.operation.release()
+            try:
+                scope.close()
+            finally:
+                self.operation.release()
 
     def _code_action_diagnostics(self, client, primary, selection, budget):
         report = client.diagnostic_report(primary['uri'], budget, optional=True)

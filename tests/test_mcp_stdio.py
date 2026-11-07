@@ -207,6 +207,53 @@ class McpStdioTests(unittest.TestCase):
         (self.root / "private").mkdir()
         self.assertIn("error", self.action(excluded, "connect"))
 
+    def test_startup_cwd_is_bound_to_the_connection_approval(self):
+        cwd = self.root / "configured"
+        cwd.mkdir()
+        moved = self.root / "original"
+
+        def approve(_):
+            if os.name == "nt":
+                with self.assertRaises(OSError):
+                    cwd.rename(moved)
+            else:
+                cwd.rename(moved)
+                cwd.mkdir()
+            return True
+
+        tools = self.tools(server=self.server(cwd=cwd.name), approve=approve)
+        result = self.action(tools, "connect")
+        if os.name == "nt":
+            self.assertNotIn("error", result)
+            self.assertEqual(Path(rows(self.state)[0]["cwd"]), cwd.resolve())
+            with self.assertRaises(OSError):
+                cwd.rename(moved)
+            tools.approve = lambda _: True
+            self.assertNotIn("error", self.action(tools, "disconnect"))
+            cwd.rename(moved)
+        else:
+            self.assertIn("working directory changed", result["error"])
+            self.assertEqual(rows(self.state), [])
+
+    @unittest.skipUnless(os.name == "posix", "POSIX permits directory replacement while a process holds cwd")
+    def test_connected_stdio_rejects_rpc_when_cwd_changes_during_approval(self):
+        cwd = self.root / "configured"
+        cwd.mkdir()
+        tools = self.tools(server=self.server(cwd=cwd.name))
+        self.assertNotIn("error", self.action(tools, "connect"))
+        previous = rows(self.state)
+
+        def approve(_):
+            cwd.rename(self.root / "original")
+            cwd.mkdir()
+            return True
+
+        tools.approve = approve
+        result = self.action(tools, "tools")
+        self.assertIn("working directory changed", result["error"])
+        self.assertEqual(rows(self.state), previous)
+        self.assertFalse(tools.mcp_manager.clients["local"].status()["process_running"])
+
     def test_errors_partial_frames_and_floods_close_without_retry_or_model_output(self):
         from sprig_agent.mcp_process import Process
         marker = self.state / "server-ready"

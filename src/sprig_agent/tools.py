@@ -31,7 +31,7 @@ from .command_logs import BackgroundLog, CommandLogs, LogCapture
 from .questions import answer_result, validate_questions
 from .skills import Skills
 from .mcp import McpManager
-from .mcp_process import finish_session, poll_unreaped
+from .mcp_process import StdioApprovalExpired, StdioPreparation, finish_session, poll_unreaped
 from .web_fetch import WebFetcher
 from .jobs import Jobs
 from .lsp import LanguageServers
@@ -153,39 +153,81 @@ class Tools:
         self.instructions = ProjectInstructions(self._read_instruction, self._check_cancelled,
                                                 config.project_instructions, config.instruction_files)
         self.skills = Skills(config, self.root.ensure_open, self._check_cancelled, self.policy)
-        self.mcp_manager = McpManager(config, self._check_mcp, self.request_approval, self._prepare_mcp_process)
+        self.mcp_manager = McpManager(config, self._check_mcp, self.request_approval, self._prepare_stdio_process)
         self.web = WebFetcher(config, self._check_mcp, self.request_approval)
         self.jobs = Jobs(config, self._check_mcp)
-        self.lsp_manager = LanguageServers(config, self._check_mcp, self.request_approval, self._prepare_mcp_process, self._lsp_document, self._lsp_rename, self._lsp_code_action)
+        self.lsp_manager = LanguageServers(config, self._check_mcp, self.request_approval, self._prepare_stdio_process,
+                                           self._lsp_document, self._lsp_rename, self._lsp_code_action)
         self._jobs_revision = self.jobs.revision
 
     def _check_mcp(self):
         self.root.ensure_open()
         self._check_cancelled()
 
-    def _prepare_mcp_process(self, server):
+    @contextmanager
+    def _prepare_stdio_process(self, server):
         self._check_mcp()
+        config, version = self.config, self._conversation_version
         parts = self._parts(server.cwd)
-        with self._directory(parts):
-            pass
-        rules = self.instructions.prepare_action(parts)
-        if any(secret in arg for secret in self.config.credential_secrets for arg in server.command):
-            raise ToolError("MCP argv cannot contain configured credentials; use declared environment references")
-        env = command_environment(self.config, minimal=True)
-        for name, value in server.env:
-            if os.name == "nt":
-                for previous in list(env):
-                    if previous.upper() == name.upper():
-                        del env[previous]
-            env[name] = value
-        def recheck():
-            self._check_mcp()
-            self._parts(server.cwd)
-            with self._directory(parts):
-                pass
-            self.instructions.recheck_action(parts, rules)
-            self.read_versions.clear()
-        return self.config.workdir.joinpath(*parts), env, recheck
+        if any(secret in arg for secret in config.credential_secrets for arg in server.command):
+            raise ToolError("stdio argv cannot contain configured credentials; use declared environment references")
+        with ExitStack() as directories:
+            directory, chain = directories.enter_context(self._command_directory(parts))
+            rules = self.instructions.prepare_action(parts)
+
+            def check_policy():
+                self._check_mcp()
+                if self.config is not config or self._conversation_version != version:
+                    raise StdioApprovalExpired("stdio owner or policy changed; request fresh approval")
+                try:
+                    self._parts(server.cwd)
+                except (OSError, ToolError, ValueError):
+                    raise StdioApprovalExpired("stdio working directory is no longer allowed; request fresh approval") from None
+
+            @contextmanager
+            def checked_directory():
+                check_policy()
+                with ExitStack() as stack:
+                    try:
+                        current, _ = stack.enter_context(self._command_directory(parts, chain))
+                    except (OSError, ToolError, ValueError):
+                        raise StdioApprovalExpired("stdio working directory changed; request fresh approval") from None
+                    yield current, stack
+
+            def check_directory():
+                with checked_directory():
+                    pass
+
+            def check_rules():
+                try:
+                    self.instructions.recheck_action(parts, rules)
+                except InstructionError:
+                    raise StdioApprovalExpired("stdio project instructions changed; request fresh approval") from None
+                self.read_versions.clear()
+
+            def recheck():
+                with checked_directory():
+                    check_rules()
+
+            @contextmanager
+            def launch():
+                with checked_directory() as (current, validated):
+                    check_rules()
+                    if any(secret in arg for secret in config.credential_secrets for arg in server.command):
+                        raise StdioApprovalExpired("configured credentials cannot appear in stdio argv")
+                    env = command_environment(config, minimal=True)
+                    for name, value in server.env:
+                        if os.name == "nt":
+                            for previous in list(env):
+                                if previous.upper() == name.upper():
+                                    del env[previous]
+                        env[name] = value
+                    if os.name == "nt":
+                        directories.enter_context(validated.pop_all())
+                    with self._command_launch(current, list(server.command), env) as command:
+                        yield command, directories if os.name == "nt" else None
+
+            yield StdioPreparation(directory.path, check_directory, recheck, launch)
 
     def rebind_model(self, config):
         """Idle model changes cannot change tool policy or drop known secrets."""

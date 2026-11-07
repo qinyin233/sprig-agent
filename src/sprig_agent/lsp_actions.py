@@ -88,6 +88,7 @@ class CodeActions:
                 if editable:
                     identity = 'lsp-action-' + uuid.uuid4().hex
                     entry = {'server': selected, 'client': weakref.ref(client) if lazy else None,
+                             'check_directory': client.check_directory,
                              'documents': documents, 'synchronized': synchronized,
                              'raw': stored, 'lazy': lazy, 'metadata': metadata, 'cost': size}
                     candidate = (identity, entry)
@@ -118,7 +119,7 @@ class CodeActions:
         return {'actions': rows, 'omitted': omitted, 'cache_limit_actions': MAX_ACTIONS,
                 'cache_limit_bytes': MAX_CACHE_BYTES, 'complete_project_index': False}, tuple(observed)
 
-    def apply(self, identity, check):
+    def apply(self, identity, check, scope):
         host = self.host
         if not host.config.tool_enabled('edit_file') or not callable(host.apply_code_action):
             raise LspError('applying code actions requires enabled file editing')
@@ -130,10 +131,11 @@ class CodeActions:
         selected = entry['server']
         if not any(row is selected and row.enabled for row in host.config.lsp_servers):
             raise LspError('code action server configuration changed')
-        directory, _, recheck = host.prepare(selected.process_config())
+        preparation = scope.enter_context(host.prepare(selected.process_config()))
         def current():
             check()
-            recheck()
+            entry['check_directory']()
+            preparation.recheck()
             self._safe(entry['raw'])
             for document in entry['documents'].values():
                 check()
@@ -151,7 +153,7 @@ class CodeActions:
         description = ('APPLY LSP code action via ' + selected.name + '\n'
             + json.dumps(entry['metadata'], ensure_ascii=False)
             + '\nConfigured command: ' + json.dumps(list(selected.command))
-            + '\ncwd: ' + json.dumps(str(directory))
+            + '\ncwd: ' + json.dumps(str(preparation.directory))
             + '\nEnvironment names: ' + json.dumps([name for name, _ in (*selected.env, *selected.env_from)])
             + f'\nResolver idle {selected.timeout:g}s; total {selected.deadline:g}s.'
             + '\nSource snapshots: ' + json.dumps([{'path': row['path'], 'sha256': row['sha256']} for row in entry['documents'].values()], ensure_ascii=False)
@@ -195,7 +197,8 @@ class CodeActions:
         targets = {plan['document']['path'] for plan in plans}
         def application_guard():
             check()
-            recheck()
+            entry['check_directory']()
+            preparation.recheck()
             # The shared edit batch checks remaining write targets. Non-target
             # context must remain fixed even while humans review file diffs.
             for document in entry['documents'].values():

@@ -1,12 +1,28 @@
 """Owned nonblocking process pipes; cleanup is not an OS sandbox."""
-import os
+from collections.abc import Callable
+from contextlib import AbstractContextManager
 import errno
+from dataclasses import dataclass
 from functools import lru_cache
+import os
+from pathlib import Path
 import signal
 import subprocess
 import sys
 import time
 import threading
+
+
+class StdioApprovalExpired(ValueError):
+    pass
+
+
+@dataclass(frozen=True)
+class StdioPreparation:
+    directory: Path
+    check_directory: Callable[[], None]
+    recheck: Callable[[], None]
+    launch: Callable[[], AbstractContextManager]
 
 
 @lru_cache(maxsize=1)
@@ -160,7 +176,9 @@ def _start_pty(argv, directory, env, size, pass_fds):
 
 
 class Process:
-    def __init__(self, argv, directory, env, *, terminal=None, pass_fds=()):
+    _directory_guard = None  # ConsoleProcess has its own startup and does not take a guard.
+
+    def __init__(self, argv, directory, env, *, terminal=None, pass_fds=(), directory_guard=None):
         self.closed = False
         self.terminal = terminal is not None
         self.master = None
@@ -170,6 +188,13 @@ class Process:
         if os.name == "nt":
             from .windows import StdioProcess
             self.child = StdioProcess(argv, directory, env, terminal=terminal)
+            if directory_guard is not None:
+                try:
+                    # Windows can resolve the initial cwd after CreateProcess returns.
+                    self._directory_guard = directory_guard.pop_all()
+                except BaseException:
+                    self.close()
+                    raise
         elif self.terminal:
             self.child, self.master = _start_pty(argv, directory, env, terminal, pass_fds)
         else:
@@ -260,7 +285,12 @@ class Process:
 
     def close(self):
         with self._lock:
-            self._close()
+            try:
+                self._close()
+            finally:
+                if self._directory_guard is not None:
+                    self._directory_guard.close()
+                    self._directory_guard = None
 
     def _close(self):
         if self.closed:

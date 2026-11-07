@@ -85,7 +85,7 @@ class Output:
 
 class Job:
     def __init__(self, identity, process, label, truncated, seconds, cap, secrets, directory, cwd_chain, stdin,
-                 log=None, log_status=None, directory_guard=None):
+                 log=None, log_status=None):
         self.identity, self.process, self.label = identity, process, label
         self.seconds, self.cap = seconds, cap
         self.command_truncated = truncated
@@ -98,7 +98,6 @@ class Job:
         self.thread = None
         self.error = None
         self.cwd, self.cwd_chain = directory, cwd_chain
-        self.directory_guard = directory_guard
         self.stdin_mode, self.stdin_open = stdin, stdin != 'closed'
         self.terminal_io = threading.Lock()
         self.stdin_bytes, self.input_version = 0, 0
@@ -152,18 +151,15 @@ class Jobs:
                     raise ValueError("background record capacity reached")
                 del self.records[old]
             terminal = TERMINAL_SIZE if stdin == 'pty' else None
-            process = Process(launch.argv, launch.cwd, launch.env, terminal=terminal, pass_fds=launch.pass_fds)
-            owned_directories = None
+            process = Process(launch.argv, launch.cwd, launch.env, terminal=terminal, pass_fds=launch.pass_fds,
+                              directory_guard=directory_guard)
             try:
                 if stdin == "closed":
                     process.close_input()
                 self.check()
                 label = terminal_text(redact(json.dumps([os.path.basename(argv[0]), *argv[1:]], ensure_ascii=False), self.config.secrets)).encode("utf-8")
-                if directory_guard is not None:
-                    # Windows may resolve its initial cwd after CreateProcess returns.
-                    owned_directories = directory_guard.pop_all()
                 row = Job("job-" + uuid.uuid4().hex, process, label[:160].decode("utf-8", errors="ignore"), len(label) > 160,
-                          seconds, cap, self.config.secrets, directory, cwd_chain, stdin, log, log_status, owned_directories)
+                          seconds, cap, self.config.secrets, directory, cwd_chain, stdin, log, log_status)
                 row.thread = threading.Thread(target=self._run, args=(row, epoch), name="sprig-" + row.identity, daemon=False)
                 self.records[row.identity] = row
                 self.revision += 1
@@ -171,11 +167,7 @@ class Jobs:
             except BaseException:
                 if 'row' in locals():
                     self.records.pop(row.identity, None)
-                try:
-                    process.close()
-                finally:
-                    if owned_directories is not None:
-                        owned_directories.close()
+                process.close()
                 raise
             return {**self._info(row), "approved": True, "started": True, "task_completed": False}
 
@@ -353,11 +345,7 @@ class Jobs:
             state = "failed"
         finally:
             try:
-                try:
-                    row.process.close()
-                finally:
-                    if row.directory_guard is not None:
-                        row.directory_guard.close()
+                row.process.close()
             except BaseException:
                 state = "cleanup_failed"
             with self.lock:
