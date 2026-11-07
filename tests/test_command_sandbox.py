@@ -10,6 +10,7 @@ import time
 import unittest
 from unittest.mock import patch
 
+from sprig_agent.agent import Agent
 from sprig_agent.config import Config
 from sprig_agent.filesystem import Directory
 from sprig_agent.settings import load_settings, public_config
@@ -47,6 +48,7 @@ command_sandbox = "bubblewrap"
             config = Config(Path(temporary), "fixture", command_sandbox="bubblewrap")
             with (closing(Tools(config, lambda _: self.fail("unexpected approval"))) as tools,
                   patch("sprig_agent.command_sandbox.sys.platform", "unsupported")):
+                self.assertIn("run requires the configured Linux sandbox", Agent(config, None, tools, print)._prompt())
                 result = tools.execute("run", {"argv": ["unavailable"]})
             self.assertIn("only on Linux", result["error"])
 

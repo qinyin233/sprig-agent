@@ -428,6 +428,11 @@ class Tools:
         except FileNotFoundError:
             raise _WorkspacePathMissing(parts[:-1]) from None
 
+    @contextmanager
+    def _scope_parent(self, parts):
+        with self._directory(parts[:-1]) as parent:
+            yield parent, self._scope_stat(parent, parts)
+
     def _missing_path_result(self, error):
         self._check_cancelled()
         result = {"error": str(error)}
@@ -1171,8 +1176,7 @@ class Tools:
                         return
 
         self._check_cancelled()
-        with self._directory(parts[:-1]) as parent:
-            info = self._scope_stat(parent, parts)
+        with self._scope_parent(parts) as (parent, info):
             if info is not None and stat.S_ISREG(info.st_mode):
                 scan_file(parent, parts[-1], parts[:-1])
             else:
@@ -1288,8 +1292,7 @@ class Tools:
                     except (OSError, ToolError):
                         truncated = True
 
-        with self._directory(parts[:-1]) as parent:
-            info = self._scope_stat(parent, parts)
+        with self._scope_parent(parts) as (parent, info):
             if info is not None and stat.S_ISREG(info.st_mode):
                 # A file lookup is not a complete sweep: retain unrelated cache entries.
                 scan_file(parent, parts[-1], parts[:-1])

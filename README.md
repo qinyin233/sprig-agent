@@ -39,6 +39,8 @@
 
 **命令默认以当前用户权限运行。** 逐次批准的程序可能访问工作区外的文件和网络。满足宿主要求的 Linux 可以启用 [bubblewrap 命令隔离](docs/command-sandbox.md)，覆盖前台、固定验收、后台管道和 PTY。
 
+在可信配置中启用 `execution.explore` 后，Sprig 可以把局部代码调查交给同一模型的独立上下文。每次调查先展示目录、任务和请求上限，由用户批准后前台执行。详见[只读调查](docs/exploration.md)。
+
 ## 安装
 
 使用 [uv](https://docs.astral.sh/uv/) 管理 Python、虚拟环境和锁文件。在项目根目录执行，Windows PowerShell 与 POSIX 终端相同：

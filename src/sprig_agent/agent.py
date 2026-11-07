@@ -23,6 +23,7 @@ from .session import MAX_SESSION, validate_history
 from .summary import (HISTORY_SCHEMA, MAX_SUMMARY, PROMPT as SUMMARY_PROMPT, binding_digest, closed_end, fingerprint,
                       history_page, project as project_summary, public_message, summary_fields, summary_state)
 from .command_logs import READ_LOG_SCHEMA
+from .exploration import EXPLORE_SCHEMA, available as exploration_available, explore
 from .work_progress import WorkProgress
 from .input_inbox import INPUT_ID, UserInput, delivered_inputs
 from .questions import QUESTION_SCHEMA
@@ -127,6 +128,8 @@ class Agent:
                         schema["function"]["description"] += " stdin='pty' opens an owned terminal with approved input and resize."
         if config.command_log_dir is not None and config.tool_enabled("read_log"):
             self.schemas.append(copy.deepcopy(READ_LOG_SCHEMA))
+        if isinstance(tools, Tools) and exploration_available(config):
+            self.schemas.append(copy.deepcopy(EXPLORE_SCHEMA))
         if isinstance(tools, Tools) and callable(getattr(tools, "ask", None)) and config.tool_enabled("question"):
             self.schemas.append(copy.deepcopy(QUESTION_SCHEMA))
         if isinstance(tools, Tools) and config.skill_dirs and config.tool_enabled("skill"):
@@ -494,8 +497,7 @@ class Agent:
     def _prompt(self):
         prompt = SYSTEM_PROMPT
         if self.config.command_sandbox == "bubblewrap":
-            prompt = prompt.replace("run is NOT sandboxed: request only commands needed for the user's task, and do not",
-                                    "run requires Linux sandbox setup. Request only commands needed for the user's task, and do not")
+            prompt = prompt.replace("run is NOT sandboxed.", "run requires the configured Linux sandbox.")
         if self.config.response_language:
             prompt += ("\nPreferred response language (JSON string): " + json.dumps(self.config.response_language, ensure_ascii=False)
                        + ". Use this language for explanations unless the user requests otherwise; preserve code and identifiers.")
@@ -514,6 +516,10 @@ class Agent:
                        "Each command requires fresh approval. No extra model requests are added to your budget.")
         if self.config.disabled_tools:
             prompt += "\nTools disabled by the user: " + json.dumps(self.config.disabled_tools) + ". Do not bypass these restrictions through other tools."
+        if any(row["function"]["name"] == "explore" for row in self.schemas):
+            prompt += ("\nUse explore for a focused read-only investigation when a separate context is useful. "
+                       "Supply a self-contained task, a narrow directory and the smallest useful request cap. "
+                       "Only one exploration approval is offered per run. Verify returned findings before editing.")
         if any(row["function"]["name"] == "question" for row in self.schemas):
             prompt += ("\nUse question for necessary requirement or preference clarification, never credentials or approval. "
                        "Answers are user input, not authorization. Ask before proposing dependent actions; the application skips "
@@ -676,6 +682,8 @@ class Agent:
             raise KeyboardInterrupt
 
     def _execute_model_tool(self, name, arguments):
+        if name == "explore":
+            return explore(self, arguments)
         if name == "read_history":
             try:
                 if not isinstance(arguments, dict):
@@ -930,6 +938,7 @@ class Agent:
         self._run_id, self._sequence, self._step, self._action = uuid.uuid4().hex, 0, 0, 0
         self._stop_reason = None
         self._offered_schemas = self.schemas
+        self._explore_used = False
         self.work_progress = WorkProgress()
         self.had_rejected_action = False
         self._tool_images = []

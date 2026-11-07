@@ -10,7 +10,7 @@ import unicodedata
 from urllib.parse import urlsplit, urlunsplit
 from .credentials import RuntimeCredentials
 
-TOOL_NAMES = ("list_files", "glob", "read_file", "search", "grep", "project_map", "edit_file", "run", "update_plan", "edit_lines", "file_action", "read_history", "read_log", "question", "skill", "mcp", "web_fetch", "job", "lsp", "git_status", "git_diff")
+TOOL_NAMES = ("list_files", "glob", "read_file", "search", "grep", "project_map", "edit_file", "run", "update_plan", "edit_lines", "file_action", "read_history", "read_log", "question", "skill", "mcp", "web_fetch", "job", "lsp", "git_status", "git_diff", "explore")
 SHORTCUT_ACTIONS = ("cancel", "quit", "focus_input", "toggle_sidebar", "help", "new_conversation", "external_editor")
 GENERATION_FIELDS = ("max_tokens", "thinking", "temperature", "top_p", "reasoning_effort", "seed", "token_limit_field", "extra_body")
 MODEL_CONFIG_FIELDS = frozenset((*GENERATION_FIELDS, "model", "base_url", "api_key", "provider_name", "headers",
@@ -185,6 +185,7 @@ class Config:
     web_enabled: bool = False
     background_enabled: bool = False
     background_timeout: float = 300
+    explore_enabled: bool = False
     prompt_templates: tuple = field(default=(), repr=False)
     editor_command: tuple = field(default=(), repr=False)
     editor_timeout: float = 300
@@ -199,6 +200,8 @@ class Config:
             raise ValueError("execution.command_sandbox must be off or bubblewrap")
         if type(self.background_enabled) is not bool:
             raise ValueError("execution.background must be a boolean")
+        if type(self.explore_enabled) is not bool:
+            raise ValueError("execution.explore must be a boolean")
         if (type(self.background_timeout) not in (int, float) or not math.isfinite(self.background_timeout)
                 or not 0 < self.background_timeout <= 3600):
             raise ValueError("execution.background_timeout must be positive and at most 3600 seconds")
@@ -534,6 +537,8 @@ class Config:
             binding["web_enabled"] = True
         if self.background_enabled:
             binding["background"] = {"enabled": True, "timeout": self.background_timeout}
+        if self.explore_enabled:
+            binding["explore"] = True
         if self.wire_api != "chat_completions":
             binding["wire_api"] = self.wire_api
         if self.command_output_limit is not None:

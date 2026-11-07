@@ -107,6 +107,7 @@ job = true # requires execution.background and run; observe/wait or freshly appr
 lsp = true # optional configured semantic servers; every query requires approval
 read_history = true # only exposed with an active summary; original conversation data, not current file evidence
 read_log = true # only exposed with command_log_dir; opaque current-conversation history, never file read_id
+explore = true # also requires execution.explore and a fresh approval
 
 [web]
 enabled = false # user/profile opt-in, or --web; project cannot enable it
@@ -121,6 +122,7 @@ command_sandbox = "off" # Linux opt-in: "bubblewrap" requires /usr/bin/bwrap wit
 # sandbox_read_dirs = ["~/.local/share/uv/python/cpython-3.13-linux-x86_64-gnu"]
 background = false # opt-in noninteractive owned commands; never restart on restore
 background_timeout = 300 # independent background cap, >0..3600 seconds
+explore = false # opt-in foreground read-only investigation with the selected model
 # Raw command-output kill limit (default 1 MiB; 256..8388608 bytes).
 # 0 restores stopping at max_output, including legacy sessions. Larger limits keep head/tail display.
 output_limit = 1048576

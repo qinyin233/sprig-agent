@@ -125,7 +125,7 @@ def initialize_config(path, approve):
 GROUP_FIELDS = {
     "agent": set(AGENT_DEFAULTS), "generation": set(GENERATION_FIELDS), "tools": set(TOOL_NAMES),
     "files": {"exclude"}, "execution": {"inherit_env", "timeout", "max_output", "output_limit", "env_allowlist", "env",
-                                         "background", "background_timeout", "command_sandbox", "sandbox_read_dirs"},
+                                         "background", "background_timeout", "command_sandbox", "sandbox_read_dirs", "explore"},
     "storage": {"session_dir", "change_history_dir", "command_log_dir", "auto_save_session", "session_max_age_days", "session_max_count"},
     "context": {"max_bytes", "compact", "trigger_ratio", "keep_recent_messages", "keep_read_bytes", "files"},
     "tui": {"theme", "sidebar", "editor_height", "steering_mode", "metrics", "keybindings"},
@@ -175,6 +175,8 @@ def _flatten(layer, directory):
         values["background_enabled"] = execution["background"]
     if "background_timeout" in execution:
         values["background_timeout"] = execution["background_timeout"]
+    if "explore" in execution:
+        values["explore_enabled"] = execution["explore"]
     if "env_allowlist" in execution:
         values["env_allowlist"] = tuple(execution["env_allowlist"])
     if "env" in execution:
@@ -492,7 +494,7 @@ class Settings:
         sources = {name: "default" for name in {*AGENT_DEFAULTS, *GENERATION_FIELDS, *TRANSPORT_FIELDS,
                     *TUI_FIELDS.values(), "instruction_files", "response_language", "excluded_paths",
                     "session_dir", "change_history_dir", "command_log_dir", "auto_save_session", "env_allowlist", "command_env",
-                    "command_sandbox", "sandbox_read_dirs",
+                    "command_sandbox", "sandbox_read_dirs", "explore_enabled",
                     "session_max_age_days", "session_max_count", "command_output_limit", "background_enabled", "background_timeout", "prompt_templates", "editor_command", "editor_timeout", *CONTEXT_FIELDS.values()}}
         def apply(entries, label):
             if "prompt_templates" in entries:
@@ -640,6 +642,7 @@ def public_config(config, metadata):
                         for row in config.prompt_templates],
             "web": {"enabled": config.web_enabled, "direct_only": True, "persistent_cache": False},
             "background": {"enabled": config.background_enabled, "timeout": config.background_timeout, "persistent": False},
+            "explore": {"enabled": config.explore_enabled, "foreground": True},
             "editor": {"command": config.editor_command, "timeout": config.editor_timeout},
             "mcp": {"servers": [server.public() for server in config.mcp_servers]},
             "lsp": {"servers": [server.public() for server in config.lsp_servers]},

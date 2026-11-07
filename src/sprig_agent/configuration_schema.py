@@ -58,7 +58,7 @@ def configuration_schema():
         "execution": obj({"command_sandbox": {"enum": ["off", "bubblewrap"], "default": "off"},
                           "sandbox_read_dirs": {"type": "array", "maxItems": 8, "items": {**text, "maxLength": 4096}},
                           "inherit_env": boolean, "timeout": number(0, 120, True), "max_output": integer(256, 1000000),
-                          "background": boolean, "background_timeout": number(0, 3600, True),
+                          "background": boolean, "background_timeout": number(0, 3600, True), "explore": boolean,
                           "output_limit": {**integer(0, 8388608), "not": {"minimum": 1, "maximum": 255}, "default": 1048576,
                                            "description": "Raw command output kill limit; defaults to 1 MiB. 0 restores stopping at max_output. Higher values use bounded redacted head/tail display."},
                           "env_allowlist": {"type": "array", "maxItems": 128, "items": environment},

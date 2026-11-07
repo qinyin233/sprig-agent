@@ -242,6 +242,9 @@
         },
         "git_diff": {
           "type": "boolean"
+        },
+        "explore": {
+          "type": "boolean"
         }
       },
       "additionalProperties": false
@@ -303,6 +306,9 @@
           "type": "number",
           "exclusiveMinimum": 0,
           "maximum": 3600
+        },
+        "explore": {
+          "type": "boolean"
         },
         "output_limit": {
           "type": "integer",
@@ -1481,6 +1487,9 @@
               },
               "git_diff": {
                 "type": "boolean"
+              },
+              "explore": {
+                "type": "boolean"
               }
             },
             "additionalProperties": false
@@ -1542,6 +1551,9 @@
                 "type": "number",
                 "exclusiveMinimum": 0,
                 "maximum": 3600
+              },
+              "explore": {
+                "type": "boolean"
               },
               "output_limit": {
                 "type": "integer",
