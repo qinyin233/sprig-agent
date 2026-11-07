@@ -47,7 +47,7 @@ class LinePatchProtocolTests(unittest.TestCase):
                         })])
 
                     replies = [answer(protocol, streamed, calls=[('read', 'read_file', {
-                        'path': source.name, 'ranges': [[1, 1], [3, 3]],
+                        'path': source.name, 'ranges': [[1, 1], [3, 3]], 'line_numbers': True,
                     })]), edit, answer(protocol, streamed, text='Done')]
                     with backend(protocol, replies, captured, stream=streamed) as url:
                         config = Config(root, 'fixture', base_url=url, wire_api=protocol, stream=streamed,

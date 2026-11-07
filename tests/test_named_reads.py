@@ -63,6 +63,8 @@ class NamedReadTests(unittest.TestCase):
         with patch.object(self.tools, "_read_validated", wraps=self.tools._read_validated) as scan:
             result = self.tools.execute("read_file", arguments)
             scan.assert_called_once_with(path.name)
+        explicit = self.tools.execute("read_file", {**arguments, "line_numbers": True})
+        self.assertEqual(explicit, result)
         self.assertEqual(result["content"], "1: \ufefffirst\r\n2: 中🙂\r4: last")
         self.assertEqual(result["ranges"], arguments["ranges"])
         self.assertTrue(result["range_complete"])

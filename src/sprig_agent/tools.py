@@ -70,7 +70,7 @@ TOOL_SCHEMAS = [
     schema("glob", "Case-sensitive glob relative to path; basename any depth, ** dirs. Check flags.",
            {"pattern": STRING, "path": STRING,
             "hidden": {"type": "boolean"}, "limit": {"type": "integer"}}, ["pattern"]),
-    schema("read_file", "Lines or ranges=[[start,end],...]; symbol; cursor='start'/next_cursor; image=true; range_complete/symbol_complete",
+    schema("read_file", "Numbered ranges=[[start,end],...]; symbol; cursor=start/next_cursor; image=true; range_complete/symbol_complete",
            {"path": STRING, "offset": {"type": "integer", "minimum": 1, "maximum": 1000000},
             "limit": {"type": "integer", "minimum": 1, "maximum": 10000}, "line_numbers": {"type": "boolean"},
             "ranges": {"type": "array", "items": {"type": "array", "items": {"type": "integer"}}},
@@ -742,9 +742,11 @@ class Tools:
                 raise ToolError("symbol cannot be combined with offset, limit or cursor; continue using ordinary line reads")
         if cursor is not _MISSING and (offset != 1 or limit is not None or line_numbers is not _MISSING):
             raise ToolError("cursor cannot be combined with line options")
-        if ranges is not _MISSING and (offset != 1 or limit is not None
-                                      or any(value is not _MISSING for value in (line_numbers, cursor, symbol))):
-            raise ToolError("ranges is a separate, numbered line read; omit other selectors")
+        if ranges is not _MISSING:
+            if offset != 1 or limit is not None or cursor is not _MISSING or symbol is not _MISSING:
+                raise ToolError("ranges cannot be combined with offset, limit, cursor or symbol; choose one read mode")
+            if line_numbers is False:
+                raise ToolError("ranges always returns numbered lines; omit line_numbers or set it to true")
         ranged = offset != 1 or limit is not None
         numbered = ranged if line_numbers is _MISSING else line_numbers
         parts = self._parts(path)
