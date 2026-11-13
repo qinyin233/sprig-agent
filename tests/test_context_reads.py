@@ -88,20 +88,29 @@ class ReadRetentionTests(unittest.TestCase):
                     self.assertEqual(selected[5], history[5])
                 self.assertEqual(history, original)
 
-    def test_disjoint_read_is_never_retained_as_complete_file_coverage(self):
+    def test_disjoint_read_preserves_its_ranges_without_claiming_gap_coverage(self):
         history = self.history()[:2]
         ranges = [[1, 1], [10, 10]]
         content = "1: " + "long selected line " * 20 + "\n10: last\n"
         self.append(history, "ranges", "a.py", {"path": "a.py", "content": content,
                     "ranges": ranges, "line_numbers": True, "range_complete": True, "truncated": False,
                     "read_id": "r0123456789ab-1", "sha256": "a" * 64}, ranges=ranges)
+        base = json.loads(self.history()[3]["content"])
+        self.append(history, "gap", "a.py", {**base, "offset": 5, "end_line": 5}, offset=5, limit=1)
         history.extend({"role": "user", "content": "constraint"} for _ in range(6))
         selected, info = self.compact(history)
         result = json.loads(selected[3]["content"])
-        self.assertTrue(result["context_elided"])
+        self.assertTrue(result["context_retained"])
         self.assertNotIn("read_id", result)
-        self.assertNotIn("content", result)
-        self.assertEqual(info["retained_reads"], [])
+        self.assertEqual(result["content"], content)
+        self.assertEqual(result["ranges"], ranges)
+        self.assertEqual({row["tool_call_id"] for row in info["retained_reads"]}, {"ranges", "gap"})
+
+        for replacement in ({"ranges": [[1, 10]]}, {"range_complete": False}, {"ranges": [[1, 3], [2, 3]]}):
+            history[3]["content"] = json.dumps({**result, **replacement, "read_id": base["read_id"]})
+            selected, info = self.compact(history)
+            self.assertTrue(json.loads(selected[3]["content"])["context_elided"])
+            self.assertNotIn("ranges", {row["tool_call_id"] for row in info["retained_reads"]})
 
     def test_disjoint_and_partially_overlapping_windows_of_the_same_version_survive_a_recent_read(self):
         for old_start, old_end, new_start, new_end, restored in (
@@ -330,6 +339,71 @@ class ReadRetentionTests(unittest.TestCase):
         self.assertEqual(saved[3], original[3])
         self.assertEqual(history, original)
         self.assertTrue((self.root / "source.py").read_text().startswith("new\n"))
+
+    def test_resume_edits_retained_single_file_search_without_another_model_read(self):
+        source = self.root / "source.txt"
+        source.write_bytes(b"target " + b"left " * 100 + b"\r\nother\r\ntarget " + b"right " * 100 + b"\r\n")
+        arguments = {"path": source.name, "pattern": "target", "output_mode": "read", "limit": 1}
+        approve = Mock(return_value=True)
+        with closing(Tools(self.config, approve)) as tools:
+            result = tools.execute("grep", arguments)
+            self.assertIn("next_cursor", result)
+        history = self.history()[:2]
+        history.extend([call("find", "grep", arguments),
+                        {"role": "tool", "tool_call_id": "find", "content": json.dumps(result)}])
+        history.extend({"role": "assistant", "content": "Inspection complete."} for _ in range(7))
+        captured = []
+
+        def edit(payload):
+            snapshot = json.loads(next(row["content"] for row in payload["messages"] if row.get("tool_call_id") == "find"))
+            self.assertEqual(snapshot["ranges"], [[1, 1]])
+            self.assertEqual(snapshot["content"], result["content"])
+            self.assertTrue(snapshot["context_retained"])
+            self.assertNotIn("read_id", snapshot)
+            self.assertNotIn("next_cursor", snapshot)
+            rows = json.loads(payload["messages"][0]["content"].rsplit("\n", 1)[-1])
+            self.assertEqual(len(rows), 1)
+            self.assertNotEqual(rows[0]["read_id"], result["read_id"])
+            approve.assert_not_called()
+            return call("edit", "edit_lines", {"path": source.name, "read_id": rows[0]["read_id"],
+                        "edits": [{"start_line": 1, "end_line": 1, "lines": ["fixed"]}]})
+
+        with replies([edit, {"role": "assistant", "content": "done"}], captured) as url:
+            config = replace(self.config, base_url=url, proxy="direct", max_steps=2)
+            with closing(Tools(config, approve)) as tools:
+                saved, complete = Agent(config, Provider(config), tools, lambda _: None).run(messages=history)
+        self.assertTrue(complete)
+        self.assertEqual(len(captured), 2)
+        approve.assert_called_once()
+        self.assertTrue(source.read_bytes().startswith(b"fixed\r\nother\r\n"))
+        self.assertEqual(json.loads(saved[3]["content"]), result)
+
+    def test_resume_uses_only_retained_snapshots_with_matching_current_source(self):
+        path = self.root / "source.txt"
+        path.write_text("old\n" * 500, encoding="utf-8")
+        arguments = {"path": path.name, "ranges": [[1, 80], [100, 120]]}
+        with closing(Tools(self.config, Mock())) as tools:
+            observed = tools.execute("read_file", arguments)
+        history = self.history()[:2]
+        self.append(history, "ranges", path.name, observed, ranges=arguments["ranges"])
+        history.extend({"role": "assistant", "content": "Inspected."} for _ in range(7))
+        compacted, report = self.compact(history)
+        self.assertTrue(report["retained_reads"])
+        for case, supplied, expected in (("retained", history, True), ("marker only", compacted, False),
+                                         ("changed", history, False), ("hidden", history, False)):
+            with self.subTest(case=case):
+                if case == "changed":
+                    path.write_text("new\n" * 500, encoding="utf-8")
+                if case == "hidden":
+                    path.write_text("old\n" * 500, encoding="utf-8")
+                    (self.root / ".sprigignore").write_text("source.txt\n", encoding="utf-8")
+                provider, approve = Mock(), Mock()
+                provider.complete.return_value = {"role": "assistant", "content": "Done"}
+                with closing(Tools(self.config, approve)) as tools:
+                    Agent(self.config, provider, tools, lambda _: None).run(messages=copy.deepcopy(supplied))
+                system = provider.complete.call_args.args[0][0]["content"]
+                self.assertEqual("Revalidated source" in system, expected)
+                approve.assert_not_called()
 
 
 if __name__ == "__main__":

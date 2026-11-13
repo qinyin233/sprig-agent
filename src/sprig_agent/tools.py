@@ -868,15 +868,15 @@ class Tools:
                 continue
             seen.add(key)
             if self._matching_read_version(path, digest, secrets):
-                verified[observation] = parts
+                verified[path, digest] = parts
             if len(seen) >= MAX_RESUME_READS:
                 break
         self._check_cancelled()
         if (self.config is not config or self._conversation_version != owner
                 or self.jobs.revision != revision or self.jobs.unsettled()):
             return {}
-        return {observation: (self.read_versions.remember(parts, observation[1]), parts)
-                for observation, parts in verified.items()}
+        return {source: (self.read_versions.remember(parts, source[1]), parts)
+                for source, parts in verified.items()}
 
     def _read_bytes(self, path, parts, cursor):
         if not isinstance(cursor, str) or len(cursor) > 80:

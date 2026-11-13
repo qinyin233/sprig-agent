@@ -29,7 +29,7 @@ def _object(text, limit):
     return value if isinstance(value, dict) else {}
 
 
-def _visible_reads(function, message):
+def _visible_reads(function, message, retained):
     name = function.get("name")
     if name not in {"read_file", "grep", "search"}:
         return
@@ -53,8 +53,11 @@ def _visible_reads(function, message):
         if not isinstance(row, dict) or not isinstance(row.get("content"), str) or not row["content"]:
             continue
         source, digest, identity = (row.get(key) for key in ("path", "sha256", "read_id"))
+        # Only this projection's retention report can identify a selected
+        # historical snapshot whose former handle was deliberately removed.
+        snapshot = (retained and row.get("context_retained") is True and "read_id" not in row)
         if (row.get("line_truncated") or row.get("context_elided") or row.get("window_omitted")
-                or not isinstance(source, str) or not valid_read_id(identity)
+                or not isinstance(source, str) or not (snapshot or valid_read_id(identity))
                 or not isinstance(digest, str) or re.fullmatch(r"[0-9a-f]{64}", digest) is None):
             continue
         if mode == "windows":
@@ -65,7 +68,7 @@ def _visible_reads(function, message):
         yield source, digest, identity
 
 
-def recent_visible_reads(messages, check_cancelled):
+def recent_visible_reads(messages, check_cancelled, *, retained=()):
     """Yield source observations from closed tool groups in the current request."""
     tail = messages[-MAX_RESUME_MESSAGES:]
     for index in range(len(tail) - 1, -1, -1):
@@ -82,7 +85,7 @@ def recent_visible_reads(messages, check_cancelled):
                 for call, result in zip(calls, results)):
             continue
         for call, result in reversed(list(zip(calls, results))):
-            yield from _visible_reads(call["function"], result)
+            yield from _visible_reads(call["function"], result, call["id"] in retained)
 
 
 class ReadVersions:

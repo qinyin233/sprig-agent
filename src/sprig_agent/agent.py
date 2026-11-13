@@ -819,19 +819,21 @@ class Agent:
     def _resume_read_context(self, messages, report, *, refresh):
         if not isinstance(self.tools, Tools) or not (refresh or self._resumed_reads):
             return
-        observations = recent_visible_reads(messages, self._check_cancelled)
+        retained = {row["tool_call_id"] for row in report["retained_reads"]}
+        observations = recent_visible_reads(messages, self._check_cancelled, retained=retained)
         if refresh:
+            observations = list(observations)
             self._resumed_reads = self.tools.revalidate_resume_reads(observations)
-            observations = iter(self._resumed_reads)
         rows = {}
-        for observation in observations:
-            entry = self._resumed_reads.get(observation)
+        for path, digest, old_id in observations:
+            entry = self._resumed_reads.get((path, digest))
             if entry is None:
                 continue
             identity, parts = entry
-            path, digest, old_id = observation
             if self.tools.read_versions.resolve(identity, parts) == digest:
-                rows[path] = {"path": path, "previous_read_id": old_id, "read_id": identity}
+                row = rows.setdefault(path, {"path": path, "read_id": identity})
+                if old_id is not None:
+                    row.setdefault("previous_read_id", old_id)
         if not rows:
             return
         system = messages[0]

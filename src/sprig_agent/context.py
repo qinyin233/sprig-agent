@@ -6,6 +6,7 @@ from .context_folding import fold_inspections
 from .json_budget import JSON_OPTIONS, encoded_size
 from .planning import plan_result, validate_plan
 from .revisions import valid_read_id
+from .search import MAX_RANGE_LINES, MAX_READ_RANGES
 from .session import application_check
 from .input_inbox import INPUT_ID
 from .image_inputs import IMAGE_KEY, wire_content
@@ -188,11 +189,32 @@ def _read_digest(result, path):
     return digest
 
 
-def _complete_read(result, arguments):
+def _valid_ranges(ranges, *, max_line=None):
+    if not isinstance(ranges, list) or not 1 <= len(ranges) <= MAX_READ_RANGES:
+        return False
+    previous = count = 0
+    for pair in ranges:
+        if (not isinstance(pair, list) or len(pair) != 2 or any(type(line) is not int for line in pair)
+                or not previous < pair[0] <= pair[1] or (max_line is not None and pair[1] > max_line)):
+            return False
+        start, previous = pair
+        count += previous - start + 1
+    return count <= MAX_RANGE_LINES
+
+
+def _complete_read(result, arguments, *, search=False):
     """A complete observed window, never a prefix or an unvalidated byte page."""
     if (not _read_digest(result, arguments.get("path")) or not result["content"]
-            or not valid_read_id(result.get("read_id")) or "cursor" in arguments or "ranges" in arguments
+            or not valid_read_id(result.get("read_id"))
             or result.get("line_truncated", False) is not False):
+        return False
+    if search or "ranges" in arguments:
+        ranges = result.get("ranges")
+        return (result.get("range_complete") is True and result.get("line_numbers") is True
+                and _valid_ranges(ranges, max_line=None if search else 1000000) and "offset" not in result
+                and (result.get("output_mode") == "read" if search
+                     else ranges == arguments["ranges"] and "cursor" not in arguments))
+    if "cursor" in arguments or "ranges" in result:
         return False
     if "offset" not in result:
         return ("symbol" not in arguments and "limit" not in arguments
@@ -216,9 +238,12 @@ def _complete_read(result, arguments):
             and end == min(total, offset + limit - 1))
 
 
-def _read_span(result):
-    # None denotes the entire observed file, not an unknown line window.
-    return (result["offset"], result["end_line"]) if "offset" in result else None
+def _read_spans(result):
+    if "ranges" in result:
+        return tuple(tuple(pair) for pair in result["ranges"])
+    if "offset" in result:
+        return ((result["offset"], result["end_line"]),)
+    return (None,)  # Entire observed file.
 
 
 def _covered(span, windows):
@@ -278,13 +303,17 @@ def prepare_context(config, messages, tools, compact=False, *, force=False, chec
         if config.context_keep_read_bytes:
             for identity, (index, call) in calls.items():
                 function = call.get("function", {})
-                if function.get("name") == "read_file":
+                name = function.get("name")
+                if name in {"read_file", "grep", "search"}:
                     arguments = _result(function.get("arguments"))
-                    if arguments is not None and isinstance(arguments.get("path"), str):
-                        read_calls[identity] = (index, arguments)
+                    search = name != "read_file"
+                    if (arguments is not None and isinstance(arguments.get("path"), str)
+                            and (not search or arguments.get("output_mode") == "read")):
+                        read_calls[identity] = (index, arguments, search)
                         path = arguments["path"]
-                        if index > latest_reads.get(path, (-1, None, None))[0]:
-                            latest_reads[path] = (index, identity, arguments)
+                        order = (index, results.get(identity, (len(selected), None))[0])
+                        if path not in latest_reads or order > latest_reads[path][0]:
+                            latest_reads[path] = (order, identity)
         read_candidates = deque(maxlen=32)
         plan_results = {index for identity, (index, content) in results.items()
                         if identity not in ambiguous and calls.get(identity, (0, {}))[1].get("function", {}).get("name") == "update_plan"
@@ -370,9 +399,9 @@ def prepare_context(config, messages, tools, compact=False, *, force=False, chec
                 if search_read and "next_cursor" in result:
                     fields.append("next_cursor")
                 note = "Past read omitted; reread source. Full history saved."
-                if read_name == "read_file" and config.context_keep_read_bytes and _complete_read(result, read_arguments):
+                if config.context_keep_read_bytes and _complete_read(result, read_arguments, search=search_read):
                     read_candidates.append((index, identity, message["content"], result["path"],
-                                            result["sha256"], _read_span(result), "symbol" in read_arguments))
+                                            result["sha256"], _read_spans(result), "symbol" in read_arguments))
             if index in plan_results and index != latest_plan:
                 fields.extend(("plan", "explanation"))
             if not fields:
@@ -388,7 +417,8 @@ def prepare_context(config, messages, tools, compact=False, *, force=False, chec
         for path in dict.fromkeys(candidate[3] for candidate in read_candidates):
             if check_cancelled:
                 check_cancelled()
-            call_index, identity, arguments = latest_reads[path]
+            _, identity = latest_reads[path]
+            call_index, arguments, search = read_calls[identity]
             result_index, content = results.get(identity, (-1, None))
             # Bound metadata decoding as well as later JSON allocation. Unknown
             # or unreliable latest versions cannot resurrect older file text.
@@ -397,12 +427,12 @@ def prepare_context(config, messages, tools, compact=False, *, force=False, chec
                 continue
             latest = _result(content)
             digest = _read_digest(latest, path)
-            if digest is None or not _complete_read(latest, arguments):
+            if digest is None or not _complete_read(latest, arguments, search=search):
                 continue
             versions[path], coverage[path] = digest, []
-            if result_index >= cutoff and _complete_read(latest, arguments):
-                coverage[path].append(_read_span(latest))
-        for identity, (call_index, arguments) in read_calls.items():
+            if result_index >= cutoff:
+                coverage[path].extend(_read_spans(latest))
+        for identity, (call_index, arguments, search) in read_calls.items():
             path = arguments["path"]
             result_index, content = results.get(identity, (-1, None))
             if (path not in versions or identity == latest_reads[path][1] or identity in ambiguous
@@ -410,8 +440,8 @@ def prepare_context(config, messages, tools, compact=False, *, force=False, chec
                     or not isinstance(content, str) or len(content) > MAX_READ_METADATA_CHARS):
                 continue
             recent = _result(content)
-            if _read_digest(recent, path) == versions[path] and _complete_read(recent, arguments):
-                coverage[path].append(_read_span(recent))
+            if _read_digest(recent, path) == versions[path] and _complete_read(recent, arguments, search=search):
+                coverage[path].extend(_read_spans(recent))
         read_candidates = list(read_candidates)
         # Restore a few complete snapshots only when both independent byte caps
         # permit it. Keep their original transcript position, redact before
@@ -421,16 +451,16 @@ def prepare_context(config, messages, tools, compact=False, *, force=False, chec
             # prefer disjoint windows by recency, recomputing after each pick.
             pick = min(range(len(read_candidates)), key=lambda n: (
                 not read_candidates[n][6],
-                _overlaps(read_candidates[n][5], coverage.get(read_candidates[n][3], [])),
+                any(_overlaps(span, coverage.get(read_candidates[n][3], [])) for span in read_candidates[n][5]),
                 -read_candidates[n][0]))
-            index, identity, original, path, digest, span, _named = read_candidates.pop(pick)
+            index, identity, original, path, digest, spans, _named = read_candidates.pop(pick)
             if check_cancelled:
                 check_cancelled()
-            if versions.get(path) != digest or _covered(span, coverage[path]):
+            if versions.get(path) != digest or all(_covered(span, coverage[path]) for span in spans):
                 continue
             message = selected[index]
             if message["content"] == original:
-                coverage[path].append(span)
+                coverage[path].extend(spans)
                 continue  # Too small to elide; already retained by existing policy.
             snapshot = _result(original)
             available = min(config.context_keep_read_bytes - retained_bytes,
@@ -439,9 +469,13 @@ def prepare_context(config, messages, tools, compact=False, *, force=False, chec
             # Do not allocate a giant JSON string merely to reject its size.
             if len(snapshot["content"]) > available or wire_size(snapshot["content"]) > available:
                 continue
-            snapshot.pop("read_id", None)
+            fields = ["read_id"]
+            if "next_cursor" in snapshot:
+                fields.append("next_cursor")
+            for field in fields:
+                del snapshot[field]
             snapshot.update(context_retained=True,
-                note="Historical read snapshot; may be stale. Reread before editing. No current read_id or approval.")
+                note="Historical read snapshot; may be stale. Obtain a current read_id before editing.")
             if wire_size(snapshot) > available:
                 continue  # Include all metadata before allocating the inner JSON.
             content = json.dumps(snapshot, ensure_ascii=False, separators=(",", ":"))
@@ -452,10 +486,10 @@ def prepare_context(config, messages, tools, compact=False, *, force=False, chec
             message["content"] = content
             size += new_bytes - old_bytes
             retained_bytes += new_bytes
-            coverage[path].append(span)
+            coverage[path].extend(spans)
             retained_reads.append({"message": index, "tool_call_id": identity, "bytes": new_bytes})
             change = next(change for change in changes if change["message"] == index and change["fields"] != ["arguments"])
-            change.update(fields=["read_id"], after_bytes=new_bytes, retained_read=True)
+            change.update(fields=fields, after_bytes=new_bytes, retained_read=True)
         if retained_reads:
             size = request_size(config, selected, tools, check_cancelled=check_cancelled)
         if size > config.max_context_bytes and not config.preserve_reasoning:
