@@ -868,6 +868,10 @@ class Agent:
             self._stop_reason = "background"
             self.emit("[" + phase + "] Deferred: owned background commands are running or cleanup is uncertain. Wait or cancel them before fixed checks.")
             return "incomplete"
+        check_reads = (self.tools.read_versions.snapshot()
+                       if after_edit and jobs is not None and self.tools._jobs_revision == revision else ())
+        read_owner = (self.tools.config, self.tools._conversation_version) if check_reads else None
+        checks_settled = True
         passed = True
         self._event("check", check=phase, check_total=len(self.config.checks))
         for check_index, argv in enumerate(self.config.checks, 1):
@@ -904,10 +908,14 @@ class Agent:
                 self.emit("[" + phase + "] Check did not complete reliably; task remains unverified")
                 return "incomplete"
             passed = passed and result["returncode"] == 0 and not result.get("timed_out") and not result.get("output_limited")
+            checks_settled = (checks_settled and result["returncode"] >= 0
+                              and not result.get("timed_out") and not result.get("output_limited"))
         if jobs and (jobs.unsettled() or jobs.revision != revision):
             self._stop_reason = "background"
             self.emit("[" + phase + "] Background state changed during checks; results are not final acceptance.")
             return "incomplete"
+        if check_reads and checks_settled:
+            self.tools.revalidate_check_reads(check_reads, read_owner, revision)
         if passed:
             self._event("check", "passed", check=phase, check_index=len(self.config.checks), check_total=len(self.config.checks))
             self.emit("[baseline] Checks passed before model actions; final acceptance is still required" if baseline

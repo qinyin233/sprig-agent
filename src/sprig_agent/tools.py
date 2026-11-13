@@ -51,6 +51,7 @@ MAX_READ = 8 * 1024 * 1024
 MAX_EDITS = 32
 MAX_SEARCH_WINDOW_FILES = 8
 MAX_SEARCH_WINDOW_BYTES = 4096
+MAX_CHECK_READ_VERSIONS = 16
 DIRECTORY_GUIDANCE = "For optional directory arguments, omit the field or use '.' for the selected workspace; paths in argv do not define cwd."
 _MISSING = object()
 SKIP_DIRS = {"node_modules", ".venv", "__pycache__"}
@@ -823,6 +824,26 @@ class Tools:
         self._check_cancelled()
         text = self._decode(raw)
         return raw, text
+
+    def revalidate_check_reads(self, entries, owner, revision):
+        """Restore recent handles only after rereading their complete source."""
+        config, version = owner
+        verified = []
+        for identity, (parts, digest) in entries[-MAX_CHECK_READ_VERSIONS:]:
+            self._check_cancelled()
+            try:
+                path = "/".join(parts)
+                raw, text = self._read_validated(path, scan_limit=MAX_FILE)
+                if any(secret in text for secret in config.credential_secrets) or hashlib.sha256(raw).hexdigest() != digest:
+                    continue
+                self._parts(path)
+            except (OSError, ValueError, ToolError):
+                continue
+            verified.append((identity, (parts, digest)))
+        self._check_cancelled()
+        if (self.config is config and self._conversation_version == version
+                and self.jobs.revision == revision and not self.jobs.unsettled()):
+            self.read_versions.restore_verified(verified)
 
     def _read_bytes(self, path, parts, cursor):
         if not isinstance(cursor, str) or len(cursor) > 80:

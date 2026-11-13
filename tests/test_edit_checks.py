@@ -276,6 +276,64 @@ class EditChecksTests(unittest.TestCase):
         self.assertEqual(len(prompts), 3)
         self.assertEqual(validate_history(history), history)
 
+    def test_edit_check_reuses_only_unchanged_and_still_visible_read_ids(self):
+        for name in ("value.txt", "next.txt", "modified.txt", "hidden.txt", "deleted.txt"):
+            (self.root / name).write_bytes(b"before\n")
+        captured, prompts, read_ids = [], [], {}
+        names = ("next.txt", "modified.txt", "hidden.txt", "deleted.txt")
+        initial = response(*({"id": "read-" + name, "type": "function", "function": {"name": "read_file",
+                             "arguments": json.dumps({"path": name})}} for name in names))
+
+        def first_edit(payload):
+            for message in payload["messages"]:
+                if message.get("role") == "tool":
+                    result = json.loads(message["content"])
+                    read_ids[result["path"]] = result["read_id"]
+            return response(edit("first", "before", "after"))
+
+        def next_edit(payload):
+            for name in names:
+                self.assertIsNotNone(read_ids[name])
+                version = tools.read_versions.resolve(read_ids[name], (name,))
+                self.assertEqual(version is not None, name == "next.txt")
+            return response({"id": "second", "type": "function", "function": {"name": "edit_lines",
+                "arguments": json.dumps({"path": "next.txt", "read_id": read_ids["next.txt"],
+                                         "edits": [{"start_line": 1, "end_line": 1, "lines": ["fixed"]}]})}})
+
+        script = ("from pathlib import Path\n"
+                  "Path('modified.txt').write_bytes(b'changed\\n')\n"
+                  "Path('deleted.txt').unlink(missing_ok=True)\n"
+                  "Path('.sprigignore').write_bytes(b'hidden.txt\\n')\n"
+                  "assert Path('next.txt').read_bytes() == b'fixed\\n'\n")
+        with replies([initial, first_edit, next_edit, DONE], captured) as url:
+            config = replace(self.base, base_url=url, proxy="direct", check_after_edit=True, max_steps=4,
+                             checks=((sys.executable, "-I", "-B", "-c", script),))
+            with closing(Tools(config, lambda description: prompts.append(description) or True)) as tools:
+                history, complete = self.agent(config, Provider(config), tools).run("Edit the two files")
+        self.assertTrue(complete)
+        self.assertEqual(len(captured), 4)
+        self.assertEqual(len(prompts), 5)  # Two writes, two edit checks, and final acceptance.
+        self.assertEqual((self.root / "next.txt").read_bytes(), b"fixed\n")
+        self.assertEqual(validate_history(history), history)
+
+    def test_timed_out_check_does_not_restore_an_unchanged_read_id(self):
+        (self.root / "value.txt").write_bytes(b"before")
+        (self.root / "next.txt").write_bytes(b"before")
+        initial = response({"id": "read", "type": "function", "function": {"name": "read_file",
+                            "arguments": '{"path":"next.txt"}'}})
+        config = replace(self.base, check_after_edit=True, max_steps=2, timeout=0.3,
+                         checks=((sys.executable, "-I", "-B", "-c", "import time; time.sleep(10)"),))
+        provider = Mock()
+        provider.complete.side_effect = [initial, response(edit("first", "before", "after"))]
+        with closing(Tools(config, lambda _: True)) as tools:
+            agent = self.agent(config, provider, tools)
+            history, complete = agent.run("Edit the value")
+            result = next(json.loads(message["content"]) for message in history if message.get("tool_call_id") == "read")
+            self.assertIsNone(tools.read_versions.resolve(result["read_id"], ("next.txt",)))
+        self.assertFalse(complete)
+        self.assertEqual(agent.edit_check_status, "failed")
+        self.assertTrue(json.loads(history[-2]["content"])["timed_out"])
+
 
 if __name__ == "__main__":
     unittest.main()

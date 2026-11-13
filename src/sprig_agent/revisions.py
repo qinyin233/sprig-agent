@@ -27,6 +27,13 @@ class ReadVersions:
             if path == tuple(parts):
                 del self._entries[identity]
 
+    def snapshot(self):
+        return tuple(self._entries.items())
+
+    def restore_verified(self, entries):
+        if not self._entries:
+            self._entries.update(entries)
+
     def remember(self, parts, digest, *, validate=None):
         path = tuple(parts)
         for identity, recorded in list(self._entries.items()):
