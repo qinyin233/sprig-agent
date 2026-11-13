@@ -2,11 +2,11 @@
 
 from collections import OrderedDict
 import json
-from pathlib import PurePosixPath
 import re
 import uuid
 
 from .message_origin import user_request
+from .search import search_window_rows
 
 MAX_READ_VERSIONS = 128
 READ_ID_PATTERN = r"^r[0-9a-f]{12}-[1-9][0-9]*$"
@@ -43,8 +43,7 @@ def _visible_reads(function, message, retained):
         return
     mode = arguments.get("output_mode") if name != "read_file" else None
     if mode == "windows" and result.get("output_mode") == mode:
-        rows = result.get("files")
-        rows = rows[:MAX_RESUME_READS] if isinstance(rows, list) else []
+        rows = search_window_rows(arguments, result)
     elif name == "read_file" or (mode == "read" and result.get("output_mode") == mode):
         rows = [result]
     else:
@@ -60,10 +59,7 @@ def _visible_reads(function, message, retained):
                 or not isinstance(source, str) or not (snapshot or valid_read_id(identity))
                 or not isinstance(digest, str) or re.fullmatch(r"[0-9a-f]{64}", digest) is None):
             continue
-        if mode == "windows":
-            if row.get("range_complete") is not True or not PurePosixPath(source).is_relative_to(PurePosixPath(path)):
-                continue
-        elif source != path:
+        if (row.get("range_complete") is not True if mode == "windows" else source != path):
             continue
         yield source, digest, identity
 

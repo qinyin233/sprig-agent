@@ -405,6 +405,83 @@ class ReadRetentionTests(unittest.TestCase):
                 self.assertEqual("Revalidated source" in system, expected)
                 approve.assert_not_called()
 
+    def test_cross_file_windows_keep_only_complete_useful_rows_with_exact_budget(self):
+        for name in ("a.txt", "b.txt", "c.txt"):
+            (self.root / name).write_bytes(b"target " + b"word " * 100 + b"\r\nother\r\ntarget\r\n")
+        arguments = {"path": ".", "pattern": "target", "output_mode": "windows"}
+        with closing(Tools(self.config, Mock())) as tools:
+            result = tools.execute("grep", arguments)
+        self.assertEqual(len(result["files"]), 3)
+        history = self.history()[:2]
+        history.extend([call("find", "grep", arguments),
+                        {"role": "tool", "tool_call_id": "find", "content": json.dumps(result)}])
+        history.extend({"role": "assistant", "content": "Inspected."} for _ in range(7))
+        original = copy.deepcopy(history)
+        compacted, report = self.compact(history)
+        snapshot = json.loads(compacted[3]["content"])
+        self.assertEqual(len(snapshot["files"]), 3)
+        self.assertFalse(snapshot["truncated"])
+        for observed, kept in zip(result["files"], snapshot["files"]):
+            self.assertEqual(kept["content"], observed["content"])
+            self.assertEqual(kept["ranges"], observed["ranges"])
+            self.assertTrue(kept["context_retained"])
+            self.assertNotIn("read_id", kept)
+            self.assertNotIn("next_cursor", kept)
+        self.assertEqual(report["after_bytes"], len(request_body(self.config, compacted, TOOL_SCHEMAS)))
+        self.assertEqual(report["retained_read_bytes"], report["retained_reads"][0]["bytes"])
+        self.assertEqual(report["retained_reads"][0]["windows"], 3)
+        tighter = replace(self.config, context_keep_read_bytes=report["retained_read_bytes"] - 1)
+        partial, report = self.compact(history, tighter)
+        partial = json.loads(partial[3]["content"])
+        self.assertEqual(len(partial["files"]), 2)
+        self.assertTrue(partial["truncated"])
+        self.assertLessEqual(report["retained_read_bytes"], tighter.context_keep_read_bytes)
+        self.assertEqual(history, original)
+
+        # A newer result for a.txt supersedes that row only. No historical
+        # version or body from the old a.txt is needed for the current request.
+        (self.root / "a.txt").write_bytes(b"target changed\r\n")
+        with closing(Tools(self.config, Mock())) as tools:
+            newer = tools.execute("grep", arguments)
+        history.insert(4, call("later", "grep", arguments))
+        history.insert(5, {"role": "tool", "tool_call_id": "later", "content": json.dumps(newer)})
+        compacted, report = self.compact(history)
+        old_rows = json.loads(compacted[3]["content"]).get("files", [])
+        self.assertFalse(any(row["path"] == "a.txt" for row in old_rows))
+
+    def test_continue_after_compaction_uses_cross_file_windows_with_fresh_approval(self):
+        for name in ("a.txt", "b.txt"):
+            (self.root / name).write_bytes(b"target " + b"word " * 100 + b"\r\n")
+        arguments = {"pattern": "target", "output_mode": "windows"}
+        with closing(Tools(self.config, Mock())) as tools:
+            result = tools.execute("grep", arguments)
+        history = self.history()[:2]
+        history.extend([call("find", "grep", arguments),
+                        {"role": "tool", "tool_call_id": "find", "content": json.dumps(result)}])
+        history.extend({"role": "assistant", "content": "Inspected."} for _ in range(7))
+        (self.root / "b.txt").write_bytes(b"changed\r\n")
+        approve, captured = Mock(return_value=True), []
+
+        def edit(payload):
+            snapshot = json.loads(next(row["content"] for row in payload["messages"] if row.get("tool_call_id") == "find"))
+            self.assertEqual({row["path"] for row in snapshot["files"]}, {"a.txt", "b.txt"})
+            rows = json.loads(payload["messages"][0]["content"].rsplit("\n", 1)[-1])
+            self.assertEqual([row["path"] for row in rows], ["a.txt"])
+            approve.assert_not_called()
+            return call("edit", "edit_lines", {**rows[0],
+                        "edits": [{"start_line": 1, "end_line": 1, "lines": ["fixed"]}]})
+
+        with replies([edit, {"role": "assistant", "content": "done"}], captured) as url:
+            config = replace(self.config, base_url=url, proxy="direct", max_steps=2)
+            with closing(Tools(config, approve)) as tools:
+                saved, complete = Agent(config, Provider(config), tools, lambda _: None).run(messages=history)
+        self.assertTrue(complete)
+        self.assertEqual(len(captured), 2)
+        approve.assert_called_once()
+        self.assertEqual((self.root / "a.txt").read_bytes(), b"fixed\r\n")
+        self.assertEqual((self.root / "b.txt").read_bytes(), b"changed\r\n")
+        self.assertEqual(json.loads(saved[3]["content"]), result)
+
 
 if __name__ == "__main__":
     unittest.main()

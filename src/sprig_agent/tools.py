@@ -40,7 +40,7 @@ from .edit_match import failure_details
 from .edit_batch import EditPreview, digest, preflight
 from .line_edits import replace_lines, validate_edits
 from .line_patch import apply as apply_line_patch
-from .search import (FileGlob, MAX_RANGE_LINES, MAX_READ_RANGES, RegexBudgetExceeded,
+from .search import (FileGlob, MAX_RANGE_LINES, MAX_READ_RANGES, MAX_SEARCH_WINDOW_FILES, RegexBudgetExceeded,
                      RegexMatcher, match_window_prefixes, matching_lines)
 from .syntax import IndexUnavailable
 from .image_reads import ImageReadResult, read_image
@@ -49,7 +49,6 @@ from .file_glob import discover as discover_files
 MAX_FILE = 512 * 1024
 MAX_READ = 8 * 1024 * 1024
 MAX_EDITS = 32
-MAX_SEARCH_WINDOW_FILES = 8
 MAX_SEARCH_WINDOW_BYTES = 4096
 MAX_CHECK_READ_VERSIONS = 16
 DIRECTORY_GUIDANCE = "For optional directory arguments, omit the field or use '.' for the selected workspace; paths in argv do not define cwd."

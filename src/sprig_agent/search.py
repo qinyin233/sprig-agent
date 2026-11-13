@@ -3,12 +3,34 @@
 from collections import deque
 import fnmatch
 import io
+from pathlib import PurePosixPath
 import time
 
 REGEX_MEMORY = 1024 * 1024
 REGEX_SECONDS = 1.0
 MAX_READ_RANGES = 8
 MAX_RANGE_LINES = 10000
+MAX_SEARCH_WINDOW_FILES = 8
+
+
+def search_window_rows(arguments, result):
+    """Correlate bounded window records with their original search scope."""
+    if arguments.get("output_mode") != "windows" or result.get("output_mode") != "windows":
+        return ()
+    scope, rows = arguments.get("path", "."), result.get("files")
+    if not isinstance(scope, str) or not isinstance(rows, list) or len(rows) > MAX_SEARCH_WINDOW_FILES:
+        return ()
+    scope = PurePosixPath(scope)
+    paths = set()
+    for row in rows:
+        path = row.get("path") if isinstance(row, dict) else None
+        if not isinstance(path, str):
+            return ()
+        parts = PurePosixPath(path)
+        if parts in paths or not parts.is_relative_to(scope):
+            return ()
+        paths.add(parts)
+    return rows
 
 
 class RegexBudgetExceeded(Exception):
