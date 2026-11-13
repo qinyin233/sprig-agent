@@ -1631,6 +1631,7 @@ class Tools:
             if before_stat is not None and before == after:
                 return {"changed": False}
             diff = self._diff(path, before if before_stat else None, after)
+            config, version = self.config, self._conversation_version
             if not self.request_approval(f"WRITE {json.dumps(path)}\n{diff or '(create empty file)'}"):
                 return {"approved": False, "changed": False}
             # Parse only the already approved proposal, before side effects.
@@ -1650,14 +1651,29 @@ class Tools:
             self._replace(fd, name, data, mode, before_stat)
             self.history.complete(self._revision(fd.stat(name)))
         result = {"approved": True, "changed": True, "path": path}
+        written_digest = digest(data)
         if by_line:
-            result["sha256"] = hashlib.sha256(data).hexdigest()
+            result["sha256"] = written_digest
         if syntax is not None:
             result["syntax"] = syntax
             if len(json.dumps(result, ensure_ascii=False).encode("utf-8")) > self.config.max_output:
                 result["syntax"] = {"status": "omitted", "reason": "output_limit", "not_acceptance": True}
                 if len(json.dumps(result, ensure_ascii=False).encode("utf-8")) > self.config.max_output:
                     del result["syntax"]
+        if (self.config is config and self._conversation_version == version
+                and config.tool_enabled("read_file") and config.tool_enabled("edit_lines")
+                and not any(secret in after for secret in config.secrets)):
+            def fit(identity):
+                candidate = {**result, "read_id": identity}
+                if max(encoded_size(candidate), encoded_size(redact(candidate, config.secrets))) > config.max_output:
+                    raise ToolError("edit result has no space for a read identifier")
+
+            try:
+                new_id = self.read_versions.remember(parts, written_digest, validate=fit)
+            except ToolError:
+                pass
+            else:
+                result["read_id"] = new_id
         return result
 
     def mcp(self, action="status", **arguments):

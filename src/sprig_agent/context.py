@@ -330,7 +330,7 @@ def prepare_context(config, messages, tools, compact=False, *, force=False, chec
             if path is None or result.get("path") != path:
                 continue
             marker = json.dumps({"path": path, "context_elided": True,
-                "note": "Completed approved historical edit: replacement text omitted from this request. This is not runnable tool input. Inspect current files before further edits; the saved transcript retains the original arguments."}, ensure_ascii=False)
+                "note": "Approved edit completed. See saved history for omitted text. Read source if needed."}, ensure_ascii=False)
             replace_string(function, "arguments", marker, index, identity, ["arguments"])
         for index, message in enumerate(selected[:cutoff]):
             if message.get("role") != "tool":

@@ -258,6 +258,46 @@ class ReadVersionTests(unittest.TestCase):
         self.assertEqual(self.approve.call_count, 2)
         self.assertEqual(path.read_bytes(), b"new\nkeep\n")
 
+    def test_http_chains_two_edits_across_an_approved_stage_check_without_reading_again(self):
+        path = self.root / "source.txt"
+        path.write_bytes(b"before\nkeep\n")
+        captured = []
+
+        def edit_again(payload):
+            result = next(json.loads(row["content"]) for row in payload["messages"] if row.get("tool_call_id") == "first")
+            self.assertTrue(result["changed"])
+            self.assertEqual(path.read_bytes(), b"middle\nkeep\n")
+            return model_call("second", "edit_lines", {"path": path.name, "read_id": result["read_id"],
+                                                       "patch": "@@\n-middle\n+after\n keep\n"})
+
+        first = model_call("first", "edit_file", {"path": path.name, "old": "before", "new": "middle"})
+        with replies([first, edit_again, {"role": "assistant", "content": "Done"}], captured) as url:
+            config = replace(self.config, base_url=url, proxy="direct", max_steps=3, check_after_edit=True,
+                             checks=((sys.executable, "-I", "-B", "-c",
+                                      "from pathlib import Path; assert Path('source.txt').read_bytes().endswith(b'keep\\n')"),))
+            with closing(Tools(config, self.approve)) as tools:
+                history, complete = Agent(config, Provider(config), tools, lambda _: None).run("Change and verify")
+        self.assertTrue(complete)
+        self.assertEqual(path.read_bytes(), b"after\nkeep\n")
+        self.assertEqual(self.approve.call_count, 5)  # Two writes, two stage checks, and final acceptance.
+        self.assertEqual(len(captured), 3)
+        results = {row["tool_call_id"]: json.loads(row["content"]) for row in history if row["role"] == "tool"}
+        self.assertNotEqual(results["first"]["read_id"], results["second"]["read_id"])
+
+    def test_edit_result_version_rejects_external_changes_and_is_omitted_when_read_file_is_disabled(self):
+        path = self.root / "source.txt"
+        path.write_bytes(b"before\n")
+        result = self.tools.execute("edit_file", {"path": path.name, "old": "before", "new": "middle"})
+        path.write_bytes(b"external\n")
+        stale = self.tools.execute("edit_lines", {"path": path.name, "read_id": result["read_id"],
+                                                  "edits": [{"start_line": 1, "end_line": 1, "lines": ["after"]}]})
+        self.assertEqual(stale["edit_failure"]["reason"], "stale_revision")
+        self.approve.assert_called_once()
+        with closing(Tools(replace(self.config, disabled_tools=("read_file",)), self.approve)) as tools:
+            edited = tools.execute("edit_file", {"path": path.name, "old": "external", "new": "after"})
+            self.assertTrue(edited["changed"])
+            self.assertNotIn("read_id", edited)
+
     def test_completed_line_edits_can_be_compacted_without_replaying_ids(self):
         arguments = {"path": "source.txt", "read_id": "r0123456789ab-1", "edits": [
             {"start_line": 1, "end_line": 1, "new": "new text " * 1000}]}

@@ -61,7 +61,7 @@ Use glob for filenames and project_map for declarations to orient unfamiliar rep
 Follow with targeted searches and ranged reads; filenames are not content evidence.
 Maps show declarations, not full behavior; check truncation and inspect implementation before edits.
 If a declaration name is known, read_file(symbol="Class.method") reads its indexed span; check symbol_complete.
-For edit_lines, use read_id from numbered read_file or grep read/windows. Never copy display prefixes.
+For edit_lines, use read_id from a source read or successful edit. Omit display prefixes.
 Use grep windows across files. Continue next_cursor in single-file grep read with the same search.
 Use update_plan when available for tasks with multiple stages; skip it for trivial requests.
 Keep the plan current after new guidance. Plan completion is your report, not approval or test evidence.
