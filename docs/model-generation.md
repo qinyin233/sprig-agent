@@ -32,7 +32,16 @@ PowerShell 的已有 Agnes 启动器原样传递这些选项：
 
 要显式尝试思考预设，在上面加 `--thinking`。它可能增加输出用量与延迟；未选预设不能推断服务的默认思考模式。输出上限过低可能截断较长的工具参数，需按任务调整，不能用短回复当作修复完成。
 
-在 Sprig 中，无论流式与否，只有完整、有效的最终文字或工具意图才会进入 agent 循环。流式文字可能在结束状态到达之前已显示；服务返回输出截断状态时仍判为未完成，截断响应里的工具动作不会执行，且不自动重试。继续对话需用户提交新消息或 `/continue`。Chat Completions 的 `reasoning_content` 默认不显示、不保存或回传，显式 `preserve_reasoning` 的隐私影响见[推理历史兼容](reasoning-protocol.md)；Messages/Responses 的原生连续性字段见[三协议支持](provider-protocols.md)。
+在 Sprig 中，只有完整且有效的响应才能提交工具意图。流式文字可以提前显示，收到输出上限时整条响应按未完成处理，历史保留应用提示。默认可用新消息或 `/continue` 恢复。Chat Completions 的 `reasoning_content` 处理见[推理历史兼容](reasoning-protocol.md)，Messages 和 Responses 的原生连续性字段见[三协议支持](provider-protocols.md)。
+
+```toml
+[agent]
+recover_output_limit = true
+```
+
+开启后，只有服务明确报告输出 token 达到上限时才触发恢复。每轮任务最多恢复一次，且必须还有 `max_steps` 额度。应用丢弃截断的文字和工具参数，在下一步带上提示，请模型重新生成一个较小的提案。恢复请求沿用当前模型、生成上限和请求字节上限，也会接收期间排队的新引导。完整的新提案走正常审批和验收。该设置绑定保存的会话，可用 `--recover-output-limit` 或 `--no-recover-output-limit` 选择。
+
+三种协议分别识别 Chat Completions 的 `finish_reason=length`、Messages 的 `stop_reason=max_tokens`，以及 Responses 的 `status=incomplete` 和 `incomplete_details.reason=max_output_tokens`。[Chat Completions](https://developers.openai.com/api/reference/resources/chat/subresources/completions/methods/create) · [Messages](https://platform.claude.com/docs/en/build-with-claude/handling-stop-reasons#max_tokens) · [Responses](https://developers.openai.com/api/reference/resources/responses/methods/create)
 
 选项进入统一的请求编码，因此 `/context`、压缩和 provider 发送前检查都计算它们的实际 JSON 字节。明确选择的 token 上限和思考模式也进入会话绑定；恢复时需传入相同参数，防止无意改变生成配置。未选择选项的旧会话保持原绑定格式。应用的逐次批准、只读、取消和路径限制继续独立执行。
 

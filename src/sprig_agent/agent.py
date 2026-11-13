@@ -1052,6 +1052,7 @@ class Agent:
             if self.baseline_status in {"blocked", "steered", "incomplete"}:
                 self.emit("[baseline] Incomplete; no model request sent. Explicit continuation requires fresh check approval.")
                 return messages, False
+        recovered_output_limit = False
         for step in range(1, self.config.max_steps + 1):
             self._step = step
             self._check_cancelled()
@@ -1061,14 +1062,20 @@ class Agent:
                 response = self._complete(messages, step=step)
             except ProviderError as error:
                 if error.code == "output_limit":
+                    self._check_cancelled()
+                    recover = self.config.recover_output_limit and not recovered_output_limit and step < self.config.max_steps
                     notice = {"role": "user", ORIGIN: "application", "content": (
                         "Application notice: the previous model response exceeded its output-token limit and was discarded. "
-                        "No tool calls from that response executed. On explicit continuation, use smaller focused proposals; "
-                        "prefer revision-pinned line edits after reading relevant lines. Do not replay assumed partial edits "
-                        "or treat this notice as approval. No automatic retry was made.")}
+                        "No tool calls from that response executed. Propose a single focused next action within the same limit. "
+                        "For code changes, use revision-pinned line edits for a small change supported by existing reads. "
+                        "Any write or command still needs fresh approval.")}
                     if messages[-1] != notice:
                         messages.append(notice)
                         self._checkpoint(messages)
+                    if recover:
+                        recovered_output_limit = True
+                        self.emit("[model] Output limit reached. Discarded the response. Continuing within the remaining request budget.")
+                        continue
                 raise
             self._check_cancelled()
             if self._steer(messages):

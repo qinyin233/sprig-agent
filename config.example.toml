@@ -59,6 +59,7 @@ token_limit_field = "max_tokens"
 
 [agent]
 max_steps = 20
+recover_output_limit = false # one recovery request inside max_steps after an explicit output-token limit
 timeout = 60 # command timeout; HTTP uses provider.request_timeout if set
 max_output = 16000
 stream = true

@@ -64,6 +64,11 @@
             }
           }
         },
+        "recover_output_limit": {
+          "type": "boolean",
+          "default": false,
+          "description": "Allow one fresh request after an output-token limit, within max_steps. Trusted user or profile setting."
+        },
         "stream": {
           "type": "boolean"
         },
@@ -1308,6 +1313,11 @@
                     "type": "string"
                   }
                 }
+              },
+              "recover_output_limit": {
+                "type": "boolean",
+                "default": false,
+                "description": "Allow one fresh request after an output-token limit, within max_steps. Trusted user or profile setting."
               },
               "stream": {
                 "type": "boolean"

@@ -18,6 +18,7 @@ AGENT_DEFAULTS = {
     "read_only": False, "inherit_env": False, "max_context_bytes": 131072,
     "compact_context": False, "request_usage": False, "project_instructions": True,
     "max_tokens": None, "thinking": False, "checks": (), "check_before_task": False, "check_after_edit": False,
+    "recover_output_limit": False,
 }
 TEMPLATE = '''# Sprig user configuration. No automatic model/provider fallback.
 provider = "agnes"
@@ -305,6 +306,8 @@ def _validate(data, directory, *, project=False):
             raise ValueError("project configuration cannot change trusted keyboard shortcuts")
         if any(data.get("agent", {}).get(name) for name in ("inherit_env", "checks")):
             raise ValueError("project configuration cannot inherit environment or add commands")
+        if "recover_output_limit" in data.get("agent", {}):
+            raise ValueError("project configuration cannot set agent.recover_output_limit")
         if "profile" in data:
             raise ValueError("select trusted profiles with --profile or the user configuration")
         return

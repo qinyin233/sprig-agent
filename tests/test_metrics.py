@@ -76,7 +76,8 @@ class MetricTests(unittest.TestCase):
         _, complete = agent.run(None, history)
         self.assertTrue(complete)
         sent = json.loads(provider.opener.open.call_args.args[0].data)
-        self.assertIn("No automatic retry was made", sent["messages"][-1]["content"])
+        self.assertIn("Propose a single focused next action", sent["messages"][-1]["content"])
+        self.assertEqual(provider.opener.open.call_count, 2)
         tools.execute.assert_not_called()
 
     def test_streaming_first_validated_text_final_usage_and_request_opt_in(self):

@@ -130,14 +130,16 @@ def parse_response(protocol, data):
         _require(data.get("type") == "message" and data.get("role") == "assistant")
         reason = data.get("stop_reason")
         if reason not in ("end_turn", "tool_use", "stop_sequence"):
-            raise completion_failure("length" if reason == "max_tokens" else "content_filter" if reason == "refusal" else reason)
+            raise completion_failure("length" if reason == "max_tokens" else "content_filter" if reason == "refusal" else None)
         result, items = _blocks(protocol, data.get("content"))
         _require((reason == "tool_use") == bool(result.get("tool_calls")))
     else:
         if data.get("status") != "completed" or data.get("error") is not None or data.get("incomplete_details") is not None:
             details = data.get("incomplete_details")
             reason = details.get("reason") if isinstance(details, dict) else None
-            raise completion_failure("length" if reason == "max_output_tokens" else reason)
+            if data.get("status") == "incomplete" and data.get("error") is None and reason == "max_output_tokens":
+                raise completion_failure("length")
+            raise completion_failure("content_filter" if reason == "content_filter" else None)
         result, items = _blocks(protocol, data.get("output"))
     result["native_state"] = {"protocol": protocol, "output": items}
     return result
@@ -235,6 +237,7 @@ def complete_stream(protocol, response, on_text, secrets, measurement):
 
 def _messages_stream(events, emit, measurement):
     message, active, fragments, stopped, counts = None, None, [], False, {}
+    tool_inputs = {}
     for raw in events:
         event = json.loads(raw)
         _require(isinstance(event, dict))
@@ -268,7 +271,9 @@ def _messages_stream(events, emit, measurement):
                 if kind == "content_block_stop":
                     if fragments:
                         _require(block.get("input") == {})
-                        block["input"] = json.loads("".join(fragments))
+                        # A token-limited stream may close a block with partial JSON.
+                        # Parse only after the terminal status allows tool calls.
+                        tool_inputs[active] = "".join(fragments)
                     active = None
                     continue
                 delta = event.get("delta")
@@ -299,6 +304,10 @@ def _messages_stream(events, emit, measurement):
             elif kind == "message_stop":
                 _require(stopped and active is None)
                 measurement.observe_usage(usage("messages", counts))
+                if message["stop_reason"] == "max_tokens":
+                    raise completion_failure("length")
+                for index, arguments in tool_inputs.items():
+                    message["content"][index]["input"] = json.loads(arguments)
                 result = parse_response("messages", message)
                 measurement.observe_finish("tool_calls" if result.get("tool_calls") else "stop")
                 return result
@@ -317,12 +326,13 @@ def _responses_stream(events, emit, measurement):
             response = event.get("response")
             if isinstance(response, dict):
                 measurement.observe_usage(usage("responses", response.get("usage")))
-                parse_response("responses", response)  # Raises a bounded diagnostic.
+                if kind == "response.incomplete" and response.get("status") == "incomplete":
+                    parse_response("responses", response)  # Raises a bounded diagnostic.
             raise ProviderError("Responses stream failed; no tools were executed", code="incomplete_stream")
         if kind == "response.completed":
             response = event.get("response")
-            if isinstance(response, dict):
-                measurement.observe_usage(usage("responses", response.get("usage")))
+            _require(isinstance(response, dict) and response.get("status") == "completed")
+            measurement.observe_usage(usage("responses", response.get("usage")))
             result = parse_response("responses", response)
             items = response["output"]
             _require(set(added) == set(done) and all(index < len(items) for index in done))

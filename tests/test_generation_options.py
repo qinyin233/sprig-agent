@@ -1,6 +1,6 @@
 """Generation controls through real local HTTP; no paid model calls or scores."""
 
-from contextlib import contextmanager, redirect_stderr, redirect_stdout
+from contextlib import closing, contextmanager, redirect_stderr, redirect_stdout
 from dataclasses import replace
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 import io
@@ -169,6 +169,132 @@ class GenerationOptionsTests(unittest.TestCase):
                     approve.assert_not_called()
                 self.assertEqual(len(requests), 1)
                 self.assertEqual((self.root / "target.py").read_text(encoding="utf-8"), "old")
+
+    def test_opt_in_recovers_with_remaining_budget_and_fresh_tool_approval(self):
+        from tests.test_glob_protocols import answer
+        from tests.test_native_protocols import backend, native, sse, stream_events
+
+        target = self.root / "target.py"
+        discarded = ("discarded", "edit_file", {"path": target.name, "old": "old", "new": "discarded"})
+        fresh = ("fresh", "edit_file", {"path": target.name, "old": "old", "new": "new"})
+        for protocol in ("chat_completions", "messages", "responses"):
+            for streaming in (False, True):
+                with self.subTest(protocol=protocol, streaming=streaming):
+                    target.write_bytes(b"old")
+                    if protocol == "chat_completions":
+                        call = {"id": discarded[0], "type": "function", "function": {
+                            "name": discarded[1], "arguments": json.dumps(discarded[2])}}
+                        limited = (stream_body({"tool_calls": [{"index": 0, **call}]}, "length") if streaming
+                                   else envelope({"role": "assistant", "tool_calls": [call]}, "length"))
+                    else:
+                        raw = native(protocol, calls=[discarded])
+                        if protocol == "messages":
+                            raw["stop_reason"] = "max_tokens"
+                            limited = raw
+                            if streaming:
+                                events = stream_events(protocol, raw)
+                                fragment = next(event["delta"] for event in events if event["type"] == "content_block_delta"
+                                                and event["delta"]["type"] == "input_json_delta")
+                                fragment["partial_json"] = '{"path":"discarded'
+                                limited = sse(events)
+                        else:
+                            partial = {**raw, "status": "incomplete", "incomplete_details": {"reason": "max_output_tokens"}}
+                            limited = partial if not streaming else sse([
+                                *stream_events(protocol, raw)[:-1], {"type": "response.incomplete", "response": partial}])
+
+                    captured, saved, displayed = [], [], []
+                    replies = [limited, answer(protocol, streaming, calls=[fresh]),
+                               answer(protocol, streaming, text="Finished")]
+                    with backend(protocol, replies, captured, stream=streaming) as url:
+                        config = replace(self.config, base_url=url, proxy="direct", wire_api=protocol, stream=streaming,
+                                         max_steps=3, max_tokens=2048, recover_output_limit=True)
+                        approve = Mock(return_value=True)
+                        with closing(Tools(config, approve)) as tools:
+                            agent = Agent(config, Provider(config), tools, displayed.append,
+                                          lambda history: saved.append(json.dumps(history)))
+                            history, complete = agent.run("Update the target")
+                    self.assertTrue(complete)
+                    self.assertEqual(target.read_bytes(), b"new")
+                    approve.assert_called_once()
+                    self.assertEqual(len(captured), 3)
+                    self.assertIn("previous model response exceeded", json.dumps(captured[1]["body"]))
+                    self.assertIn("model request 2 of 3", json.dumps(captured[1]["body"]))
+                    self.assertNotIn('"discarded"', json.dumps(captured[1]["body"]))
+                    self.assertFalse(any('"discarded"' in entry for entry in saved))
+                    self.assertEqual([row["id"] for message in history for row in message.get("tool_calls", [])], ["fresh"])
+                    cap = "max_output_tokens" if protocol == "responses" else "max_tokens"
+                    self.assertEqual([entry["body"][cap] for entry in captured], [2048] * 3)
+                    self.assertEqual(agent.usage_report()["attempts"], 3)
+                    self.assertEqual(agent.usage_report()["failures"], {"output_limit": 1})
+                    self.assertEqual(agent.usage_report()["session_usage"]["attempts"], 3)
+                    self.assertEqual(agent.usage_report()["recent"][0]["finish_reason"], "length")
+
+    def test_recovery_stops_when_budget_or_single_recovery_is_exhausted(self):
+        from tests.test_native_protocols import backend, sse
+
+        for steps, reason, count in ((1, "length", 1), (4, "length", 2), (4, "content_filter", 1)):
+            with self.subTest(steps=steps, reason=reason):
+                captured = []
+                limited = envelope({"role": "assistant", "content": "Partial"}, reason)
+                with backend("chat_completions", [limited] * count, captured) as url:
+                    config = replace(self.config, base_url=url, proxy="direct", max_steps=steps, recover_output_limit=True)
+                    approve = Mock(return_value=True)
+                    with closing(Tools(config, approve)) as tools, self.assertRaises(ProviderError) as caught:
+                        Agent(config, Provider(config), tools, lambda _: None).run("Inspect")
+                self.assertEqual(len(captured), count)
+                self.assertEqual(caught.exception.code, "output_limit" if reason == "length" else reason)
+                approve.assert_not_called()
+
+        for kind in ("response.failed", "response.completed"):
+            with self.subTest(kind=kind):
+                misleading = sse([{"type": kind, "response": {
+                    "status": "incomplete", "incomplete_details": {"reason": "max_output_tokens"},
+                }}])
+                captured = []
+                with backend("responses", [misleading], captured, stream=True) as url:
+                    config = replace(self.config, base_url=url, proxy="direct", wire_api="responses",
+                                     stream=True, max_steps=3, recover_output_limit=True)
+                    with closing(Tools(config, Mock())) as tools, self.assertRaises(ProviderError):
+                        Agent(config, Provider(config), tools, lambda _: None).run("Inspect")
+                self.assertEqual(len(captured), 1)
+
+    def test_recovery_delivers_pending_guidance_and_honors_cancel(self):
+        from tests.test_native_protocols import backend
+
+        for cancel in (False, True):
+            with self.subTest(cancel=cancel):
+                captured, checkpointed = [], []
+                cancellation = threading.Event()
+                pending = []
+
+                def checkpoint(history):
+                    if len(captured) == 1 and "previous model response exceeded" in history[-1]["content"]:
+                        checkpointed.append(True)
+                        pending.append("New user direction")
+                        if cancel:
+                            cancellation.set()
+
+                def receive():
+                    current = list(pending)
+                    pending.clear()
+                    return current
+
+                replies = [envelope({"role": "assistant", "content": "Partial"}, "length"),
+                           envelope({"role": "assistant", "content": "Finished"})]
+                with backend("chat_completions", replies, captured) as url:
+                    config = replace(self.config, base_url=url, proxy="direct", max_steps=2, recover_output_limit=True)
+                    with closing(Tools(config, Mock(), cancel_event=cancellation)) as tools:
+                        agent = Agent(config, Provider(config), tools, lambda _: None, checkpoint,
+                                      receive_input=receive, cancel_event=cancellation)
+                        if cancel:
+                            with self.assertRaises(KeyboardInterrupt):
+                                agent.run("Inspect")
+                        else:
+                            self.assertTrue(agent.run("Inspect")[1])
+                self.assertEqual(len(captured), 1 if cancel else 2)
+                self.assertTrue(checkpointed)
+                if not cancel:
+                    self.assertEqual(captured[1]["body"]["messages"][-1]["content"], "New user direction")
 
     def test_session_requires_same_explicit_generation_configuration(self):
         controlled = replace(self.config, max_tokens=2048, thinking=True)

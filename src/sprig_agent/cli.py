@@ -506,6 +506,8 @@ def main(argv=None):
                         help="propose fixed --check commands before every task/continue/resume; fresh approval required; final checks still run")
     parser.add_argument("--check-after-edit", action=argparse.BooleanOptionalAction, default=None,
                         help="propose fixed checks after successful file-edit batches; fresh approval and final acceptance still required")
+    parser.add_argument("--recover-output-limit", action=argparse.BooleanOptionalAction, default=None,
+                        help="allow one fresh model request after an output-token limit, within max-steps")
     group = parser.add_mutually_exclusive_group()
     group.add_argument("--save-session", metavar="NAME")
     group.add_argument("--resume", metavar="NAME")

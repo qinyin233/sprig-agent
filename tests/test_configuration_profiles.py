@@ -557,6 +557,23 @@ check_before_task=true
         with self.assertRaises(ValueError):
             load_settings(bad)
 
+    def test_output_limit_recovery_is_a_trusted_session_setting_with_cli_override(self):
+        self.write('[profiles.development.agent]\nrecover_output_limit=true\n')
+        settings = load_settings(self.path)
+        default, _ = self.resolve(settings, model="fixture")
+        configured, _ = self.resolve(settings, model="fixture", profile="development")
+        self.assertNotIn("recover_output_limit", default.binding())
+        self.assertTrue(configured.binding()["recover_output_limit"])
+        self.assertEqual(dict(configured.setting_sources)["recover_output_limit"], "profile")
+        project = self.write('[agent]\nrecover_output_limit=true\n', self.root / "project.toml")
+        with self.assertRaisesRegex(ValueError, "project configuration cannot set agent.recover_output_limit"):
+            settings.with_project(project)
+        for flag, enabled in (("--recover-output-limit", True), ("--no-recover-output-limit", False)):
+            code, output, _ = self.invoke(["--config", str(self.path), "--model", "fixture",
+                                            "--profile", "development", flag, "--show-config"])
+            self.assertEqual(code, 0)
+            self.assertIs(json.loads(output)["agent"]["recover_output_limit"], enabled)
+
     def test_configured_storage_autosave_is_opt_in_and_listing_does_not_need_key(self):
         self.write('''provider="x"
 [providers.x]

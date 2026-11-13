@@ -35,7 +35,7 @@ class ProviderError(Exception):
 def completion_failure(reason):
     if reason == "length":
         return ProviderError("provider stopped before a complete response: output token limit reached; no tools were executed. "
-                             "Use smaller edit proposals or explicitly raise --max-tokens; no automatic retry", code="output_limit")
+                             "Use smaller edit proposals on continuation or explicitly raise --max-tokens.", code="output_limit")
     if reason == "content_filter":
         return ProviderError("provider stopped before a complete response: content filtered; no tools were executed", code="content_filter")
     return ProviderError("provider stopped before a complete response; no tools were executed", code="unsupported_finish_reason")
@@ -248,6 +248,8 @@ class Provider:
                 raise
             except ProviderError as error:
                 measurement.error_code = error.code
+                if error.code == "output_limit":
+                    measurement.observe_finish("length")
                 if (error.retryable and error.code == 'http_error' and measurement.status == error.status
                         and attempt < config.retry_attempts):
                     base = min(2 ** attempt, 10)

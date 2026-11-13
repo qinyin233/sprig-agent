@@ -186,6 +186,7 @@ class Config:
     background_enabled: bool = False
     background_timeout: float = 300
     explore_enabled: bool = False
+    recover_output_limit: bool = False
     prompt_templates: tuple = field(default=(), repr=False)
     editor_command: tuple = field(default=(), repr=False)
     editor_timeout: float = 300
@@ -202,6 +203,8 @@ class Config:
             raise ValueError("execution.background must be a boolean")
         if type(self.explore_enabled) is not bool:
             raise ValueError("execution.explore must be a boolean")
+        if type(self.recover_output_limit) is not bool:
+            raise ValueError("agent.recover_output_limit must be a boolean")
         if (type(self.background_timeout) not in (int, float) or not math.isfinite(self.background_timeout)
                 or not 0 < self.background_timeout <= 3600):
             raise ValueError("execution.background_timeout must be positive and at most 3600 seconds")
@@ -539,6 +542,8 @@ class Config:
             binding["background"] = {"enabled": True, "timeout": self.background_timeout}
         if self.explore_enabled:
             binding["explore"] = True
+        if self.recover_output_limit:
+            binding["recover_output_limit"] = True
         if self.wire_api != "chat_completions":
             binding["wire_api"] = self.wire_api
         if self.command_output_limit is not None:
