@@ -23,7 +23,7 @@ from .filesystem import Directory, is_link
 from .index import SymbolIndex, language_for
 from .instructions import InstructionError, ProjectInstructions
 from .planning import TaskPlan, validate_plan
-from .revisions import READ_ID_PATTERN, ReadVersions, valid_read_id
+from .revisions import MAX_RESUME_READS, READ_ID_PATTERN, ReadVersions, valid_read_id
 from .map_selection import MapSelection, encoded_size
 from .policy import FilePolicy, command_environment
 from .output import CommandOutput, SampledCommandOutput
@@ -831,19 +831,52 @@ class Tools:
         verified = []
         for identity, (parts, digest) in entries[-MAX_CHECK_READ_VERSIONS:]:
             self._check_cancelled()
-            try:
-                path = "/".join(parts)
-                raw, text = self._read_validated(path, scan_limit=MAX_FILE)
-                if any(secret in text for secret in config.credential_secrets) or hashlib.sha256(raw).hexdigest() != digest:
-                    continue
-                self._parts(path)
-            except (OSError, ValueError, ToolError):
-                continue
-            verified.append((identity, (parts, digest)))
+            if self._matching_read_version("/".join(parts), digest, config.credential_secrets):
+                verified.append((identity, (parts, digest)))
         self._check_cancelled()
         if (self.config is config and self._conversation_version == version
                 and self.jobs.revision == revision and not self.jobs.unsettled()):
             self.read_versions.restore_verified(verified)
+
+    def _matching_read_version(self, path, digest, secrets):
+        try:
+            raw, text = self._read_validated(path, scan_limit=MAX_FILE)
+            if any(secret in text for secret in secrets) or hashlib.sha256(raw).hexdigest() != digest:
+                return False
+            self._parts(path)  # Reload privacy rules after reading.
+            return True
+        except (OSError, ValueError, ToolError):
+            return False
+
+    def revalidate_resume_reads(self, observations):
+        config, owner, revision = self.config, self._conversation_version, self.jobs.revision
+        if (config.read_only or not config.tool_enabled("read_file") or not config.tool_enabled("edit_lines")
+                or self.jobs.unsettled()):
+            return {}
+        self._require_tool("read_file")
+        seen, verified = set(), {}
+        secrets = config.secrets
+        for observation in observations:
+            self._check_cancelled()
+            path, digest, _ = observation
+            try:
+                parts = self._parts(path)
+            except (OSError, ValueError, ToolError):
+                continue
+            key = tuple(part.casefold() for part in parts) if os.name == "nt" else parts
+            if key in seen or redact(path, secrets) != path:
+                continue
+            seen.add(key)
+            if self._matching_read_version(path, digest, secrets):
+                verified[observation] = parts
+            if len(seen) >= MAX_RESUME_READS:
+                break
+        self._check_cancelled()
+        if (self.config is not config or self._conversation_version != owner
+                or self.jobs.revision != revision or self.jobs.unsettled()):
+            return {}
+        return {observation: (self.read_versions.remember(parts, observation[1]), parts)
+                for observation, parts in verified.items()}
 
     def _read_bytes(self, path, parts, cursor):
         if not isinstance(cursor, str) or len(cursor) > 80:

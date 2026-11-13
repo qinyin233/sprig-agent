@@ -15,7 +15,7 @@ from .json_budget import JsonBudgetExceeded, encoded_size
 from .metrics import FAILURE_CODES, Measurements
 from .usage_ledger import UsageLedger, UsagePersistenceError
 from .planning import TaskPlan
-from .revisions import ReadVersions
+from .revisions import ReadVersions, recent_visible_reads
 from .references import FileReferences, merge_reference_paths, reference_paths, user_reference_paths
 from .runtime import RuntimeEvent, tool_outcome
 from .provider import Provider, ProviderError, validate_message
@@ -98,6 +98,7 @@ class Agent:
         self._running = False
         self._context_files = []
         self._tool_images = []
+        self._resumed_reads = {}
         self.summary = None
         self.usage_ledger = UsageLedger() if isinstance(provider, Provider) else None
         self._current_history = None
@@ -671,6 +672,7 @@ class Agent:
                 "error": "Not executed: superseded by new user guidance. Inspect current state and follow the updated request."})})
         messages.extend(rows)
         self._tool_images = []  # New human guidance ends previous pixel-send consent.
+        self._clear_resumed_reads()
         self.work_progress.reset_inspections()
         self._checkpoint(messages)
         self._event("steering", "delivered")
@@ -814,7 +816,45 @@ class Agent:
         report["after_bytes"] = size
         return schemas
 
-    def _complete(self, messages, *, step):
+    def _resume_read_context(self, messages, report, *, refresh):
+        if not isinstance(self.tools, Tools) or not (refresh or self._resumed_reads):
+            return
+        observations = recent_visible_reads(messages, self._check_cancelled)
+        if refresh:
+            self._resumed_reads = self.tools.revalidate_resume_reads(observations)
+            observations = iter(self._resumed_reads)
+        rows = {}
+        for observation in observations:
+            entry = self._resumed_reads.get(observation)
+            if entry is None:
+                continue
+            identity, parts = entry
+            path, digest, old_id = observation
+            if self.tools.read_versions.resolve(identity, parts) == digest:
+                rows[path] = {"path": path, "previous_read_id": old_id, "read_id": identity}
+        if not rows:
+            return
+        system = messages[0]
+        messages[0] = {**system, "content": system["content"] + (
+            "\nRevalidated source from this continuation. Use the new read_id for previously observed lines; "
+            "read any other lines before editing. Writes require fresh approval.\n"
+            + json.dumps(list(rows.values()), ensure_ascii=False, separators=(",", ":")))}
+        size = request_size(self.config, messages, self.schemas, check_cancelled=self._check_cancelled)
+        if (size > self.config.max_context_bytes or (self.compact_context and not report["compaction_triggered"]
+                and size >= self.config.max_context_bytes * self.config.context_trigger_ratio)):
+            messages[0] = system
+            if refresh:
+                self._clear_resumed_reads()
+        else:
+            report["before_bytes"] += size - report["after_bytes"]
+            report["after_bytes"] = size
+
+    def _clear_resumed_reads(self):
+        for identity, _ in self._resumed_reads.values():
+            self.tools.read_versions.forget(identity)
+        self._resumed_reads.clear()
+
+    def _complete(self, messages, *, step, resume_reads=False):
         self._event("preparing")
         history = messages
         records = self._refresh_instructions(messages, save=True)
@@ -823,6 +863,7 @@ class Agent:
                                            check_cancelled=self._check_cancelled)
         if not report["within_budget"]:
             raise ProviderError("context byte budget exceeded; no request sent. Review /context and explicitly /compact, or increase --max-context-bytes.")
+        self._resume_read_context(messages, report, refresh=resume_reads)
         schemas = self._request_schemas(messages, report)
         self._offered_schemas = schemas
         if self.references.observed != self._prepared_reference_observations:
@@ -972,6 +1013,7 @@ class Agent:
         finally:
             self._context_files = []
             self._tool_images = []
+            self._clear_resumed_reads()
             self._current_history = None
             self._running = False
 
@@ -1042,7 +1084,8 @@ class Agent:
         if task:
             messages.append({"role": "user", "content": redact(task, self.config.secrets)})
         self._current_history = messages
-        self._steer(messages)
+        steered = self._steer(messages)
+        resume_reads = task is None and not steered
         if len(messages) < 2:
             raise ValueError("a task is required for a new session")
         self._checkpoint(messages)
@@ -1064,10 +1107,12 @@ class Agent:
         for step in range(1, self.config.max_steps + 1):
             self._step = step
             self._check_cancelled()
-            self._steer(messages)
+            if self._steer(messages):
+                resume_reads = False
             self._job_notices(messages)
             try:
-                response = self._complete(messages, step=step)
+                refresh, resume_reads = resume_reads, False
+                response = self._complete(messages, step=step, resume_reads=refresh)
             except ProviderError as error:
                 if error.code == "output_limit":
                     self._check_cancelled()

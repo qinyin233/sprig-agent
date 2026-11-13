@@ -16,7 +16,7 @@ from unittest.mock import Mock, patch
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 from sprig_agent.config import Config
 from sprig_agent.agent import Agent
-from sprig_agent.context import prepare_context
+from sprig_agent.context import prepare_context, request_size
 from sprig_agent.provider import Provider
 from sprig_agent.revisions import MAX_READ_VERSIONS, ReadVersions
 from sprig_agent.session import SessionStore
@@ -191,6 +191,103 @@ class ReadVersionTests(unittest.TestCase):
         self.assertEqual(unknown["edit_failure"]["reason"], "unknown_read_id")
         self.assertEqual(path.read_bytes(), b"old\n")
         self.approve.assert_not_called()
+
+    def test_continue_reissues_visible_unchanged_reads_and_requires_approval(self):
+        good = self.root / "a.txt"
+        changed = self.root / "b.txt"
+        hidden = self.root / "c.txt"
+        for path in (good, changed, hidden):
+            path.write_bytes(b"old\r\n")
+        arguments = {"path": ".", "pattern": "old", "output_mode": "windows"}
+        result = self.tools.execute("grep", arguments)
+        old_ids = {row["path"]: row["read_id"] for row in result["files"]}
+        edit = [{"start_line": 1, "end_line": 1, "lines": ["new"]}]
+        history = [{"role": "system", "content": "system"}, {"role": "user", "content": "task"},
+                   model_call("search", "grep", arguments),
+                   {"role": "tool", "tool_call_id": "search", "content": json.dumps(result)},
+                   model_call("interrupted", "edit_lines", {"path": "a.txt", "read_id": old_ids["a.txt"], "edits": edit})]
+        with closing(SessionStore(self.parent / "sessions", self.config)) as store:
+            store.ensure_new("continue")
+            store.save("continue", history)
+            restored = store.load("continue")
+        changed.write_bytes(b"changed\r\n")
+        (self.root / ".sprigignore").write_text("c.txt\n", encoding="utf-8")
+        provider = Mock()
+        new_ids = []
+        approvals = Mock(side_effect=[False, True])
+
+        def respond(messages, schemas):
+            notice = messages[0]["content"].rsplit("\n", 1)[-1]
+            rows = json.loads(notice)
+            self.assertEqual([row["path"] for row in rows], ["a.txt"])
+            row = rows[0]
+            self.assertEqual(row["previous_read_id"], old_ids["a.txt"])
+            self.assertNotEqual(row["read_id"], old_ids["a.txt"])
+            new_ids.append(row["read_id"])
+            self.assertEqual(good.read_bytes(), b"old\r\n")
+            return model_call("proposal-" + str(len(new_ids)), "edit_lines",
+                              {"path": "a.txt", "read_id": row["read_id"], "edits": edit})
+
+        responses = iter([respond, respond, lambda *_: {"role": "assistant", "content": "Done"}])
+        provider.complete.side_effect = lambda *args: next(responses)(*args)
+        with closing(Tools(self.config, approvals)) as tools:
+            agent = Agent(self.config, provider, tools, lambda _: None)
+            history, complete = agent.run(messages=restored)
+            self.assertTrue(complete)
+            self.assertIsNone(tools.read_versions.resolve(new_ids[0], ("a.txt",)))
+        self.assertEqual(len(set(new_ids)), 1)
+        self.assertIn("NOT replayed", history[5]["content"])
+        self.assertNotIn("Revalidated source", history[0]["content"])
+        self.assertEqual(good.read_bytes(), b"new\r\n")
+        self.assertEqual(approvals.call_count, 2)
+
+    def test_continue_skips_reads_missing_from_projected_request_or_from_old_task(self):
+        path = self.root / "source.txt"
+        path.write_bytes(("old\n" * 9000).encode())
+        arguments = {"path": "source.txt", "offset": 1, "limit": 1600}
+        observed = self.tools.execute("read_file", arguments)
+        self.assertIn("read_id", observed)
+        history = [{"role": "system", "content": "system"}, {"role": "user", "content": "task"},
+                   model_call("read", "read_file", arguments),
+                   {"role": "tool", "tool_call_id": "read", "content": json.dumps(observed)}]
+        for index in range(8):
+            history.append({"role": "assistant", "content": f"Observation {index}"})
+        config = replace(self.config, max_context_bytes=16384, compact_context=True)
+        for label, task, settings in (("elided", None, config), ("new task", "Another task", self.config),
+                                      ("read-only", None, replace(self.config, read_only=True)),
+                                      ("disabled", None, replace(self.config, disabled_tools=("read_file",)))):
+            with self.subTest(label=label), closing(Tools(settings, self.approve)) as tools:
+                provider = Mock()
+                provider.complete.return_value = {"role": "assistant", "content": "Done"}
+                agent = Agent(settings, provider, tools, lambda _: None)
+                with patch.object(tools, "_read_validated", wraps=tools._read_validated) as read:
+                    agent.run(task, copy.deepcopy(history))
+                read.assert_not_called()
+                self.assertNotIn("Revalidated source", provider.complete.call_args.args[0][0]["content"])
+
+    def test_continue_notice_respects_wire_budget(self):
+        (self.root / "source.txt").write_bytes(b"old\n")
+        arguments = {"path": "source.txt"}
+        observed = self.tools.execute("read_file", arguments)
+        history = [{"role": "system", "content": "system"}, {"role": "user", "content": "task"},
+                   model_call("read", "read_file", arguments),
+                   {"role": "tool", "tool_call_id": "read", "content": json.dumps(observed)}]
+        provider = Mock()
+        provider.complete.return_value = {"role": "assistant", "content": "Done"}
+        config = replace(self.config, max_context_bytes=32768)
+        with closing(Tools(config, self.approve)) as tools:
+            agent = Agent(config, provider, tools, lambda _: None)
+            history[0]["content"] = agent._prompt()
+            projected = agent._request_messages(history, 1)
+            size = request_size(config, projected, agent.schemas)
+            history[1]["content"] += "x" * (config.max_context_bytes - size - 5)
+            with patch.object(tools, "revalidate_resume_reads", wraps=tools.revalidate_resume_reads) as revalidate:
+                agent.run(messages=history)
+            revalidate.assert_called_once()
+            self.assertEqual(tools.read_versions.snapshot(), ())
+        messages, schemas = provider.complete.call_args.args
+        self.assertNotIn("Revalidated source", messages[0]["content"])
+        self.assertLessEqual(request_size(config, messages, schemas), config.max_context_bytes)
 
     def test_bounded_read_versions_and_unknown_or_other_path_ids(self):
         versions = ReadVersions()

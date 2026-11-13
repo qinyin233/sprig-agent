@@ -1,15 +1,88 @@
 """Short references to validated reads; content hashes remain the write guard."""
 
 from collections import OrderedDict
+import json
+from pathlib import PurePosixPath
 import re
 import uuid
 
+from .message_origin import user_request
+
 MAX_READ_VERSIONS = 128
 READ_ID_PATTERN = r"^r[0-9a-f]{12}-[1-9][0-9]*$"
+MAX_RESUME_READS = 8
+MAX_RESUME_MESSAGES = 48
+MAX_RESUME_RESULT_CHARS = 64 * 1024
 
 
 def valid_read_id(value):
     return isinstance(value, str) and len(value) <= 64 and re.fullmatch(READ_ID_PATTERN, value) is not None
+
+
+def _object(text, limit):
+    if not isinstance(text, str) or len(text) > limit:
+        return {}
+    try:
+        value = json.loads(text)
+    except (ValueError, RecursionError):
+        return {}
+    return value if isinstance(value, dict) else {}
+
+
+def _visible_reads(function, message):
+    name = function.get("name")
+    if name not in {"read_file", "grep", "search"}:
+        return
+    arguments = _object(function.get("arguments"), 16384)
+    path = arguments.get("path", "." if name != "read_file" else None)
+    if not isinstance(path, str):
+        return
+    result = _object(message.get("content"), MAX_RESUME_RESULT_CHARS)
+    if (any(key in result for key in ("error", "approved", "outcome", "returncode"))
+            or any(result.get(flag) for flag in ("context_elided", "timed_out", "skipped", "interrupted", "output_limited"))):
+        return
+    mode = arguments.get("output_mode") if name != "read_file" else None
+    if mode == "windows" and result.get("output_mode") == mode:
+        rows = result.get("files")
+        rows = rows[:MAX_RESUME_READS] if isinstance(rows, list) else []
+    elif name == "read_file" or (mode == "read" and result.get("output_mode") == mode):
+        rows = [result]
+    else:
+        return
+    for row in rows:
+        if not isinstance(row, dict) or not isinstance(row.get("content"), str) or not row["content"]:
+            continue
+        source, digest, identity = (row.get(key) for key in ("path", "sha256", "read_id"))
+        if (row.get("line_truncated") or row.get("context_elided") or row.get("window_omitted")
+                or not isinstance(source, str) or not valid_read_id(identity)
+                or not isinstance(digest, str) or re.fullmatch(r"[0-9a-f]{64}", digest) is None):
+            continue
+        if mode == "windows":
+            if row.get("range_complete") is not True or not PurePosixPath(source).is_relative_to(PurePosixPath(path)):
+                continue
+        elif source != path:
+            continue
+        yield source, digest, identity
+
+
+def recent_visible_reads(messages, check_cancelled):
+    """Yield source observations from closed tool groups in the current request."""
+    tail = messages[-MAX_RESUME_MESSAGES:]
+    for index in range(len(tail) - 1, -1, -1):
+        check_cancelled()
+        row = tail[index]
+        if user_request(row):
+            break
+        calls = row.get("tool_calls", ()) if row.get("role") == "assistant" else ()
+        if not calls:
+            continue
+        results = tail[index + 1:index + 1 + len(calls)]
+        if len(results) != len(calls) or any(
+                result.get("role") != "tool" or result.get("tool_call_id") != call["id"]
+                for call, result in zip(calls, results)):
+            continue
+        for call, result in reversed(list(zip(calls, results))):
+            yield from _visible_reads(call["function"], result)
 
 
 class ReadVersions:
@@ -26,6 +99,9 @@ class ReadVersions:
         for identity, (path, _) in list(self._entries.items()):
             if path == tuple(parts):
                 del self._entries[identity]
+
+    def forget(self, identity):
+        self._entries.pop(identity, None)
 
     def snapshot(self):
         return tuple(self._entries.items())
