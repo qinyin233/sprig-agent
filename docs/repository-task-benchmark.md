@@ -45,9 +45,20 @@ POSIX 使用相同命令，把路径写成 `./click-pinned` 等。Windows 的 mi
 
 `--request-interval 20` 可让两边后端调用开始之间至少相隔 20 秒；默认 0，不等待。范围 0–60 秒，非有限值被拒绝。报告单列 `request_pacing` 的起始次数和等待时间；这些起始次数不是实际 HTTP 次数，后续校验仍可能阻止发送。总任务时间与扣除审批等待的时间都包含该等待，实际 HTTP 计时不含等待。它减少请求密度，不重试失败的 POST，也不能保证规避共享 token 限额或配额耗尽。
 
-`--request-timeout 60` 可显式调整后端超时，默认 30 秒，范围大于 0 且至多 120 秒，非有限值被拒绝。该值传入共享配置，报告为 `request_timeout_seconds`；默认命令超时也受该配置约束，工具显式提出的超时仍单独校验。它不增加模型轮次或请求体容量。
+`--request-timeout` 设置 HTTP 空闲超时，默认 30 秒，范围大于 0 且至多 120 秒。`--command-timeout` 单独设置命令超时，省略时沿用 HTTP 空闲超时。Sprig 可用 `--request-deadline` 设置 HTTP 总期限，默认 300 秒。报告分别记录这三个值。
 
 两边均可显式设置 `--max-tokens 2048` 和 `--thinking`，报告用 `generation_options` 记录生成配置；默认不发送这两个字段。它们计入实际请求体预算；mini 通过原生 SDK 发送同样的顶层 `max_tokens` 与 `chat_template_kwargs`。思考模式依赖服务支持，每次输出上限不是总费用上限。比较必须对齐这些参数，不能把思考模式的新运行与旧默认配置直接当作同条件结果。详见[生成配置](model-generation.md)。
+
+Sprig 可用以下参数复测固定的 12 步预算。复用上文的 `--fixture`、`--model`、`--base-url` 和独立的 `--report` 路径。需要运行对照时，第二次使用相同参数并加入 `--recover-output-limit`。
+
+```text
+--max-steps 12 --max-tokens 2048 --max-context-bytes 131072
+--request-timeout 120 --command-timeout 60 --request-deadline 180
+--stream --request-usage --preserve-reasoning --compact-context
+--check-before-task --check-after-edit --independent-post-check
+```
+
+`--wire-api` 可选 `chat_completions`、`messages` 或 `responses`。开启 `--independent-post-check` 后，Sprig 在本轮结束后另行提议执行同一固定验收，模型提前停止时也可取得当时的候选分数。用户批准后，报告在 `independent_post_check` 中记录通过数、跳过数和公开异常契约。命令拒绝、取消、结果不完整或验证器变化时记录对应状态。原运行的 `outcome`、审批统计和应用验收结果按原运行结算。
 
 仓库对照的 mini 现在使用 SDK 原生 `wall_time_limit_seconds=0`，与 Sprig 都不施加包含审批等待的额外任务壁钟上限；模型轮次、实际请求体预算、请求/命令超时和取消仍保留。普通小夹具入口继续使用 `600 + interval * (max_steps - 1)` 秒。这是评测配置调整，未修改上游 agent 循环或自动批准动作；旧报告的 600/980 秒限时与审批等待记录保持原样。
 

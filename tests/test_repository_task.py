@@ -7,6 +7,7 @@ import os
 from pathlib import Path
 import sys
 import unittest
+from types import SimpleNamespace
 from unittest.mock import patch
 
 REPO = Path(__file__).resolve().parents[1]
@@ -45,6 +46,69 @@ class RepositoryTaskTests(unittest.TestCase):
                     driver.main()
                 self.assertEqual(error.exception.code, 2)
                 adapter.assert_not_called()
+
+    def test_runtime_options_reach_the_sprig_loop_and_validate_before_fixture_access(self):
+        argv = ["repository-task", "--run", "--fixture", "unused", "--request-timeout", "120",
+                "--command-timeout", "60", "--request-deadline", "180", "--max-steps", "12",
+                "--max-tokens", "2048", "--wire-api", "responses", "--stream", "--request-usage",
+                "--check-before-task", "--check-after-edit", "--compact-context",
+                "--preserve-reasoning", "--recover-output-limit", "--independent-post-check"]
+        with (patch.object(sys, "argv", argv), patch.object(sys, "version_info", (3, 12, 12)),
+              patch.object(sys.stdin, "isatty", return_value=True), patch.object(sys.stdout, "isatty", return_value=True),
+              patch.object(driver, "environment_api_key", return_value="fixture-private-marker"),
+              patch("importlib.metadata.version", return_value="8.4.2"),
+              patch.object(driver.task_module, "ClickTask", return_value=SimpleNamespace(case={})) as adapter,
+              patch.object(driver.bench, "run_case", return_value={"acceptance_passed": False,
+                           "independent_post_check": {"status": "passed"}}) as run, patch("builtins.print")):
+            self.assertEqual(driver.main(), 1)
+            adapter.assert_called_once()
+            options = run.call_args.args[1]
+            self.assertEqual((options["request_timeout"], options["timeout"], options["request_deadline"]), (120, 60, 180))
+            self.assertEqual((options["max_steps"], options["max_tokens"], options["wire_api"]), (12, 2048, "responses"))
+            for flag in ("stream", "request_usage", "check_before_task", "check_after_edit",
+                         "compact_context", "preserve_reasoning", "recover_output_limit"):
+                self.assertIs(options[flag], True)
+            self.assertIs(run.call_args.kwargs["post_check"], driver.click_post_check)
+            self.assertTrue(callable(run.call_args.kwargs["emit_delta"]))
+        for flags in (["--client", "mini", "--recover-output-limit"], ["--request-deadline", "nan"],
+                      ["--command-timeout", "0"], ["--request-usage"]):
+            with (self.subTest(flags=flags), patch.object(sys, "argv", argv[:4] + flags),
+                  patch.object(driver.task_module, "ClickTask") as adapter, patch("sys.stderr", io.StringIO()),
+                  self.assertRaises(SystemExit) as stopped):
+                try:
+                    driver.main()
+                finally:
+                    adapter.assert_not_called()
+            self.assertEqual(stopped.exception.code, 2)
+
+    def test_independent_post_check_does_not_replace_the_original_outcome_or_run_model_tools(self):
+        for approved in (True, False):
+            asks, seen = [], []
+
+            class TruncatedProvider:
+                def __init__(self, config):
+                    pass
+
+                def complete(self, messages, tools):
+                    seen.append(1)
+                    raise driver.bench.ProviderError("fixture output limit", code="output_limit")
+
+            with self.subTest(approved=approved):
+                report = driver.bench.run_case(driver.bench.suite.cases()["py-interval"], {
+                    "model": "fixture", "request_timeout": 120, "timeout": 60, "request_deadline": 180,
+                    "max_steps": 1, "recover_output_limit": True,
+                }, provider_factory=TruncatedProvider, confirm=lambda description: asks.append(description) or approved,
+                    post_check=lambda result: {"status": "fixture", "approved": result.get("approved")})
+                self.assertEqual(report["outcome"], "provider_error")
+                self.assertFalse(report["acceptance_passed"])
+                self.assertEqual(report["approvals"]["requests"], 0)
+                self.assertEqual(report["independent_post_check"], {"status": "fixture", "approved": approved})
+                self.assertEqual(len(asks), 1)
+                self.assertEqual(len(seen), 1)
+                self.assertEqual(report["tools"], [])
+                self.assertEqual((report["request_timeout_seconds"], report["command_timeout_seconds"],
+                                  report["request_deadline_seconds"]), (120, 60, 180))
+                self.assertTrue(report["recover_output_limit"])
 
     def adapter(self):
         base = {"src/click/__init__.py": b"baseline-source", "tests/test_commands.py": b"initial-test"}
@@ -171,6 +235,17 @@ class OracleResultTests(unittest.TestCase):
         for change in changes:
             with self.subTest(change=change):
                 self.assertFalse(oracle.validate_result(self.result(**change), {"known"})["passed"])
+
+    def test_independent_report_only_keeps_counts_and_checks_returncode(self):
+        payload = {"schema": 1, "collected": 642, "checks_passed": 638, "skipped": 0,
+                   "public_exception_contract": False, "passed": False, "failed": ["private-marker"]}
+        result = {"approved": True, "returncode": 1, "output": json.dumps(payload)}
+        self.assertEqual(driver.click_post_check(result), {"status": "failed", "collected": 642,
+                         "checks_passed": 638, "skipped": 0, "public_exception_contract": False})
+        for extra in ({"output_truncated": True}, {"returncode": 0}, {"approved": None},
+                      {"output": json.dumps({**payload, "checks_passed": True})}):
+            self.assertEqual(driver.click_post_check({**result, **extra}), {"status": "incomplete"})
+        self.assertEqual(driver.click_post_check({"approved": False}), {"status": "rejected"})
 
     def test_empty_zero_exit_or_bounded_child_failure_never_passes(self):
         outcomes = [{"returncode": 0, "output": ""}, {"returncode": True, "output": self.result()["output"]},

@@ -1,7 +1,7 @@
 """Diagnostic coding tasks. Live runs retain fresh approvals; no auto-approve flag."""
 
 import argparse
-from contextlib import contextmanager
+from contextlib import closing, contextmanager
 import hashlib
 import json
 import math
@@ -120,7 +120,7 @@ def prepare(target, case):
 
 
 def run_case(case, config_options, *, provider_factory=Provider, confirm=approve, emit=None, emit_delta=None,
-             case_adapter=None, request_interval=0):
+             case_adapter=None, request_interval=0, post_check=None):
     pacer = RequestPacer(request_interval)
     key = config_options.get("api_key", "")
     with disposable() as parent:
@@ -217,11 +217,14 @@ def run_case(case, config_options, *, provider_factory=Provider, confirm=approve
                   "driver_sha256": driver_signature,
                   "python": platform.python_version(), "platform": platform.platform(),
                   "node": node_version,
-                  "request_timeout_seconds": config.timeout,
+                  "request_timeout_seconds": config.request_timeout or config.timeout,
+                  "request_deadline_seconds": config.request_deadline, "command_timeout_seconds": config.timeout,
                   "generation_options": config.generation_options(),
-                  "model": config.model, "base_url": config.base_url, "stream": config.stream,
+                  "model": config.model, "base_url": config.base_url, "wire_api": config.wire_api, "stream": config.stream,
                   "request_usage": config.request_usage, "max_steps": config.max_steps,
                   "check_before_task": config.check_before_task, "baseline_status": agent.baseline_status,
+                  "check_after_edit": config.check_after_edit, "preserve_reasoning": config.preserve_reasoning,
+                  "recover_output_limit": config.recover_output_limit,
                   "max_context_bytes": config.max_context_bytes, "compact_context": config.compact_context,
                   "synthetic_history": bool(case.get("history_reads")),
                   "outcome": outcome if valid else "verifier_modified", "acceptance_passed": completed and valid,
@@ -233,6 +236,22 @@ def run_case(case, config_options, *, provider_factory=Provider, confirm=approve
         if case_adapter is not None:
             report.update(scope="one repository Sprig task; no overall performance or competitor ranking claim",
                           repository_task=case_adapter.metadata)
+        if post_check is not None:
+            # The normal agent run is settled before the separate approval.
+            if valid and outcome in {"acceptance_passed", "not_completed", "provider_error"}:
+                with closing(Tools(config, fresh_approval)) as verification:
+                    try:
+                        result = verification.execute("run", {"argv": list(argv)})
+                    except KeyboardInterrupt:
+                        report["independent_post_check"] = {"status": "cancelled"}
+                    else:
+                        report["independent_post_check"] = post_check(result)
+                if not intact():
+                    report.update(verifier_intact=False, outcome="verifier_modified", acceptance_passed=False,
+                                  independent_post_check={"status": "verifier_modified"})
+            else:
+                status = "verifier_modified" if not valid else outcome
+                report["independent_post_check"] = {"status": status}
         return redact(report, key)
 
 

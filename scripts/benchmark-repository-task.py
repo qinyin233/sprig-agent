@@ -21,6 +21,32 @@ from sprig_agent.config import Config, environment_api_key, redact, terminal_tex
 from sprig_agent.tools import Tools
 
 
+def click_post_check(result):
+    """Keep only the validated public Click oracle counts."""
+    if result.get("approved") is False:
+        return {"status": "rejected"}
+    if (result.get("approved") is not True or type(result.get("returncode")) is not int
+            or result["returncode"] not in (0, 1)
+            or any(result.get(key) for key in ("timed_out", "output_limited", "output_truncated", "error", "outcome"))):
+        return {"status": "incomplete"}
+    try:
+        data = json.loads(result["output"])
+        counts = {name: data[name] for name in ("collected", "checks_passed", "skipped")}
+        if (type(data["schema"]) is not int or data["schema"] != 1
+                or any(type(value) is not int or not 0 <= value <= 1284 for value in counts.values())
+                or counts["checks_passed"] + counts["skipped"] > counts["collected"]
+                or type(data["public_exception_contract"]) is not bool or type(data["passed"]) is not bool):
+            raise ValueError
+        passed = (result["returncode"] == 0 and counts == {"collected": 642, "checks_passed": 642, "skipped": 0}
+                  and data["public_exception_contract"])
+        if data["passed"] is not passed or (result["returncode"] == 0) is not passed:
+            raise ValueError
+    except (KeyError, TypeError, ValueError, RecursionError):
+        return {"status": "incomplete"}
+    return {"status": "passed" if passed else "failed", **counts,
+            "public_exception_contract": data["public_exception_contract"]}
+
+
 def prepare(target, adapter):
     if target.exists() or target.is_symlink() or not target.parent.is_dir():
         raise ValueError("prepared task must be new with an existing parent")
@@ -83,13 +109,24 @@ def main():
     parser.add_argument("--client", choices=("sprig", "mini"), default="sprig")
     parser.add_argument("--model", default=os.environ.get("SPRIG_MODEL", "agnes-3.0-flash"))
     parser.add_argument("--base-url", default=os.environ.get("SPRIG_BASE_URL", "https://apihub.agnes-ai.com/v1"))
+    parser.add_argument("--wire-api", choices=("chat_completions", "messages", "responses"), default="chat_completions")
     parser.add_argument("--max-steps", type=int, default=20)
     parser.add_argument("--max-tokens", type=int)
     parser.add_argument("--thinking", action="store_true")
     parser.add_argument("--check-before-task", action="store_true", help="run fixed baseline checks with fresh approval before the normal model loop")
+    parser.add_argument("--check-after-edit", action="store_true", help="propose a fresh fixed check after a successful edit batch")
     parser.add_argument("--max-context-bytes", type=int, default=131072)
     parser.add_argument("--request-interval", type=float, default=0, help="0-60 seconds between backend starts; no automatic retry")
     parser.add_argument("--request-timeout", type=float, default=30, help="backend timeout in seconds (0 < value <= 120)")
+    parser.add_argument("--command-timeout", type=float, help="approved command timeout in seconds (defaults to request-timeout)")
+    parser.add_argument("--request-deadline", type=float, help="Sprig total HTTP deadline in seconds (default 300)")
+    parser.add_argument("--stream", action="store_true")
+    parser.add_argument("--request-usage", action="store_true")
+    parser.add_argument("--preserve-reasoning", action="store_true")
+    parser.add_argument("--compact-context", action="store_true")
+    parser.add_argument("--recover-output-limit", action="store_true")
+    parser.add_argument("--independent-post-check", action="store_true",
+                        help="propose a separate fixed check after the Sprig run, including incomplete runs")
     parser.add_argument("--report", type=Path, help="explicitly create a new numeric report; never overwrite a file")
     args = parser.parse_args()
     try:
@@ -98,6 +135,17 @@ def main():
             parser.error("--request-timeout must be finite and greater than 0, at most 120 seconds")
         if args.max_tokens is not None and not 1 <= args.max_tokens <= 65536:
             parser.error("--max-tokens must be between 1 and 65536")
+        if args.command_timeout is not None and not 0 < args.command_timeout <= 120:
+            parser.error("--command-timeout must be finite and greater than 0, at most 120 seconds")
+        if args.request_deadline is not None and not 0 < args.request_deadline <= 3600:
+            parser.error("--request-deadline must be finite and greater than 0, at most 3600 seconds")
+        if (args.client != "sprig" or not args.run) and (
+                args.request_deadline is not None or args.check_after_edit or args.stream or args.request_usage
+                or args.preserve_reasoning or args.compact_context or args.recover_output_limit or args.independent_post_check
+                or args.wire_api != "chat_completions"):
+            parser.error("the selected runtime options require --run --client sprig")
+        if args.request_usage and not args.stream:
+            parser.error("--request-usage requires --stream")
         if args.report and (args.report.exists() or args.report.is_symlink() or not args.report.parent.is_dir()):
             parser.error("--report must be new, with an existing parent")
         if args.run:
@@ -120,11 +168,25 @@ def main():
             options = {"model": args.model, "base_url": args.base_url, "api_key": key,
                        "max_steps": args.max_steps, "max_context_bytes": args.max_context_bytes,
                        "max_tokens": args.max_tokens, "thinking": args.thinking,
-                       "timeout": args.request_timeout, "check_before_task": args.check_before_task}
+                       "timeout": args.command_timeout or args.request_timeout,
+                       "request_timeout": args.request_timeout, "check_before_task": args.check_before_task}
+            runtime = {}
+            if args.client == "sprig":
+                options.update(wire_api=args.wire_api, check_after_edit=args.check_after_edit,
+                               stream=args.stream, request_usage=args.request_usage,
+                               preserve_reasoning=args.preserve_reasoning, compact_context=args.compact_context,
+                               recover_output_limit=args.recover_output_limit)
+                if args.request_deadline is not None:
+                    options["request_deadline"] = args.request_deadline
+                if args.independent_post_check:
+                    runtime["post_check"] = click_post_check
+                if args.stream:
+                    runtime["emit_delta"] = lambda text: print(terminal_text(redact(text, key)), end="", file=sys.stderr, flush=True)
             entry = load_mini().run_case if args.client == "mini" else bench.run_case
             report = entry(adapter.case, options, case_adapter=adapter,
                            request_interval=args.request_interval,
-                           emit=lambda text: print(terminal_text(redact(text, key)), file=sys.stderr, flush=True))
+                           emit=lambda text: print(terminal_text(redact(text, key)), file=sys.stderr, flush=True),
+                           **runtime)
         report["recorded_at_utc"] = datetime.now(timezone.utc).isoformat()
         rendered = json.dumps(report, ensure_ascii=True, indent=2) + "\n"
         print(rendered, end="")
