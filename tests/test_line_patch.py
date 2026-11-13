@@ -78,6 +78,43 @@ class LinePatchTests(unittest.TestCase):
         self.assertTrue(result.get('changed'),result)
         self.assertEqual(self.path.read_bytes(),b'new\nkeep\nlast\n')
 
+    def test_context_hunks_match_whole_lines_and_preserve_bom_and_endings(self):
+        original = "\ufeffhead\r\nsame\r\n  anchor\r\nsame\r\ntail\r\n"
+        self.path.write_bytes(original.encode())
+        result = self.change("@@\n   anchor\n-same\n+unique界\n tail\n")
+        self.assertTrue(result.get("changed"), result)
+        self.assertEqual(self.path.read_bytes(), original.replace("same\r\ntail", "unique界\r\ntail").encode())
+        self.assertEqual(len(self.prompts), 1)
+        self.assertIn("-same", self.prompts[0])
+        self.assertIn("+unique界", self.prompts[0])
+
+    def test_multiple_context_hunks_use_original_source_and_allow_context_anchored_insertion(self):
+        self.path.write_bytes(b"head\nfirst\nunchanged\nlast")
+        patch = ("@@\n head\n+new\n-first\n@@\n unchanged\n+inserted\n last\n"
+                 "\\ No newline at end of file\n")
+        result = self.change(patch)
+        self.assertTrue(result.get("changed"), result)
+        self.assertEqual(self.path.read_bytes(), b"head\nnew\nunchanged\ninserted\nlast")
+        self.assertEqual(len(self.prompts), 1)
+
+    def test_context_hunks_refuse_ambiguous_missing_unanchored_or_overlapping_matches(self):
+        original = b"same\nsame\nsame\n  exact\nlast\n"
+        self.path.write_bytes(original)
+        cases = [
+            ("@@\n-same\n same\n+new\n", "ambiguous"),
+            ("@@\n-exact\n+new\n", "not found"),
+            ("@@\n+new\n", "requires"),
+            ("@@\n last\n", "requires"),
+            ("@@\n   exact\n-last\n+new\n@@\n-last\n+again\n", "overlap"),
+            ("@@\n-last\n+new\n@@ -4 +4 @@\n-  exact\n+new\n", "mix"),
+        ]
+        for patch, expected in cases:
+            with self.subTest(expected=expected):
+                result = self.change(patch)
+                self.assertIn(expected, result["error"])
+                self.assertEqual(self.path.read_bytes(), original)
+        self.assertFalse(self.prompts)
+
     def test_insertion_deletion_existing_empty_file_and_new_coordinates(self):
         for before,patch,after in [
             ('','@@ -0,0 +1,2 @@\n+first\n+second\n','first\nsecond\n'),

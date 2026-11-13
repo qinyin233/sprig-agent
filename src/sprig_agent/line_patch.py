@@ -1,4 +1,4 @@
-"""Strict single-file unified hunks, translated to revision-pinned line edits."""
+"""Exact single-file patch hunks, translated to revision-pinned line edits."""
 import io
 import re
 
@@ -6,6 +6,23 @@ from .line_edits import line_ending, replace_lines
 
 HEADER = re.compile(r"@@ -([0-9]{1,7})(?:,([0-9]{1,7}))? \+([0-9]{1,7})(?:,([0-9]{1,7}))? @@(?: .*)?")
 NO_NEWLINE = "\\ No newline at end of file"
+
+
+def _context_start(source, old_lines, check):
+    if any(unterminated for _, unterminated in old_lines[:-1]):
+        raise ValueError("context hunk requires complete source lines with a single optional EOF marker")
+    check()
+    needle = "\n" + "".join(body + ("" if unterminated else "\n") for body, unterminated in old_lines)
+    if old_lines[-1][1]:
+        # An explicitly unterminated old line can only match at physical EOF.
+        start = len(source) - len(needle) if source.endswith(needle) else -1
+    else:
+        start = source.find(needle)
+        if start >= 0 and source.find(needle, start + 1) >= 0:
+            raise ValueError("context hunk is ambiguous; include more unchanged lines or use a numbered hunk")
+    if start < 0:
+        raise ValueError("context hunk not found; reread the exact source lines")
+    return source.count("\n", 0, start)
 
 
 def apply(text, patch, maximum, check):
@@ -27,23 +44,20 @@ def apply(text, patch, maximum, check):
     if lines[-1] == '':
         lines.pop()
     lines = [line[:-1] if line.endswith('\r') else line for line in lines]
+    contextual = lines[0] == "@@"
+    # Normalize the search view only. Replacement still uses original EOLs.
+    context_source = "\n" + "".join(body + ("\n" if ending else "") for body, ending in source) if contextual else ""
     edits, cursor, delta, previous_end, previous_start = [], 0, 0, 0, -1
     while cursor < len(lines):
         check()
-        header = HEADER.fullmatch(lines[cursor])
-        if header is None or len(edits) == 32:
-            raise ValueError('patch requires 1-32 numbered @@ hunks; no file headers, fences or routing directives')
-        old_start, old_count, new_start, new_count = [int(value) if value is not None else 1 for value in header.groups()]
-        if (max(old_start, old_count, new_start, new_count) > 1000000
-                or (old_count and not old_start) or (new_count and not new_start)):
-            raise ValueError('invalid patch line coordinates')
-        start = old_start - bool(old_count)
-        target = new_start - bool(new_count)
-        if (start < previous_end or start == previous_start or start + old_count > len(source)
-                or target != start + delta):
-            raise ValueError('patch coordinates overlap, exceed the file, or disagree with preceding hunks')
+        marker_line = lines[cursor]
+        header = HEADER.fullmatch(marker_line)
+        if len(edits) == 32 or (header is None and marker_line != "@@"):
+            raise ValueError("patch requires 1-32 @@ hunks with no file headers, fences or routing directives")
+        if contextual != (marker_line == "@@"):
+            raise ValueError("patch cannot mix numbered and context hunks")
         cursor += 1
-        old_seen, new_seen, replacement = 0, 0, []
+        payload = []
         while cursor < len(lines) and not lines[cursor].startswith('@@'):
             if cursor % 256 == 0:
                 check()
@@ -55,6 +69,29 @@ def apply(text, patch, maximum, check):
             unterminated = cursor < len(lines) and lines[cursor] == NO_NEWLINE
             if unterminated:
                 cursor += 1
+            payload.append((kind, body, unterminated))
+        if contextual:
+            old_lines = [(body, unterminated) for kind, body, unterminated in payload if kind != "+"]
+            if not old_lines or not any(kind != " " for kind, _, _ in payload):
+                raise ValueError("context hunk requires at least one source line and a change")
+            start = _context_start(context_source, old_lines, check)
+            old_count = len(old_lines)
+            new_count = sum(kind != "-" for kind, _, _ in payload)
+            target = start + delta
+        else:
+            old_start, old_count, new_start, new_count = [int(value) if value is not None else 1 for value in header.groups()]
+            if (max(old_start, old_count, new_start, new_count) > 1000000
+                    or (old_count and not old_start) or (new_count and not new_start)):
+                raise ValueError("invalid patch line coordinates")
+            start = old_start - bool(old_count)
+            target = new_start - bool(new_count)
+        if (start < previous_end or start == previous_start or start + old_count > len(source)
+                or target != start + delta):
+            raise ValueError("patch hunks overlap, are out of order, or have invalid coordinates")
+        old_seen, new_seen, replacement = 0, 0, []
+        for index, (kind, body, unterminated) in enumerate(payload):
+            if index % 256 == 0:
+                check()
             if kind != '+':
                 position = start + old_seen
                 if old_seen >= old_count or position >= len(source):

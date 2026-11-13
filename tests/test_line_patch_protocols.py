@@ -107,7 +107,8 @@ class LinePatchProtocolTests(unittest.TestCase):
                 with self.subTest(protocol=protocol,stream=streamed), tempfile.TemporaryDirectory() as temp:
                     root=Path(temp);(root/'source.txt').write_bytes(b'before\r\nkeep\r\n')
                     captured,approved=[],[]
-                    with backend(protocol,replies(protocol,streamed),captured,stream=streamed) as url:
+                    edit_args = {'patch': '@@\n-before\n+中文🙂\n+insert\n keep\n'} if streamed else None
+                    with backend(protocol,replies(protocol,streamed,edit_args),captured,stream=streamed) as url:
                         config=Config(root,'fixture',base_url=url,wire_api=protocol,stream=streamed,max_steps=3,
                             max_context_bytes=16384,check_after_edit=True,checks=((sys.executable,'-I','-B','-c',
                             "from pathlib import Path; assert Path('source.txt').read_bytes()=="+repr('中文🙂\r\ninsert\r\nkeep\r\n'.encode())),))

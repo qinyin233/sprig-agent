@@ -95,7 +95,7 @@ TOOL_SCHEMAS = [
             "edits": {"type": "array", "minItems": 1, "maxItems": MAX_EDITS,
                       "items": {"type": "object", "properties": {"old": STRING, "new": STRING},
                                 "required": ["old", "new"], "additionalProperties": False}}}, ["path"]),
-    schema("edit_lines", "1-based inclusive; insert end=start-1. new text or lines[] (adds EOL). patch: @@ hunks.",
+    schema("edit_lines", "1-based inclusive; insert end=start-1. lines[] adds EOL. patch: @@ exact context or numbered.",
            {"path": STRING, "read_id": {"type": "string", "pattern": READ_ID_PATTERN, "maxLength": 64},
             "patch": STRING,
             "edits": {"type": "array", "minItems": 1, "maxItems": MAX_EDITS,
