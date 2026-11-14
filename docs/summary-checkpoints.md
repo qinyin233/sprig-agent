@@ -11,13 +11,13 @@ CLI chat 与 TUI 提供相同命令：
 | `/summary clear` | 清除检查点，恢复完整历史的请求视图；无模型请求，不删除原文 |
 | `/history MESSAGE [OFFSET]` | 本地分页查看原始消息；编号从 2 开始，1 是不公开的系统提示；偏移使用返回的 `next_offset` |
 
-`END` 是被概括范围最后一条消息的原始编号。省略时保留配置的 `context_keep_recent_messages` 尾部；如果边界落在工具结果组内，会前移到完整工具组之前。输入不够长时不生成；已有检查点再次生成时必须覆盖更多原文。超预算时可以选择较早的闭合范围，检查实际净收益后逐次生成，不自动拆成多个付费请求。
+`END` 是被概括范围最后一条消息的原始编号。边界落在工具结果组内时，会前移到完整工具组之前。省略 `END` 时先尝试保留配置的 `context_keep_recent_messages` 尾部。如果摘要输入仍然超限，Sprig 在本地按实际协议字节试算较早的闭合前缀。`partial_source=true` 表示选取了较早的边界，可以随后再次明确创建，逐步覆盖更多原文。显式指定的 `END` 超限时直接提示。每次生成都需要重新确认，最多发送一次请求。
 
 检查点的来源范围在生成时固定。之后修改 `context_keep_recent_messages` 会影响新检查点及当前请求的确定性裁剪，不自动撤销已有摘要范围；要重新选择完整原文尾部，应先 `/summary clear` 再生成。
 
 ## 请求与应用
 
-确认界面显示输入字节、来源范围、保留尾部和输出设置，明确可能付费。摘要使用当前提供商与协议，沿用显式 `max_tokens`；未配置时，Chat Completions / Responses 使用 2048，Messages 沿用协议默认 4096，不静默降低与 thinking budget 关联的显式限额。较大的用户限额可能增加费用，应在确认前检查。复用当前连接设置与请求统计，不自动换模型、重试或调用其他提供商。
+确认界面显示输入字节、来源范围、保留尾部和输出设置。确认期间来源变化时，需要重新预览。摘要使用当前提供商与协议，沿用显式 `max_tokens`。未配置时，Chat Completions / Responses 使用 2048，Messages 使用 4096。生成可能产生费用，沿用当前连接设置与请求统计。
 
 摘要请求不包含工具定义或 `tool_choice`；应用层还会拒绝任何实际工具调用。Chat Completions 的无工具默认行为见[官方 API 说明](https://developers.openai.com/api/reference/resources/chat/subresources/completions/methods/create)，Messages 的参数与无工具请求结构见[官方参考](https://platform.claude.com/docs/en/api/messages/create)。Responses 同样沿用本项目的无工具请求适配。HTTP/SSE 必须完整结束，截断、取消、非 JSON 拒绝文本、不完整 JSON、缺字段、未知字段或超出 16 KiB 的摘要不会成为检查点。
 

@@ -59,9 +59,11 @@ class SummaryTests(unittest.TestCase):
 
     def test_summary_unblocks_over_budget_history_then_recovers_original_with_readonly_tool(self):
         rows, before = history(), history()
+        (self.root / "AGENTS.md").write_text("Follow the fixture guidance.", encoding="utf-8")
         agent, provider = self.agent([fixture.response(json.dumps(fields())),
                                      fixture.call("recover", "read_history", {"message": 3}), fixture.response()])
-        self.assertFalse(agent.context_preview(rows)["within_budget"])
+        context = agent.context_preview(rows)
+        self.assertFalse(context["within_budget"])
         preview = agent.summary_preview(rows)
         self.assertTrue(preview["input_fits"])
         self.assertEqual(provider.calls, [])
@@ -73,7 +75,10 @@ class SummaryTests(unittest.TestCase):
         self.assertEqual(len(provider.calls), 1)
         self.assertIn("ONE additional model request", self.approve.call_args.args[0])
         self.assertTrue(any(row["function"]["name"] == "read_history" for row in agent.schemas))
-        self.assertTrue(agent.context_preview(rows)["within_budget"])
+        after = agent.context_preview(rows)
+        self.assertTrue(after["within_budget"])
+        self.assertEqual(result["request_before_bytes"], context["after_bytes"])
+        self.assertEqual(result["request_after_bytes"], after["after_bytes"])
         _, complete = agent.run(None, rows)
         self.assertTrue(complete)
         self.assertNotIn("OLD_DETAIL_0", json.dumps(provider.calls[1]))
@@ -155,6 +160,64 @@ class SummaryTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "closed conversation"):
             agent.summarize(unfinished)
         self.assertEqual(provider.calls, [])
+
+    def test_over_budget_default_advances_by_closed_prefixes_with_one_call_per_approval(self):
+        rows = [{"role": "system", "content": "system"}, {"role": "user", "content": "Keep tests intact"}]
+        for index in range(22):
+            identity = str(index)
+            rows.extend([fixture.call(identity, "read_file", {"path": "file.txt"}),
+                         {"role": "tool", "tool_call_id": identity, "content": '{"error":"fixture unavailable"}'},
+                         fixture.response(("Historical observation " + identity + ". ") * 70)])
+        original = copy.deepcopy(rows)
+        agent, provider = self.agent([fixture.response(json.dumps(fields())) for _ in range(6)])
+        latest_end = closed_end(rows, self.config.context_keep_recent_messages)
+        self.assertFalse(agent.summary_preview(rows, end=latest_end)["input_fits"])
+        with self.assertRaisesRegex(ValueError, "no request sent"):
+            agent.summarize(rows, end=latest_end)
+        self.approve.assert_not_called()
+        self.assertEqual(provider.calls, [])
+        previous = 1
+        for count in range(1, 7):
+            preview = agent.summary_preview(rows)
+            self.assertTrue(preview["input_fits"])
+            self.assertEqual(preview["requested_source_end"], latest_end)
+            boundary = preview["source_end"]
+            self.assertGreater(boundary, previous)
+            self.assertNotEqual(rows[boundary]["role"], "tool")
+            if count == 1:
+                self.assertTrue(preview["partial_source"])
+                self.assertLess(boundary, latest_end)
+            result = agent.summarize(rows)
+            self.assertIn(f"original messages 2..{boundary}", self.approve.call_args.args[0])
+            self.assertEqual(result["source_end"], boundary)
+            self.assertEqual(len(provider.calls), count)
+            request = provider.calls[-1]
+            data = json.loads(request[-1]["content"])
+            self.assertEqual(data["source_start"], previous + 1)
+            self.assertEqual(data["source_end"], boundary)
+            self.assertEqual("previous_summary" in data, count > 1)
+            self.assertEqual(rows, original)
+            previous = boundary
+            if result["within_budget"]:
+                break
+        self.assertTrue(result["within_budget"])
+        self.assertGreater(self.approve.call_count, 1)
+        self.assertEqual(self.approve.call_count, len(provider.calls))
+
+    def test_summary_source_changed_during_confirmation_prevents_network(self):
+        rows = history()
+        agent, provider = self.agent()
+
+        def change_source(_):
+            rows[2]["content"] = "Updated after preview"
+            return True
+
+        self.approve.side_effect = change_source
+        with self.assertRaisesRegex(ValueError, "source changed during approval"):
+            agent.summarize(rows)
+        self.assertEqual(provider.calls, [])
+        self.assertIsNone(agent.summary)
+        self.assertEqual(self.saved, [])
 
     def test_summary_fields_bytes_and_privacy_safe_page_boundaries(self):
         for invalid in ({**fields(), "files": ["a"] * 16}, {**fields(), "objective": ""},

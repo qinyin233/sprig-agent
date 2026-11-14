@@ -334,24 +334,45 @@ class Agent:
         if not messages or validate_history(messages) != messages:
             raise ValueError("a valid closed conversation is required before summarizing")
         previous = summary_state(self.summary, messages, self._check_cancelled, binding=self.config.binding())
-        end = closed_end(messages, self.config.context_keep_recent_messages, end, previous)
+        latest_end = closed_end(messages, self.config.context_keep_recent_messages, end, previous)
         start = previous["end"] if previous is not None else 1
         # Retain message positions: disable batch folding and read restoration.
         # Native/reasoning metadata is never put into the summarizer data frame.
-        source = [dict(messages[0]), *messages[start:end]]
-        selected, _ = prepare_context(replace(self.config, preserve_reasoning=True, context_keep_read_bytes=0),
-                                      source, [], compact=True, force=True, check_cancelled=self._check_cancelled)
-        data = {"source_start": start + 1, "source_end": end,
-                "messages": [{"message": start + i, **public_message(row)} for i, row in enumerate(selected[1:], 1)]}
-        if previous is not None:
-            data["previous_summary"] = previous["summary"]
-        request = [{"role": "system", "content": SUMMARY_PROMPT},
-                   {"role": "user", "content": json.dumps(redact(data, self.config.secrets), ensure_ascii=False)}]
+        source_config = replace(self.config, preserve_reasoning=True, context_keep_read_bytes=0)
         summary_config = self._summary_config()
-        size = request_size(summary_config, request, [], check_cancelled=self._check_cancelled)
-        return request, {"source_start": 2, "source_end": end, "new_source_start": start + 1,
-                         "retained_tail_messages": len(messages) - end, "input_bytes": size,
-                         "budget_bytes": self.config.max_context_bytes, "input_fits": size <= self.config.max_context_bytes,
+        budget = summary_config.max_context_bytes
+
+        def prepare(boundary):
+            source = [dict(messages[0]), *messages[start:boundary]]
+            selected, _ = prepare_context(source_config, source, [], compact=True, force=True,
+                                          check_cancelled=self._check_cancelled)
+            data = {"source_start": start + 1, "source_end": boundary,
+                    "messages": [{"message": start + i, **public_message(row)} for i, row in enumerate(selected[1:], 1)]}
+            if previous is not None:
+                data["previous_summary"] = previous["summary"]
+            request = [{"role": "system", "content": SUMMARY_PROMPT},
+                       {"role": "user", "content": json.dumps(redact(data, self.config.secrets), ensure_ascii=False)}]
+            return request, request_size(summary_config, request, [], check_cancelled=self._check_cancelled)
+
+        boundary = latest_end
+        request, size = prepare(boundary)
+        if end is None and size > budget:
+            ends = [index for index in range(start + 1, latest_end) if messages[index]["role"] != "tool"]
+            low, high = 0, len(ends) - 1
+            # Compaction can make sizes nonmonotonic. Keep only measured fits
+            # and bound the local search instead of rebuilding every prefix.
+            while low <= high:
+                middle = (low + high) // 2
+                candidate, measured = prepare(ends[middle])
+                if measured <= budget:
+                    boundary, request, size = ends[middle], candidate, measured
+                    low = middle + 1
+                else:
+                    high = middle - 1
+        return request, {"source_start": 2, "source_end": boundary, "new_source_start": start + 1,
+                         "retained_tail_messages": len(messages) - boundary, "input_bytes": size,
+                         "budget_bytes": budget, "input_fits": size <= budget,
+                         "partial_source": boundary < latest_end, "requested_source_end": latest_end,
                          "extra_model_requests": 1,
                          "generation_options": redact(summary_config.generation_options(), self.config.secrets),
                          "original_history_retained": True, "lossy_model_report": True}
@@ -377,6 +398,9 @@ class Agent:
         request, report = self._summary_input(messages, end)
         if not report["input_fits"]:
             raise ValueError("summary input exceeds request budget; choose an earlier closed source end; no request sent")
+        source_end = report["source_end"]
+        source_digest = fingerprint(messages, source_end, self._check_cancelled)
+        config, previous_summary = self.config, copy.deepcopy(self.summary)
         approved = self.tools.request_approval(
             "Create and apply a lossy summary checkpoint? This makes exactly ONE additional model request "
             f"({report['input_bytes']} request bytes, original messages 2..{report['source_end']}); it may incur cost. "
@@ -386,7 +410,10 @@ class Agent:
         if approved is not True:
             return {**report, "approved": False, "network_contacted": False}
         self._check_cancelled()
-        source_digest = fingerprint(messages, report["source_end"], self._check_cancelled)
+        if (self.config is not config or self.summary != previous_summary
+                or source_end >= len(messages) or messages[source_end].get("role") == "tool"
+                or fingerprint(messages, source_end, self._check_cancelled) != source_digest):
+            raise ValueError("summary source changed during approval; preview again; no request sent")
         provider = self.provider
         if isinstance(provider, Provider):
             provider = copy.copy(provider)  # Keep the same opener and shared measurements.
@@ -403,20 +430,28 @@ class Agent:
             fields = summary_fields(json.loads(content))
         except (ValueError, TypeError, RecursionError):
             raise ValueError("invalid structured summary; checkpoint unchanged") from None
-        candidate = {"version": 1, "end": report["source_end"], "sha256": source_digest,
+        candidate = {"version": 1, "end": source_end, "sha256": source_digest,
                      "binding": binding_digest(self.config.binding()),
                      "summary": redact(fields, self.config.secrets)}
         summary_state(candidate, messages, self._check_cancelled, binding=self.config.binding())
         previous, old_schemas = self.summary, self.schemas
         # Include the actual old/new schema sets and deterministic compaction
         # in both sizes; the added history tool counts against the saving.
-        _, old_budget = prepare_context(self.config, self._request_messages(messages, 1), self.schemas,
-                                        self.compact_context, check_cancelled=self._check_cancelled)
-        before = old_budget["after_bytes"]
+        task_history = list(messages)
+        self._refresh_instructions(task_history)
+
+        def task_budget():
+            request = self._request_messages(task_history, 1)
+            projected, report = prepare_context(self.config, request, self.schemas, self.compact_context,
+                                                check_cancelled=self._check_cancelled)
+            if report["within_budget"]:
+                self._request_schemas(projected, report)
+            return report
+
+        before = task_budget()["after_bytes"]
         try:
             self.restore_summary(candidate, messages)
-            projected, budget = prepare_context(self.config, self._request_messages(messages, 1), self.schemas,
-                                               self.compact_context, check_cancelled=self._check_cancelled)
+            budget = task_budget()
             if budget["after_bytes"] >= before:
                 raise ValueError("summary does not reduce the request; checkpoint unchanged")
             self._check_cancelled()
