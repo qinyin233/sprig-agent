@@ -1,5 +1,6 @@
 """Budget enforcement before HTTP and non-destructive, protocol-safe elision."""
 import copy
+from contextlib import closing
 from dataclasses import replace
 import json
 from pathlib import Path
@@ -12,10 +13,10 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 from sprig_agent.agent import Agent, SYSTEM_PROMPT
 from sprig_agent import cli
 from sprig_agent.config import Config
-from sprig_agent.context import prepare_context, request_body
+from sprig_agent.context import prepare_context, request_body, request_breakdown
 from sprig_agent.provider import Provider, ProviderError
 from sprig_agent.session import validate_history
-from sprig_agent.tools import TOOL_SCHEMAS
+from sprig_agent.tools import TOOL_SCHEMAS, Tools
 
 
 class ContextTests(unittest.TestCase):
@@ -94,8 +95,9 @@ class ContextTests(unittest.TestCase):
     def test_agent_blocks_before_provider_and_keeps_checkpoint_history(self):
         provider, tools, checkpoints = Mock(), Mock(), []
         agent = Agent(self.config, provider, tools, lambda _: None, lambda messages: checkpoints.append(copy.deepcopy(messages)))
-        with self.assertRaisesRegex(ProviderError, "budget"):
+        with self.assertRaisesRegex(ProviderError, r"budget exceeded \(\d+ of 16384 bytes\)") as failure:
             agent.run("x" * 20000)
+        self.assertEqual(failure.exception.code, "request_budget")
         provider.complete.assert_not_called()
         tools.execute.assert_not_called()
         self.assertEqual(checkpoints[-1][-1]["content"], "x" * 20000)
@@ -113,6 +115,54 @@ class ContextTests(unittest.TestCase):
             agent.run(task)
         provider.complete.assert_not_called()
         tools.execute.assert_not_called()
+
+    def test_preview_shows_active_policy_and_optional_compaction_separately(self):
+        provider, tools = Mock(), Mock()
+        agent = Agent(self.config, provider, tools, lambda _: None)
+        original = copy.deepcopy(self.history)
+        active = agent.context_preview(self.history)
+        self.assertFalse(active["compaction_enabled"])
+        self.assertFalse(active["compaction_triggered"])
+        self.assertFalse(active["within_budget"])
+        self.assertLess(active["remaining_bytes"], 0)
+        forced = agent.context_preview(self.history, force=True)
+        self.assertTrue(forced["forced_compaction_preview"])
+        self.assertTrue(forced["within_budget"])
+        self.assertEqual(active["with_compaction"]["after_bytes"], forced["after_bytes"])
+        self.assertEqual(sum(active["bytes_by_component"].values()), active["after_bytes"])
+        self.assertGreater(active["bytes_by_component"]["tool_results"], forced["bytes_by_component"]["tool_results"])
+        self.assertEqual(self.history, original)
+        self.assertFalse(agent.compact_context)
+        provider.complete.assert_not_called()
+
+    def test_request_breakdown_is_exact_for_native_wire_layouts(self):
+        history = copy.deepcopy(self.history[:4])
+        history[1]["content"] = "中文🙂\n"
+        history[3]["content"] = json.dumps({"content": "response with quotes \\\" and 😀"}, ensure_ascii=False)
+        for wire_api in ("chat_completions", "messages", "responses"):
+            with self.subTest(wire_api=wire_api):
+                config = replace(self.config, wire_api=wire_api, stream=True, max_tokens=400)
+                counts = request_breakdown(config, history, TOOL_SCHEMAS)
+                self.assertEqual(sum(counts.values()), len(request_body(config, history, TOOL_SCHEMAS)))
+                self.assertTrue(all(value > 0 for value in counts.values()))
+                redacted = replace(config, api_key="tool")
+                counts = request_breakdown(redacted, history, TOOL_SCHEMAS)
+                self.assertEqual(sum(counts.values()), len(request_body(redacted, history, TOOL_SCHEMAS)))
+                self.assertGreater(counts["tool_results"], 0)
+
+    def test_preview_counts_the_memory_log_schema_if_the_request_can_offer_it(self):
+        provider = Mock()
+        provider.complete.return_value = {"role": "assistant", "content": "Done"}
+        with closing(Tools(self.config, Mock())) as tools:
+            agent = Agent(self.config, provider, tools, lambda _: None)
+            history = [{"role": "system", "content": "old"}, {"role": "user", "content": "Continue"}]
+            with patch.object(tools.logs, "has_memory_log", return_value=True):
+                report = agent.context_preview(history)
+                agent.run(messages=history)
+        actual, schemas = provider.complete.call_args.args
+        self.assertTrue(any(schema["function"]["name"] == "read_log" for schema in schemas))
+        self.assertEqual(report["after_bytes"], len(request_body(self.config, actual, schemas)))
+        self.assertEqual(report["bytes_by_component"], request_breakdown(self.config, actual, schemas))
 
     def test_uncompressible_instructions_still_block_and_config_is_bounded(self):
         history = [{"role": "system", "content": "system"}, {"role": "user", "content": "x" * 20000}]

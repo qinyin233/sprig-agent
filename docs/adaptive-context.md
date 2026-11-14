@@ -8,7 +8,7 @@ compact = true
 trigger_ratio = 0.8 # 新默认；0 为旧的每轮尝试省略模式
 ```
 
-CLI 可使用 `--compact-context --context-trigger-ratio 0.8`。显式 `0`、profile/项目层和 CLI 优先级仍有效；`/context`、`/compact` 的强制预览可显示压缩潜力，但不改变实际请求的阈值。详见[配置](configuration.md)。这是请求字节预算，不是模型 token 窗口估计。
+CLI 可使用 `--compact-context --context-trigger-ratio 0.8`。显式 `0`、profile/项目层和 CLI 优先级仍有效。CLI 和 TUI 的 `/context` 按当前设置预览对话，并列出系统提示、用户侧消息、助手侧消息、工具结果、工具定义和其余封装的实际协议字节。负的 `remaining_bytes` 表示超限；若尚未开启压缩，超限时也会显示启用后的预计结果。`/compact` 显示强制压缩预览，确认后启用按配置阈值压缩。预览以当前对话和第一轮模型请求为基准。后续读取、编辑、引导、附件或恢复时的版本信息都可能改变大小。这些数值量化请求字节，模型 token 用量另见 `/usage`。 [配置](configuration.md)
 
 ## 修正依据
 

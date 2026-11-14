@@ -2242,7 +2242,7 @@ class SprigApp(App[int]):
             elif identity == "usage":
                 self.append("\n[请求统计；本进程与会话分列，启用保存后持久化；缺失用量为未知，继承快照不算新增消费]\n" + json.dumps(self.agent.usage_report(), ensure_ascii=False, indent=2) + "\n")
             elif identity == "compact":
-                preview = self.agent.context_preview(self.messages)
+                preview = self.agent.context_preview(self.messages, force=True)
 
                 def compact(approved):
                     if approved is True:

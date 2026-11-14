@@ -380,7 +380,7 @@ def chat(agent, task, messages, emit, *, autostart=True, model_selection=None, s
             elif task == "/usage":
                 emit(json.dumps(agent.usage_report(), ensure_ascii=False, indent=2))
             elif task == "/compact":
-                preview = agent.context_preview(messages)
+                preview = agent.context_preview(messages, force=True)
                 emit(json.dumps(preview, ensure_ascii=False, indent=2))
                 if approve(f"Enable configured request-only compaction? Complete historical reads may survive within the byte caps; closed old inspections may be folded if still oversized. User instructions, failures, refusals and the last {agent.config.context_keep_recent_messages} messages are preserved; saved history is unchanged.") is True:
                     agent.compact_context = True

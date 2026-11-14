@@ -90,6 +90,48 @@ def request_size(config, messages, tools, *, check_cancelled=None):
         raise ValueError("request contains invalid Unicode; no request sent") from None
 
 
+def request_breakdown(config, messages, tools, *, check_cancelled=None):
+    """Attribute the prepared wire request's bytes without returning its contents."""
+    payload = request_payload(config, messages, tools, check_cancelled=check_cancelled)
+
+    def size(value):
+        return encoded_size(value, check_cancelled=check_cancelled)
+
+    # Native encoding redacts keys as well as text. Account for those actual
+    # wire keys even when a short configured secret matches protocol syntax.
+    secret = config.secrets
+    keys = {key: redact(key, secret) for key in ("role", "type", "tools", "system", "messages", "input", "content")}
+    native = config.wire_api != "chat_completions"
+
+    def field(row, key, default=None):
+        return row.get(keys[key] if native else key, default)
+
+    counts = dict.fromkeys(("system", "user", "assistant", "tool_results", "tool_schemas"), 0)
+    definitions = field(payload, "tools")
+    if definitions is not None:
+        counts["tool_schemas"] = size(definitions)
+    roles = {redact(role, secret): role for role in ("system", "user", "assistant", "tool")}
+    if config.wire_api == "messages":
+        counts["system"] = size(field(payload, "system", []))
+        tool_result = redact("tool_result", secret)
+        for message in field(payload, "messages", []):
+            role = roles.get(field(message, "role"), "assistant")
+            for block in field(message, "content", []):
+                category = "tool_results" if field(block, "type") == tool_result else role
+                counts[category] += size(block)
+    else:
+        response_output = redact("function_call_output", secret)
+        for message in field(payload, "input" if config.wire_api == "responses" else "messages", []):
+            role = roles.get(message.get(keys["role"]), "assistant")
+            if role == "tool" or field(message, "type") == response_output:
+                role = "tool_results"
+            elif role not in {"user", "system"}:
+                role = "assistant"
+            counts[role] += size(message)
+    counts["request_overhead"] = size(payload) - sum(counts.values())
+    return counts
+
+
 def _result(content):
     try:
         value = json.loads(content)

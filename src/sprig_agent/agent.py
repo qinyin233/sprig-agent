@@ -9,7 +9,7 @@ from pathlib import PurePosixPath
 import uuid
 
 from .config import TOOL_NAMES, redact
-from .context import prepare_context, request_size
+from .context import prepare_context, request_breakdown, request_size
 from .instructions import ProjectInstructions
 from .json_budget import JsonBudgetExceeded, encoded_size
 from .metrics import FAILURE_CODES, Measurements
@@ -483,12 +483,21 @@ class Agent:
         self._checkpoint(candidate)
         return candidate, {"attached": summary, "snapshot": True, "network_contacted": False}
 
-    def context_preview(self, messages):
+    def context_preview(self, messages, *, force=False):
         selected = list(messages or [{"role": "system", "content": self._prompt()}])
         self._refresh_instructions(selected)
         request = self._request_messages(selected, 1)
-        report = prepare_context(self.config, request, self.schemas, compact=True, force=True,
-                                 check_cancelled=self._check_cancelled)[1]
+        projected, report = prepare_context(self.config, request, self.schemas, self.compact_context or force,
+                                            force=force, check_cancelled=self._check_cancelled)
+        schemas = self._request_schemas(projected, report) if report["within_budget"] else self.schemas
+        report.update(compaction_enabled=self.compact_context, forced_compaction_preview=force,
+                      remaining_bytes=report["budget_bytes"] - report["after_bytes"],
+                      bytes_by_component=request_breakdown(self.config, projected, schemas,
+                                                           check_cancelled=self._check_cancelled))
+        if not report["within_budget"] and not self.compact_context and not force:
+            _, compacted = prepare_context(self.config, request, self.schemas, compact=True, force=True,
+                                           check_cancelled=self._check_cancelled)
+            report["with_compaction"] = {"after_bytes": compacted["after_bytes"], "within_budget": compacted["within_budget"]}
         if self.summary is not None:
             report["summary_checkpoint"] = {"source_end": self.summary["end"], "source_sha256": self.summary["sha256"],
                                             "original_messages": len(selected), "projected_messages": len(request),
@@ -864,7 +873,10 @@ class Agent:
         messages, report = prepare_context(self.config, messages, self.schemas, self.compact_context,
                                            check_cancelled=self._check_cancelled)
         if not report["within_budget"]:
-            raise ProviderError("context byte budget exceeded; no request sent. Review /context and explicitly /compact, or increase --max-context-bytes.")
+            raise ProviderError(
+                f"context byte budget exceeded ({report['after_bytes']} of {report['budget_bytes']} bytes); "
+                "no request sent. Use /context to inspect the request and /compact to preview elision.",
+                code="request_budget")
         self._resume_read_context(messages, report, refresh=resume_reads)
         schemas = self._request_schemas(messages, report)
         self._offered_schemas = schemas
@@ -1036,7 +1048,8 @@ class Agent:
                                             self.compact_context, check_cancelled=self._check_cancelled)
                 if not budget["within_budget"]:
                     raise ProviderError(("selected files exceed" if context_files else "task exceeds")
-                                        + " the request context budget; no request sent")
+                                        + f" the request context budget ({budget['after_bytes']} of {budget['budget_bytes']} bytes); "
+                                        "no request sent", code="request_budget")
             history, complete = self._run(task, messages)
             outcome = "passed" if complete and self.config.checks else "unverified" if complete else "incomplete"
             self._event("finished", outcome, reason=self._stop_reason)
