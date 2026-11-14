@@ -260,6 +260,45 @@ class SummaryTests(unittest.TestCase):
         self.assertFalse(any(row.get("tool_calls") for row in selected))
         self.assertEqual(validate_history(selected), selected)
 
+    def test_oversized_failure_can_be_summarized_and_recovered_by_original_number(self):
+        secret = "fixture-secret-with-escape-\""
+        self.config = replace(self.config, api_key=secret)
+        rows = history()
+        failure = {"approved": True, "returncode": 1, "output_limited": True, "output": (
+            "FIRST diagnostic " + secret + "\n" + "中🙂 " * 10000 + "\nLAST diagnostic"),
+            "log": {"log_id": "a" * 32}}
+        rows[2:2] = [fixture.call("failed", "run", {"argv": ["test"]}),
+                     {"role": "tool", "tool_call_id": "failed", "content": json.dumps(failure)}]
+        original = copy.deepcopy(rows)
+        agent, provider = self.agent([fixture.response(json.dumps(fields())), fixture.response("Done")])
+        preview = agent.summary_preview(rows)
+        self.assertTrue(preview["input_fits"])
+        self.assertGreaterEqual(preview["source_end"], 4)
+        result = agent.summarize(rows)
+        source = json.loads(provider.calls[0][-1]["content"])
+        excerpt = json.loads(next(row["content"] for row in source["messages"] if row["message"] == 4))
+        self.assertTrue(excerpt["history_excerpt"])
+        self.assertEqual(excerpt["returncode"], 1)
+        self.assertTrue(excerpt["output_limited"])
+        self.assertEqual(excerpt["log_id"], "a" * 32)
+        self.assertIn("FIRST diagnostic", excerpt["output"])
+        self.assertIn("LAST diagnostic", excerpt["output"])
+        self.assertNotIn(secret, excerpt["output"])
+        self.assertLess(len(excerpt["output"]), 420)
+        self.assertEqual(rows, original)
+        self.assertTrue(result["within_budget"])
+        _, complete = agent.run(messages=rows)
+        self.assertTrue(complete)
+        restored = next(row["content"] for row in provider.calls[1] if row.get("content", "").startswith("Latest failure"))
+        notice = json.loads(restored.split("\n", 1)[1])
+        self.assertEqual(notice["failed_message"], 4)
+        self.assertEqual(notice["result"], excerpt)
+        page = history_page(rows, 4, budget=8192, secrets=self.config.secrets)
+        self.assertFalse(page["complete"])
+        self.assertIn("FIRST diagnostic", page["text"])
+        self.assertNotIn("PRIVATE_REASONING", page["text"])
+        self.assertEqual(self.approve.call_count, 1)
+
     def test_save_restore_listing_clear_and_tamper_never_replay(self):
         rows = history()
         agent, provider = self.agent()

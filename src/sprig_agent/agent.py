@@ -21,7 +21,7 @@ from .runtime import RuntimeEvent, tool_outcome
 from .provider import Provider, ProviderError, validate_message
 from .session import MAX_SESSION, validate_history
 from .summary import (HISTORY_SCHEMA, MAX_SUMMARY, PROMPT as SUMMARY_PROMPT, binding_digest, closed_end, fingerprint,
-                      history_page, project as project_summary, public_message, summary_fields, summary_state)
+                      history_page, project as project_summary, summary_fields, summary_source_message, summary_state)
 from .command_logs import READ_LOG_SCHEMA
 from .exploration import EXPLORE_SCHEMA, available as exploration_available, explore
 from .work_progress import WorkProgress
@@ -341,17 +341,19 @@ class Agent:
         source_config = replace(self.config, preserve_reasoning=True, context_keep_read_bytes=0)
         summary_config = self._summary_config()
         budget = summary_config.max_context_bytes
+        secrets = self.config.secrets
 
         def prepare(boundary):
             source = [dict(messages[0]), *messages[start:boundary]]
             selected, _ = prepare_context(source_config, source, [], compact=True, force=True,
                                           check_cancelled=self._check_cancelled)
             data = {"source_start": start + 1, "source_end": boundary,
-                    "messages": [{"message": start + i, **public_message(row)} for i, row in enumerate(selected[1:], 1)]}
+                    "messages": [summary_source_message(row, start + i, secrets, self._check_cancelled)
+                                 for i, row in enumerate(selected[1:], 1)]}
             if previous is not None:
                 data["previous_summary"] = previous["summary"]
             request = [{"role": "system", "content": SUMMARY_PROMPT},
-                       {"role": "user", "content": json.dumps(redact(data, self.config.secrets), ensure_ascii=False)}]
+                       {"role": "user", "content": json.dumps(redact(data, secrets), ensure_ascii=False)}]
             return request, request_size(summary_config, request, [], check_cancelled=self._check_cancelled)
 
         boundary = latest_end
@@ -785,7 +787,8 @@ class Agent:
         self._check_cancelled()
         # Runtime budget belongs to this invocation, not resumable history.
         # Include it before sizing/compaction so it cannot bypass the byte cap.
-        messages = project_summary(messages, self.summary, self._check_cancelled, binding=self.config.binding())
+        messages = project_summary(messages, self.summary, self._check_cancelled, binding=self.config.binding(),
+                                   secrets=self.config.secrets)
         messages = [dict(messages[0]), *({key: value for key, value in row.items() if key != INPUT_ID}
                                       if INPUT_ID in row else row for row in messages[1:])]
         if isinstance(self.tools, Tools) and self.config.mcp_servers and self.config.tool_enabled("mcp") and not self.config.read_only:
