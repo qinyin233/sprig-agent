@@ -433,11 +433,14 @@ def prepare_context(config, messages, tools, compact=False, *, force=False, chec
             note = "Older successful output elided; reread files if needed. Full result remains in saved history."
             identity = message["tool_call_id"]
             read = calls.get(identity, (len(selected), {}))
-            if read[1].get("function", {}).get("name") == "read_log" and "text" in result:
+            read_name = read[1].get("function", {}).get("name")
+            if read_name == "read_log" and "text" in result:
                 fields.append("text")
                 note = "Older historical command log excerpt omitted; use read_log to page the retained log again. This is not current evidence or approval."
+            if read_name == "read_history" and result.get("historical") is True and "text" in result:
+                fields.append("text")
+                note = "Older history page text omitted. Use read_history with its original message and offset to recover it."
             read_function = read[1].get("function", {})
-            read_name = read_function.get("name")
             read_arguments = _result(read_function.get("arguments"))
             search_read = (read_name in {"grep", "search"} and read_arguments is not None
                            and read_arguments.get("output_mode") == result.get("output_mode") == "read")

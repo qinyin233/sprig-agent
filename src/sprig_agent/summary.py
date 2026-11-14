@@ -11,6 +11,7 @@ from .message_origin import ORIGIN, user_request
 
 MAX_SUMMARY = 16384
 MAX_HISTORY_EXCERPT = 4096
+HISTORY_PAGE_BUDGET_ERROR = "no request space for a history page; use local /history or shorten context"
 RESULT_FLAGS = ("timed_out", "output_limited", "cancelled", "interrupted", "skipped", "partial")
 FIELDS = ("requirements", "decisions", "completed", "active", "blocked", "next", "files", "notes")
 PROMPT = (
@@ -211,11 +212,13 @@ def project(messages, state, check_cancelled=lambda: None, *, binding=None, secr
     return [*rows, *messages[end:]]
 
 
-def history_page(messages, message, offset=0, *, end=None, budget=8192, secrets=()):
+def history_page(messages, message, offset=0, *, end=None, budget=8192, secrets=(), wire_budget=None,
+                 check_cancelled=lambda: None):
     maximum = len(messages) if end is None else min(end, len(messages))
     if (type(message) is not int or not 2 <= message <= maximum or type(offset) is not int
             or not 0 <= offset <= 8388608):
         raise ValueError("history page is outside this conversation/source range")
+    check_cancelled()
     body = json.dumps(redact(public_message(messages[message - 1]), secrets), ensure_ascii=False)
     if offset > len(body):
         raise ValueError("history offset exceeds the selected message")
@@ -226,14 +229,24 @@ def history_page(messages, message, offset=0, *, end=None, budget=8192, secrets=
         complete = offset + length == len(body)
         return {**result, "text": body[offset:offset + length], "complete": complete,
                 "next_offset": None if complete else offset + length}
+
+    def fits(page):
+        check_cancelled()
+        content = json.dumps(redact(page, secrets), ensure_ascii=False)
+        return (len(content.encode("utf-8")) <= budget
+                and (wire_budget is None or encoded_size(redact(content, secrets)) <= wire_budget))
+
+    if fits(page(high)):
+        return page(high)
     while low < high:
         middle = (low + high + 1) // 2
-        candidate = page(middle)
-        if len(json.dumps(candidate, ensure_ascii=False).encode("utf-8")) <= budget:
+        if fits(page(middle)):
             low = middle
         else:
             high = middle - 1
     result = page(low)
-    if not low and not result["complete"]:
+    if not fits(result) or (not low and not result["complete"]):
+        if wire_budget is not None:
+            raise ValueError(HISTORY_PAGE_BUDGET_ERROR)
         raise ValueError("history page metadata exceeds output budget")
     return result

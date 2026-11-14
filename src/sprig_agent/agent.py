@@ -20,8 +20,9 @@ from .references import FileReferences, merge_reference_paths, reference_paths, 
 from .runtime import RuntimeEvent, tool_outcome
 from .provider import Provider, ProviderError, validate_message
 from .session import MAX_SESSION, validate_history
-from .summary import (HISTORY_SCHEMA, MAX_SUMMARY, PROMPT as SUMMARY_PROMPT, binding_digest, closed_end, fingerprint,
-                      history_page, project as project_summary, summary_fields, summary_source_message, summary_state)
+from .summary import (HISTORY_PAGE_BUDGET_ERROR, HISTORY_SCHEMA, MAX_SUMMARY, PROMPT as SUMMARY_PROMPT,
+                      binding_digest, closed_end, fingerprint, history_page, project as project_summary,
+                      summary_fields, summary_source_message, summary_state)
 from .command_logs import READ_LOG_SCHEMA
 from .exploration import EXPLORE_SCHEMA, available as exploration_available, explore
 from .work_progress import WorkProgress
@@ -308,7 +309,7 @@ class Agent:
             raise
         return {"summary_cleared": True, "original_history_retained": True, "network_contacted": False}
 
-    def read_history(self, message, offset=0, *, model=False):
+    def read_history(self, message, offset=0, *, model=False, wire_budget=None):
         if model:
             if not self.config.tool_enabled("read_history") or self.summary is None or self._current_history is None:
                 raise ValueError("original history tool is unavailable outside an active summarized run")
@@ -318,7 +319,8 @@ class Agent:
             raise ValueError("local history reads must supply the conversation explicitly")
         self._check_cancelled()
         return history_page(messages, message, offset, end=end,
-                            budget=min(self.config.max_output, 8192), secrets=self.config.secrets)
+                            budget=min(self.config.max_output, 8192), secrets=self.config.secrets,
+                            wire_budget=wire_budget, check_cancelled=self._check_cancelled)
 
     def _summary_config(self):
         # Honor explicit limits, including Messages thinking budgets that depend
@@ -729,14 +731,14 @@ class Agent:
         if self.cancel_event is not None and self.cancel_event.is_set():
             raise KeyboardInterrupt
 
-    def _execute_model_tool(self, name, arguments):
+    def _execute_model_tool(self, name, arguments, *, history_wire_budget=None):
         if name == "explore":
             return explore(self, arguments)
         if name == "read_history":
             try:
                 if not isinstance(arguments, dict):
                     raise ValueError("history arguments must be an object")
-                return self.read_history(**arguments, model=True)
+                return self.read_history(**arguments, model=True, wire_budget=history_wire_budget)
             except (ValueError, TypeError, OSError) as error:
                 return {"error": redact(str(error), self.config.secrets)}
         if name == "file_action":
@@ -783,7 +785,7 @@ class Agent:
         return reference_paths([target if key(path) == source else path for path in self.references.files]
                                if action == "move" else [path for path in self.references.files if key(path) != source])
 
-    def _request_messages(self, messages, step):
+    def _request_messages(self, messages, step, *, reference_context=None):
         self._check_cancelled()
         # Runtime budget belongs to this invocation, not resumable history.
         # Include it before sizing/compaction so it cannot bypass the byte cap.
@@ -817,7 +819,11 @@ class Agent:
                 "Keep proposals small enough to finish. Prefer edit_lines with read_id when old text is large; "
                 "read the relevant complete lines first. Split independent changes across responses rather than "
                 "repeating entire old/new files. An incomplete response never executes tool calls.")
-        frames, observations = self.references.prepare()
+        if reference_context is None:
+            reference_context = self.references.prepare()
+        frames, observations = reference_context
+        if self._running:
+            self._prepared_reference_context = reference_context
         self._prepared_reference_observations = observations
         if frames:
             messages.append({"role": "user", ORIGIN: "application", "content": (
@@ -862,6 +868,21 @@ class Agent:
         report["before_bytes"] += size - report["after_bytes"]
         report["after_bytes"] = size
         return schemas
+
+    def _history_wire_budget(self, messages, pending_calls, step):
+        # Complete the protocol batch for sizing only. Existing results count
+        # in full unless ordinary request projection can elide them.
+        error = json.dumps({"error": HISTORY_PAGE_BUDGET_ERROR}, ensure_ascii=False)
+        history_count = sum(call["function"]["name"] == "read_history" for call in pending_calls)
+        history = [*messages, *({"role": "tool", "tool_call_id": call["id"],
+                                "content": error if call["function"]["name"] == "read_history" else "{}"}
+                               for call in pending_calls)]
+        request = self._request_messages(history, step, reference_context=self._prepared_reference_context)
+        _, report = prepare_context(self.config, request, self.schemas, self.compact_context,
+                                    check_cancelled=self._check_cancelled)
+        # The replacement is a JSON string under all three wire protocols.
+        available = report["budget_bytes"] - report["after_bytes"]
+        return encoded_size(redact(error, self.config.secrets)) + available // history_count
 
     def _resume_read_context(self, messages, report, *, refresh):
         if not isinstance(self.tools, Tools) or not (refresh or self._resumed_reads):
@@ -1065,6 +1086,7 @@ class Agent:
         finally:
             self._context_files = []
             self._tool_images = []
+            self._prepared_reference_context = None
             self._clear_resumed_reads()
             self._current_history = None
             self._running = False
@@ -1236,6 +1258,9 @@ class Agent:
                             result = blocked[index]
                         elif error is not None:
                             result = error
+                        elif name == "read_history" and self.summary is not None and self.config.tool_enabled(name):
+                            budget = self._history_wire_budget(messages, calls[index:], min(step + 1, self.config.max_steps))
+                            result = self._execute_model_tool(name, arguments, history_wire_budget=budget)
                         else:
                             result = self._execute_model_tool(name, arguments)
                     self.work_progress.observe(step, name, result)

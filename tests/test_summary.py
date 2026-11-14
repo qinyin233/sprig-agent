@@ -299,6 +299,42 @@ class SummaryTests(unittest.TestCase):
         self.assertNotIn("PRIVATE_REASONING", page["text"])
         self.assertEqual(self.approve.call_count, 1)
 
+    def test_history_reads_share_the_next_wire_budget_and_preserve_page_offsets(self):
+        for protocol in ("chat_completions", "messages", "responses"):
+            with self.subTest(protocol=protocol):
+                rows = history()
+                long_result = {"role": "tool", "tool_call_id": "old-failure",
+                               "content": json.dumps({"returncode": 1, "output": '开头 "路径\\文件"\r\n' * 4000},
+                                                     ensure_ascii=False)}
+                rows[2:2] = [fixture.call("old-failure", "run", {"argv": ["test"]}), long_result]
+                captured = []
+                from tests.test_glob_protocols import answer, values
+
+                reads = answer(protocol, False, calls=[
+                    ("first-page", "read_history", {"message": 4}),
+                    ("second-page", "read_history", {"message": 4, "offset": 7000}),
+                ])
+                replies = [answer(protocol, False, text=json.dumps(fields())), reads,
+                           answer(protocol, False, text="Done")]
+                with backend(protocol, replies, captured) as url:
+                    config = replace(self.config, base_url=url, wire_api=protocol, proxy="direct")
+                    provider = Provider(config)
+                    agent = Agent(config, provider, self.tools, lambda _: None)
+                    summary = agent.summarize(rows)
+                    _, complete = agent.run(messages=rows)
+                self.assertTrue(summary["within_budget"] and complete)
+                self.assertEqual(len(captured), 3)
+                self.assertLessEqual(captured[-1]["bytes"], config.max_context_bytes)
+                pages = [page for page in values(captured[-1]["body"]) if page.get("historical") is True]
+                self.assertEqual([page["offset"] for page in pages], [0, 7000])
+                original = json.dumps(long_result, ensure_ascii=False)
+                for page in pages:
+                    self.assertGreater(page["next_offset"], page["offset"])
+                    self.assertLess(len(page["text"]), 3000)
+                    self.assertEqual(page["text"], original[page["offset"]:page["next_offset"]])
+                self.assertEqual(rows[3], long_result)
+        self.assertEqual(self.approve.call_count, 3)  # Summary confirmations only.
+
     def test_save_restore_listing_clear_and_tamper_never_replay(self):
         rows = history()
         agent, provider = self.agent()
