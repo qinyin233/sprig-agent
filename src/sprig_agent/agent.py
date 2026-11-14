@@ -62,7 +62,7 @@ Follow with targeted searches and ranged reads; filenames are not content eviden
 Maps show declarations, not full behavior; check truncation and inspect implementation before edits.
 If a declaration name is known, read_file(symbol="Class.method") reads its indexed span; check symbol_complete.
 For edit_lines, use read_id from a source read or successful edit. Omit display prefixes.
-Use grep windows across files. Continue next_cursor in single-file grep read with the same search.
+Use grep windows across files; matches_per_file finds multiple sites. Continue next_cursor with single-file grep read.
 Use update_plan when available for tasks with multiple stages; skip it for trivial requests.
 Keep the plan current after new guidance. Plan completion is your report, not approval or test evidence.
 For implementation requests, locate the relevant code, reproduce or establish a baseline when useful,

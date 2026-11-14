@@ -248,6 +248,39 @@ class GrepTests(unittest.TestCase):
         self.assertTrue(limited["truncated"])
         self.approve.assert_not_called()
 
+    def test_windows_returns_multiple_merged_and_disjoint_matches_per_file(self):
+        (self.root / "a.txt").write_bytes(b"hit a\r\nhit b\r\nafter\r\ngap\r\nnext\r\nhit c\r\nlast\r\n")
+        (self.root / "b.txt").write_bytes(b"hit d\r\nafter\r\n")
+        result = self.tools.grep("hit", output_mode="windows", matches_per_file=3, context=1)
+        a, b = sorted(result["files"], key=lambda row: row["path"])
+        self.assertEqual(a["ranges"], [[1, 3], [5, 7]])
+        self.assertEqual(a["matched_lines"], 3)
+        self.assertEqual(b["matched_lines"], 1)
+        self.assertEqual(a["read_id"], self.tools.read_file(a["path"], ranges=a["ranges"])["read_id"])
+        for invalid in (0, 9, True, None, "3"):
+            with self.subTest(invalid=invalid):
+                self.assertIn("matches_per_file", self.tools.execute("grep", {
+                    "pattern": "hit", "output_mode": "windows", "matches_per_file": invalid})["error"])
+        for mode in ("content", "files", "count", "read"):
+            self.assertIn("matches_per_file", self.tools.execute("grep", {
+                "pattern": "hit", "path": "a.txt", "output_mode": mode, "matches_per_file": 2})["error"])
+
+    def test_windows_fits_largest_complete_prefix_and_cursor_starts_at_omitted_match(self):
+        (self.root / "source.txt").write_bytes(b"hit " + b"x" * 1700 + b"\r\nmiss\r\n"
+                                              + b"hit " + b"y" * 1700 + b"\r\nmiss\r\n"
+                                              + b"hit " + b"z" * 1700 + b"\r\n")
+        arguments = {"pattern": "hit", "path": "source.txt"}
+        result = self.tools.grep(**arguments, output_mode="windows", matches_per_file=3)
+        row, = result["files"]
+        self.assertFalse(result["truncated"])
+        self.assertTrue(row["truncated"] and row["range_complete"])
+        self.assertEqual(row["ranges"], [[1, 1], [3, 3]])
+        self.assertEqual(row["matched_lines"], 2)
+        self.assertEqual(len(self.tools.read_versions.snapshot()), 1)
+        page = self.tools.grep(**arguments, output_mode="read", cursor=row["next_cursor"])
+        self.assertEqual(page["ranges"], [[5, 5]])
+        self.assertEqual(page["read_id"], row["read_id"])
+
     def test_windows_enforce_aggregate_budget_and_privacy_before_issuing_versions(self):
         (self.root / "src").mkdir()
         (self.root / "src" / "large.py").write_bytes(("alpha " + "界" * 4000).encode())

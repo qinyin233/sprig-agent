@@ -11,6 +11,7 @@ REGEX_SECONDS = 1.0
 MAX_READ_RANGES = 8
 MAX_RANGE_LINES = 10000
 MAX_SEARCH_WINDOW_FILES = 8
+MAX_WINDOW_MATCHES = 8
 
 
 def search_window_rows(arguments, result):

@@ -41,7 +41,7 @@ from .edit_batch import EditPreview, digest, preflight
 from .line_edits import replace_lines, validate_edits
 from .line_patch import apply as apply_line_patch
 from .search import (FileGlob, MAX_RANGE_LINES, MAX_READ_RANGES, MAX_SEARCH_WINDOW_FILES, RegexBudgetExceeded,
-                     RegexMatcher, match_window_prefixes, matching_lines)
+                     MAX_WINDOW_MATCHES, RegexMatcher, match_window_prefixes, matching_lines)
 from .syntax import IndexUnavailable
 from .image_reads import ImageReadResult, read_image
 from .file_glob import discover as discover_files
@@ -80,11 +80,11 @@ TOOL_SCHEMAS = [
             "cursor": {"type": "string", "maxLength": 80},
             "symbol": {"type": "string", "minLength": 1, "maxLength": 1024}, "image": {"type": "boolean"}}, ["path"]),
     schema("grep", "RE2 ASCII \\w/\\d/\\b; no lookaround/backrefs; simple folding; literal=true; physical CR/LF; timed_out",
-           {"pattern": {"type": "string", "minLength": 1, "maxLength": 1000}, "path": STRING,
-            "glob": {"type": "string", "minLength": 1, "maxLength": 256},
+           {"pattern": STRING, "path": STRING, "glob": STRING,
             "ignore_case": {"type": "boolean"}, "literal": {"type": "boolean"},
             "context": {"type": "integer", "minimum": 0, "maximum": 10},
             "limit": {"type": "integer", "minimum": 1, "maximum": 1000},
+            "matches_per_file": {"type": "integer", "minimum": 1, "maximum": MAX_WINDOW_MATCHES},
             "cursor": STRING,
             "output_mode": {"enum": ["content", "files", "count", "read", "windows"]}}, ["pattern"]),
     schema("project_map", "File/dir declarations; literal name/path. include_calls: syntax, not resolved refs. Check flags; read source.",
@@ -1049,12 +1049,13 @@ class Tools:
         return result
 
     def grep(self, pattern, path=".", *, glob=_MISSING, ignore_case=False, literal=False, context=0, limit=100,
-             output_mode="content", cursor=_MISSING):
+             output_mode="content", cursor=_MISSING, matches_per_file=_MISSING):
         self._require_tool("grep")
         if type(literal) is not bool:
             raise ToolError("literal must be a boolean; false uses RE2 regex, true uses exact text")
         result = self.search(pattern, path, glob=glob, ignore_case=ignore_case, regex=not literal,
-                             context=context, limit=limit, output_mode=output_mode, cursor=cursor)
+                             context=context, limit=limit, output_mode=output_mode, cursor=cursor,
+                             matches_per_file=matches_per_file)
         # Legacy search's regex=true suggestion does not apply to this API.
         result.pop("search_guidance", None)
         return result
@@ -1095,25 +1096,29 @@ class Tools:
         except RegexBudgetExceeded:
             return {"error": "read mode reached the regex work budget; no source window returned",
                     "truncated": True, "timed_out": True}
+        return self._render_search_page(path, parts, raw, text, prefixes, following, page_cursor)
+
+    def _render_search_page(self, path, parts, raw, text, prefixes, following, cursor, *, window_cap=None):
         count = len(prefixes)
         while True:
             ranges = prefixes[count - 1][1] if count else []
             next_line = prefixes[count][0] if count < len(prefixes) else following
-            metadata = {"output_mode": "read", "matched_lines": count, "truncated": next_line is not None,
-                        "timed_out": False}
+            metadata = {"matched_lines": count, "truncated": next_line is not None}
+            if window_cap is None:
+                metadata.update(output_mode="read", timed_out=False)
             if next_line is not None:
-                metadata["next_cursor"] = page_cursor(next_line)
+                metadata["next_cursor"] = cursor(next_line)
             try:
-                return self._render_ranges(path, parts, ranges, raw, text, **metadata)
+                return self._render_ranges(path, parts, ranges, raw, text, output_cap=window_cap, **metadata)
             except _RangeOutputLimit:
                 if count <= 1:
                     raise
                 # Retry rendering smaller complete prefixes without repeating
                 # matching or creating a read_id for rejected output.
-                count //= 2
+                count = count - 1 if window_cap is not None else count // 2
 
     def search(self, query, path=".", *, glob=_MISSING, ignore_case=False, regex=False, context=0, limit=100,
-               output_mode="content", cursor=_MISSING):
+               output_mode="content", cursor=_MISSING, matches_per_file=_MISSING):
         self._require_tool("search")
         if not isinstance(query, str) or not query or len(query) > 1000:
             raise ToolError("query must be a nonempty string (at most 1000 characters)")
@@ -1132,6 +1137,9 @@ class Tools:
             raise ToolError("files/count output requires context=0; use content or read for surrounding lines")
         if cursor is not _MISSING and output_mode != "read":
             raise ToolError("cursor requires output_mode='read'")
+        if matches_per_file is not _MISSING and (output_mode != "windows"
+                or type(matches_per_file) is not int or not 1 <= matches_per_file <= MAX_WINDOW_MATCHES):
+            raise ToolError("matches_per_file requires output_mode='windows' and an integer from 1 to 8")
         if output_mode == "read":
             if glob is not _MISSING:
                 raise ToolError("read mode requires a single explicit file path; omit glob")
@@ -1140,6 +1148,8 @@ class Tools:
         if output_mode == "windows":
             self._require_tool("read_file")
             limit = min(limit, MAX_SEARCH_WINDOW_FILES)
+            if matches_per_file is _MISSING:
+                matches_per_file = 1
         file_glob = FileGlob(glob) if glob is not _MISSING else None
         matcher = RegexMatcher(query, ignore_case, self._check_cancelled) if regex else None
         parts = self._parts(path)
@@ -1171,27 +1181,24 @@ class Tools:
 
         def add_window(path, file_parts, raw, text, matches):
             nonlocal stopped
-            prefixes, following = match_window_prefixes(matches, 1)
+            prefixes, following = match_window_prefixes(matches, matches_per_file)
             if not prefixes:
                 return
             if len(result[field]) >= limit:
                 result["truncated"] = stopped = True
                 return
-            line, ranges = prefixes[0]
-            metadata = {"matched_lines": 1, "truncated": following is not None}
-            if following is not None:
-                metadata["next_cursor"] = self._search_cursor(file_parts, raw, query, ignore_case,
-                                                              context, regex, following)
+            def page_cursor(line):
+                return self._search_cursor(file_parts, raw, query, ignore_case, context, regex, line)
             if self.config.project_instructions:
                 self.instructions.register(file_parts[:-1])
             try:
-                record = self._render_ranges(path, file_parts, ranges, raw, text,
-                                             output_cap=min(MAX_SEARCH_WINDOW_BYTES, remaining - 2), **metadata)
+                record = self._render_search_page(path, file_parts, raw, text, prefixes, following, page_cursor,
+                                                  window_cap=min(MAX_SEARCH_WINDOW_BYTES, remaining - 2))
             except _RangeOutputLimit:
                 # Keep a location even when one complete window cannot fit.
                 result["truncated"] = True
                 self._parts(path)
-                record = {"path": path, "line": line, "window_omitted": True}
+                record = {"path": path, "line": prefixes[0][0], "window_omitted": True}
             add_record(record)
 
         def scan_file(directory, name, prefix):
