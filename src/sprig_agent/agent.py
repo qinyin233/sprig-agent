@@ -39,6 +39,7 @@ from .message_origin import ORIGIN, application_message
 from .requirements import (REQUIREMENT_KEY, change as requirement_change, model_frame as requirement_frame,
                            state as requirement_state)
 from .requirement_checks import CHECK_KEY, RequirementCheck, latest_attempt, report as check_report, valid_indices
+from .requirement_edits import EDIT_SCOPE, scoped_tasks
 from .image_reads import ImageReadResult
 from .image_inputs import images
 
@@ -101,6 +102,7 @@ class Agent:
         self.runtime_state = None
         self._verification_stamp = None
         self._requirement_stamps = {}
+        self._edit_scope = None
         self.verification_state = "unverified"
         self._running = False
         self._context_files = []
@@ -787,6 +789,7 @@ class Agent:
                 "approved": False, "skipped": True,
                 "error": "Not executed: superseded by new user guidance. Inspect current state and follow the updated request."})})
         messages.extend(rows)
+        self._set_edit_scope(None)
         self._tool_images = []  # New human guidance ends previous pixel-send consent.
         self._clear_resumed_reads()
         self.work_progress.reset_inspections()
@@ -864,6 +867,10 @@ class Agent:
                                       if INPUT_ID in row else row for row in messages[1:] if REQUIREMENT_KEY not in row)]
         if requirements:
             messages.append(application_message(requirement_frame(requirements)))
+        if self._edit_scope is not None:
+            messages.append(application_message(
+                f"The user scoped this task to tracked requirement {self._edit_scope['name']} "
+                f"revision {self._edit_scope['revision']}. Focus the work on that requirement."))
         if isinstance(self.tools, Tools) and self.config.mcp_servers and self.config.tool_enabled("mcp") and not self.config.read_only:
             messages[0]["content"] += "\nConfigured MCP endpoints and local state (no connection implied):\n" + json.dumps(redact(self.tools.mcp_manager.status(), self.config.secrets), ensure_ascii=False)
         if isinstance(self.tools, Tools) and self.config.lsp_servers and self.config.tool_enabled("lsp") and not self.config.read_only:
@@ -1244,12 +1251,37 @@ class Agent:
             self._prepared_reference_context = None
             self._clear_resumed_reads()
             self._current_history = None
+            self._set_edit_scope(None)
             self._running = False
 
-    def run(self, task=None, messages=None, *, context_files=(), preflight=False):
+    def _set_edit_scope(self, scope):
+        self._edit_scope = scope
+        if isinstance(self.tools, Tools):
+            self.tools.history.edit_scope = scope
+
+    def requirement_changes(self, messages, name):
+        scopes = scoped_tasks(messages, name)
+        return self.tools.review_changes(scopes=scopes)
+
+    def _task_row(self, task):
+        row = {"role": "user", "content": redact(task, self.config.secrets)}
+        if self._edit_scope is not None:
+            row[EDIT_SCOPE] = dict(self._edit_scope)
+        return row
+
+    def run(self, task=None, messages=None, *, context_files=(), preflight=False, requirement=None):
         with self._execution():
             if self.usage_ledger is not None and self.usage_ledger.blocked:
                 raise UsagePersistenceError('Usage checkpoint is uncertain; restore the saved session before continuing.')
+            if requirement is not None:
+                selected = requirement_state(messages).get(requirement)
+                if selected is None or selected["text"] is None or not isinstance(task, str) or not task.strip():
+                    raise ValueError("select an active requirement and enter the scoped task")
+                if len(messages) >= MAX_HISTORY_MESSAGES:
+                    raise ValueError("session history is full; start a new session before scoping a task")
+                self._set_edit_scope({"id": self._run_id, "name": requirement,
+                                      "revision": selected["revision"], "source": selected["source_message"]})
+                preflight = True
             if context_files:
                 self._context_files, _ = self._file_snapshots(context_files)
             if context_files or preflight:
@@ -1257,7 +1289,7 @@ class Agent:
                 # commands. Retrying the draft rereads files and repeats policy.
                 candidate = validate_history(messages) if messages else [{"role": "system", "content": self._prompt()}]
                 if task:
-                    candidate.append({"role": "user", "content": redact(task, self.config.secrets)})
+                    candidate.append(self._task_row(task))
                 self._refresh_instructions(candidate)
                 _, budget = prepare_context(self.config, self._request_messages(candidate, 1), self.schemas,
                                             self.compact_context, check_cancelled=self._check_cancelled)
@@ -1343,7 +1375,7 @@ class Agent:
         messages = messages if messages else [{"role": "system", "content": prompt}]
         messages[0] = {"role": "system", "content": prompt}
         if task:
-            messages.append({"role": "user", "content": redact(task, self.config.secrets)})
+            messages.append(self._task_row(task))
         self._current_history = messages
         steered = self._steer(messages)
         resume_reads = task is None and not steered

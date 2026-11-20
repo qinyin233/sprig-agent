@@ -41,7 +41,7 @@ from .session import SessionError, SessionStore, validate_history
 from .settings import public_config
 from .tools import Tools
 from .edit_batch import EditPreview
-from .requirements import command as requirement_command, display as requirement_display
+from .requirements import command as requirement_command, display as requirement_display, work_prefix
 from .requirement_checks import command as verification_command
 
 
@@ -86,6 +86,7 @@ class TaskInput(TextArea):
         self.pastes = DraftPastes()
         self.verbatim_paste = self.literal_paste = False
         self._queue_paste_mode = None
+        self._work_paste_prefix = None
         self._paste_identity = 0
         self._expanding_paste = False
         self._last_composer_edit = None
@@ -99,13 +100,15 @@ class TaskInput(TextArea):
         self.pastes = DraftPastes(self.text)
         self.verbatim_paste = self.literal_paste = False
         self._queue_paste_mode = None
+        self._work_paste_prefix = None
         self._last_composer_edit = None
 
     def paste_state(self):
-        return tuple(self.pastes.spans), self.verbatim_paste, self.literal_paste, self._queue_paste_mode
+        return (tuple(self.pastes.spans), self.verbatim_paste, self.literal_paste, self._queue_paste_mode,
+                self._work_paste_prefix)
 
     def restore_paste_state(self, state):
-        spans, self.verbatim_paste, self.literal_paste, self._queue_paste_mode = state
+        spans, self.verbatim_paste, self.literal_paste, self._queue_paste_mode, self._work_paste_prefix = state
         self.pastes = DraftPastes(self.text)
         self.pastes.spans = [row for row in spans if self.text[row[0]:row[1]] == row[3]]
 
@@ -118,6 +121,8 @@ class TaskInput(TextArea):
         end = self.document.get_index_from_location(edit.bottom)
         if self._queue_paste_mode is not None and start <= len(self.text) - len(self.text.lstrip()) + len('/queue'):
             self._queue_paste_mode = None
+        if self._work_paste_prefix is not None and start < len(self._work_paste_prefix):
+            self._work_paste_prefix = None
         previous = len(self.pastes.spans)
         result = super().edit(edit)
         self.files.sync(self.text, start, end)
@@ -127,6 +132,7 @@ class TaskInput(TextArea):
         if not self.text:
             self.verbatim_paste = self.literal_paste = False
             self._queue_paste_mode = None
+            self._work_paste_prefix = None
         edit.paste_after = self.paste_state()
         edit.redo_selection = self.selection
         self._last_composer_edit = edit
@@ -176,6 +182,11 @@ class TaskInput(TextArea):
             return
         self.history.checkpoint()
         queue_mode = self._queue_paste_mode
+        scope_prefix = self._work_paste_prefix
+        if not self.verbatim_paste:
+            scope_prefix = work_prefix(self.text[:left])
+        if scope_prefix is not None and left < len(scope_prefix):
+            scope_prefix = None
         prefix = self.text[:left].lstrip()
         if not self.literal_paste and prefix.split()[:1] == ['/queue']:
             queue_mode = queue_mode or ('json' if prefix.split() == ['/queue', 'add'] else 'raw')
@@ -186,6 +197,7 @@ class TaskInput(TextArea):
         self.verbatim_paste = True
         self.literal_paste = self.literal_paste or folded
         self._queue_paste_mode = queue_mode
+        self._work_paste_prefix = scope_prefix
         self._paste_identity += 1
         self._last_composer_edit.paste_after = self.paste_state()
         self.history.checkpoint()
@@ -229,6 +241,7 @@ class TaskInput(TextArea):
         self.pastes=DraftPastes(self.text)
         self.verbatim_paste=self.literal_paste=bool(text)
         self._queue_paste_mode=None
+        self._work_paste_prefix=None
         self._last_composer_edit.paste_after=self.paste_state()
         self.history.checkpoint()
         self.move_cursor(self.document.end)
@@ -243,6 +256,7 @@ class TaskInput(TextArea):
             self.preflight = editor.verbatim_paste
             self.literal = editor.literal_paste
             self.queue_paste_mode = editor._queue_paste_mode
+            self.scoped_work = editor._work_paste_prefix is not None and self.text.startswith(editor._work_paste_prefix)
 
     class Complete(Message):
         def __init__(self, editor):
@@ -966,7 +980,7 @@ class SprigApp(App[int]):
         self.check_cancelled()
         return answers[0]
 
-    def start(self, task=None, local=None, *, context_files=(), preflight=False):
+    def start(self, task=None, local=None, *, context_files=(), preflight=False, requirement=None):
         if self.busy:
             return
         if (self.recovered_inputs["pending"] or self._input_retry or self._input_inbox.blocked) and (
@@ -995,10 +1009,11 @@ class SprigApp(App[int]):
         self.set_state("处理中")
         if task:
             self.append("\n你> " + task + "\n")
-        self.execute(task, local, context_files, preflight)
+        options = {"requirement": requirement} if requirement is not None else {}
+        self.execute(task, local, context_files, preflight, **options)
 
     @work(thread=True, group="agent", exclusive=True, exit_on_error=False)
-    def execute(self, task, local, context_files=(), preflight=False):
+    def execute(self, task, local, context_files=(), preflight=False, requirement=None):
         # Finishing and submission are serialized on the UI thread. A late
         # request keeps this worker alive instead of racing a second worker.
         with self._lifecycle_lock:
@@ -1008,6 +1023,8 @@ class SprigApp(App[int]):
                 options = {"context_files": context_files} if context_files else {}
                 if preflight:
                     options["preflight"] = True
+                if requirement is not None:
+                    options["requirement"] = requirement
                 status, message = self.execute_turn(task, local, **options)
                 try:
                     again = self.ui_call(self.finished, status, message)
@@ -1018,8 +1035,9 @@ class SprigApp(App[int]):
                 task, local = None, None
                 context_files = ()
                 preflight = False
+                requirement = None
 
-    def execute_turn(self, task, local, context_files=(), preflight=False):
+    def execute_turn(self, task, local, context_files=(), preflight=False, requirement=None):
         status, message = 0, "完成"
         try:
             if local:
@@ -1041,6 +1059,9 @@ class SprigApp(App[int]):
                 elif name == "requirement-evidence":
                     result = self.agent.requirement_evidence(self.messages, arguments["name"], min(self.config.max_output, 16384))
                     message = "已查看需求检查结果"
+                elif name == "requirement-changes":
+                    result = self.agent.requirement_changes(self.messages, arguments["name"])
+                    message = "已查看需求的修改备份"
                 elif name == "pending":
                     action = arguments["action"]
                     if action == "apply":
@@ -1181,6 +1202,8 @@ class SprigApp(App[int]):
                 options = {"context_files": context_files} if context_files else {}
                 if preflight:
                     options["preflight"] = True
+                if requirement is not None:
+                    options["requirement"] = requirement
                 self.messages, complete = self.agent.run(task, self.messages, **options)
                 status = 0 if complete else 2
                 message = "验收通过" if complete and self.config.checks else ("本轮结束" if complete else "未完成 / 未验收")
@@ -1254,7 +1277,8 @@ class SprigApp(App[int]):
         verification = self.local_action == "verify"
         reviewing = self.local_action == "change-review"
         targeted = self.local_action == "requirement-verify"
-        local_only = verification or targeted or self.local_action in {"requirement-evidence", "model-catalog-refresh", "change-review"}
+        local_only = verification or targeted or self.local_action in {
+            "requirement-evidence", "requirement-changes", "model-catalog-refresh", "change-review"}
         if (verification or targeted) and (self._input_inbox.batch(delivery="steer") or self._input_retry or self._input_inbox.blocked):
             status, message = 2, "检查后有新要求或保存待确认；未请求模型，请明确继续或处理 /pending"
         if self._queue_running and self.agent.had_rejected_action and status == 0:
@@ -1295,12 +1319,14 @@ class SprigApp(App[int]):
         return False
 
     def action_focus_task(self):
-        if isinstance(self.screen, QuestionScreen):
-            self.screen.query_one("#question-guidance", Input).focus()
-        elif isinstance(self.screen, ApprovalScreen) and self.screen.allow_steering:
-            self.screen.query_one("#approval-task", TextArea).focus()
-        elif not isinstance(self.screen, ModalScreen):
-            self.query_one("#task", TextArea).focus()
+        # Change focus before the app forwards any following keystrokes.
+        screen = self.screen
+        if isinstance(screen, QuestionScreen):
+            screen.set_focus(screen.query_one("#question-guidance", Input))
+        elif isinstance(screen, ApprovalScreen) and screen.allow_steering:
+            screen.set_focus(screen.query_one("#approval-task", TextArea))
+        elif not isinstance(screen, ModalScreen):
+            screen.set_focus(self.query_one("#task", TextArea))
 
     def action_submit(self):
         if isinstance(self.screen, QuestionScreen):
@@ -1509,7 +1535,11 @@ class SprigApp(App[int]):
             self.screen.focus_next()
             return
         cursor = event.editor.document.get_index_from_location(event.editor.cursor_location)
-        mention = mention_query(text, cursor) if not text.startswith("/") else None
+        scoped = work_prefix(text)
+        mentions_allowed = not text.startswith("/") or (
+            scoped is not None and cursor >= len(scoped)
+            and (not event.editor.literal_paste or event.editor._work_paste_prefix is not None))
+        mention = mention_query(text, cursor) if mentions_allowed else None
         if mention is not None and event.editor.selection.is_empty:
             self.open_picker(query=mention[2], editor=event.editor, mention=mention[:2])
             return
@@ -1579,7 +1609,10 @@ class SprigApp(App[int]):
             return
         if not event.literal and command.startswith("//"):
             task = command[1:]  # A literal task starting with a slash.
-        elif not event.literal and command_name in (["/requirements"], ["/verify"]):
+        elif (not event.literal or event.scoped_work) and command_name in (["/requirements"], ["/verify"]):
+            if command.split(None, 2)[:2] == ["/requirements", "work"]:
+                self.slash_command(task.lstrip(), submission=event)
+                return
             if event.files:
                 self.reject_input("本地需求和检查命令只接收文本。文件选择保留，请另行发送。")
                 return
@@ -1919,26 +1952,36 @@ class SprigApp(App[int]):
         self._editor_approval=ApprovalScreen(self.safe(proposal.description()),allow_steering=False)
         self.push_screen(self._editor_approval,approved)
 
-    def slash_command(self, text):
+    def slash_command(self, text, *, submission=None):
         command, _, argument = text.partition(" ")
         argument = argument.strip()
         if text.split(None, 1) and text.split(None, 1)[0] == "/queue":
             command = "/queue"
         if text.split(None, 1)[:1] == ["/requirements"]:
             try:
-                request = requirement_command(text[len("/requirements"):].strip())
-                if "evidence" in request:
-                    if self.busy:
-                        self.reject_input("请在当前操作结束后查看需求检查结果。")
+                request = requirement_command(text[len("/requirements"):])
+                if "work" in request:
+                    if self.busy or self.pending_tasks or self.recovered_inputs["pending"] or self._input_retry or self._input_inbox.blocked:
+                        self.reject_input("请处理活动任务和待处理输入后再发送关联需求的任务。")
                         return False
-                    self.start(local=("requirement-evidence", {"name": request["evidence"]}))
+                    if submission is not None:
+                        self._draft_submission = (submission.editor.id, submission.draft, request["task"])
+                    self.start(request["task"], requirement=request["work"],
+                               context_files=submission.files if submission is not None else ())
+                    return True
+                inspection = next((name for name in ("evidence", "changes") if name in request), None)
+                if inspection is not None:
+                    if self.busy:
+                        self.reject_input("请在当前操作结束后查看需求记录。")
+                        return False
+                    self.start(local=("requirement-" + inspection, {"name": request[inspection]}))
                     return True
                 if "change" not in request:
                     self.append("\n" + json.dumps(requirement_display(
                         self.messages, min(self.config.max_output, 16384), **request), ensure_ascii=False) + "\n")
                     return True
                 if self.busy:
-                    if self.local_action in {"requirement", "requirement-evidence"}:
+                    if self.local_action in {"requirement", "requirement-evidence", "requirement-changes"}:
                         self.reject_input("请在需求记录操作结束后重试，草稿已保留。")
                         return False
                     return self.queue_guidance(request["change"], requirement=True)
@@ -1974,7 +2017,7 @@ class SprigApp(App[int]):
                         "/lsp code_actions SERVER PATH 行 列 [结束行 结束列]；/lsp apply_code_action ID（新批准选择并逐文件审阅）\n"
                         "/continue /new /files /add 文件路径 /ref 文件路径 /unref 文件路径 /refs [clear]\n"
                         "/verify [需求名称 检查编号 ...] 逐次批准并运行所选固定检查\n"
-                        "/requirements [偏移]、show 名称、evidence 名称、set 名称 正文、clear 名称\n"
+                        "/requirements [偏移]、show 名称、evidence 名称、changes 名称、work 名称 任务、set 名称 正文、clear 名称\n"
                         "/map [名称或路径查询] /git [路径] /diff [--staged] 路径 /compact\n"
                         "/summary（本地预览） /summary create [END]（逐次确认额外请求） /summary clear\n"
                         "/logs（当前会话日志） /log ID [OFFSET]（本地回查） /logs clear（逐次确认清理）\n"

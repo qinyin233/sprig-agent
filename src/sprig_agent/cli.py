@@ -102,7 +102,7 @@ def chat(agent, task, messages, emit, *, autostart=True, model_selection=None, s
                 emit("Conversation retained in memory, but saving failed: " + redact(str(save_error), agent.config.secrets))
         emit(label + "; conversation retained. Pending actions will NOT be replayed. Use /continue or enter a new request when ready.")
 
-    def run(task):
+    def run(task, *, requirement=None):
         nonlocal messages, status
         if pending():
             status = 2
@@ -118,7 +118,8 @@ def chat(agent, task, messages, emit, *, autostart=True, model_selection=None, s
             messages = [{"role": "system", "content": SYSTEM_PROMPT}]
         try:
             with feedback_scope(terminal_inputs):
-                messages, complete = agent.run(task, messages)
+                options = {"requirement": requirement} if requirement is not None else {}
+                messages, complete = agent.run(task, messages, **options)
             status = 0 if complete else 2
         except KeyboardInterrupt:
             recover(True)
@@ -192,7 +193,13 @@ def chat(agent, task, messages, emit, *, autostart=True, model_selection=None, s
                 emit("Resolve /pending apply or /pending discard first; no model request sent.")
                 continue
             if task.split(None, 1)[:1] == ["/requirements"]:
-                request = requirement_command(task[len("/requirements"):].strip())
+                request = requirement_command(task[len("/requirements"):])
+                if "work" in request:
+                    if queued_or_pending():
+                        emit("Resolve pending inputs or queued tasks before submitting scoped work.")
+                    else:
+                        run(request["task"], requirement=request["work"])
+                    continue
                 if "change" in request:
                     if queued_or_pending():
                         emit("Resolve pending inputs or queued tasks before revising requirements.")
@@ -205,6 +212,8 @@ def chat(agent, task, messages, emit, *, autostart=True, model_selection=None, s
                     result = {key: value for key, value in result.items() if key != "text"}
                 elif "evidence" in request:
                     result = agent.requirement_evidence(messages, request["evidence"], min(agent.config.max_output, 16384))
+                elif "changes" in request:
+                    result = agent.requirement_changes(messages, request["changes"])
                 else:
                     result = requirement_display(messages, min(agent.config.max_output, 16384), **request)
                 emit(json.dumps(result, ensure_ascii=False))
@@ -262,7 +271,7 @@ def chat(agent, task, messages, emit, *, autostart=True, model_selection=None, s
                 emit("/mcp shows local server state; /mcp connect|disconnect|tools|resources|templates|prompts SERVER asks fresh approval for remote requests; /mcp result ID [OFFSET] reads retained local data without replay.")
                 emit("/skills lists configured skill metadata; /skill NAME [PATH [OFFSET PAGE_SHA256]] previews local UTF-8 guidance without a model call or script execution. Quote resource paths containing spaces.")
                 emit("/summary previews an optional lossy checkpoint; /summary create [END] makes one extra model request after approval; /summary clear restores the full request view. /history MESSAGE [OFFSET] locally pages original data.")
-                emit("/requirements [OFFSET] lists tracked requirements. show NAME, evidence NAME, set NAME TEXT, and clear NAME work locally.")
+                emit("/requirements [OFFSET] lists tracked requirements. show NAME, evidence NAME, and changes NAME inspect local records. work NAME TASK submits scoped work.")
                 emit("/verify or /verify NAME CHECK [CHECK ...] runs configured fixed checks with fresh approval. Use numbers in configuration order. No model request or automatic continuation.")
                 emit("/changes review lists retained file-edit comparisons; /changes show ID|latest [OFFSET SNAPSHOT] pages the historical diff locally. Read-only TUI viewer preserves the composer; review is not a new verification result.")
                 emit("/undo-to ID restores the state before a retained edit; /redo-to ID reapplies through it. Every restore needs fresh file approval.")

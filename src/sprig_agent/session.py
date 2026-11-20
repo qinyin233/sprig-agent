@@ -25,6 +25,7 @@ from .image_inputs import IMAGE_KEY, images
 from .message_origin import ORIGIN, application_origin
 from .requirements import REQUIREMENT_KEY, change as requirement_change
 from .requirement_checks import CHECK_KEY, marker as check_marker
+from .requirement_edits import EDIT_SCOPE, scoped_tasks, validate_scope
 from .usage_ledger import UsageLedger, usage_state
 
 _PRESERVE_INPUTS = object()
@@ -90,10 +91,18 @@ def _validated_check_marker(row):
     return check_marker(row[CHECK_KEY])
 
 
+def _validated_edit_scope(row):
+    if (row.get("role") != "user" or not isinstance(row.get("content"), str) or not row["content"].strip()
+            or any(key in row for key in (ORIGIN, INPUT_ID, IMAGE_KEY, REQUIREMENT_KEY, CHECK_KEY, "tool_calls"))):
+        raise ValueError("invalid tracked edit scope origin")
+    return validate_scope(row[EDIT_SCOPE])
+
+
 def validate_history(messages):
     if not isinstance(messages, list) or not messages or len(messages) > MAX_HISTORY_MESSAGES:
         raise SessionError("invalid session history")
     clean, pending, seen = [], [], set()
+    has_scope = False
     for index, message in enumerate(messages):
         if not isinstance(message, dict):
             raise SessionError("invalid session message")
@@ -111,6 +120,14 @@ def validate_history(messages):
                 receipt = _validated_check_marker(message)
             except ValueError:
                 raise SessionError("invalid tracked requirement check receipt") from None
+        scope = None
+        if EDIT_SCOPE in message:
+            try:
+                scope = _validated_edit_scope(message)
+                if scope["source"] > index:
+                    raise ValueError
+            except ValueError:
+                raise SessionError("invalid tracked edit scope") from None
         if REQUIREMENT_KEY in message:
             try:
                 _validate_requirement(message)
@@ -145,6 +162,9 @@ def validate_history(messages):
                 row[ORIGIN] = "application"
             if receipt is not None:
                 row[CHECK_KEY] = receipt
+            if scope is not None:
+                row[EDIT_SCOPE] = scope
+                has_scope = True
             if REQUIREMENT_KEY in message:
                 row[REQUIREMENT_KEY] = True
             if image_rows:
@@ -163,6 +183,11 @@ def validate_history(messages):
         delivered_inputs(clean)
     except (ValueError, UnicodeError):
         raise SessionError("invalid or duplicate delivered user input identity") from None
+    if has_scope:
+        try:
+            scoped_tasks(clean)
+        except ValueError:
+            raise SessionError("tracked edit scope does not match its requirement revision") from None
     if clean[0]["role"] != "system":
         raise SessionError("missing system message")
     # A crash could have occurred after a side effect but before the result was saved.
@@ -347,6 +372,11 @@ class SessionStore:
         if selected_usage is not None:
             payload['request_usage'] = selected_usage
         for row in payload["messages"] if isinstance(payload.get("messages"), list) else ():
+            if isinstance(row, dict) and EDIT_SCOPE in row:
+                try:
+                    _validated_edit_scope(row)
+                except ValueError:
+                    raise SessionError("invalid or redaction-conflicting edit scope; no data was overwritten") from None
             if isinstance(row, dict) and CHECK_KEY in row:
                 try:
                     _validated_check_marker(row)
@@ -480,6 +510,8 @@ class SessionStore:
                     _validate_requirement(row)
                 if CHECK_KEY in row:
                     _validated_check_marker(row)
+                if EDIT_SCOPE in row:
+                    _validated_edit_scope(row)
             except ValueError:
                 raise SessionError("invalid saved message metadata or image; no history sent") from None
         try:

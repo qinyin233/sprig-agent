@@ -300,6 +300,9 @@ class Tools:
         if observer is not None:
             observer("waiting")
         self._check_cancelled()
+        scope = self.history.edit_scope
+        if scope is not None:
+            description = f"User-selected edit scope is {scope['name']} (revision {scope['revision']}).\n" + description
         approved = self.approve(description) is True
         if observer is not None:
             observer("approved" if approved else "rejected")
@@ -1487,13 +1490,15 @@ class Tools:
                     pass
         fd.sync()
 
-    def review_changes(self, identity=None, offset=0, snapshot=None):
+    def review_changes(self, identity=None, offset=0, snapshot=None, *, scopes=None):
         """User-local read-only inspection; not a model tool or workspace action."""
         from .change_review import catalog, page
         try:
             if identity is None and (type(offset) is not int or offset != 0 or snapshot is not None):
                 raise ValueError("catalog inspection does not accept a page offset or snapshot")
-            return catalog(self) if identity is None else page(self, identity, offset, snapshot)
+            if identity is not None and scopes is not None:
+                raise ValueError("select either a retained edit or a requirement's scope")
+            return catalog(self, scopes=scopes) if identity is None else page(self, identity, offset, snapshot)
         except (OSError, ToolError, ChangeError, ValueError, TypeError, RuntimeError, RecursionError) as error:
             result = {"error": terminal_text(redact(str(error), self.config.secrets)), "network_contacted": False}
             if len(json.dumps(result, ensure_ascii=False).encode("utf-8")) > min(self.config.max_output, 16384):

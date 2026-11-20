@@ -3,6 +3,7 @@ from bisect import bisect_left
 import copy
 import hashlib
 import json
+import os
 import re
 
 from .changes import MAX_JOURNAL, unpack
@@ -80,26 +81,72 @@ def _visible(tools, record):
         raise ValueError('record path is protected by credential policy')
 
 
-def catalog(tools):
+def _observe(tools, path):
+    try:
+        with tools._parent(path) as (directory, name):
+            raw, info = tools._snapshot(directory, name)
+            if raw is not None:
+                tools._decode(raw)
+            return raw, tools._revision(info)
+    except FileNotFoundError:
+        return 'missing_parent', None
+
+
+def _current_state(state, path, observation):
+    if state['pending'] is not None:
+        return 'uncertain_pending_change'
+    raw, revision = observation
+    if raw == 'missing_parent':
+        return 'unavailable'
+    applied = [row for row in state['records'][:state['cursor']] if row['path'] == path]
+    expected = unpack(applied[-1]['after']) if applied else unpack(
+        next(row['before'] for row in state['records'] if row['path'] == path))
+    anchor = state['anchors'][path]
+    return ('matches_recorded_state' if raw == expected and revision == (tuple(anchor) if anchor is not None else None)
+            else 'changed_since_recording')
+
+
+def catalog(tools, *, scopes=None):
     from .tools import ToolError
     state, fresh = _guard(tools)
-    rows, hidden = [], 0
+    rows, hidden, observations = [], 0, {}
     for index, record in enumerate(state['records']):
         tools._check_cancelled()
+        if scopes is not None:
+            scope = record.get('scope', {})
+            match = scopes.get(scope.get('id'))
+            if match is None or scope != match[0]:
+                continue
         try:
             _visible(tools, record)
         except (ValueError, ToolError):
             hidden += 1
             continue
         path = _safe(tools, record['path'])
-        rows.append({'id': record['id'], 'path': path[:80], 'path_truncated': len(path) > 80,
-                     'applied': None if state['pending'] and state['pending']['path'] == record['path'] else index < state['cursor'],
-                     'before_bytes': None if record['before'] is None else len(unpack(record['before'])),
-                     'after_bytes': None if record['after'] is None else len(unpack(record['after']))}
-                    | ({'batch': copy.deepcopy(record['batch'])} if 'batch' in record else {})
-                    | ({'origin': record['origin']} if 'origin' in record else {}))
+        row = {'id': record['id'], 'path': path[:80], 'path_truncated': len(path) > 80,
+               'applied': None if state['pending'] and state['pending']['path'] == record['path'] else index < state['cursor'],
+               'before_bytes': None if record['before'] is None else len(unpack(record['before'])),
+               'after_bytes': None if record['after'] is None else len(unpack(record['after']))}
+        if 'batch' in record:
+            row['batch'] = copy.deepcopy(record['batch'])
+        if 'origin' in record:
+            row['origin'] = record['origin']
+        if scopes is not None:
+            raw_path = record['path']
+            if raw_path not in observations:
+                try:
+                    observations[raw_path] = _current_state(state, raw_path, _observe(tools, raw_path))
+                except (ValueError, OSError, ToolError):
+                    observations[raw_path] = 'unavailable'
+            key = str.casefold if os.name == 'nt' else str
+            later = any(key(other['path']) == key(raw_path) for other in state['records'][index+1:state['cursor']])
+            row.update(requirement_revision=scope['revision'], source_message=scope['source'], task_message=match[1],
+                       current=observations[raw_path], later_recorded_change=later)
+        rows.append(row)
     result = {'records': rows, 'hidden_records': hidden, 'pending': state['pending'] is not None,
               'historical': True, 'not_acceptance': True, 'network_contacted': False}
+    if scopes is not None:
+        result['scoped_tasks'] = len(scopes)
     fresh()
     if len(json.dumps(result, ensure_ascii=False).encode('utf-8')) > min(tools.config.max_output, 16384):
         raise ValueError('change review catalog exceeds output budget; increase max_output explicitly')
@@ -217,24 +264,8 @@ def page(tools, identity, offset=0, snapshot=None):
     # Redact whole snapshots before adding diff prefixes or splitting pages.
     before = None if raw_before is None else _safe(tools, tools._decode(raw_before))
     after = None if raw_after is None else _safe(tools, tools._decode(raw_after))
-    def observe_current():
-        try:
-            with tools._parent(record['path']) as (directory, name):
-                raw, info = tools._snapshot(directory, name)
-                if raw is not None: tools._decode(raw)
-                return raw, tools._revision(info)
-        except FileNotFoundError:
-            return 'missing_parent', None
-    observation = observe_current()
-    current = 'unavailable'
-    if observation[0] != 'missing_parent':
-        raw, revision = observation
-        applied = [row for row in state['records'][:state['cursor']] if row['path'] == record['path']]
-        expected = unpack(applied[-1]['after']) if applied else unpack(next(row['before'] for row in state['records'] if row['path'] == record['path']))
-        anchor = state['anchors'][record['path']]
-        current = ('matches_recorded_state' if raw == expected and revision == (tuple(anchor) if anchor is not None else None)
-                   else 'changed_since_recording')
-    if state['pending'] is not None: current = 'uncertain_pending_change'
+    observation = _observe(tools, record['path'])
+    current = _current_state(state, record['path'], observation)
     path = _safe(tools, record['path'])
     body = _safe(tools, comparison(path, before, after, tools._check_cancelled))
     if len(body) > MAX_VIEW:
@@ -266,7 +297,7 @@ def page(tools, identity, offset=0, snapshot=None):
         if len(json.dumps(fragment(middle), ensure_ascii=False).encode('utf-8')) <= budget: low = middle
         else: high = middle - 1
     result = fragment(low)
-    if observe_current() != observation:
+    if _observe(tools, record['path']) != observation:
         raise ValueError('workspace file changed while preparing review; refresh the comparison')
     fresh()
     if len(json.dumps(result, ensure_ascii=False).encode('utf-8')) > budget or not low and not result['complete']:

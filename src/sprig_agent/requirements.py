@@ -6,9 +6,9 @@ import re
 from .json_budget import JsonBudgetExceeded, encoded_size
 
 REQUIREMENT_KEY = "sprig_requirement"
-USAGE = ('Use /requirements [OFFSET], /requirements show NAME, /requirements evidence NAME, '
-         '/requirements set NAME TEXT, or /requirements clear NAME')
+USAGE = ('Use /requirements [OFFSET], show NAME, evidence NAME, changes NAME, set NAME TEXT, clear NAME, or work NAME TASK')
 NAME = re.compile(r"[a-z][a-z0-9-]{0,31}")
+WORK_PREFIX = re.compile(r"[ \t]*work[ \t]+([a-z][a-z0-9-]{0,31})[ \t]")
 
 
 def change(text):
@@ -27,6 +27,12 @@ def change(text):
 
 
 def command(argument):
+    work = WORK_PREFIX.match(argument)
+    if work is not None:
+        task = argument[work.end():]
+        if task.strip():
+            return {"work": work[1], "task": task}
+        raise ValueError(USAGE)
     if len(argument) > 1088:
         raise ValueError(USAGE)
     pieces = argument.split()
@@ -38,8 +44,19 @@ def command(argument):
         return {"name": pieces[1]}
     if len(pieces) == 2 and pieces[0] == "evidence" and NAME.fullmatch(pieces[1]):
         return {"evidence": pieces[1]}
+    if len(pieces) == 2 and pieces[0] == "changes" and NAME.fullmatch(pieces[1]):
+        return {"changes": pieces[1]}
     name, body = change(argument)
     return {"change": f"clear {name}" if body is None else f"set {name} {body}"}
+
+
+def work_prefix(text):
+    """Recognize a complete command prefix present before a body paste."""
+    command = re.match(r"[ \t]*/requirements[ \t]", text)
+    if command is None:
+        return None
+    work = WORK_PREFIX.match(text, command.end())
+    return None if work is None else text[:work.end()]
 
 
 def state(messages):

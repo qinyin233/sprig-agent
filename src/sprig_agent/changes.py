@@ -9,6 +9,7 @@ import re
 import uuid
 
 from .session import SessionStore
+from .requirement_edits import validate_scope
 
 MAX_BACKUPS = 4 * 1024 * 1024
 MAX_JOURNAL = 8 * 1024 * 1024
@@ -37,6 +38,7 @@ class ChangeHistory:
         self.workdir = str(config.workdir)
         self.store = None
         self.state = self.empty()
+        self.edit_scope = None
         if directory is not None:
             self.store = SessionStore(directory, config)
             self.name = "changes-" + hashlib.sha256(self.workdir.encode("utf-8")).hexdigest()[:32]
@@ -80,6 +82,8 @@ class ChangeHistory:
                         raise ValueError
                 if "origin" in record and record["origin"] != "command":
                     raise ValueError
+                if "scope" in record:
+                    validate_scope(record["scope"])
                 label = record.get("batch")
                 if "batch" in record:
                     if (not isinstance(label, dict) or set(label) != {"id", "index"}
@@ -154,9 +158,11 @@ class ChangeHistory:
                             | ({"origin": record["origin"]} if "origin" in record else {})
                             for index, record in enumerate(self.state["records"])]}
 
-    @staticmethod
-    def _entry(path, before, after, mode):
-        return {"id": uuid.uuid4().hex, "path": path, "before": pack(before), "after": pack(after), "mode": mode}
+    def _entry(self, path, before, after, mode):
+        record = {"id": uuid.uuid4().hex, "path": path, "before": pack(before), "after": pack(after), "mode": mode}
+        if self.edit_scope is not None:
+            record["scope"] = dict(validate_scope(self.edit_scope))
+        return record
 
     def _append(self, records, revisions):
         self._ready()
