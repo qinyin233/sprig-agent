@@ -6,7 +6,8 @@ import re
 from .json_budget import JsonBudgetExceeded, encoded_size
 
 REQUIREMENT_KEY = "sprig_requirement"
-USAGE = ('Use /requirements [OFFSET], show NAME, evidence NAME, changes NAME, set NAME TEXT, clear NAME, or work NAME TASK')
+USAGE = ('Use /requirements [OFFSET], show NAME, evidence NAME, changes NAME, revert NAME REVISION [ID], '
+         'set NAME TEXT, clear NAME, or work NAME TASK')
 NAME = re.compile(r"[a-z][a-z0-9-]{0,31}")
 WORK_PREFIX = re.compile(r"[ \t]*work[ \t]+([a-z][a-z0-9-]{0,31})[ \t]")
 
@@ -46,6 +47,10 @@ def command(argument):
         return {"evidence": pieces[1]}
     if len(pieces) == 2 and pieces[0] == "changes" and NAME.fullmatch(pieces[1]):
         return {"changes": pieces[1]}
+    if (len(pieces) in (3, 4) and pieces[0] == "revert" and NAME.fullmatch(pieces[1])
+            and re.fullmatch(r"[1-9][0-9]{0,3}", pieces[2])
+            and (len(pieces) == 3 or re.fullmatch(r"[a-f0-9]{32}", pieces[3]))):
+        return {"revert": pieces[1], "revision": int(pieces[2]), "identity": pieces[3] if len(pieces) == 4 else None}
     name, body = change(argument)
     return {"change": f"clear {name}" if body is None else f"set {name} {body}"}
 

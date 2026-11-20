@@ -6,7 +6,7 @@ import json
 import os
 import re
 
-from .changes import MAX_JOURNAL, unpack
+from .changes import MAX_JOURNAL, reverted_ids, unpack
 from .config import redact, terminal_text
 from .json_budget import encoded_size
 
@@ -110,6 +110,7 @@ def catalog(tools, *, scopes=None):
     from .tools import ToolError
     state, fresh = _guard(tools)
     rows, hidden, observations = [], 0, {}
+    reverted = reverted_ids(state) if scopes is not None else set()
     for index, record in enumerate(state['records']):
         tools._check_cancelled()
         if scopes is not None:
@@ -140,8 +141,10 @@ def catalog(tools, *, scopes=None):
                     observations[raw_path] = 'unavailable'
             key = str.casefold if os.name == 'nt' else str
             later = any(key(other['path']) == key(raw_path) for other in state['records'][index+1:state['cursor']])
+            pending = state['pending']
             row.update(requirement_revision=scope['revision'], source_message=scope['source'], task_message=match[1],
-                       current=observations[raw_path], later_recorded_change=later)
+                       current=observations[raw_path], later_recorded_change=later,
+                       reverted=None if pending and pending['path'] == raw_path else record['id'] in reverted)
         rows.append(row)
     result = {'records': rows, 'hidden_records': hidden, 'pending': state['pending'] is not None,
               'historical': True, 'not_acceptance': True, 'network_contacted': False}

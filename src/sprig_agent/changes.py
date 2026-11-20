@@ -33,6 +33,12 @@ def backup_size(record):
     return sum(len(unpack(record[name]) or b"") for name in ("before", "after"))
 
 
+def reverted_ids(state):
+    pending_path = state["pending"]["path"] if state["pending"] is not None else None
+    return {identity for record in state["records"][:state["cursor"]] if record["path"] != pending_path
+            for identity in record.get("reverts", ())}
+
+
 class ChangeHistory:
     def __init__(self, config, directory=None):
         self.workdir = str(config.workdir)
@@ -71,8 +77,12 @@ class ChangeHistory:
                     or not isinstance(state["anchors"], dict)):
                 raise ValueError
             paths, batches, last_batch = set(), {}, None
+            retained = {record.get("id") for record in state["records"]
+                        if isinstance(record, dict) and isinstance(record.get("id"), str)}
+            previous_records = {}
             for record in state["records"]:
                 if (not isinstance(record, dict) or not isinstance(record["id"], str) or len(record["id"]) != 32
+                        or record["id"] in previous_records
                         or not isinstance(record["path"], str) or not 0 < len(record["path"]) <= 4096
                         or type(record["mode"]) is not int or not 0 <= record["mode"] <= 0o777
                         or (record["before"] is None and record["after"] is None)):
@@ -84,6 +94,18 @@ class ChangeHistory:
                     raise ValueError
                 if "scope" in record:
                     validate_scope(record["scope"])
+                if "reverts" in record:
+                    identities = record["reverts"]
+                    if ("scope" in record or "origin" in record or not isinstance(identities, list)
+                            or not 1 <= len(identities) <= MAX_RECORDS
+                            or not all(isinstance(value, str) and RECORD_ID.fullmatch(value) for value in identities)
+                            or len(set(identities)) != len(identities) or record["id"] in identities):
+                        raise ValueError
+                    for identity in identities:
+                        if identity in retained:
+                            source = previous_records.get(identity)
+                            if source is None or source["path"] != record["path"] or "scope" not in source:
+                                raise ValueError
                 label = record.get("batch")
                 if "batch" in record:
                     if (not isinstance(label, dict) or set(label) != {"id", "index"}
@@ -100,6 +122,7 @@ class ChangeHistory:
                 else:
                     last_batch = None
                 paths.add(record["path"])
+                previous_records[record["id"]] = record
             if set(state["anchors"]) != paths or sum(map(backup_size, state["records"])) > MAX_BACKUPS:
                 raise ValueError
             for revision in state["anchors"].values():
@@ -178,13 +201,15 @@ class ChangeHistory:
         state["anchors"] = {key: value for key, value in state["anchors"].items() if key in paths}
         return state
 
-    def begin_edit(self, path, before, after, mode, revision, *, batch=None):
+    def begin_edit(self, path, before, after, mode, revision, *, batch=None, reverts=None):
         record = self._entry(path, before, after, mode)
         if batch is not None:
             record["batch"] = copy.deepcopy(batch)
+        if reverts is not None:
+            record["reverts"] = list(reverts)
         state = self._append([record], {path: revision})
         state["pending"] = {"action": "edit", "path": path}
-        if batch is not None:
+        if batch is not None or reverts is not None:
             self.validate(state)  # A malformed association must fail before a journal or workspace write.
         self._save(state)
 

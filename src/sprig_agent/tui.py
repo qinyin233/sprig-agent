@@ -985,7 +985,7 @@ class SprigApp(App[int]):
             return
         if (self.recovered_inputs["pending"] or self._input_retry or self._input_inbox.blocked) and (
                 not local or local[0] in {"model-switch", "conversation-fork", "conversation-revise", "summary",
-                                         "verify", "requirement-verify"}):
+                                         "verify", "requirement-verify", "requirement-revert"}):
             self.reject_input("请先用 /pending apply 或 /pending discard 处理已恢复的要求；未请求模型。")
             return
         if not local and not task and not self.messages and not self.pending_tasks:
@@ -1110,8 +1110,12 @@ class SprigApp(App[int]):
                     if "error" in catalog or page and "error" in page:
                         result["error"] = catalog.get("error") or page["error"]
                     message = "历史文件差异审阅；主草稿保留，未重新验收"
-                elif name in {"changes", "undo", "redo", "undo-batch", "redo-batch", "undo-to", "redo-to", "discard-history"}:
-                    result = self.tools.change_action(name, **arguments)
+                elif name in {"changes", "undo", "redo", "undo-batch", "redo-batch", "undo-to", "redo-to",
+                              "discard-history", "requirement-revert"}:
+                    if name == "requirement-revert":
+                        result = self.agent.revert_requirement(self.messages, **arguments)
+                    else:
+                        result = self.tools.change_action(name, **arguments)
                     if result.get("changed") or result.get("outcome") == "uncertain" or getattr(result, "uncertain", False):
                         # Invalidate before checkpointing: a failed save cannot
                         # make a successful file restoration appear verified.
@@ -1278,7 +1282,7 @@ class SprigApp(App[int]):
         reviewing = self.local_action == "change-review"
         targeted = self.local_action == "requirement-verify"
         local_only = verification or targeted or self.local_action in {
-            "requirement-evidence", "requirement-changes", "model-catalog-refresh", "change-review"}
+            "requirement-evidence", "requirement-changes", "requirement-revert", "model-catalog-refresh", "change-review"}
         if (verification or targeted) and (self._input_inbox.batch(delivery="steer") or self._input_retry or self._input_inbox.blocked):
             status, message = 2, "检查后有新要求或保存待确认；未请求模型，请明确继续或处理 /pending"
         if self._queue_running and self.agent.had_rejected_action and status == 0:
@@ -1969,6 +1973,13 @@ class SprigApp(App[int]):
                     self.start(request["task"], requirement=request["work"],
                                context_files=submission.files if submission is not None else ())
                     return True
+                if "revert" in request:
+                    if self.busy or self.pending_tasks or self.recovered_inputs["pending"] or self._input_retry or self._input_inbox.blocked:
+                        self.reject_input("请处理活动任务和待处理输入后再撤回需求修改。")
+                        return False
+                    self.start(local=("requirement-revert", {"name": request["revert"], "revision": request["revision"],
+                                                            "identity": request["identity"]}))
+                    return True
                 inspection = next((name for name in ("evidence", "changes") if name in request), None)
                 if inspection is not None:
                     if self.busy:
@@ -2017,7 +2028,8 @@ class SprigApp(App[int]):
                         "/lsp code_actions SERVER PATH 行 列 [结束行 结束列]；/lsp apply_code_action ID（新批准选择并逐文件审阅）\n"
                         "/continue /new /files /add 文件路径 /ref 文件路径 /unref 文件路径 /refs [clear]\n"
                         "/verify [需求名称 检查编号 ...] 逐次批准并运行所选固定检查\n"
-                        "/requirements [偏移]、show 名称、evidence 名称、changes 名称、work 名称 任务、set 名称 正文、clear 名称\n"
+                        "/requirements [偏移]、changes 名称、revert 名称 版本 [ID]、work 名称 任务\n"
+                        "/requirements show 名称、evidence 名称、set 名称 正文、clear 名称\n"
                         "/map [名称或路径查询] /git [路径] /diff [--staged] 路径 /compact\n"
                         "/summary（本地预览） /summary create [END]（逐次确认额外请求） /summary clear\n"
                         "/logs（当前会话日志） /log ID [OFFSET]（本地回查） /logs clear（逐次确认清理）\n"

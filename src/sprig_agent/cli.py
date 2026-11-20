@@ -214,6 +214,15 @@ def chat(agent, task, messages, emit, *, autostart=True, model_selection=None, s
                     result = agent.requirement_evidence(messages, request["evidence"], min(agent.config.max_output, 16384))
                 elif "changes" in request:
                     result = agent.requirement_changes(messages, request["changes"])
+                elif "revert" in request:
+                    if queued_or_pending() or not history_ready:
+                        emit("Resolve pending inputs or invalid history before reverting requirement edits.")
+                        continue
+                    result = agent.revert_requirement(messages, request["revert"], request["revision"],
+                                                      identity=request["identity"])
+                    if not result["complete"] or result["changed"]:
+                        status = 2
+                    agent.record_workspace_change(messages, result)
                 else:
                     result = requirement_display(messages, min(agent.config.max_output, 16384), **request)
                 emit(json.dumps(result, ensure_ascii=False))
@@ -271,7 +280,7 @@ def chat(agent, task, messages, emit, *, autostart=True, model_selection=None, s
                 emit("/mcp shows local server state; /mcp connect|disconnect|tools|resources|templates|prompts SERVER asks fresh approval for remote requests; /mcp result ID [OFFSET] reads retained local data without replay.")
                 emit("/skills lists configured skill metadata; /skill NAME [PATH [OFFSET PAGE_SHA256]] previews local UTF-8 guidance without a model call or script execution. Quote resource paths containing spaces.")
                 emit("/summary previews an optional lossy checkpoint; /summary create [END] makes one extra model request after approval; /summary clear restores the full request view. /history MESSAGE [OFFSET] locally pages original data.")
-                emit("/requirements [OFFSET] lists tracked requirements. show NAME, evidence NAME, and changes NAME inspect local records. work NAME TASK submits scoped work.")
+                emit("/requirements [OFFSET] lists tracked requirements. changes NAME inspects retained edits. revert NAME REVISION [ID] proposes an inverse. work NAME TASK submits scoped work.")
                 emit("/verify or /verify NAME CHECK [CHECK ...] runs configured fixed checks with fresh approval. Use numbers in configuration order. No model request or automatic continuation.")
                 emit("/changes review lists retained file-edit comparisons; /changes show ID|latest [OFFSET SNAPSHOT] pages the historical diff locally. Read-only TUI viewer preserves the composer; review is not a new verification result.")
                 emit("/undo-to ID restores the state before a retained edit; /redo-to ID reapplies through it. Every restore needs fresh file approval.")

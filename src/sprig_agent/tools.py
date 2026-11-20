@@ -1475,13 +1475,17 @@ class Tools:
         if self._revision(info) != self._revision(before_stat) or data != before_raw:
             raise ToolError("file changed during approval; request a fresh diff")
 
-    def _replace(self, fd, name, data, mode, before_stat, *, private=False):
+    def _replace(self, fd, name, data, mode, before_stat, *, private=False, before_replace=None):
         if data is None:
+            if before_replace is not None:
+                before_replace()
             fd.unlink(name)
         else:
             temp = f".sprig-{uuid.uuid4().hex}.tmp"
             try:
                 fd.write_new(temp, data, mode, private=private, permissions_from=name if before_stat else None)
+                if before_replace is not None:
+                    before_replace()
                 fd.replace(temp, name)
             finally:
                 try:

@@ -1263,6 +1263,12 @@ class Agent:
         scopes = scoped_tasks(messages, name)
         return self.tools.review_changes(scopes=scopes)
 
+    def revert_requirement(self, messages, name, revision, *, identity=None):
+        from .requirement_revert import revert
+        if self._running:
+            raise ValueError("wait for the current operation before reverting")
+        return revert(self.tools, scoped_tasks(messages, name), name, revision, identity=identity)
+
     def _task_row(self, task):
         row = {"role": "user", "content": redact(task, self.config.secrets)}
         if self._edit_scope is not None:
