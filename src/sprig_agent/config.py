@@ -187,6 +187,7 @@ class Config:
     background_timeout: float = 300
     explore_enabled: bool = False
     recover_output_limit: bool = False
+    recover_context_budget: bool = False
     prompt_templates: tuple = field(default=(), repr=False)
     editor_command: tuple = field(default=(), repr=False)
     editor_timeout: float = 300
@@ -205,6 +206,8 @@ class Config:
             raise ValueError("execution.explore must be a boolean")
         if type(self.recover_output_limit) is not bool:
             raise ValueError("agent.recover_output_limit must be a boolean")
+        if type(self.recover_context_budget) is not bool:
+            raise ValueError("agent.recover_context_budget must be a boolean")
         if (type(self.background_timeout) not in (int, float) or not math.isfinite(self.background_timeout)
                 or not 0 < self.background_timeout <= 3600):
             raise ValueError("execution.background_timeout must be positive and at most 3600 seconds")

@@ -383,7 +383,7 @@ class Agent:
 
     def summary_preview(self, messages, end=None):
         status = {"active_checkpoint": copy.deepcopy(self.summary), "network_contacted": False,
-                  "automatic_summary": False}
+                  "automatic_summary": False, "offer_recovery": self.config.recover_context_budget}
         if not messages:
             return {**status, "can_create": False, "reason": "no conversation to summarize"}
         try:
@@ -395,22 +395,32 @@ class Agent:
         return {**status, **report, "can_create": report["input_fits"]}
 
     def summarize(self, messages, end=None):
-        if self.usage_ledger is not None and self.usage_ledger.blocked:
-            raise UsagePersistenceError('Usage checkpoint is uncertain; restore the saved session before summarizing.')
         if self._running:
             raise ValueError("summarization requires an idle agent")
+        return self._summarize(messages, end)
+
+    def _summarize(self, messages, end=None, *, resume_step=None):
+        if self.usage_ledger is not None and self.usage_ledger.blocked:
+            raise UsagePersistenceError('Usage checkpoint is uncertain; restore the saved session before summarizing.')
         request, report = self._summary_input(messages, end)
         if not report["input_fits"]:
             raise ValueError("summary input exceeds request budget; choose an earlier closed source end; no request sent")
         source_end = report["source_end"]
         source_digest = fingerprint(messages, source_end, self._check_cancelled)
         config, previous_summary = self.config, copy.deepcopy(self.summary)
+        reason = ("The active task exceeds the request context budget. A successful checkpoint will continue "
+                  "the task within the remaining model steps. " if resume_step is not None else "")
+        if resume_step is not None:
+            self._event("summary", "waiting")
         approved = self.tools.request_approval(
-            "Create and apply a lossy summary checkpoint? This makes exactly ONE additional model request "
+            reason + "Create and apply a lossy summary checkpoint? This makes exactly ONE additional model request "
             f"({report['input_bytes']} request bytes, original messages 2..{report['source_end']}); it may incur cost. "
             "No tools are provided or executed. Full originals and the recent tail remain available. "
             "A summary is not approval, current file evidence, or acceptance. No automatic retry.\n"
             + json.dumps(report, ensure_ascii=False))
+        self._check_cancelled()
+        if resume_step is not None and self._steer(messages):
+            return {"steered": True, "network_contacted": False}
         if approved is not True:
             return {**report, "approved": False, "network_contacted": False}
         self._check_cancelled()
@@ -423,8 +433,14 @@ class Agent:
             provider = copy.copy(provider)  # Keep the same opener and shared measurements.
             provider.config = self._summary_config()
         options = {"check_cancelled": self._check_cancelled, 'on_measurement': self._usage_observer(messages)} if isinstance(provider, Provider) else {}
+        if resume_step is not None:
+            self._event("summary")
+        self._check_cancelled()
         response = validate_message(provider.complete(request, [], **options), wire_api=self.config.wire_api,
                                     preserve_reasoning=self.config.preserve_reasoning)
+        self._check_cancelled()
+        if resume_step is not None and self._steer(messages):
+            return {"steered": True, "network_contacted": True}
         if response.get("tool_calls") or not isinstance(response.get("content"), str):
             raise ValueError("summary response must be JSON text with no tool calls; checkpoint unchanged")
         content = response["content"]
@@ -445,7 +461,7 @@ class Agent:
         self._refresh_instructions(task_history)
 
         def task_budget():
-            request = self._request_messages(task_history, 1)
+            request = self._request_messages(task_history, resume_step or 1)
             projected, report = prepare_context(self.config, request, self.schemas, self.compact_context,
                                                 check_cancelled=self._check_cancelled)
             if report["within_budget"]:
@@ -458,6 +474,8 @@ class Agent:
             budget = task_budget()
             if budget["after_bytes"] >= before:
                 raise ValueError("summary does not reduce the request; checkpoint unchanged")
+            if resume_step is not None and not budget["within_budget"]:
+                raise ValueError("summary does not fit the next request; use /summary create to advance manually")
             self._check_cancelled()
             self._checkpoint(messages)
         except BaseException:
@@ -934,7 +952,7 @@ class Agent:
         if not report["within_budget"]:
             raise ProviderError(
                 f"context byte budget exceeded ({report['after_bytes']} of {report['budget_bytes']} bytes); "
-                "no request sent. Use /context to inspect the request and /compact to preview elision.",
+                "no task request sent. Use /context to inspect, /compact to preview elision, or /summary to preview a checkpoint.",
                 code="request_budget")
         self._resume_read_context(messages, report, refresh=resume_reads)
         schemas = self._request_schemas(messages, report)
@@ -1178,7 +1196,7 @@ class Agent:
             if self.baseline_status in {"blocked", "steered", "incomplete"}:
                 self.emit("[baseline] Incomplete; no model request sent. Explicit continuation requires fresh check approval.")
                 return messages, False
-        recovered_output_limit = False
+        recovered_output_limit = attempted_context_recovery = False
         for step in range(1, self.config.max_steps + 1):
             self._step = step
             self._check_cancelled()
@@ -1189,6 +1207,25 @@ class Agent:
                 refresh, resume_reads = resume_reads, False
                 response = self._complete(messages, step=step, resume_reads=refresh)
             except ProviderError as error:
+                if (error.code == "request_budget" and self.config.recover_context_budget
+                        and not attempted_context_recovery and step < self.config.max_steps):
+                    attempted_context_recovery = True
+                    try:
+                        result = self._summarize(messages, resume_step=step + 1)
+                    except (ValueError, ProviderError) as recovery_error:
+                        if self._stop_reason == "checkpoint":
+                            raise
+                        self._event("summary", "failed")
+                        self.emit("[summary] " + redact(str(recovery_error), self.config.secrets))
+                    else:
+                        if result.get("steered"):
+                            continue
+                        if result["approved"]:
+                            self._event("summary", "completed")
+                            self.emit("[summary] Checkpoint applied. Continuing the task within the remaining model steps.")
+                            resume_reads = refresh
+                            continue
+                        self._event("summary", "rejected")
                 if error.code == "output_limit":
                     self._check_cancelled()
                     recover = self.config.recover_output_limit and not recovered_output_limit and step < self.config.max_steps

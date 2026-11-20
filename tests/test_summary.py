@@ -86,6 +86,84 @@ class SummaryTests(unittest.TestCase):
         self.assertEqual(agent._current_history, None)
         self.assertIn("unavailable", agent._execute_model_tool("read_history", {"message": 3})["error"])
 
+    def test_active_task_requests_one_approved_summary_and_resumes_on_all_protocols(self):
+        from tests.test_glob_protocols import answer, values
+
+        for protocol in ("chat_completions", "messages", "responses"):
+            with self.subTest(protocol=protocol):
+                source = history()
+                rows, captured, events = copy.deepcopy(source), [], []
+                replies = [answer(protocol, False, text=json.dumps(fields())),
+                           answer(protocol, False, text="Task continued")]
+                with backend(protocol, replies, captured) as url:
+                    config = replace(self.config, base_url=url, wire_api=protocol, proxy="direct",
+                                     max_steps=2, recover_context_budget=True)
+                    with closing(Tools(config, self.approve)) as tools:
+                        agent = Agent(config, Provider(config), tools, lambda _: None, on_event=events.append)
+                        self.assertTrue(agent.summary_preview(rows)["offer_recovery"])
+                        self.assertFalse(agent.context_preview(rows)["within_budget"])
+                        self.assertTrue(agent.run(messages=rows)[1])
+                self.assertEqual(len(captured), 2)
+                self.assertNotIn("tools", captured[0]["body"])
+                self.assertNotIn("tool_choice", captured[0]["body"])
+                self.assertTrue(any(value.get("source_end") == agent.summary["end"]
+                                    for value in values(captured[0]["body"])))
+                self.assertTrue(any(value.get("name") == "read_history" for value in values(captured[1]["body"])))
+                self.assertTrue(all(call["bytes"] <= config.max_context_bytes for call in captured))
+                self.assertIn("Keep tests intact", json.dumps(captured[1]["body"]))
+                self.assertNotIn("OLD_DETAIL_0", json.dumps(captured[1]["body"]))
+                self.assertEqual(rows[1:-1], source[1:])
+                self.assertEqual([event.outcome for event in events if event.phase == "summary"],
+                                 ["waiting", "running", "completed"])
+                self.assertEqual([event.step for event in events if event.phase == "model"], [2])
+        self.assertEqual(self.approve.call_count, 3)
+
+    def test_context_recovery_respects_opt_in_refusal_and_remaining_steps(self):
+        for enabled, steps, approved, prompts in ((False, 2, True, 0), (True, 1, True, 0), (True, 2, False, 1)):
+            with self.subTest(enabled=enabled, steps=steps, approved=approved):
+                self.config = replace(self.config, max_steps=steps, recover_context_budget=enabled)
+                self.approve.reset_mock(return_value=True)
+                self.approve.return_value = approved
+                agent, provider = self.agent()
+                with self.assertRaisesRegex(ProviderError, "budget exceeded"):
+                    agent.run(messages=history())
+                self.assertEqual(self.approve.call_count, prompts)
+                self.assertEqual(provider.calls, [])
+                self.assertIsNone(agent.summary)
+
+    def test_context_recovery_keeps_previous_view_on_failure_and_discards_stale_summary_on_steer(self):
+        self.config = replace(self.config, max_steps=3, recover_context_budget=True)
+        for outcome in ("invalid", "still over budget", "steered"):
+            with self.subTest(outcome=outcome):
+                rows = history()
+                if outcome == "still over budget":
+                    rows[-1]["content"] = "latest detail " + "K" * 16000
+                self.approve.reset_mock()
+                events = []
+                reply = fixture.response("bad summary" if outcome == "invalid" else json.dumps(fields()))
+                agent, provider = self.agent([reply], on_event=events.append)
+                if outcome == "steered":
+                    pending = []
+                    agent.receive_input = lambda: [pending.pop()] if pending else []
+                    complete = provider.complete
+
+                    def send(*args, **kwargs):
+                        response = complete(*args, **kwargs)
+                        pending.append("New user direction")
+                        return response
+
+                    provider.complete = send
+                with self.assertRaisesRegex(ProviderError, "budget exceeded"):
+                    agent.run(messages=rows)
+                self.assertEqual(len(provider.calls), 1)
+                self.assertEqual(self.approve.call_count, 1)
+                self.assertIsNone(agent.summary)
+                if outcome == "steered":
+                    self.assertEqual(rows[-1]["content"], "New user direction")
+                    self.assertTrue(any(event.phase == "steering" for event in events))
+                else:
+                    self.assertTrue(any(event.phase == "summary" and event.outcome == "failed" for event in events))
+
     def test_reject_cancel_and_malformed_or_tool_response_never_apply_or_execute(self):
         rows = history()
         agent, provider = self.agent()
@@ -518,6 +596,35 @@ class SummaryTuiTests(unittest.IsolatedAsyncioTestCase):
             restored.slash_command("/summary clear")
             await self.until(pilot, lambda: not restored.busy)
             self.assertIsNone(restored.agent.summary)
+
+    async def test_tui_can_recover_from_a_large_tool_result_without_reusing_summary_approval(self):
+        (self.root / "large.txt").write_text("detail " * 535, encoding="utf-8")
+        self.config = replace(self.config, max_context_bytes=16000, max_steps=4, recover_context_budget=True)
+        provider = fixture.ScriptedProvider([
+            fixture.call("read", "read_file", {"path": "large.txt"}),
+            fixture.response(json.dumps(fields())),
+            fixture.call("write", "edit_file", {"path": "new.txt", "old": "", "new": "create\n"}),
+            fixture.response(),
+        ])
+        app = self.app(provider)
+        async with app.run_test(size=(110, 36)) as pilot:
+            source = history()
+            app.messages = source[:5] + source[-6:]
+            editor = app.query_one("#task", TaskInput)
+            editor.focus()
+            editor.load_text("Inspect the file and propose an edit.")
+            await pilot.press("enter")
+            await self.until(pilot, lambda: isinstance(app.screen, ApprovalScreen))
+            self.assertEqual(len(provider.calls), 1)
+            self.assertEqual(app.agent.runtime_snapshot()["phase"], "summary")
+            await self.click(pilot, "#approve")
+            await self.until(pilot, lambda: isinstance(app.screen, ApprovalScreen) and len(provider.calls) == 3)
+            self.assertFalse((self.root / "new.txt").exists())
+            await self.click(pilot, "#reject")
+            await self.until(pilot, lambda: not app.busy)
+            self.assertEqual(len(provider.calls), 4)
+            self.assertEqual(app.task_status, 0)
+            self.assertFalse((self.root / "new.txt").exists())
 
 
 if __name__ == "__main__":

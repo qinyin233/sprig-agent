@@ -574,6 +574,23 @@ check_before_task=true
             self.assertEqual(code, 0)
             self.assertIs(json.loads(output)["agent"]["recover_output_limit"], enabled)
 
+    def test_context_budget_recovery_is_opt_in_and_preserves_existing_checkpoints(self):
+        self.write('[profiles.development.agent]\nrecover_context_budget=true\n')
+        settings = load_settings(self.path)
+        default, _ = self.resolve(settings, model="fixture")
+        configured, _ = self.resolve(settings, model="fixture", profile="development")
+        self.assertFalse(default.recover_context_budget)
+        self.assertTrue(configured.recover_context_budget)
+        self.assertEqual(configured.binding(), default.binding())
+        self.assertEqual(dict(configured.setting_sources)["recover_context_budget"], "profile")
+        project = self.write('[agent]\nrecover_context_budget=true\n', self.root / "project.toml")
+        with self.assertRaisesRegex(ValueError, "project configuration cannot set agent.recover_context_budget"):
+            settings.with_project(project)
+        code, output, _ = self.invoke(["--config", str(self.path), "--model", "fixture", "--profile", "development",
+                                      "--no-recover-context-budget", "--show-config"])
+        self.assertEqual(code, 0)
+        self.assertFalse(json.loads(output)["agent"]["recover_context_budget"])
+
     def test_configured_storage_autosave_is_opt_in_and_listing_does_not_need_key(self):
         self.write('''provider="x"
 [providers.x]
