@@ -5,12 +5,14 @@ from dataclasses import dataclass
 import json
 import os
 from pathlib import PurePosixPath
+import stat
 import uuid
 
 from .batch_restore import BatchRestoreResult
 from .change_review import comparison
 from .changes import ChangeError, RECORD_ID, reverted_ids, unpack
 from .config import redact, terminal_text
+from .three_way import merge_text
 
 ACTION = "requirement-revert"
 
@@ -31,6 +33,7 @@ class RevertFile:
     revision: tuple | None
     mode: int
     records: tuple
+    merged: bool = False
 
     def check(self, tools, parent, name):
         if tools._parts(self.path) != self.parts:
@@ -42,7 +45,33 @@ class RevertFile:
         return info
 
 
-def _plan(tools, state, scopes, revision, identity):
+def _decoded(tools, raw):
+    text = tools._decode(raw or b"")
+    if any(secret in text for secret in tools.config.credential_secrets):
+        raise ChangeError("a configured credential blocks requirement revert")
+    return text
+
+
+def _merged_bytes(tools, path, group, chosen, current):
+    from .tools import MAX_FILE
+    if current is None or any(row["before"] is None or row["after"] is None for row in group):
+        raise ChangeError("file creation, deletion or a missing file blocks a text merge: " + json.dumps(path))
+    working = _decoded(tools, current)
+    for row in reversed(chosen):
+        base = _decoded(tools, unpack(row["after"]))
+        target = _decoded(tools, unpack(row["before"]))
+        try:
+            working = merge_text(base, target, working, tools._check_cancelled)
+        except ValueError as error:
+            raise ChangeError("cannot merge " + json.dumps(path) + " because " + str(error)) from None
+        if len(working.encode("utf-8")) > MAX_FILE:
+            raise ChangeError("merged file exceeds 512 KiB: " + json.dumps(path))
+    result = working.encode("utf-8")
+    _decoded(tools, result)
+    return result
+
+
+def _plan(tools, state, scopes, revision, identity, merge):
     if type(revision) is not int or not 1 <= revision <= 5000:
         raise ValueError("choose a recorded requirement revision")
     if identity is not None and (not isinstance(identity, str) or not RECORD_ID.fullmatch(identity)):
@@ -80,28 +109,43 @@ def _plan(tools, state, scopes, revision, identity):
         history = by_path[key]
         start = next(i for i, row in enumerate(history) if row["id"] in selected)
         group = history[start:]
-        if any(row["id"] not in selected or row["path"] != path for row in group):
+        if any(row["path"] != path for row in group):
+            raise ChangeError("retained edits use conflicting spellings of the same file: " + json.dumps(path))
+        chosen = [row for row in group if row["id"] in selected]
+        independent = len(chosen) == len(group)
+        continuous = (all(left["after"] == right["before"] for left, right in zip(group, group[1:]))
+                      and len({row["mode"] for row in group}) == 1)
+        if not independent and not merge:
             raise ChangeError("later or interleaved changes use the same file: " + json.dumps(path))
-        if (any(left["after"] != right["before"] for left, right in zip(group, group[1:]))
-                or len({row["mode"] for row in group}) != 1):
+        if not continuous and not merge:
             raise ChangeError("retained snapshots or file modes are discontinuous: " + json.dumps(path))
-        current, target = unpack(group[-1]["after"]), unpack(group[0]["before"])
-        for raw in (current, target):
-            text = tools._decode(raw or b"")
-            if any(secret in text for secret in tools.config.credential_secrets):
-                raise ChangeError("a configured credential blocks requirement revert")
         rules = tools.instructions.prepare_action(parts[:-1])
         anchor = state["anchors"][path]
+        anchor_revision = None if anchor is None else tuple(anchor)
+        current, target = unpack(group[-1]["after"]), unpack(group[0]["before"])
+        mode = group[0]["mode"]
         with tools._command_directory(parts[:-1]) as (parent, chain):
-            plan = RevertFile(path, parts, chain, rules, current, target, None if anchor is None else tuple(anchor),
-                              group[0]["mode"], tuple(row["id"] for row in group))
+            merged = False
+            if merge:
+                live, info = tools._snapshot(parent, parts[-1])
+                if not (independent and continuous and live == current and tools._revision(info) == anchor_revision):
+                    target = _merged_bytes(tools, path, group, chosen, live)
+                    current, anchor_revision = live, tools._revision(info)
+                    mode = stat.S_IMODE(info.st_mode)
+                    if mode > 0o777:
+                        raise ChangeError("special file permissions block a text merge: " + json.dumps(path))
+                    merged = True
+            _decoded(tools, current)
+            _decoded(tools, target)
+            plan = RevertFile(path, parts, chain, rules, current, target, anchor_revision, mode,
+                              tuple(row["id"] for row in chosen), merged)
             plan.check(tools, parent, parts[-1])
         if current != target:
             plans.append(plan)
     return plans
 
 
-def revert(tools, scopes, name, revision, *, identity=None):
+def revert(tools, scopes, name, revision, *, identity=None, merge=False):
     """Apply a frozen plan one freshly approved file at a time."""
     from .tools import ToolError
 
@@ -112,6 +156,8 @@ def revert(tools, scopes, name, revision, *, identity=None):
     owned = settling = False
     try:
         tools._require_tool("edit_file")
+        if type(merge) is not bool:
+            raise ValueError("merge must be explicitly enabled")
         if tools.config.read_only:
             raise ChangeError("read-only mode blocks requirement revert")
         history = tools.history
@@ -123,7 +169,7 @@ def revert(tools, scopes, name, revision, *, identity=None):
         config, owner, jobs_revision = tools.config, tools._conversation_version, tools.jobs.revision
         base = history.state
         snapshot = history.validate(copy.deepcopy(base))
-        plans = _plan(tools, snapshot, scopes, revision, identity)
+        plans = _plan(tools, snapshot, scopes, revision, identity, merge)
         total = len(plans)
         batch = uuid.uuid4().hex
         tools._restoring_batch, owned = True, True
@@ -156,6 +202,8 @@ def revert(tools, scopes, name, revision, *, identity=None):
                 detail += "Planned files " + json.dumps([item.path for item in plans], ensure_ascii=False) + "\n"
             if os.name == "nt" and plan.current is None:
                 detail += "A recreated file uses a private current-user ACL.\n"
+            if plan.merged:
+                detail += "The inverse keeps independent changes from the current file. Review the exact diff.\n"
             detail += comparison(plan.path, before, after, tools._check_cancelled)
             if not tools.request_approval(redact(detail, config.secrets)):
                 error = "Requirement revert stopped after refusal. Completed files remain recorded."

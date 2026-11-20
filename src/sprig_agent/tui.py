@@ -1978,7 +1978,7 @@ class SprigApp(App[int]):
                         self.reject_input("请处理活动任务和待处理输入后再撤回需求修改。")
                         return False
                     self.start(local=("requirement-revert", {"name": request["revert"], "revision": request["revision"],
-                                                            "identity": request["identity"]}))
+                                                            "identity": request["identity"], "merge": request["merge"]}))
                     return True
                 inspection = next((name for name in ("evidence", "changes") if name in request), None)
                 if inspection is not None:
@@ -2028,7 +2028,7 @@ class SprigApp(App[int]):
                         "/lsp code_actions SERVER PATH 行 列 [结束行 结束列]；/lsp apply_code_action ID（新批准选择并逐文件审阅）\n"
                         "/continue /new /files /add 文件路径 /ref 文件路径 /unref 文件路径 /refs [clear]\n"
                         "/verify [需求名称 检查编号 ...] 逐次批准并运行所选固定检查\n"
-                        "/requirements [偏移]、changes 名称、revert 名称 版本 [ID]、work 名称 任务\n"
+                        "/requirements [偏移]、changes 名称、revert 名称 版本 [ID] [--merge]、work 名称 任务\n"
                         "/requirements show 名称、evidence 名称、set 名称 正文、clear 名称\n"
                         "/map [名称或路径查询] /git [路径] /diff [--staged] 路径 /compact\n"
                         "/summary（本地预览） /summary create [END]（逐次确认额外请求） /summary clear\n"

@@ -15,6 +15,7 @@ from sprig_agent.changes import ChangeHistory
 from sprig_agent.config import Config
 from sprig_agent.requirements import command
 from sprig_agent.session import SessionStore
+from sprig_agent.three_way import merge_text
 from sprig_agent.tools import Tools
 from sprig_agent.tui import ApprovalScreen, TaskInput
 from tests import test_tui as fixture
@@ -105,6 +106,87 @@ class RequirementRevertTests(unittest.TestCase):
         self.assertIn("redo entries", agent.revert_requirement(rows, "cache", 1)["error"])
         self.assertEqual(self.prompts, [])
         self.assertEqual((self.root / "cache.txt").read_text(), "initial")
+        self.assertTrue(agent.tools.change_action("redo")["changed"])
+        self.prompts.clear()
+        self.assertIn("file creation", agent.revert_requirement(rows, "cache", 1, merge=True)["error"])
+        self.assertEqual(self.prompts, [])
+
+    def test_merge_reverts_interleaved_scoped_edits_and_preserves_manual_bytes(self):
+        path = self.root / "settings.txt"
+        before = ("\ufeffHeader\r\ncache = off\r\n# separate cache\r\nlogs = off\r\n# separate logging\r\n"
+                  "size = 0\r\n# separate size\r\nmanual = none\r\n")
+        path.write_bytes(before.encode("utf-8"))
+        if os.name != "nt":
+            path.chmod(0o640)
+        read = lambda identity: fixture.call(identity, "read_file", {"path": "settings.txt"})
+        agent = self.agent([
+            read("cache-read"), edit("cache", "settings.txt", "cache = sqlite", old="cache = off"), fixture.response(),
+            read("logs-read"), edit("logs", "settings.txt", "logs = on", old="logs = off"), fixture.response(),
+            read("size-read"), edit("size", "settings.txt", "size = 8", old="size = 0"), fixture.response(),
+        ])
+        rows = self.seed(agent)
+        rows, _ = agent.run("enable logs", rows)
+        rows, _ = agent.run("add cache size", rows, requirement="cache")
+        manual = path.read_bytes().replace(b"manual = none", "manual = 用户编辑".encode("utf-8"))
+        path.write_bytes(manual)
+        self.prompts.clear()
+        result = agent.revert_requirement(rows, "cache", 1)
+        self.assertIn("interleaved", result["error"])
+        self.assertEqual(self.prompts, [])
+        result = agent.revert_requirement(rows, "cache", 1, merge=True)
+        self.assertEqual((result["completed"], result["total"], result["complete"]), (1, 1, True))
+        expected = before.replace("logs = off", "logs = on").replace("manual = none", "manual = 用户编辑")
+        self.assertEqual(path.read_bytes(), expected.encode("utf-8"))
+        if os.name != "nt":
+            self.assertEqual(stat.S_IMODE(path.stat().st_mode), 0o640)
+        self.assertEqual(len(self.prompts), 1)
+        self.assertIn("-cache = sqlite", self.prompts[0])
+        self.assertNotIn("-logs = on", self.prompts[0])
+        self.assertTrue(agent.tools.change_action("undo-batch")["complete"])
+        self.assertEqual(path.read_bytes(), manual)
+        self.assertEqual(len(agent.provider.calls), 9)
+
+    def test_overlap_blocks_the_entire_merge_before_approval(self):
+        path = self.root / "settings.txt"
+        path.write_text("header\ncache = off\n# unique separator\nother = keep\n", encoding="utf-8")
+        agent = self.agent([fixture.call("read", "read_file", {"path": "settings.txt"}),
+                            edit("cache", "settings.txt", "cache = sqlite", old="cache = off"),
+                            edit("new", "index.txt", "index"), fixture.response()])
+        rows = self.seed(agent)
+        path.write_text("header\ncache = manual\n# unique separator\nother = keep\n", encoding="utf-8")
+        self.prompts.clear()
+        result = agent.revert_requirement(rows, "cache", 1, merge=True)
+        self.assertIn("overlapping", result["error"])
+        self.assertEqual(self.prompts, [])
+        self.assertTrue((self.root / "index.txt").exists())
+        self.assertIn("cache = manual", path.read_text(encoding="utf-8"))
+
+    def test_merge_approval_expires_when_the_live_snapshot_changes(self):
+        path = self.root / "settings.txt"
+        path.write_bytes(b"cache = off\n# separator\nlogs = off\n")
+        agent = self.agent([fixture.call("read", "read_file", {"path": "settings.txt"}),
+                            edit("cache", "settings.txt", "cache = sqlite", old="cache = off"), fixture.response()])
+        rows = self.seed(agent)
+        path.write_bytes(b"cache = sqlite\n# separator\nlogs = on\n")
+        latest = b"cache = sqlite\n# separator\nlogs = edited during approval\n"
+        def approve(_):
+            path.write_bytes(latest)
+            return True
+        agent.tools.approve = approve
+        result = agent.revert_requirement(rows, "cache", 1, merge=True)
+        self.assertIn("changed outside", result["error"])
+        self.assertEqual(result["completed"], 0)
+        self.assertIsNone(agent.tools.history.state["pending"])
+        self.assertEqual(path.read_bytes(), latest)
+
+    def test_shared_anchor_keeps_disjoint_changes_and_declines_ambiguous_repetitions(self):
+        self.assertEqual(merge_text("A\nsep\nB\n", "RESTORE\nsep\nB\n", "A\nsep\nUSER"),
+                         "RESTORE\nsep\nUSER")
+        with self.assertRaisesRegex(ValueError, "ambiguous"):
+            merge_text("head\nsame\nsame\nend\n", "head\nsame\nend\n", "head\nsame\nUSER\nend\n")
+        with self.assertRaisesRegex(ValueError, "changed order"):
+            merge_text("first\none\nsecond\ntwo\n", "second\nfirst\none\ntwo\n",
+                       "first\none\nsecond\nUSER\n")
 
     def test_refusal_leaves_completed_prefix_and_retry_selects_only_remaining_files(self):
         agent = self.agent([edit("one", "one.txt", "one"), edit("two", "two.txt", "two"), fixture.response()])
@@ -204,6 +286,34 @@ class RequirementRevertTuiTests(unittest.IsolatedAsyncioTestCase):
     app = fixture.TuiTests.app
     until = fixture.TuiTests.until
     click = fixture.TuiTests.click
+
+    async def test_merge_keeps_manual_same_file_edit_after_approval(self):
+        path = self.root / "settings.txt"
+        path.write_text("cache = off\n# separator\nlogs = off\n", encoding="utf-8")
+        provider = fixture.ScriptedProvider([fixture.call("read", "read_file", {"path": "settings.txt"}),
+                                             edit("cache", "settings.txt", "cache = sqlite", old="cache = off"),
+                                             fixture.response()])
+        app = self.app(provider)
+        async with app.run_test(size=(110, 36)) as pilot:
+            app.slash_command("/requirements set cache use sqlite")
+            await self.until(pilot, lambda: not app.busy)
+            app.slash_command("/requirements work cache set cache format")
+            await self.until(pilot, lambda: isinstance(app.screen, ApprovalScreen))
+            await self.click(pilot, "#approve")
+            await self.until(pilot, lambda: not app.busy)
+            path.write_text("cache = sqlite\n# separator\nlogs = on\n", encoding="utf-8")
+            composer = app.query_one("#task", TaskInput)
+            composer.load_text("/requirements revert cache 1 --merge")
+            composer.focus()
+            await pilot.press("enter")
+            await self.until(pilot, lambda: isinstance(app.screen, ApprovalScreen))
+            self.assertIn("keeps independent changes", app.screen.description)
+            self.assertIn("+cache = off", app.screen.description)
+            self.assertNotIn("-logs = on", app.screen.description)
+            await self.click(pilot, "#approve")
+            await self.until(pilot, lambda: not app.busy)
+            self.assertEqual(path.read_text(encoding="utf-8"), "cache = off\n# separator\nlogs = on\n")
+            self.assertEqual(len(provider.calls), 3)
 
     async def test_enter_proposes_reverse_diff_and_new_guidance_stops_without_requesting_model(self):
         provider = fixture.ScriptedProvider([edit("c", "cache.txt", "retained"), fixture.response()])
