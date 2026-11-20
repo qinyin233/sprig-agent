@@ -32,6 +32,7 @@ from .conversation_revision import RevisionSource, revision_command
 from .revision_ui import RevisionScreen
 from .change_review import command as review_command
 from .change_review_ui import ChangeReviewScreen
+from .requirement_board import RequirementBoard
 from .message_origin import application_origin, user_request
 from .provider import Provider
 from .picker import PickerScreen
@@ -289,12 +290,12 @@ class ApprovalScreen(ModalScreen[bool]):
     AUTO_FOCUS = "#reject"
     CSS = """
     ApprovalScreen { align: center middle; background: $background 70%; }
-    #approval { width: 90%; height: 85%; border: thick $warning; padding: 1 2; }
-    #approval-title { height: 2; color: $warning; text-style: bold; }
-    #approval-detail { height: 1fr; }
-    #approval-buttons { height: 3; margin-top: 1; }
+    #approval { width: 94%; height: 96%; border: thick $warning; padding: 0 1; overflow-y: auto; }
+    #approval-title { height: 1; color: $warning; text-style: bold; }
+    #approval-detail { height: 1fr; min-height: 5; }
+    #approval-buttons { height: 3; }
     #approval-buttons Button { width: 1fr; margin: 0 1; }
-    #approval-task { height: 4; margin-top: 1; }
+    #approval-task { height: 4; }
     #steer { width: 1fr; }
     """
 
@@ -413,6 +414,7 @@ class SprigApp(App[int]):
         self._revision_editor = None
         self._revision_ready = False
         self._change_review_screen = None
+        self._requirement_board = None
         if self.session_name:
             self.store = SessionStore(self.session_dir, config)
             try:
@@ -499,6 +501,7 @@ class SprigApp(App[int]):
                         with VerticalScroll(id="operations"):
                             yield Button("继续当前对话", id="continue")
                             yield Button("管理待处理要求", id="pending")
+                            yield Button("需求面板", id="requirement-board")
                             yield Button("新建对话", id="new")
                             yield Button("切换模型", id="model", disabled=self.model_selection is None)
                             yield Button("刷新模型目录", id="reload-models", disabled=self.model_selection is None)
@@ -761,7 +764,7 @@ class SprigApp(App[int]):
 
     def set_busy(self, busy):
         self.busy = busy
-        for identity in ("files", "continue", "new", "diff", "git", "map", "context-budget", "usage", "compact", "changes", "review-changes", "undo", "redo", "discard-history", "save", "restore", "sessions", "fork", "revise", "delete", "session-name"):
+        for identity in ("files", "continue", "new", "diff", "git", "map", "context-budget", "usage", "compact", "changes", "review-changes", "undo", "redo", "discard-history", "save", "restore", "sessions", "fork", "revise", "delete", "session-name", "requirement-board"):
             self.query_one("#" + identity).disabled = busy or (self.config.read_only and identity in {"diff", "git", "undo", "redo"})
         self.query_one("#cancel", Button).disabled = not busy
         self.query_one("#model", Button).disabled = busy or self.model_selection is None
@@ -1062,6 +1065,15 @@ class SprigApp(App[int]):
                 elif name == "requirement-changes":
                     result = self.agent.requirement_changes(self.messages, arguments["name"])
                     message = "已查看需求的修改备份"
+                elif name == "requirement-board":
+                    selected = arguments["name"]
+                    try:
+                        evidence = self.agent.requirement_evidence(self.messages, selected, min(self.config.max_output, 16384))
+                    except ValueError as error:
+                        evidence = {"error": str(error)}
+                    changes = self.agent.requirement_changes(self.messages, selected)
+                    self.ui_call(arguments["screen"].show_details, selected, evidence, changes)
+                    return 0, "已读取需求记录"
                 elif name == "pending":
                     action = arguments["action"]
                     if action == "apply":
@@ -1099,13 +1111,19 @@ class SprigApp(App[int]):
                     if result.get("declined") or result.get("skipped"):
                         status, message = 2, "会话清理未全部执行，详见本地结果"
                 elif name == "change-review":
-                    catalog = self.tools.review_changes()
+                    requirement = arguments.get("requirement")
+                    catalog = (self.tools.review_changes() if requirement is None else
+                               self.agent.requirement_changes(self.messages, requirement))
                     target = arguments.get("identity")
                     if target is None and catalog.get("records"):
                         target = catalog["records"][-1]["id"]
-                    page = (self.tools.review_changes(target, arguments.get("offset", 0), arguments.get("snapshot"))
-                            if target is not None and "error" not in catalog else None)
-                    self.ui_call(self.show_change_review, {"catalog": catalog, "page": page}, arguments.get("screen"))
+                    if requirement is not None and target and not any(row["id"] == target for row in catalog.get("records", ())):
+                        page = {"error": "这条备份已不在所选需求的可见记录中。"}
+                    else:
+                        page = (self.tools.review_changes(target, arguments.get("offset", 0), arguments.get("snapshot"))
+                                if target is not None and "error" not in catalog else None)
+                    self.ui_call(self.show_change_review, {"catalog": catalog, "page": page},
+                                 arguments.get("screen"), requirement)
                     result = {"review_opened": True, "network_contacted": False}
                     if "error" in catalog or page and "error" in page:
                         result["error"] = catalog.get("error") or page["error"]
@@ -1217,7 +1235,7 @@ class SprigApp(App[int]):
                     message = "跟踪的文件已变更或不可读，请运行 /verify"
         except KeyboardInterrupt:
             status, message = 130, "已取消；待定操作不会重放"
-            if local and local[0] in {"conversation-revise", "model-catalog-refresh", "change-review"}:
+            if local and local[0] in {"conversation-revise", "model-catalog-refresh", "change-review", "requirement-board"}:
                 return status, message  # Local preparation must not recopy history or deliver guidance.
             try:
                 if self.messages:
@@ -1231,7 +1249,7 @@ class SprigApp(App[int]):
                 status, message = 1, "已取消，但会话保存失败: " + self.safe(error)
         except Exception as error:
             status, message = 1, "错误: " + self.safe(error)
-            if local and local[0] in {"conversation-revise", "model-catalog-refresh", "change-review"}:
+            if local and local[0] in {"conversation-revise", "model-catalog-refresh", "change-review", "requirement-board"}:
                 return status, message  # Failed local preparation leaves history and pending guidance intact.
             # Keep the in-memory conversation usable after a failed checkpoint or action.
             try:
@@ -1281,8 +1299,11 @@ class SprigApp(App[int]):
         verification = self.local_action == "verify"
         reviewing = self.local_action == "change-review"
         targeted = self.local_action == "requirement-verify"
+        board_action = self.local_action if self.local_action in {
+            "requirement-board", "requirement-verify", "requirement-revert"} else None
         local_only = verification or targeted or self.local_action in {
-            "requirement-evidence", "requirement-changes", "requirement-revert", "model-catalog-refresh", "change-review"}
+            "requirement-evidence", "requirement-changes", "requirement-revert", "requirement-board",
+            "model-catalog-refresh", "change-review"}
         if (verification or targeted) and (self._input_inbox.batch(delivery="steer") or self._input_retry or self._input_inbox.blocked):
             status, message = 2, "检查后有新要求或保存待确认；未请求模型，请明确继续或处理 /pending"
         if self._queue_running and self.agent.had_rejected_action and status == 0:
@@ -1308,6 +1329,8 @@ class SprigApp(App[int]):
             self.set_task_result(2, message + "，任务整体验收待运行", requirements=False)
         self.local_action = None
         self.set_busy(False)
+        if board_action and self._requirement_board is not None:
+            self._requirement_board.operation_finished(board_action, status == 0, message)
         if reviewing and self._change_review_screen is not None:
             self._change_review_screen.operation_finished(status == 0)
         if self.pending_tasks:
@@ -1384,20 +1407,35 @@ class SprigApp(App[int]):
 
         self.push_screen(PickerScreen(commands=commands, query=query, complete_only=editor is not None), selected)
 
-    def choose_change_review(self, identity=None, offset=0, snapshot=None):
+    def show_requirement_board(self):
         if self.busy or isinstance(self.screen, ModalScreen):
+            self.notify("请等待当前操作结束后打开需求面板", severity="warning")
+            return False
+        board = self._requirement_board = RequirementBoard(self)
+        def closed(_):
+            if self._requirement_board is board:
+                self._requirement_board = None
+        self.push_screen(board, closed)
+        return True
+
+    def has_pending_requirements(self):
+        return bool(self.pending_tasks or self.recovered_inputs["pending"] or self._input_retry or self._input_inbox.blocked)
+
+    def choose_change_review(self, identity=None, offset=0, snapshot=None, *, requirement=None):
+        if self.busy or (isinstance(self.screen, ModalScreen) and not isinstance(self.screen, RequirementBoard)):
             self.notify("请等待当前操作结束后审阅修改", severity="warning")
             return
-        self.start(local=("change-review", {"identity": identity, "offset": offset, "snapshot": snapshot}))
+        self.start(local=("change-review", {"identity": identity, "offset": offset, "snapshot": snapshot,
+                                            "requirement": requirement}))
 
-    def show_change_review(self, payload, screen=None):
+    def show_change_review(self, payload, screen=None, requirement=None):
         if self._closed or self._unmounted:
             return
         if screen is not None:
             if screen is self._change_review_screen and screen.is_mounted:
                 screen.show_payload(payload)
             return
-        screen = ChangeReviewScreen(self, payload)
+        screen = ChangeReviewScreen(self, payload, requirement)
         self._change_review_screen = screen
         def closed(_):
             if self._change_review_screen is screen:
@@ -1964,8 +2002,10 @@ class SprigApp(App[int]):
         if text.split(None, 1)[:1] == ["/requirements"]:
             try:
                 request = requirement_command(text[len("/requirements"):])
+                if "board" in request:
+                    return self.show_requirement_board()
                 if "work" in request:
-                    if self.busy or self.pending_tasks or self.recovered_inputs["pending"] or self._input_retry or self._input_inbox.blocked:
+                    if self.busy or self.has_pending_requirements():
                         self.reject_input("请处理活动任务和待处理输入后再发送关联需求的任务。")
                         return False
                     if submission is not None:
@@ -1974,7 +2014,7 @@ class SprigApp(App[int]):
                                context_files=submission.files if submission is not None else ())
                     return True
                 if "revert" in request:
-                    if self.busy or self.pending_tasks or self.recovered_inputs["pending"] or self._input_retry or self._input_inbox.blocked:
+                    if self.busy or self.has_pending_requirements():
                         self.reject_input("请处理活动任务和待处理输入后再撤回需求修改。")
                         return False
                     self.start(local=("requirement-revert", {"name": request["revert"], "revision": request["revision"],
@@ -1996,7 +2036,7 @@ class SprigApp(App[int]):
                         self.reject_input("请在需求记录操作结束后重试，草稿已保留。")
                         return False
                     return self.queue_guidance(request["change"], requirement=True)
-                if self.pending_tasks or self.recovered_inputs["pending"] or self._input_retry or self._input_inbox.blocked:
+                if self.has_pending_requirements():
                     self.reject_input("还有待处理输入，请先处理 /pending 或运行排队任务。")
                     return False
                 self.set_task_result(2, "需求正在变更，等待重新验收", requirements=False)
@@ -2028,7 +2068,7 @@ class SprigApp(App[int]):
                         "/lsp code_actions SERVER PATH 行 列 [结束行 结束列]；/lsp apply_code_action ID（新批准选择并逐文件审阅）\n"
                         "/continue /new /files /add 文件路径 /ref 文件路径 /unref 文件路径 /refs [clear]\n"
                         "/verify [需求名称 检查编号 ...] 逐次批准并运行所选固定检查\n"
-                        "/requirements [偏移]、changes 名称、revert 名称 版本 [ID] [--merge]、work 名称 任务\n"
+                        "/requirements board（需求面板）、[偏移]、changes 名称、revert 名称 版本 [ID] [--merge]、work 名称 任务\n"
                         "/requirements show 名称、evidence 名称、set 名称 正文、clear 名称\n"
                         "/map [名称或路径查询] /git [路径] /diff [--staged] 路径 /compact\n"
                         "/summary（本地预览） /summary create [END]（逐次确认额外请求） /summary clear\n"
@@ -2406,6 +2446,8 @@ class SprigApp(App[int]):
                 self.start(local=(identity, {}))
             elif identity == "review-changes":
                 self.choose_change_review()
+            elif identity == "requirement-board":
+                self.show_requirement_board()
             elif identity == "context-budget":
                 self.append("\n[上下文预算；本地预览]\n" + json.dumps(self.agent.context_preview(self.messages), ensure_ascii=False, indent=2) + "\n")
             elif identity == "usage":

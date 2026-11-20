@@ -20,9 +20,10 @@ class ChangeReviewScreen(ModalScreen):
     #review-buttons Button { width: 1fr; }
     '''
 
-    def __init__(self, host, payload):
+    def __init__(self, host, payload, requirement=None):
         super().__init__()
         self.host, self.initial = host, payload
+        self.requirement = requirement
         self.rows, self.view, self.selected = [], None, None
         self.back, self.navigation = [], None
         self._payload_applied = False
@@ -92,7 +93,8 @@ class ChangeReviewScreen(ModalScreen):
         self._payload_applied = False
         self.query_one('#review-text', TextArea).load_text('')
         self.query_one('#review-status', Static).update('正在重新检查来源、隐私及当前文件…')
-        self.host.start(local=('change-review', {'identity': identity, 'offset': offset, 'snapshot': snapshot, 'screen': self}))
+        self.host.start(local=('change-review', {'identity': identity, 'offset': offset, 'snapshot': snapshot,
+                                                  'screen': self, 'requirement': self.requirement}))
         self.buttons()
 
     def operation_finished(self, success):

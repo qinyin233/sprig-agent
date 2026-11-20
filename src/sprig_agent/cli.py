@@ -194,6 +194,9 @@ def chat(agent, task, messages, emit, *, autostart=True, model_selection=None, s
                 continue
             if task.split(None, 1)[:1] == ["/requirements"]:
                 request = requirement_command(task[len("/requirements"):])
+                if "board" in request:
+                    emit("Open --tui to use the requirements board.")
+                    continue
                 if "work" in request:
                     if queued_or_pending():
                         emit("Resolve pending inputs or queued tasks before submitting scoped work.")
