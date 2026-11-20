@@ -19,7 +19,7 @@ class RuntimeEvent:
     max_steps: int
     action: int = 0
     tool: str | None = None
-    check: Literal["baseline", "edit-check", "acceptance"] | None = None
+    check: Literal["baseline", "edit-check", "acceptance", "requirement"] | None = None
     check_index: int = 0
     check_total: int = 0
     reason: str | None = None
@@ -56,7 +56,8 @@ def runtime_label(event, *, chinese=False):
                     "passed": "检查通过", "failed": "失败", "incomplete": "未完成 / 未验收",
                     "cancelled": "已取消", "skipped": "未执行", "uncertain": "结果不确定",
                     "unverified": "模型本轮结束，未配置验收命令"}
-        checks = {"baseline": "任务前基线", "edit-check": "编辑后检查", "acceptance": "最终验收"}
+        checks = {"baseline": "任务前基线", "edit-check": "编辑后检查", "acceptance": "最终验收",
+                  "requirement": "单项需求检查"}
         reason = "；会话保存失败，内存状态不代表已保存" if event.reason == "checkpoint" else ""
         budget = f"模型步骤 {event.step}/{event.max_steps}，剩余 {event.max_steps - event.step}"
     else:

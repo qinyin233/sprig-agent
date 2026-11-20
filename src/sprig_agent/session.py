@@ -24,6 +24,7 @@ from .input_inbox import INPUT_ID, UserInput, InputChanged, delivered_inputs, in
 from .image_inputs import IMAGE_KEY, images
 from .message_origin import ORIGIN, application_origin
 from .requirements import REQUIREMENT_KEY, change as requirement_change
+from .requirement_checks import CHECK_KEY, marker as check_marker
 from .usage_ledger import UsageLedger, usage_state
 
 _PRESERVE_INPUTS = object()
@@ -50,6 +51,8 @@ MAX_SESSION = 8 * 1024 * 1024
 MAX_LIST_ENTRIES = 4096
 MAX_LIST_SESSIONS = 256
 MAX_LIST_BYTES = MAX_SESSION
+CHECK_PREFIXES = {"baseline": "sprig-baseline-", "edit-check": "sprig-edit-check-", "acceptance": "sprig-check-",
+                  "requirement": "sprig-requirement-check-"}
 
 
 class SessionError(Exception):
@@ -61,15 +64,14 @@ def application_check(message):
     if "sprig_check" not in message:
         return None
     phase = message["sprig_check"]
-    prefixes = {"baseline": "sprig-baseline-", "edit-check": "sprig-edit-check-", "acceptance": "sprig-check-"}
     calls = message.get("tool_calls")
-    if (not isinstance(phase, str) or phase not in prefixes or message.get("role") != "assistant"
+    if (not isinstance(phase, str) or phase not in CHECK_PREFIXES or message.get("role") != "assistant"
             or message.get("content") is not None or not isinstance(calls, list) or len(calls) != 1):
         raise ValueError("invalid application check marker")
     call = calls[0]
     function = call.get("function") if isinstance(call, dict) else None
     if (not isinstance(call, dict) or call.get("type") != "function" or not isinstance(call.get("id"), str)
-            or not re.fullmatch(re.escape(prefixes[phase]) + r"[0-9a-f]{32}", call["id"])
+            or not re.fullmatch(re.escape(CHECK_PREFIXES[phase]) + r"[0-9a-f]{32}", call["id"])
             or not isinstance(function, dict) or function.get("name") != "run"
             or not isinstance(function.get("arguments"), str)):
         raise ValueError("invalid application check marker")
@@ -80,6 +82,12 @@ def _validate_requirement(row):
     if row[REQUIREMENT_KEY] is not True or row.get("role") != "user" or ORIGIN in row or IMAGE_KEY in row:
         raise ValueError("invalid tracked requirement record")
     requirement_change(row.get("content"))
+
+
+def _validated_check_marker(row):
+    if not application_origin(row) or IMAGE_KEY in row:
+        raise ValueError("invalid tracked requirement check origin")
+    return check_marker(row[CHECK_KEY])
 
 
 def validate_history(messages):
@@ -97,6 +105,12 @@ def validate_history(messages):
             raise SessionError(str(error)) from None
         if not isinstance(role, str):
             raise SessionError("invalid session role")
+        receipt = None
+        if CHECK_KEY in message:
+            try:
+                receipt = _validated_check_marker(message)
+            except ValueError:
+                raise SessionError("invalid tracked requirement check receipt") from None
         if REQUIREMENT_KEY in message:
             try:
                 _validate_requirement(message)
@@ -129,6 +143,8 @@ def validate_history(messages):
             row = {"role": role, "content": content}
             if is_application:
                 row[ORIGIN] = "application"
+            if receipt is not None:
+                row[CHECK_KEY] = receipt
             if REQUIREMENT_KEY in message:
                 row[REQUIREMENT_KEY] = True
             if image_rows:
@@ -331,6 +347,11 @@ class SessionStore:
         if selected_usage is not None:
             payload['request_usage'] = selected_usage
         for row in payload["messages"] if isinstance(payload.get("messages"), list) else ():
+            if isinstance(row, dict) and CHECK_KEY in row:
+                try:
+                    _validated_check_marker(row)
+                except ValueError:
+                    raise SessionError("invalid or redaction-conflicting requirement check; no data was overwritten") from None
             if isinstance(row, dict) and REQUIREMENT_KEY in row:
                 try:
                     _validate_requirement(row)
@@ -457,6 +478,8 @@ class SessionStore:
                 images(row, self.config.secrets)
                 if REQUIREMENT_KEY in row:
                     _validate_requirement(row)
+                if CHECK_KEY in row:
+                    _validated_check_marker(row)
             except ValueError:
                 raise SessionError("invalid saved message metadata or image; no history sent") from None
         try:

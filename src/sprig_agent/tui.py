@@ -42,6 +42,7 @@ from .settings import public_config
 from .tools import Tools
 from .edit_batch import EditPreview
 from .requirements import command as requirement_command, display as requirement_display
+from .requirement_checks import command as verification_command
 
 
 class UiRequest(Message):
@@ -733,9 +734,9 @@ class SprigApp(App[int]):
         # Inspecting local metadata cannot erase a failed/cancelled task.
         return self.task_status if self.task_status is not None else self.last_operation_status
 
-    def set_task_result(self, status, message):
+    def set_task_result(self, status, message, *, requirements=True):
         if status != 0:
-            self.agent.invalidate_verification()
+            self.agent.invalidate_verification(requirements=requirements)
         self.task_status, self.task_message = status, message
         if status == 0 and not self.config.checks:
             self.task_message += "；未配置验收命令"
@@ -968,7 +969,9 @@ class SprigApp(App[int]):
     def start(self, task=None, local=None, *, context_files=(), preflight=False):
         if self.busy:
             return
-        if (self.recovered_inputs["pending"] or self._input_retry or self._input_inbox.blocked) and (not local or local[0] in {"model-switch", "conversation-fork", "conversation-revise", "summary", "verify"}):
+        if (self.recovered_inputs["pending"] or self._input_retry or self._input_inbox.blocked) and (
+                not local or local[0] in {"model-switch", "conversation-fork", "conversation-revise", "summary",
+                                         "verify", "requirement-verify"}):
             self.reject_input("请先用 /pending apply 或 /pending discard 处理已恢复的要求；未请求模型。")
             return
         if not local and not task and not self.messages and not self.pending_tasks:
@@ -986,6 +989,8 @@ class SprigApp(App[int]):
             self.set_task_result(2, "任务进行中，等待本轮结果")
         elif local[0] == "verify":
             self.set_task_result(2, "固定检查进行中；尚未取得当前结果")
+        elif local[0] == "requirement-verify":
+            self.set_task_result(2, "单项需求检查进行中，任务整体验收待运行", requirements=False)
         self.set_busy(True)
         self.set_state("处理中")
         if task:
@@ -1019,17 +1024,23 @@ class SprigApp(App[int]):
         try:
             if local:
                 name, arguments = local
-                if name == "verify":
+                if name in {"verify", "requirement-verify"}:
                     if self.messages is None:
                         self.messages = []  # Keep intent/results on checkpoint errors.
-                    self.messages, result = self.agent.verify(self.messages)
+                    self.messages, result = self.agent.verify(self.messages, **arguments)
                     status = 0 if result["verification"] == "passed" else 2
-                    message = "固定检查通过；未请求模型" if status == 0 else "固定检查未通过或未完成；未请求模型，未自动继续"
+                    if name == "requirement-verify":
+                        message = "需求 " + arguments["requirement"] + (" 的所选检查通过" if status == 0 else " 的所选检查未通过或未完成")
+                    else:
+                        message = "固定检查通过；未请求模型" if status == 0 else "固定检查未通过或未完成；未请求模型，未自动继续"
                 elif name == "requirement":
                     if self.messages is None:
                         self.messages = []
                     self.messages, result = self.agent.change_requirement(self.messages, arguments["text"])
                     message = "需求 " + result["name"] + " 已记录为版本 " + str(result["revision"])
+                elif name == "requirement-evidence":
+                    result = self.agent.requirement_evidence(self.messages, arguments["name"], min(self.config.max_output, 16384))
+                    message = "已查看需求检查结果"
                 elif name == "pending":
                     action = arguments["action"]
                     if action == "apply":
@@ -1144,7 +1155,7 @@ class SprigApp(App[int]):
                     result = worktree_action(self.config, self.confirm, cancel_event=self.cancel_event, **arguments)
                 else:
                     result = self.tools.execute(name, arguments)
-                self.emit(("[固定检查观察；下次明确请求模型时发送]\n" if name == "verify" else
+                self.emit(("[固定检查观察；下次明确请求模型时发送]\n" if name in {"verify", "requirement-verify"} else
                            "[显式摘要；不执行任务]\n" if name == "summary" else "[本地操作结果，不自动上传]\n")
                           + json.dumps(result, ensure_ascii=False, indent=2))
                 if "error" in result or result.get("approved") is False or result.get("returncode", 0) != 0:
@@ -1242,8 +1253,9 @@ class SprigApp(App[int]):
             return False
         verification = self.local_action == "verify"
         reviewing = self.local_action == "change-review"
-        local_only = verification or self.local_action in {"model-catalog-refresh", "change-review"}
-        if verification and (self._input_inbox.batch(delivery="steer") or self._input_retry or self._input_inbox.blocked):
+        targeted = self.local_action == "requirement-verify"
+        local_only = verification or targeted or self.local_action in {"requirement-evidence", "model-catalog-refresh", "change-review"}
+        if (verification or targeted) and (self._input_inbox.batch(delivery="steer") or self._input_retry or self._input_inbox.blocked):
             status, message = 2, "检查后有新要求或保存待确认；未请求模型，请明确继续或处理 /pending"
         if self._queue_running and self.agent.had_rejected_action and status == 0:
             status, message = 2, "本项有操作被拒绝；排队任务已暂停，结果待确认"
@@ -1264,6 +1276,8 @@ class SprigApp(App[int]):
         self._queue_running = False
         if self.local_action is None or verification:
             self.set_task_result(status, message)
+        elif targeted:
+            self.set_task_result(2, message + "，任务整体验收待运行", requirements=False)
         self.local_action = None
         self.set_busy(False)
         if reviewing and self._change_review_screen is not None:
@@ -1543,8 +1557,9 @@ class SprigApp(App[int]):
             self.reject_input(str(error))
             return
         command = "" if templated else task.strip()
+        command_name = command.split(None, 1)[:1]
         queue_mode = getattr(event, 'queue_paste_mode', None)
-        if command.split(None, 1)[:1] == ['/queue'] and (not event.literal or queue_mode is not None):
+        if command_name == ['/queue'] and (not event.literal or queue_mode is not None):
             if event.files:
                 self.reject_input("排队项当前接收文本；文件选择与草稿保留，请在对应任务中显式附加或按文件名读取")
                 return
@@ -1564,9 +1579,9 @@ class SprigApp(App[int]):
             return
         if not event.literal and command.startswith("//"):
             task = command[1:]  # A literal task starting with a slash.
-        elif not event.literal and command.split(None, 1)[:1] == ["/requirements"]:
+        elif not event.literal and command_name in (["/requirements"], ["/verify"]):
             if event.files:
-                self.reject_input("需求命令接收文本；文件选择保留，请另行发送。")
+                self.reject_input("本地需求和检查命令只接收文本。文件选择保留，请另行发送。")
                 return
             if self.slash_command(command) and event.editor.text == event.draft:
                 event.editor.load_text("")
@@ -1912,16 +1927,25 @@ class SprigApp(App[int]):
         if text.split(None, 1)[:1] == ["/requirements"]:
             try:
                 request = requirement_command(text[len("/requirements"):].strip())
+                if "evidence" in request:
+                    if self.busy:
+                        self.reject_input("请在当前操作结束后查看需求检查结果。")
+                        return False
+                    self.start(local=("requirement-evidence", {"name": request["evidence"]}))
+                    return True
                 if "change" not in request:
                     self.append("\n" + json.dumps(requirement_display(
                         self.messages, min(self.config.max_output, 16384), **request), ensure_ascii=False) + "\n")
                     return True
                 if self.busy:
+                    if self.local_action in {"requirement", "requirement-evidence"}:
+                        self.reject_input("请在需求记录操作结束后重试，草稿已保留。")
+                        return False
                     return self.queue_guidance(request["change"], requirement=True)
                 if self.pending_tasks or self.recovered_inputs["pending"] or self._input_retry or self._input_inbox.blocked:
                     self.reject_input("还有待处理输入，请先处理 /pending 或运行排队任务。")
                     return False
-                self.set_task_result(2, "需求正在变更，等待重新验收")
+                self.set_task_result(2, "需求正在变更，等待重新验收", requirements=False)
                 self.append("\n[需求变更] " + request["change"] + "\n")
                 self.start(local=("requirement", {"text": request["change"]}))
                 return True
@@ -1949,8 +1973,8 @@ class SprigApp(App[int]):
                         "/lsp rename SERVER PATH 行 列 新名称（计算后逐文件批准；可撤销）\n"
                         "/lsp code_actions SERVER PATH 行 列 [结束行 结束列]；/lsp apply_code_action ID（新批准选择并逐文件审阅）\n"
                         "/continue /new /files /add 文件路径 /ref 文件路径 /unref 文件路径 /refs [clear]\n"
-                        "/verify（仅固定检查；逐次批准，观察进入会话；不调用模型或自动继续）\n"
-                        "/requirements [偏移]、show 名称、set 名称 正文、clear 名称（跟踪有效要求）\n"
+                        "/verify [需求名称 检查编号 ...] 逐次批准并运行所选固定检查\n"
+                        "/requirements [偏移]、show 名称、evidence 名称、set 名称 正文、clear 名称\n"
                         "/map [名称或路径查询] /git [路径] /diff [--staged] 路径 /compact\n"
                         "/summary（本地预览） /summary create [END]（逐次确认额外请求） /summary clear\n"
                         "/logs（当前会话日志） /log ID [OFFSET]（本地回查） /logs clear（逐次确认清理）\n"
@@ -2043,13 +2067,16 @@ class SprigApp(App[int]):
                 redact(self.agent.reference_state(), self.config.secrets), ensure_ascii=False, indent=2) + "\n")
             return
         if command == "/verify":
-            if argument:
-                self.notify("/verify 不接受命令参数；请用 --check 或 [agent].checks 配置固定 argv", severity="warning")
-            elif self.busy:
+            if self.busy:
                 self.notify("请等待当前操作结束，或先取消；/verify 不会替换当前操作", severity="warning")
-            else:
-                self.start(local=("verify", {}))
-            return
+                return False
+            try:
+                options = verification_command(argument)
+                self.start(local=("requirement-verify" if options else "verify", options))
+                return self.busy
+            except ValueError as error:
+                self.reject_input(self.safe(error))
+                return False
         if command == "/config":
             details = {"provider": self.config.provider_name,
                        "profile": self.config.profile_name,

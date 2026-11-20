@@ -27,6 +27,7 @@ from .jobs import local_arguments as job_arguments
 from .lsp import local_arguments as lsp_arguments
 from .terminal_input import TerminalInputs, correction_text, current_feedback, feedback_scope
 from .requirements import command as requirement_command, display as requirement_display
+from .requirement_checks import command as verification_command
 
 
 def approve(description):
@@ -124,7 +125,7 @@ def chat(agent, task, messages, emit, *, autostart=True, model_selection=None, s
         except (OSError, ValueError, ChangeError, ProviderError, SessionError) as error:
             recover(False, error)
 
-    def verify():
+    def verify(options):
         nonlocal messages, status
         status = 2
         if pending() or not history_ready:
@@ -133,8 +134,8 @@ def chat(agent, task, messages, emit, *, autostart=True, model_selection=None, s
         if messages is None:
             messages = []  # Retain intent/results even if a checkpoint fails.
         with feedback_scope(terminal_inputs):
-            messages, result = agent.verify(messages)
-        status = 0 if result["verification"] == "passed" else 2
+            messages, result = agent.verify(messages, **options)
+        status = 0 if not options and result["verification"] == "passed" else 2
         emit("Local fixed verification; observations retained for explicit continuation: " + json.dumps(result))
 
     @contextmanager
@@ -202,6 +203,8 @@ def chat(agent, task, messages, emit, *, autostart=True, model_selection=None, s
                     if result["changed"]:
                         status = 2
                     result = {key: value for key, value in result.items() if key != "text"}
+                elif "evidence" in request:
+                    result = agent.requirement_evidence(messages, request["evidence"], min(agent.config.max_output, 16384))
                 else:
                     result = requirement_display(messages, min(agent.config.max_output, 16384), **request)
                 emit(json.dumps(result, ensure_ascii=False))
@@ -259,8 +262,8 @@ def chat(agent, task, messages, emit, *, autostart=True, model_selection=None, s
                 emit("/mcp shows local server state; /mcp connect|disconnect|tools|resources|templates|prompts SERVER asks fresh approval for remote requests; /mcp result ID [OFFSET] reads retained local data without replay.")
                 emit("/skills lists configured skill metadata; /skill NAME [PATH [OFFSET PAGE_SHA256]] previews local UTF-8 guidance without a model call or script execution. Quote resource paths containing spaces.")
                 emit("/summary previews an optional lossy checkpoint; /summary create [END] makes one extra model request after approval; /summary clear restores the full request view. /history MESSAGE [OFFSET] locally pages original data.")
-                emit("/requirements [OFFSET] lists tracked requirements. show NAME, set NAME TEXT, and clear NAME work locally in chat; /continue uses the updated list.")
-                emit("/verify runs only configured fixed checks with fresh approval for each; observations enter this conversation. No model request or automatic continuation.")
+                emit("/requirements [OFFSET] lists tracked requirements. show NAME, evidence NAME, set NAME TEXT, and clear NAME work locally.")
+                emit("/verify or /verify NAME CHECK [CHECK ...] runs configured fixed checks with fresh approval. Use numbers in configuration order. No model request or automatic continuation.")
                 emit("/changes review lists retained file-edit comparisons; /changes show ID|latest [OFFSET SNAPSHOT] pages the historical diff locally. Read-only TUI viewer preserves the composer; review is not a new verification result.")
                 emit("/undo-to ID restores the state before a retained edit; /redo-to ID reapplies through it. Every restore needs fresh file approval.")
                 emit("/logs lists this conversation's retained output; /log ID [OFFSET] pages historical text; /logs clear requires fresh approval. Disk retention is opt-in via --command-log-dir or storage.command_log_dir.")
@@ -346,10 +349,8 @@ def chat(agent, task, messages, emit, *, autostart=True, model_selection=None, s
                 paths = () if operation == "clear" else [task.partition(" ")[2].strip()]
                 messages, result = agent.update_references(paths, operation=operation, messages=messages)
                 emit(json.dumps(redact(result, agent.config.secrets), ensure_ascii=False))
-            elif task == "/verify":
-                verify()
-            elif task.startswith("/verify "):
-                emit("Use /verify without arguments; commands must be configured with --check or [agent].checks.")
+            elif task.split(None, 1)[:1] == ["/verify"]:
+                verify(verification_command(task[len("/verify"):]))
             elif task == "/continue":
                 if messages and len(messages) >= 2:
                     run(None)

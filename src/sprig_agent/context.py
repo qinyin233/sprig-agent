@@ -12,6 +12,7 @@ from .input_inbox import INPUT_ID
 from .image_inputs import IMAGE_KEY, wire_content
 from .message_origin import ORIGIN, application_origin
 from .requirements import REQUIREMENT_KEY
+from .requirement_checks import CHECK_KEY
 
 MAX_READ_METADATA_CHARS = 32768
 MAX_WINDOW_RESULT_CHARS = 65536
@@ -45,10 +46,10 @@ def provider_messages(config, messages, *, check_cancelled=None):
             index += 2
             continue
         drop_reasoning = not config.preserve_reasoning or message.get("role") != "assistant"
-        if (ORIGIN in message or "sprig_check" in message or INPUT_ID in message or REQUIREMENT_KEY in message
+        if (ORIGIN in message or "sprig_check" in message or INPUT_ID in message or REQUIREMENT_KEY in message or CHECK_KEY in message
                 or (drop_reasoning and "reasoning_content" in message)):
             message = {key: value for key, value in message.items()
-                       if key not in {ORIGIN, "sprig_check", INPUT_ID, REQUIREMENT_KEY}
+                       if key not in {ORIGIN, "sprig_check", INPUT_ID, REQUIREMENT_KEY, CHECK_KEY}
                        and (key != "reasoning_content" or not drop_reasoning)}
         selected.append(message)
         index += 1

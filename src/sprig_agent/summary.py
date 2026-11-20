@@ -9,6 +9,7 @@ from .config import redact
 from .json_budget import JSON_OPTIONS, JsonBudgetExceeded, encoded_size
 from .message_origin import ORIGIN, user_request
 from .requirements import REQUIREMENT_KEY
+from .requirement_checks import CHECK_KEY
 
 MAX_SUMMARY = 16384
 MAX_HISTORY_EXCERPT = 4096
@@ -98,7 +99,8 @@ def closed_end(messages, keep_recent, end=None, previous=None):
 
 def public_message(row):
     from .image_inputs import IMAGE_KEY
-    result = {key: value for key, value in row.items() if key not in {"native_state", "reasoning_content", "sprig_input_id", IMAGE_KEY}}
+    result = {key: value for key, value in row.items()
+              if key not in {"native_state", "reasoning_content", "sprig_input_id", IMAGE_KEY, CHECK_KEY}}
     if IMAGE_KEY in row:
         result[IMAGE_KEY] = [{key: value for key, value in image.items() if key != "data"} for image in row[IMAGE_KEY]]
         result["image_pixels_omitted"] = True
