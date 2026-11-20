@@ -328,7 +328,7 @@ class Agent:
         return replace(self.config, retry_attempts=0, max_tokens=self.config.max_tokens or
                        (4096 if self.config.wire_api == "messages" else 2048))
 
-    def _summary_input(self, messages, end=None):
+    def _summary_input(self, messages, end=None, *, input_ceiling=None):
         try:
             encoded_size(messages, max_bytes=MAX_SESSION, check_cancelled=self._check_cancelled)
         except JsonBudgetExceeded:
@@ -343,6 +343,8 @@ class Agent:
         source_config = replace(self.config, preserve_reasoning=True, context_keep_read_bytes=0)
         summary_config = self._summary_config()
         budget = summary_config.max_context_bytes
+        if input_ceiling is not None:
+            budget = min(budget, input_ceiling)
         secrets = self.config.secrets
 
         def prepare(boundary):
@@ -399,17 +401,23 @@ class Agent:
             raise ValueError("summarization requires an idle agent")
         return self._summarize(messages, end)
 
-    def _summarize(self, messages, end=None, *, resume_step=None):
+    def _summarize(self, messages, end=None, *, resume_step=None, rejected_bytes=None):
         if self.usage_ledger is not None and self.usage_ledger.blocked:
             raise UsagePersistenceError('Usage checkpoint is uncertain; restore the saved session before summarizing.')
-        request, report = self._summary_input(messages, end)
+        # The service's token window is unknown. Give the summary request some
+        # headroom below the rejected wire size while preserving complete turns.
+        input_ceiling = rejected_bytes * 4 // 5 if rejected_bytes is not None else None
+        request, report = self._summary_input(messages, end, input_ceiling=input_ceiling)
         if not report["input_fits"]:
             raise ValueError("summary input exceeds request budget; choose an earlier closed source end; no request sent")
         source_end = report["source_end"]
         source_digest = fingerprint(messages, source_end, self._check_cancelled)
         config, previous_summary = self.config, copy.deepcopy(self.summary)
-        reason = ("The active task exceeds the request context budget. A successful checkpoint will continue "
-                  "the task within the remaining model steps. " if resume_step is not None else "")
+        reason = ""
+        if resume_step is not None:
+            reason = ("The provider reported a context window limit. " if rejected_bytes is not None
+                      else "The active task exceeds the local request context budget. ")
+            reason += "A successful checkpoint will continue the task within the remaining model steps. "
         if resume_step is not None:
             self._event("summary", "waiting")
         approved = self.tools.request_approval(
@@ -476,6 +484,8 @@ class Agent:
                 raise ValueError("summary does not reduce the request; checkpoint unchanged")
             if resume_step is not None and not budget["within_budget"]:
                 raise ValueError("summary does not fit the next request; use /summary create to advance manually")
+            if rejected_bytes is not None and budget["after_bytes"] >= rejected_bytes:
+                raise ValueError("summary cannot make the next request smaller than the rejected request")
             self._check_cancelled()
             self._checkpoint(messages)
         except BaseException:
@@ -878,7 +888,7 @@ class Agent:
             return self.schemas
         schemas = [*self.schemas, copy.deepcopy(READ_LOG_SCHEMA)]
         size = request_size(self.config, messages, schemas, check_cancelled=self._check_cancelled)
-        if size > self.config.max_context_bytes:
+        if size > report["budget_bytes"]:
             return self.schemas
         if (self.compact_context and not report["compaction_triggered"]
                 and size >= self.config.max_context_bytes * self.config.context_trigger_ratio):
@@ -928,7 +938,7 @@ class Agent:
             "read any other lines before editing. Writes require fresh approval.\n"
             + json.dumps(list(rows.values()), ensure_ascii=False, separators=(",", ":")))}
         size = request_size(self.config, messages, self.schemas, check_cancelled=self._check_cancelled)
-        if (size > self.config.max_context_bytes or (self.compact_context and not report["compaction_triggered"]
+        if (size > report["budget_bytes"] or (self.compact_context and not report["compaction_triggered"]
                 and size >= self.config.max_context_bytes * self.config.context_trigger_ratio)):
             messages[0] = system
             if refresh:
@@ -942,7 +952,7 @@ class Agent:
             self.tools.read_versions.forget(identity)
         self._resumed_reads.clear()
 
-    def _complete(self, messages, *, step, resume_reads=False):
+    def _complete(self, messages, *, step, resume_reads=False, request_ceiling=None):
         self._event("preparing")
         history = messages
         records = self._refresh_instructions(messages, save=True)
@@ -954,6 +964,11 @@ class Agent:
                 f"context byte budget exceeded ({report['after_bytes']} of {report['budget_bytes']} bytes); "
                 "no task request sent. Use /context to inspect, /compact to preview elision, or /summary to preview a checkpoint.",
                 code="request_budget")
+        if request_ceiling is not None:
+            report["budget_bytes"] = min(report["budget_bytes"], request_ceiling)
+            if report["after_bytes"] > report["budget_bytes"]:
+                raise ProviderError("recovered request is no longer smaller than the rejected request. "
+                                    "Use /context to inspect the current request.", code="request_budget")
         self._resume_read_context(messages, report, refresh=resume_reads)
         schemas = self._request_schemas(messages, report)
         self._offered_schemas = schemas
@@ -1197,7 +1212,9 @@ class Agent:
                 self.emit("[baseline] Incomplete; no model request sent. Explicit continuation requires fresh check approval.")
                 return messages, False
         recovered_output_limit = attempted_context_recovery = False
-        for step in range(1, self.config.max_steps + 1):
+        retry_ceiling = None
+        steps = iter(range(1, self.config.max_steps + 1))
+        for step in steps:
             self._step = step
             self._check_cancelled()
             if self._steer(messages):
@@ -1205,25 +1222,33 @@ class Agent:
             self._job_notices(messages)
             try:
                 refresh, resume_reads = resume_reads, False
-                response = self._complete(messages, step=step, resume_reads=refresh)
+                ceiling, retry_ceiling = retry_ceiling, None
+                response = self._complete(messages, step=step, resume_reads=refresh, request_ceiling=ceiling)
             except ProviderError as error:
-                if (error.code == "request_budget" and self.config.recover_context_budget
-                        and not attempted_context_recovery and step < self.config.max_steps):
+                rejected_bytes = error.request_bytes if error.code == "provider_context_limit" else None
+                summary_step = step + 1 if rejected_bytes else step
+                if ((error.code == "request_budget" or rejected_bytes) and self.config.recover_context_budget
+                        and not attempted_context_recovery and summary_step < self.config.max_steps):
                     attempted_context_recovery = True
+                    self._step = summary_step
                     try:
-                        result = self._summarize(messages, resume_step=step + 1)
+                        result = self._summarize(messages, resume_step=summary_step + 1, rejected_bytes=rejected_bytes)
                     except (ValueError, ProviderError) as recovery_error:
                         if self._stop_reason == "checkpoint":
                             raise
                         self._event("summary", "failed")
                         self.emit("[summary] " + redact(str(recovery_error), self.config.secrets))
                     else:
+                        if rejected_bytes and result["network_contacted"]:
+                            next(steps)  # The rejected request already used the preceding step.
                         if result.get("steered"):
                             continue
                         if result["approved"]:
                             self._event("summary", "completed")
                             self.emit("[summary] Checkpoint applied. Continuing the task within the remaining model steps.")
                             resume_reads = refresh
+                            if rejected_bytes:
+                                retry_ceiling = rejected_bytes - 1
                             continue
                         self._event("summary", "rejected")
                 if error.code == "output_limit":

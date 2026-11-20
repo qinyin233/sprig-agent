@@ -45,7 +45,7 @@ def configuration_schema():
         "max_steps": integer(1, 100), "timeout": number(0, 120, True), "max_output": integer(256, 1000000),
         "max_context_bytes": integer(4096, 2097152), "max_tokens": integer(1, 65536), "checks": checks,
         "recover_output_limit": {**boolean, "default": False, "description": "Allow one fresh request after an output-token limit, within max_steps. Trusted user or profile setting."},
-        "recover_context_budget": {**boolean, "default": False, "description": "Offer one approved summary request when an active task exceeds the local context budget and can still continue within max_steps. Trusted user or profile setting."},
+        "recover_context_budget": {**boolean, "default": False, "description": "Offer one approved summary after a local or recognized provider context limit when enough model steps remain. Trusted user or profile setting."},
         **{name: boolean for name in ("stream", "thinking", "read_only", "inherit_env", "compact_context", "request_usage", "project_instructions", "check_before_task", "check_after_edit")},
     })
     groups = {

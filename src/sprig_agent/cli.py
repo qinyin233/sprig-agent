@@ -509,7 +509,7 @@ def main(argv=None):
     parser.add_argument("--recover-output-limit", action=argparse.BooleanOptionalAction, default=None,
                         help="allow one fresh model request after an output-token limit, within max-steps")
     parser.add_argument("--recover-context-budget", action=argparse.BooleanOptionalAction, default=None,
-                        help="offer one approved summary when an active task exceeds its request budget")
+                        help="offer one approved summary after a local or provider context limit")
     group = parser.add_mutually_exclusive_group()
     group.add_argument("--save-session", metavar="NAME")
     group.add_argument("--resume", metavar="NAME")

@@ -72,7 +72,7 @@
         "recover_context_budget": {
           "type": "boolean",
           "default": false,
-          "description": "Offer one approved summary request when an active task exceeds the local context budget and can still continue within max_steps. Trusted user or profile setting."
+          "description": "Offer one approved summary after a local or recognized provider context limit when enough model steps remain. Trusted user or profile setting."
         },
         "stream": {
           "type": "boolean"
@@ -1327,7 +1327,7 @@
               "recover_context_budget": {
                 "type": "boolean",
                 "default": false,
-                "description": "Offer one approved summary request when an active task exceeds the local context budget and can still continue within max_steps. Trusted user or profile setting."
+                "description": "Offer one approved summary after a local or recognized provider context limit when enough model steps remain. Trusted user or profile setting."
               },
               "stream": {
                 "type": "boolean"

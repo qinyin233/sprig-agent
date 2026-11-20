@@ -8,7 +8,8 @@ import copy
 import json
 
 from .json_budget import encoded_size, JsonBudgetExceeded
-from .provider import MAX_RESPONSE, MAX_TOOL_CALLS, ProviderError, completion_failure, validate_message
+from .provider import (MAX_RESPONSE, MAX_TOOL_CALLS, ProviderError, completion_failure, context_limit_failure,
+                       is_context_limit, validate_message)
 
 PATHS = {"chat_completions": "/chat/completions", "messages": "/messages", "responses": "/responses"}
 MAX_ITEMS = 256
@@ -129,6 +130,8 @@ def parse_response(protocol, data):
     if protocol == "messages":
         _require(data.get("type") == "message" and data.get("role") == "assistant")
         reason = data.get("stop_reason")
+        if reason == "model_context_window_exceeded":
+            raise context_limit_failure()
         if reason not in ("end_turn", "tool_use", "stop_sequence"):
             raise completion_failure("length" if reason == "max_tokens" else "content_filter" if reason == "refusal" else None)
         result, items = _blocks(protocol, data.get("content"))
@@ -245,6 +248,8 @@ def _messages_stream(events, emit, measurement):
         if kind == "ping":
             continue
         if kind == "error":
+            if is_context_limit(event.get("error"), "messages"):
+                raise context_limit_failure()
             raise ProviderError("Messages stream failed; no tools were executed")
         if kind == "message_start":
             _require(message is None)
@@ -306,6 +311,8 @@ def _messages_stream(events, emit, measurement):
                 measurement.observe_usage(usage("messages", counts))
                 if message["stop_reason"] == "max_tokens":
                     raise completion_failure("length")
+                if message["stop_reason"] == "model_context_window_exceeded":
+                    raise context_limit_failure()
                 for index, arguments in tool_inputs.items():
                     message["content"][index]["input"] = json.loads(arguments)
                 result = parse_response("messages", message)
@@ -326,8 +333,13 @@ def _responses_stream(events, emit, measurement):
             response = event.get("response")
             if isinstance(response, dict):
                 measurement.observe_usage(usage("responses", response.get("usage")))
+                if kind == "response.failed" and response.get("status") == "failed" and is_context_limit(
+                        response.get("error"), "responses"):
+                    raise context_limit_failure()
                 if kind == "response.incomplete" and response.get("status") == "incomplete":
                     parse_response("responses", response)  # Raises a bounded diagnostic.
+            if kind == "error" and is_context_limit(event, "responses"):
+                raise context_limit_failure()
             raise ProviderError("Responses stream failed; no tools were executed", code="incomplete_stream")
         if kind == "response.completed":
             response = event.get("response")

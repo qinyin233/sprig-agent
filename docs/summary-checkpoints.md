@@ -8,6 +8,12 @@
 
 每轮任务只提出一次恢复。拒绝、无可摘要的闭合前缀、无效结果或预算仍不足时，本轮停止，可以在空闲后用 `/summary` 预览，再按需手动推进。确认或生成期间收到引导时，会先处理新要求并丢弃已过时的摘要。附件与草稿的提交前预算检查仍独立运行。该设置控制是否提出恢复，不改变已有检查点的绑定。
 
+同一设置也处理服务端明确报告的上下文窗口超限。Sprig 识别 Chat Completions 和 Responses 的结构化错误码，以及 Messages 的 `prompt is too long` 错误和 `model_context_window_exceeded` 结束原因，覆盖 HTTP 和流式响应。一般 HTTP 400、413、限流和输出 token 上限仍走各自的错误处理。恢复要求还剩两个模型步骤，分别用于已批准的摘要和缩短后的任务请求。
+
+摘要请求最多使用被拒请求的 80% 字节，同时遵守本地上限。继续前重新测量任务请求，只有比被拒请求更小才发送。字节数无法确定服务端 token 窗口。摘要生成或缩短后的任务若再次遇到上限，本轮会停下并报告。对 HTTP 400 的 JSON 错误体，Sprig 最长等一秒，只解析不超过 8 KiB 的正文。用量记录保留错误类别和数值。
+
+服务端信号和恢复路径参考 [Messages 上下文窗口说明](https://platform.claude.com/docs/en/build-with-claude/context-windows)、[Responses 流式事件](https://developers.openai.com/api/reference/resources/responses/streaming-events)和 [OpenCode 的恢复实现](https://github.com/anomalyco/opencode/blob/9d90d892dcbfc52b47e95b2ea31b8aba877128fd/packages/core/src/session/runner/llm.ts#L249-L308)。
+
 ## 手动管理
 
 CLI chat 与 TUI 提供相同命令：

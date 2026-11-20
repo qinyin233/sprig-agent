@@ -18,18 +18,60 @@ from .metrics import FAILURE_CODES, MeasuredResponse, Measurements, RequestMeasu
 from .transport import HTTPHandler, HTTPSHandler, IOBudget, RequestDeadline
 
 MAX_RESPONSE = 2 * 1024 * 1024
+MAX_ERROR_BODY = 8192
+ERROR_BODY_TIMEOUT = 1
 MAX_TOOL_CALLS = 16
 MAX_RETRY_AFTER = 24 * 60 * 60
 RETRY_STATUSES = {429, 500, 502, 503, 504}
 
 
 class ProviderError(Exception):
-    def __init__(self, message, *, status=None, retry_after=None, code="invalid_response", retryable=False):
+    def __init__(self, message, *, status=None, retry_after=None, code="invalid_response", retryable=False,
+                 request_bytes=0):
         super().__init__(message)
         self.status = status
         self.retry_after = retry_after
         self.code = code if isinstance(code, str) and code in FAILURE_CODES else "invalid_response"
         self.retryable = retryable
+        self.request_bytes = request_bytes
+
+
+def context_limit_failure(status=None):
+    return ProviderError("provider context window exceeded. Use /summary to reduce history before continuing.",
+                         status=status, code="provider_context_limit")
+
+
+def is_context_limit(error, protocol):
+    """Recognize explicit context signals without using provider text as a diagnostic."""
+    if not isinstance(error, dict):
+        return False
+    if error.get("code") in ("context_length_exceeded", "model_context_window_exceeded"):
+        return True
+    message = error.get("message")
+    return (protocol == "messages" and error.get("type") == "invalid_request_error"
+            and isinstance(message, str) and len(message) <= 128
+            and re.fullmatch(r"prompt is too long(?:: [0-9]{1,12} tokens > [0-9]{1,12} maximum)?[.]?",
+                             message, re.IGNORECASE) is not None)
+
+
+def _http_context_limit(error, protocol, measurement, budget):
+    if error.code != 400 or error.headers is None or error.fp is None:
+        return False
+    media_type = error.headers.get("Content-Type", "").split(";", 1)[0].strip().lower()
+    if media_type != "application/json" or error.headers.get("Content-Encoding", "identity").lower() != "identity":
+        return False
+    # An optional diagnostic read should not keep a rejected request waiting
+    # for a slow or stalled error body. The transport still checks cancellation.
+    budget.deadline = min(budget.deadline, time.monotonic() + ERROR_BODY_TIMEOUT)
+    try:
+        raw = MeasuredResponse(error, measurement).read(MAX_ERROR_BODY + 1)
+        budget.check()
+        if len(raw) <= MAX_ERROR_BODY:
+            data = json.loads(raw)
+            return isinstance(data, dict) and is_context_limit(data.get("error"), protocol)
+    except (OSError, HTTPException, ValueError, RecursionError):
+        pass  # A malformed or incomplete diagnostic still has its original HTTP status.
+    return False
 
 
 def completion_failure(reason):
@@ -248,6 +290,7 @@ class Provider:
                 raise
             except ProviderError as error:
                 measurement.error_code = error.code
+                error.request_bytes = measurement.request_bytes
                 if error.code == "output_limit":
                     measurement.observe_finish("length")
                 if (error.retryable and error.code == 'http_error' and measurement.status == error.status
@@ -261,7 +304,8 @@ class Provider:
                 if additional:
                     message = str(error).replace('; no automatic retry', '; no further automatic retry')
                     raise ProviderError(message + f'; additional HTTP attempts: {additional}', status=error.status,
-                                        retry_after=error.retry_after, code=error.code) from None
+                                        retry_after=error.retry_after, code=error.code,
+                                        request_bytes=error.request_bytes) from None
                 raise
             finally:
                 sent += int(measurement.started is not None)
@@ -328,6 +372,8 @@ class Provider:
             if len(raw) > MAX_RESPONSE:
                 raise ProviderError("provider response exceeds 2 MiB", code="response_limit")
             data = json.loads(raw)
+            if isinstance(data, dict) and is_context_limit(data.get("error"), config.wire_api):
+                raise context_limit_failure(status)
             if config.wire_api != "chat_completions":
                 from .native_protocols import parse_response, usage
                 if isinstance(data, dict):
@@ -350,7 +396,9 @@ class Provider:
                 measurement.status = exc.code
             # Never echo response bodies: gateways can include request credentials.
             try:
-                failure = http_failure(exc.code, exc.headers, config.secrets)
+                failure = (context_limit_failure(exc.code)
+                           if _http_context_limit(exc, config.wire_api, measurement, budget)
+                           else http_failure(exc.code, exc.headers, config.secrets))
             finally:
                 exc.close()
             raise failure from None

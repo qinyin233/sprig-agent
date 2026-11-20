@@ -23,7 +23,8 @@ from sprig_agent.tools import Tools
 from sprig_agent.tui import ApprovalScreen, TaskInput
 from tests import test_tui as fixture
 from tests.test_generation_options import envelope
-from tests.test_native_protocols import backend, native
+from tests.test_glob_protocols import answer, values
+from tests.test_native_protocols import backend, native, sse
 
 
 def fields():
@@ -36,6 +37,12 @@ def history():
     return [{"role": "system", "content": "system"}, {"role": "user", "content": "Keep tests intact 中文🙂"},
             *[{"role": "assistant", "content": f"OLD_DETAIL_{i}: " + "x" * 1000} for i in range(12)],
             *[{"role": "assistant", "content": "recent " + "r" * 100} for _ in range(6)]]
+
+
+def context_rejection(protocol):
+    error = ({"type": "invalid_request_error", "message": "prompt is too long: 14500 tokens > 12000 maximum"}
+             if protocol == "messages" else {"code": "context_length_exceeded", "message": "PRIVATE_SERVER_DETAIL"})
+    return 400, {"type": "error", "error": error}
 
 
 class SummaryTests(unittest.TestCase):
@@ -87,8 +94,6 @@ class SummaryTests(unittest.TestCase):
         self.assertIn("unavailable", agent._execute_model_tool("read_history", {"message": 3})["error"])
 
     def test_active_task_requests_one_approved_summary_and_resumes_on_all_protocols(self):
-        from tests.test_glob_protocols import answer, values
-
         for protocol in ("chat_completions", "messages", "responses"):
             with self.subTest(protocol=protocol):
                 source = history()
@@ -117,6 +122,107 @@ class SummaryTests(unittest.TestCase):
                                  ["waiting", "running", "completed"])
                 self.assertEqual([event.step for event in events if event.phase == "model"], [2])
         self.assertEqual(self.approve.call_count, 3)
+
+    def test_provider_context_limit_reserves_two_steps_and_resumes_with_smaller_requests(self):
+        for protocol in ("chat_completions", "messages", "responses"):
+            for stream in (False, True):
+                with self.subTest(protocol=protocol, stream=stream):
+                    failure = context_rejection(protocol)
+                    if stream and protocol == "chat_completions":
+                        failure = sse([failure[1]])
+                    elif stream and protocol == "messages":
+                        failure = native(protocol, calls=[
+                            ("stale", "edit_file", {"path": "stale.txt", "old": "", "new": "stale"})])
+                        failure["stop_reason"] = "model_context_window_exceeded"
+                    elif stream:
+                        failure = sse([{"type": "response.failed",
+                                        "response": {"status": "failed", "error": failure[1]["error"], "output": []}}])
+                    replies = [failure, answer(protocol, stream, text=json.dumps(fields())),
+                               answer(protocol, stream, text="Task resumed")]
+                    captured, events, output = [], [], []
+                    source = history()
+                    rows = copy.deepcopy(source)
+                    with backend(protocol, replies, captured, stream=stream) as url:
+                        config = replace(self.config, base_url=url, wire_api=protocol, proxy="direct", stream=stream,
+                                         max_context_bytes=32000, max_steps=3, recover_context_budget=True)
+                        with closing(Tools(config, self.approve)) as tools:
+                            agent = Agent(config, Provider(config), tools, output.append, emit_delta=output.append,
+                                          on_event=events.append)
+                            self.assertTrue(agent.run(messages=rows)[1])
+                    self.assertEqual(len(captured), 3)
+                    first, summary, resumed = captured
+                    self.assertLess(first["bytes"], config.max_context_bytes)
+                    self.assertLessEqual(summary["bytes"], first["bytes"] * 4 // 5)
+                    self.assertLess(resumed["bytes"], first["bytes"])
+                    self.assertNotIn("tools", summary["body"])
+                    self.assertNotIn("tool_choice", summary["body"])
+                    self.assertIn("Keep tests intact", json.dumps(resumed["body"]))
+                    self.assertEqual(rows[1:-1], source[1:])
+                    self.assertFalse((self.root / "stale.txt").exists())
+                    self.assertNotIn("PRIVATE_SERVER_DETAIL", "".join(output))
+                    self.assertEqual([event.step for event in events if event.phase == "model"], [1, 3])
+                    self.assertEqual({event.step for event in events if event.phase == "summary"}, {2})
+                    usage = agent.usage_report()["session_usage"]
+                    self.assertEqual(usage["attempts"], 3)
+                    self.assertEqual(usage["failures"], {"provider_context_limit": 1})
+        self.assertEqual(self.approve.call_count, 6)
+
+    def test_provider_context_recovery_stops_after_refusal_budget_or_second_overflow(self):
+        protocol = "chat_completions"
+        rejection = context_rejection(protocol)
+        unrelated = (400, {"error": {"code": "invalid_request_error", "message": "PRIVATE_SERVER_DETAIL"}})
+        oversized = (400, {"error": {**rejection[1]["error"], "padding": "x" * 8192}})
+        cases = (
+            ("disabled", False, 3, True, [rejection], 0, "provider_context_limit"),
+            ("out of steps", True, 2, True, [rejection], 0, "provider_context_limit"),
+            ("denied", True, 3, False, [rejection], 1, "provider_context_limit"),
+            ("generic", True, 3, True, [unrelated], 0, "http_error"),
+            ("oversized", True, 3, True, [oversized], 0, "http_error"),
+            ("summary rejected", True, 5, True, [rejection, rejection], 1, "provider_context_limit"),
+            ("resumed rejected", True, 5, True,
+             [rejection, answer(protocol, False, text=json.dumps(fields())), rejection], 1, "provider_context_limit"),
+        )
+        for label, enabled, steps, approved, replies, prompts, code in cases:
+            with self.subTest(label=label):
+                captured, output = [], []
+                self.approve.reset_mock()
+                self.approve.return_value = approved
+                with backend(protocol, replies, captured) as url:
+                    config = replace(self.config, base_url=url, proxy="direct", max_context_bytes=32000,
+                                     max_steps=steps, recover_context_budget=enabled, retry_attempts=2)
+                    with closing(Tools(config, self.approve)) as tools:
+                        agent = Agent(config, Provider(config), tools, output.append)
+                        with self.assertRaises(ProviderError) as failure:
+                            agent.run(messages=history())
+                self.assertEqual(failure.exception.code, code)
+                self.assertEqual(len(captured), len(replies))
+                self.assertEqual(self.approve.call_count, prompts)
+                self.assertEqual(agent.summary is not None, label == "resumed rejected")
+                self.assertNotIn("PRIVATE_SERVER_DETAIL", str(failure.exception) + "".join(output))
+
+    def test_provider_context_retry_remeasures_new_reference_content(self):
+        ref = self.root / "live.txt"
+        ref.write_text("short file", encoding="utf-8")
+        captured = []
+        replies = [context_rejection("chat_completions"),
+                   answer("chat_completions", False, text=json.dumps(fields()))]
+
+        def change_reference(event):
+            if event.phase == "summary" and event.outcome == "completed":
+                ref.write_text("growing detail " * 1000, encoding="utf-8")
+
+        with backend("chat_completions", replies, captured) as url:
+            config = replace(self.config, base_url=url, proxy="direct", max_context_bytes=32000,
+                             max_steps=3, recover_context_budget=True, reference_files=("live.txt",))
+            with closing(Tools(config, self.approve)) as tools:
+                agent = Agent(config, Provider(config), tools, lambda _: None, on_event=change_reference)
+                rows = history()
+                with self.assertRaisesRegex(ProviderError, "no longer smaller"):
+                    agent.run(messages=rows)
+                self.assertTrue(agent.context_preview(rows)["within_budget"])
+        self.assertEqual(len(captured), 2)
+        self.assertEqual(self.approve.call_count, 1)
+        self.assertIsNotNone(agent.summary)
 
     def test_context_recovery_respects_opt_in_refusal_and_remaining_steps(self):
         for enabled, steps, approved, prompts in ((False, 2, True, 0), (True, 1, True, 0), (True, 2, False, 1)):

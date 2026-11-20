@@ -4,7 +4,8 @@ import json
 import re
 
 from .config import redact
-from .provider import MAX_RESPONSE, MAX_TOOL_CALLS, ProviderError, completion_failure, validate_message
+from .provider import (MAX_RESPONSE, MAX_TOOL_CALLS, ProviderError, completion_failure, context_limit_failure,
+                       is_context_limit, validate_message)
 
 
 def events(response, *, completion_marker="[DONE]"):
@@ -117,6 +118,8 @@ def complete_stream(response, on_text, secret, *, on_usage=None, on_delta=None, 
             output.finish()
             return result
         chunk = json.loads(event)
+        if isinstance(chunk, dict) and is_context_limit(chunk.get("error"), "chat_completions"):
+            raise context_limit_failure()
         if not isinstance(chunk, dict) or "error" in chunk:
             raise ProviderError("invalid or failed provider stream")
         choices = chunk.get("choices")
