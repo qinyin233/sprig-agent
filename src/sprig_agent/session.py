@@ -23,9 +23,11 @@ from .command_logs import log_state
 from .input_inbox import INPUT_ID, UserInput, InputChanged, delivered_inputs, input_state, remaining_inputs, input_revision
 from .image_inputs import IMAGE_KEY, images
 from .message_origin import ORIGIN, application_origin
+from .requirements import REQUIREMENT_KEY, change as requirement_change
 from .usage_ledger import UsageLedger, usage_state
 
 _PRESERVE_INPUTS = object()
+MAX_HISTORY_MESSAGES = 5000
 _PRESERVE_USAGE = object()
 
 
@@ -74,8 +76,14 @@ def application_check(message):
     return phase
 
 
+def _validate_requirement(row):
+    if row[REQUIREMENT_KEY] is not True or row.get("role") != "user" or ORIGIN in row or IMAGE_KEY in row:
+        raise ValueError("invalid tracked requirement record")
+    requirement_change(row.get("content"))
+
+
 def validate_history(messages):
-    if not isinstance(messages, list) or not messages or len(messages) > 5000:
+    if not isinstance(messages, list) or not messages or len(messages) > MAX_HISTORY_MESSAGES:
         raise SessionError("invalid session history")
     clean, pending, seen = [], [], set()
     for index, message in enumerate(messages):
@@ -89,6 +97,11 @@ def validate_history(messages):
             raise SessionError(str(error)) from None
         if not isinstance(role, str):
             raise SessionError("invalid session role")
+        if REQUIREMENT_KEY in message:
+            try:
+                _validate_requirement(message)
+            except ValueError:
+                raise SessionError("invalid tracked requirement record") from None
         if role == "tool":
             call_id = message.get("tool_call_id")
             if not pending or call_id != pending[0] or not isinstance(content, str):
@@ -116,6 +129,8 @@ def validate_history(messages):
             row = {"role": role, "content": content}
             if is_application:
                 row[ORIGIN] = "application"
+            if REQUIREMENT_KEY in message:
+                row[REQUIREMENT_KEY] = True
             if image_rows:
                 row[IMAGE_KEY] = image_rows
             if INPUT_ID in message:
@@ -316,6 +331,11 @@ class SessionStore:
         if selected_usage is not None:
             payload['request_usage'] = selected_usage
         for row in payload["messages"] if isinstance(payload.get("messages"), list) else ():
+            if isinstance(row, dict) and REQUIREMENT_KEY in row:
+                try:
+                    _validate_requirement(row)
+                except ValueError:
+                    raise SessionError("invalid or redaction-conflicting tracked requirement; no data was overwritten") from None
             if isinstance(row, dict) and ORIGIN in row:
                 try:
                     application_origin(row)
@@ -435,6 +455,8 @@ class SessionStore:
             try:
                 application_origin(row)
                 images(row, self.config.secrets)
+                if REQUIREMENT_KEY in row:
+                    _validate_requirement(row)
             except ValueError:
                 raise SessionError("invalid saved message metadata or image; no history sent") from None
         try:
@@ -461,7 +483,7 @@ class SessionStore:
     def enqueue_input(self, name, entry, *, history=None, references=None, summary=None, logs=None, usage=_PRESERVE_USAGE):
         if not isinstance(entry, UserInput):
             raise SessionError("structured user input is required")
-        entry = UserInput(entry.id, redact(entry.text, self.config.secrets), entry.delivery)
+        entry = UserInput(entry.id, redact(entry.text, self.config.secrets), entry.delivery, entry.requirement)
         try:
             saved = self._read_document(self._filename(name))
         except FileNotFoundError:
@@ -475,9 +497,9 @@ class SessionStore:
             logs = saved.get("command_logs")
             usage = saved.get('request_usage')
         pending = remaining_inputs(saved.get("input_inbox"), history)
-        delivered = delivered_inputs(history)
+        delivered = delivered_inputs(history, typed=True)
         if entry.id in delivered:
-            if entry.text != delivered[entry.id]:
+            if (entry.text, entry.requirement) != delivered[entry.id]:
                 raise SessionError("user input identity was reused with different text")
             return False
         prior = next((row for row in pending["pending"] if row["id"] == entry.id), None)

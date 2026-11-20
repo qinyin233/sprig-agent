@@ -7,6 +7,7 @@ import threading
 import uuid
 from .json_budget import JsonBudgetExceeded, encoded_size
 from .config import terminal_text
+from .requirements import REQUIREMENT_KEY, change as requirement_change
 
 MAX_INPUTS = 32
 MAX_INPUT_BYTES = 2 * 1024 * 1024
@@ -37,11 +38,13 @@ def change_inputs(state, action, identity, *, text=None, position=None, delivery
         raise InputChanged("input is no longer pending; refresh before reviewing another change")
     result = {"action": action, "input_id": identity, "network_contacted": False, "task_executed": False}
     if action == "edit":
-        replacement = new_input(text, delivery=state["pending"][index].get("delivery", "steer"))
+        replacement = new_input(text, delivery=state["pending"][index].get("delivery", "steer"),
+                                requirement=state["pending"][index].get("requirement", False))
         state["pending"][index] = replacement.row()
         result["replacement_id"] = replacement.id
     elif action == "delivery":
-        replacement = new_input(state["pending"][index]["text"], delivery=delivery)
+        replacement = new_input(state["pending"][index]["text"], delivery=delivery,
+                                requirement=state["pending"][index].get("requirement", False))
         state["pending"][index] = replacement.row()
         result.update(replacement_id=replacement.id, delivery=delivery)
     elif action == "drop":
@@ -122,6 +125,7 @@ def input_page(state, identity, offset=0, budget=4096):
     def page(length):
         end = offset + length
         return {**({"delivery": "queue"} if row.get("delivery") == "queue" else {}), "input_id": identity, "offset": offset, "text": text[offset:end],
+                **({"requirement": True} if row.get("requirement") else {}),
                 "next_offset": end if end < len(text) else None, "complete": end == len(text),
                 "characters": len(text), "network_contacted": False}
     low, high = 0, min(len(text) - offset, 8192)
@@ -158,6 +162,7 @@ class UserInput:
     id: str
     text: str
     delivery: str = "steer"
+    requirement: bool = False
 
     def __post_init__(self):
         if not isinstance(self.delivery, str) or self.delivery not in {"steer", "queue"}:
@@ -167,13 +172,22 @@ class UserInput:
         if (not isinstance(self.text, str) or not self.text.strip() or len(self.text) > MAX_INPUT_BYTES
                 or len(self.text.encode("utf-8")) > MAX_INPUT_BYTES):
             raise ValueError("user input must be nonempty UTF-8 text of at most 2 MiB")
+        if type(self.requirement) is not bool or (self.requirement and self.delivery != "steer"):
+            raise ValueError("a tracked requirement change must be delivered as steering")
+        if self.requirement:
+            requirement_change(self.text)
 
     def row(self):
-        return {"id": self.id, "text": self.text, **({"delivery": "queue"} if self.delivery == "queue" else {})}
+        row = {"id": self.id, "text": self.text}
+        if self.delivery == "queue":
+            row["delivery"] = "queue"
+        if self.requirement:
+            row["requirement"] = True
+        return row
 
 
-def new_input(text, *, delivery="steer"):
-    return UserInput("i" + uuid.uuid4().hex, text, delivery)
+def new_input(text, *, delivery="steer", requirement=False):
+    return UserInput("i" + uuid.uuid4().hex, text, delivery, requirement)
 
 
 def input_state(value=None):
@@ -185,7 +199,7 @@ def input_state(value=None):
         raise ValueError("invalid input inbox state")
     rows, seen, size = [], set(), 0
     for row in value["pending"]:
-        if not isinstance(row, dict) or set(row) not in ({"id", "text"}, {"id", "text", "delivery"}):
+        if not isinstance(row, dict) or not {"id", "text"} <= row.keys() <= {"id", "text", "delivery", "requirement"}:
             raise ValueError("invalid queued user input")
         entry = UserInput(**row)
         if entry.id in seen:
@@ -198,26 +212,26 @@ def input_state(value=None):
     return {"version": 1, "pending": rows}
 
 
-def delivered_inputs(messages):
+def delivered_inputs(messages, *, typed=False):
     result = {}
     for message in messages if isinstance(messages, list) else ():
         if not isinstance(message, dict) or INPUT_ID not in message:
             continue
         if message.get("role") != "user":
             raise ValueError("only user messages can identify delivered user input")
-        entry = UserInput(message[INPUT_ID], message.get("content"))
+        entry = UserInput(message[INPUT_ID], message.get("content"), requirement=message.get(REQUIREMENT_KEY, False))
         if entry.id in result:
             raise ValueError("duplicate delivered user input identity")
-        result[entry.id] = entry.text
+        result[entry.id] = (entry.text, entry.requirement) if typed else entry.text
     return result
 
 
 def remaining_inputs(state, messages):
-    state, delivered = input_state(state), delivered_inputs(messages)
+    state, delivered = input_state(state), delivered_inputs(messages, typed=True)
     pending = []
     for row in state["pending"]:
         if row["id"] in delivered:
-            if row["text"] != delivered[row["id"]]:
+            if (row["text"], row.get("requirement", False)) != delivered[row["id"]]:
                 raise ValueError("user input identity conflicts with delivered text")
         else:
             pending.append(row)
@@ -319,6 +333,8 @@ def input_preview(state, budget=4096):
             candidate = {"id": row["id"], "position": index, "preview": text, "truncated": text != row["text"]}
             if row.get("delivery") == "queue":
                 candidate["delivery"] = "queue"
+            if row.get("requirement"):
+                candidate["requirement"] = True
             try:
                 _output_size({**result, "items": [*result["items"], candidate]}, budget)
             except JsonBudgetExceeded:

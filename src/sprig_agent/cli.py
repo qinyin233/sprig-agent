@@ -26,6 +26,7 @@ from .web_fetch import local_arguments as web_arguments
 from .jobs import local_arguments as job_arguments
 from .lsp import local_arguments as lsp_arguments
 from .terminal_input import TerminalInputs, correction_text, current_feedback, feedback_scope
+from .requirements import command as requirement_command, display as requirement_display
 
 
 def approve(description):
@@ -189,7 +190,22 @@ def chat(agent, task, messages, emit, *, autostart=True, model_selection=None, s
             if queued_or_pending() and (task.startswith("/model ") or task.startswith("/fork ") or task.startswith("/revise") or task.startswith("/summary create")):
                 emit("Resolve /pending apply or /pending discard first; no model request sent.")
                 continue
-            if task.lstrip().split(None, 1)[:1] == ["/queue"]:
+            if task.split(None, 1)[:1] == ["/requirements"]:
+                request = requirement_command(task[len("/requirements"):].strip())
+                if "change" in request:
+                    if queued_or_pending():
+                        emit("Resolve pending inputs or queued tasks before revising requirements.")
+                        continue
+                    if messages is None:
+                        messages = []
+                    messages, result = agent.change_requirement(messages, request["change"])
+                    if result["changed"]:
+                        status = 2
+                    result = {key: value for key, value in result.items() if key != "text"}
+                else:
+                    result = requirement_display(messages, min(agent.config.max_output, 16384), **request)
+                emit(json.dumps(result, ensure_ascii=False))
+            elif task.lstrip().split(None, 1)[:1] == ["/queue"]:
                 from .input_inbox import queue_command
                 request = queue_command(task.lstrip()[len("/queue"):].removeprefix(" "))
                 if pending_control is None:
@@ -243,6 +259,7 @@ def chat(agent, task, messages, emit, *, autostart=True, model_selection=None, s
                 emit("/mcp shows local server state; /mcp connect|disconnect|tools|resources|templates|prompts SERVER asks fresh approval for remote requests; /mcp result ID [OFFSET] reads retained local data without replay.")
                 emit("/skills lists configured skill metadata; /skill NAME [PATH [OFFSET PAGE_SHA256]] previews local UTF-8 guidance without a model call or script execution. Quote resource paths containing spaces.")
                 emit("/summary previews an optional lossy checkpoint; /summary create [END] makes one extra model request after approval; /summary clear restores the full request view. /history MESSAGE [OFFSET] locally pages original data.")
+                emit("/requirements [OFFSET] lists tracked requirements. show NAME, set NAME TEXT, and clear NAME work locally in chat; /continue uses the updated list.")
                 emit("/verify runs only configured fixed checks with fresh approval for each; observations enter this conversation. No model request or automatic continuation.")
                 emit("/changes review lists retained file-edit comparisons; /changes show ID|latest [OFFSET SNAPSHOT] pages the historical diff locally. Read-only TUI viewer preserves the composer; review is not a new verification result.")
                 emit("/undo-to ID restores the state before a retained edit; /redo-to ID reapplies through it. Every restore needs fresh file approval.")

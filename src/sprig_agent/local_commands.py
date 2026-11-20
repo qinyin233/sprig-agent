@@ -5,6 +5,7 @@ COMMANDS = {
     "prompts": "列出已配置任务模板；/名称 参数发送展开后的普通任务或中途引导",
     "queue": "正文仅收存；run 顺序启动，每项独立预算；pause 暂停后续任务",
     "pending": "待处理要求：manage 管理，show 分页；edit/drop/move/delivery 逐次确认，apply 递送引导",
+    "requirements": "查看跟踪的需求；show 查看正文，set 更新版本，clear 撤回",
     "help": "本地帮助", "keys": "快捷键", "status": "任务与运行状态", "plan": "模型报告的计划",
     "verify": "逐次批准后仅运行固定检查，结果进入会话；不调用模型或自动继续",
     "config": "生效配置", "models": "配置中的模型；reload 刷新目录，当前模型保持", "model": "明确确认后切换配置模型", "context": "上下文预算", "usage": "请求统计",

@@ -19,7 +19,7 @@ from .revisions import ReadVersions, recent_visible_reads
 from .references import FileReferences, merge_reference_paths, reference_paths, user_reference_paths
 from .runtime import RuntimeEvent, tool_outcome
 from .provider import Provider, ProviderError, validate_message
-from .session import MAX_SESSION, validate_history
+from .session import MAX_HISTORY_MESSAGES, MAX_SESSION, validate_history
 from .summary import (HISTORY_PAGE_BUDGET_ERROR, HISTORY_SCHEMA, MAX_SUMMARY, PROMPT as SUMMARY_PROMPT,
                       binding_digest, closed_end, fingerprint, history_page, project as project_summary,
                       summary_fields, summary_source_message, summary_state)
@@ -36,6 +36,8 @@ from .lsp import LSP_SCHEMA
 from .tools import GIT_DIFF_SCHEMA, GIT_STATUS_SCHEMA, TOOL_SCHEMAS, ToolError, Tools
 from .attachments import snapshots as file_snapshots, snapshot_message
 from .message_origin import ORIGIN, application_message
+from .requirements import (REQUIREMENT_KEY, change as requirement_change, model_frame as requirement_frame,
+                           state as requirement_state)
 from .image_reads import ImageReadResult
 from .image_inputs import images
 
@@ -706,20 +708,47 @@ class Agent:
             self._checkpoint(messages)
 
     def _input_messages(self, messages, tasks):
-        delivered = delivered_inputs(messages)
+        delivered = delivered_inputs(messages, typed=True)
         rows = []
         for task in tasks:
             if isinstance(task, UserInput):
                 text = redact(task.text, self.config.secrets)
+                if task.requirement:
+                    requirement_change(text)
+                delivery = (text, task.requirement)
                 if task.id in delivered:
-                    if delivered[task.id] != text:
+                    if delivered[task.id] != delivery:
                         raise ValueError("user input identity conflicts with delivered text")
                     continue
-                delivered[task.id] = text
-                rows.append({"role": "user", "content": text, INPUT_ID: task.id})
+                delivered[task.id] = delivery
+                row = {"role": "user", "content": text, INPUT_ID: task.id}
+                if task.requirement:
+                    row[REQUIREMENT_KEY] = True
+                rows.append(row)
             else:
                 rows.append({"role": "user", "content": redact(task, self.config.secrets)})
         return rows
+
+    def change_requirement(self, messages, text):
+        if self._running:
+            raise ValueError("active tasks must receive requirement changes through the steering inbox")
+        text = redact(text, self.config.secrets)
+        name, body = requirement_change(text)
+        candidate = validate_history(messages) if messages else [{"role": "system", "content": self._prompt()}]
+        existing = requirement_state(candidate).get(name)
+        self._check_cancelled()
+        if existing and existing["text"] == body:
+            self._checkpoint(candidate)  # An exact retry settles a save without an extra revision.
+            return candidate, {**existing, "changed": False}
+        if len(candidate) >= MAX_HISTORY_MESSAGES:
+            raise ValueError("session history is full; start a new session before adding requirements")
+        candidate.append({"role": "user", "content": text, REQUIREMENT_KEY: True})
+        self.invalidate_verification()
+        if messages is not None:
+            messages[:] = candidate  # Retain the revision when saving has an uncertain outcome.
+            candidate = messages
+        self._checkpoint(candidate)
+        return candidate, {**requirement_state(candidate)[name], "changed": True}
 
     def recover_inputs(self, messages, tasks):
         """Explicit local delivery; neither a provider request nor tool replay."""
@@ -731,6 +760,8 @@ class Agent:
         if not budget["within_budget"]:
             raise ValueError("pending inputs exceed the request context budget; no inputs applied")
         self._check_cancelled()
+        if any(REQUIREMENT_KEY in row for row in rows):
+            self.invalidate_verification()
         if messages is not None:
             messages[:] = candidate  # Retain identities even if checkpointing fails; retries deduplicate.
             candidate = messages
@@ -823,10 +854,13 @@ class Agent:
         self._check_cancelled()
         # Runtime budget belongs to this invocation, not resumable history.
         # Include it before sizing/compaction so it cannot bypass the byte cap.
+        requirements = requirement_state(messages)
         messages = project_summary(messages, self.summary, self._check_cancelled, binding=self.config.binding(),
                                    secrets=self.config.secrets)
         messages = [dict(messages[0]), *({key: value for key, value in row.items() if key != INPUT_ID}
-                                      if INPUT_ID in row else row for row in messages[1:])]
+                                      if INPUT_ID in row else row for row in messages[1:] if REQUIREMENT_KEY not in row)]
+        if requirements:
+            messages.append(application_message(requirement_frame(requirements)))
         if isinstance(self.tools, Tools) and self.config.mcp_servers and self.config.tool_enabled("mcp") and not self.config.read_only:
             messages[0]["content"] += "\nConfigured MCP endpoints and local state (no connection implied):\n" + json.dumps(redact(self.tools.mcp_manager.status(), self.config.secrets), ensure_ascii=False)
         if isinstance(self.tools, Tools) and self.config.lsp_servers and self.config.tool_enabled("lsp") and not self.config.read_only:

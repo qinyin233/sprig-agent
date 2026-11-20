@@ -41,6 +41,7 @@ from .session import SessionError, SessionStore, validate_history
 from .settings import public_config
 from .tools import Tools
 from .edit_batch import EditPreview
+from .requirements import command as requirement_command, display as requirement_display
 
 
 class UiRequest(Message):
@@ -251,6 +252,10 @@ class TaskInput(TextArea):
         self.post_message(self.Complete(self))
 
     def action_send(self):
+        # Priority bindings run in the app before queued keys reach this editor.
+        self.call_later(self._send_draft)
+
+    def _send_draft(self):
         self.pastes.sync(self.text)
         queued = self.text.lstrip().split(None, 1)[:1] == ["/queue"]
         text = self.pastes.expanded() if self.verbatim_paste or queued or self.text.lstrip().startswith("/") else self.text.strip()
@@ -1020,6 +1025,11 @@ class SprigApp(App[int]):
                     self.messages, result = self.agent.verify(self.messages)
                     status = 0 if result["verification"] == "passed" else 2
                     message = "固定检查通过；未请求模型" if status == 0 else "固定检查未通过或未完成；未请求模型，未自动继续"
+                elif name == "requirement":
+                    if self.messages is None:
+                        self.messages = []
+                    self.messages, result = self.agent.change_requirement(self.messages, arguments["text"])
+                    message = "需求 " + result["name"] + " 已记录为版本 " + str(result["revision"])
                 elif name == "pending":
                     action = arguments["action"]
                     if action == "apply":
@@ -1554,6 +1564,13 @@ class SprigApp(App[int]):
             return
         if not event.literal and command.startswith("//"):
             task = command[1:]  # A literal task starting with a slash.
+        elif not event.literal and command.split(None, 1)[:1] == ["/requirements"]:
+            if event.files:
+                self.reject_input("需求命令接收文本；文件选择保留，请另行发送。")
+                return
+            if self.slash_command(command) and event.editor.text == event.draft:
+                event.editor.load_text("")
+            return
         elif not event.literal and command.startswith("/"):
             if event.editor.text == event.draft:
                 event.editor.load_text("")
@@ -1582,14 +1599,15 @@ class SprigApp(App[int]):
             self._draft_submission = (event.editor.id, event.draft, task)
             self.start(None if retry else task, context_files=event.files, preflight=event.preflight or templated)
 
-    def queue_guidance(self, task, *, delivery="steer"):
+    def queue_guidance(self, task, *, delivery="steer", requirement=False):
         if self._input_inbox.blocked:
             self.reject_input("队列修改保存未确认；请恢复当前会话后再发送。草稿保留。")
             return False
         if self.recovered_inputs["pending"]:
             self.reject_input("请先处理 /pending apply 或 /pending discard；新要求未接收，草稿保留。")
             return False
-        if self._input_retry and (self._input_retry.text != redact(task, self.config.secrets) or self._input_retry.delivery != delivery):
+        if self._input_retry and (self._input_retry.text != redact(task, self.config.secrets)
+                                  or self._input_retry.delivery != delivery or self._input_retry.requirement != requirement):
             self.reject_input("上一条要求的保存尚未确认；请重试原文，或 /pending apply、/pending discard 处理后再发送。")
             return False
         limit = self.config.max_context_bytes
@@ -1603,7 +1621,7 @@ class SprigApp(App[int]):
             return False
         try:
             text = redact(task, self.config.secrets)
-            entry = self._input_retry if self._input_retry and self._input_retry.text == text else new_input(text, delivery=delivery)
+            entry = self._input_retry or new_input(text, delivery=delivery, requirement=requirement)
             state = self._input_inbox.snapshot()
             if not any(row["id"] == entry.id for row in state["pending"]):
                 input_state({"version": 1, "pending": [*state["pending"], entry.row()]})
@@ -1891,6 +1909,25 @@ class SprigApp(App[int]):
         argument = argument.strip()
         if text.split(None, 1) and text.split(None, 1)[0] == "/queue":
             command = "/queue"
+        if text.split(None, 1)[:1] == ["/requirements"]:
+            try:
+                request = requirement_command(text[len("/requirements"):].strip())
+                if "change" not in request:
+                    self.append("\n" + json.dumps(requirement_display(
+                        self.messages, min(self.config.max_output, 16384), **request), ensure_ascii=False) + "\n")
+                    return True
+                if self.busy:
+                    return self.queue_guidance(request["change"], requirement=True)
+                if self.pending_tasks or self.recovered_inputs["pending"] or self._input_retry or self._input_inbox.blocked:
+                    self.reject_input("还有待处理输入，请先处理 /pending 或运行排队任务。")
+                    return False
+                self.set_task_result(2, "需求正在变更，等待重新验收")
+                self.append("\n[需求变更] " + request["change"] + "\n")
+                self.start(local=("requirement", {"text": request["change"]}))
+                return True
+            except (ValueError, UnicodeError) as error:
+                self.reject_input(self.safe(error))
+                return False
         if command == '/editor':
             if argument:
                 self.notify('用法：/editor；Ctrl+G 编辑现有草稿',severity='error')
@@ -1913,6 +1950,7 @@ class SprigApp(App[int]):
                         "/lsp code_actions SERVER PATH 行 列 [结束行 结束列]；/lsp apply_code_action ID（新批准选择并逐文件审阅）\n"
                         "/continue /new /files /add 文件路径 /ref 文件路径 /unref 文件路径 /refs [clear]\n"
                         "/verify（仅固定检查；逐次批准，观察进入会话；不调用模型或自动继续）\n"
+                        "/requirements [偏移]、show 名称、set 名称 正文、clear 名称（跟踪有效要求）\n"
                         "/map [名称或路径查询] /git [路径] /diff [--staged] 路径 /compact\n"
                         "/summary（本地预览） /summary create [END]（逐次确认额外请求） /summary clear\n"
                         "/logs（当前会话日志） /log ID [OFFSET]（本地回查） /logs clear（逐次确认清理）\n"

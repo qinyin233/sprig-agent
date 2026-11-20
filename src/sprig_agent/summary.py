@@ -8,6 +8,7 @@ import re
 from .config import redact
 from .json_budget import JSON_OPTIONS, JsonBudgetExceeded, encoded_size
 from .message_origin import ORIGIN, user_request
+from .requirements import REQUIREMENT_KEY
 
 MAX_SUMMARY = 16384
 MAX_HISTORY_EXCERPT = 4096
@@ -148,6 +149,9 @@ def _result_excerpt(result, secrets):
 
 
 def summary_source_message(row, message, secrets, check_cancelled):
+    if row.get(REQUIREMENT_KEY) is True:
+        return {"message": message, "role": "user",
+                "content": "Tracked requirement change omitted. Current requirements are supplied separately."}
     source = redact({"message": message, **public_message(row)}, secrets)
     if row["role"] == "tool" and not _fits_history_excerpt(source, check_cancelled):
         excerpt = _result_excerpt(_tool_result(row["content"]), secrets)
