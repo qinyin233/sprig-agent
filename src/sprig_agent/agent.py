@@ -33,7 +33,7 @@ from .mcp import MCP_SCHEMA, McpManager
 from .web_fetch import WEB_SCHEMA
 from .jobs import JOB_SCHEMA
 from .lsp import LSP_SCHEMA
-from .tools import GIT_DIFF_SCHEMA, GIT_STATUS_SCHEMA, TOOL_SCHEMAS, Tools
+from .tools import GIT_DIFF_SCHEMA, GIT_STATUS_SCHEMA, TOOL_SCHEMAS, ToolError, Tools
 from .attachments import snapshots as file_snapshots, snapshot_message
 from .message_origin import ORIGIN, application_message
 from .image_reads import ImageReadResult
@@ -96,6 +96,8 @@ class Agent:
         self.on_request_ready = on_request_ready
         self.on_event = on_event
         self.runtime_state = None
+        self._verification_stamp = None
+        self.verification_state = "unverified"
         self._running = False
         self._context_files = []
         self._tool_images = []
@@ -180,6 +182,8 @@ class Agent:
             self.tools.lsp_manager.reset()
             self.tools.logs.reset_memory()
         self.runtime_state = None
+        self._verification_stamp = None
+        self.verification_state = "unverified"
         self.work_progress = WorkProgress()
         self._tool_images = []
         self.had_rejected_action = False
@@ -686,6 +690,8 @@ class Agent:
                 self.references.files = selected
                 self.references.observed = [row for row in self.references.observed if row["path"] in selected]
         uncertain = result.uncertain if batch else result.get("outcome") == "uncertain"
+        if result.get("changed") or uncertain:
+            self.invalidate_verification()
         if messages and (result.get("changed") or uncertain):
             if batch:
                 kind = "retained batch edits" if result.restore_action.endswith("-batch") else "retained edits"
@@ -1006,6 +1012,23 @@ class Agent:
             if displayed:
                 self.emit_delta("\n")
 
+    def _capture_verification(self):
+        try:
+            return self.tools.verification_stamp(self.config.check_files)
+        except (OSError, ValueError, ToolError):
+            return None  # The path or its contents may be sensitive.
+
+    def invalidate_verification(self):
+        if self._verification_stamp is not None:
+            self._verification_stamp = None
+            self.verification_state = "stale"
+
+    def refresh_verification(self):
+        stamp = self._verification_stamp
+        if stamp is not None and self._capture_verification() != stamp and self._verification_stamp is stamp:
+            self.invalidate_verification()
+        return {"files": len(self.config.check_files), "state": self.verification_state}
+
     def _verify(self, messages, seen_ids, *, baseline=False, after_edit=False):
         """Run fixed checks with fresh approval; checkpoints never complete tasks."""
         phase = "baseline" if baseline else "edit-check" if after_edit else "acceptance"
@@ -1014,6 +1037,13 @@ class Agent:
         if jobs and jobs.unsettled():
             self._stop_reason = "background"
             self.emit("[" + phase + "] Deferred: owned background commands are running or cleanup is uncertain. Wait or cancel them before fixed checks.")
+            return "incomplete"
+        scoped = bool(self.config.check_files) and not (baseline or after_edit)
+        before = self._capture_verification() if scoped else None
+        if scoped and before is None:
+            self.verification_state = "unavailable"
+            self._stop_reason = "check_scope"
+            self.emit("[acceptance] Could not read the configured check files. Review their availability and rerun /verify.")
             return "incomplete"
         check_reads = (self.tools.read_versions.snapshot()
                        if after_edit and jobs is not None and self.tools._jobs_revision == revision else ())
@@ -1064,6 +1094,20 @@ class Agent:
         if check_reads and checks_settled:
             self.tools.revalidate_check_reads(check_reads, read_owner, revision)
         if passed:
+            if scoped:
+                if self._capture_verification() != before:
+                    self.verification_state = "stale"
+                    self._stop_reason = "check_scope"
+                    messages.append(application_message(
+                        "The fixed checks exited successfully, but at least one watched file changed or became "
+                        "unavailable during verification. Current acceptance is unverified. Rerun the fixed checks."))
+                    self._checkpoint(messages)
+                    self._event("check", "incomplete", check=phase, check_index=len(self.config.checks),
+                                check_total=len(self.config.checks))
+                    self.emit("[acceptance] Watched files changed or became unavailable during the run. Rerun /verify.")
+                    return "incomplete"
+                self._verification_stamp = before
+                self.verification_state = "current"
             self._event("check", "passed", check=phase, check_index=len(self.config.checks), check_total=len(self.config.checks))
             self.emit("[baseline] Checks passed before model actions; final acceptance is still required" if baseline
                       else "[edit-check] Checks passed after file edits; final acceptance is still required" if after_edit
@@ -1092,6 +1136,8 @@ class Agent:
             raise ValueError("another task or verification is already running")
         self._run_id, self._sequence, self._step, self._action = uuid.uuid4().hex, 0, 0, 0
         self._stop_reason = None
+        self._verification_stamp = None
+        self.verification_state = "unverified"
         self._offered_schemas = self.schemas
         self._explore_used = False
         self.work_progress = WorkProgress()
@@ -1177,7 +1223,10 @@ class Agent:
                     self.tools.index.clear()
             outcome = "passed" if status == "passed" else "failed" if status == "failed" else "incomplete"
             self._event("finished", outcome, reason=self._stop_reason)
-            return messages, {"verification": status, "checks": len(self.config.checks), "model_requested": False}
+            result = {"verification": status, "checks": len(self.config.checks), "model_requested": False}
+            if self.config.check_files:
+                result["evidence"] = {"files": len(self.config.check_files), "state": self.verification_state}
+            return messages, result
 
     def _run(self, task=None, messages=None):
         self.baseline_status = "not_run"

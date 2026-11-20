@@ -64,6 +64,17 @@
             }
           }
         },
+        "check_files": {
+          "type": "array",
+          "maxItems": 16,
+          "items": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 4096,
+            "pattern": "^[^\\x00-\\x1f]+$"
+          },
+          "description": "Workspace-relative UTF-8 files whose changes invalidate fixed acceptance checks. Trusted user or profile setting."
+        },
         "recover_output_limit": {
           "type": "boolean",
           "default": false,
@@ -1318,6 +1329,17 @@
                     "type": "string"
                   }
                 }
+              },
+              "check_files": {
+                "type": "array",
+                "maxItems": 16,
+                "items": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 4096,
+                  "pattern": "^[^\\x00-\\x1f]+$"
+                },
+                "description": "Workspace-relative UTF-8 files whose changes invalidate fixed acceptance checks. Trusted user or profile setting."
               },
               "recover_output_limit": {
                 "type": "boolean",

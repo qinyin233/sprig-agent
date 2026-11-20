@@ -353,7 +353,14 @@ def chat(agent, task, messages, emit, *, autostart=True, model_selection=None, s
                     status = 2
                 emit(json.dumps(redact(result, agent.config.secrets), ensure_ascii=False, indent=2))
             elif task == "/status":
+                evidence = None
+                if agent.config.checks and agent.config.check_files:
+                    evidence = agent.refresh_verification()
+                    if status == 0 and evidence["state"] == "stale":
+                        status = 2
                 emit(f"Messages: {len(messages or [])} | model: {agent.config.model} | acceptance checks: {len(agent.config.checks)} | baseline: {agent.baseline_status} | edit checks: {agent.edit_check_status} | last status: {status}")
+                if evidence is not None:
+                    emit("Acceptance evidence: " + json.dumps(evidence))
                 emit("Runtime (current process only): " + json.dumps(agent.runtime_snapshot(), ensure_ascii=False))
             elif task == "/context":
                 emit(json.dumps(agent.context_preview(messages), ensure_ascii=False, indent=2))
@@ -502,6 +509,8 @@ def main(argv=None):
     interface.add_argument("--cli", dest="interface", action="store_const", const="cli", help="one-shot interface; override the configured interface")
     parser.add_argument("--check", dest="checks", action="append", type=check_argv, metavar="JSON_ARGV",
                         help="fixed acceptance command, repeatable; execution still requires approval")
+    parser.add_argument("--check-file", dest="check_files", action="append", metavar="PATH",
+                        help="workspace file to compare before and after final checks, repeatable")
     parser.add_argument("--check-before-task", action=argparse.BooleanOptionalAction, default=None,
                         help="propose fixed --check commands before every task/continue/resume; fresh approval required; final checks still run")
     parser.add_argument("--check-after-edit", action=argparse.BooleanOptionalAction, default=None,

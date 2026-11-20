@@ -73,6 +73,7 @@ project_instructions = true
 checks = [] # arrays of argv; each command still asks for fresh approval
 check_before_task = false # opt in only with nonempty checks; final checks still run
 check_after_edit = false # fixed checks once after each successful file-edit batch
+check_files = [] # optional paths to verify with the final fixed checks, e.g. ["src/app.py", "tests/test_app.py"]
 
 [skills]
 dirs = [] # explicit skill collections, e.g. ["~/.agents/skills"]; user/profile only

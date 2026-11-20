@@ -17,7 +17,8 @@ AGENT_DEFAULTS = {
     "max_steps": 20, "timeout": 30, "max_output": 16000, "stream": False,
     "read_only": False, "inherit_env": False, "max_context_bytes": 131072,
     "compact_context": False, "request_usage": False, "project_instructions": True,
-    "max_tokens": None, "thinking": False, "checks": (), "check_before_task": False, "check_after_edit": False,
+    "max_tokens": None, "thinking": False, "checks": (), "check_files": (),
+    "check_before_task": False, "check_after_edit": False,
     "recover_output_limit": False, "recover_context_budget": False,
 }
 TEMPLATE = '''# Sprig user configuration. No automatic model/provider fallback.
@@ -306,6 +307,8 @@ def _validate(data, directory, *, project=False):
             raise ValueError("project configuration cannot change trusted keyboard shortcuts")
         if any(data.get("agent", {}).get(name) for name in ("inherit_env", "checks")):
             raise ValueError("project configuration cannot inherit environment or add commands")
+        if "check_files" in data.get("agent", {}):
+            raise ValueError("project configuration cannot set agent.check_files")
         for name in ("recover_output_limit", "recover_context_budget"):
             if name in data.get("agent", {}):
                 raise ValueError("project configuration cannot set agent." + name)

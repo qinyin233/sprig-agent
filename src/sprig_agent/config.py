@@ -122,6 +122,7 @@ class Config:
     max_output: int = 16000
     stream: bool = False
     checks: tuple = ()
+    check_files: tuple = ()
     read_only: bool = False
     inherit_env: bool = False
     max_context_bytes: int = 131072
@@ -334,6 +335,16 @@ class Config:
             raise ValueError("check-history-format must be tool_calls or observations")
         if not isinstance(self.checks, tuple) or len(self.checks) > 16:
             raise ValueError("at most 16 acceptance checks are supported")
+        if self.check_files:
+            from .references import reference_paths
+            paths = reference_paths(self.check_files)
+            if not self.tool_enabled("read_file") or any(redact(path, self.secrets) != path for path in paths):
+                raise ValueError("check_files requires permitted workspace files")
+            object.__setattr__(self, "check_files", paths)
+        elif isinstance(self.check_files, (tuple, list)):
+            object.__setattr__(self, "check_files", ())
+        else:
+            raise ValueError("check_files must be a list of workspace paths")
         if type(self.check_before_task) is not bool or (self.check_before_task and not self.checks):
             raise ValueError("check-before-task must be a boolean and requires fixed acceptance checks")
         if type(self.check_after_edit) is not bool or (self.check_after_edit and not self.checks):
@@ -555,6 +566,8 @@ class Config:
             binding["command_log_dir"] = str(self.command_log_dir)
         if self.checks:
             binding["checks"] = [list(argv) for argv in self.checks]
+        if self.check_files:
+            binding["check_files"] = list(self.check_files)
         if self.check_before_task:
             binding["check_before_task"] = True
         if self.check_after_edit:

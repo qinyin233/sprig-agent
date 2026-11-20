@@ -591,6 +591,18 @@ check_before_task=true
         self.assertEqual(code, 0)
         self.assertFalse(json.loads(output)["agent"]["recover_context_budget"])
 
+    def test_acceptance_scope_comes_from_trusted_settings_and_binds_the_session(self):
+        self.write('[profiles.development.agent]\ncheck_files=["src/app.py", "tests/test_app.py"]\n')
+        settings = load_settings(self.path)
+        default, _ = self.resolve(settings, model="fixture")
+        config, _ = self.resolve(settings, model="fixture", profile="development")
+        self.assertNotIn("check_files", default.binding())
+        self.assertEqual(config.binding()["check_files"], ["src/app.py", "tests/test_app.py"])
+        self.assertEqual(dict(config.setting_sources)["check_files"], "profile")
+        project = self.write('[agent]\ncheck_files=[]\n', self.root / "project.toml")
+        with self.assertRaisesRegex(ValueError, "project configuration cannot set agent.check_files"):
+            settings.with_project(project)
+
     def test_configured_storage_autosave_is_opt_in_and_listing_does_not_need_key(self):
         self.write('''provider="x"
 [providers.x]

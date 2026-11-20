@@ -2,6 +2,7 @@
 import copy
 from dataclasses import replace
 import json
+import os
 from pathlib import Path
 import sys
 import tempfile
@@ -17,6 +18,7 @@ from sprig_agent.tools import Tools
 from tests.test_mcp_stdio import backend, wire
 from tests.test_named_reads import call
 from tests.test_tui import response
+from tests import test_tui as fixture
 
 
 class ManualVerificationTests(unittest.TestCase):
@@ -85,6 +87,53 @@ class ManualVerificationTests(unittest.TestCase):
         empty = self.agent(replace(self.config, checks=()))
         with self.assertRaisesRegex(ValueError, "no fixed checks"):
             empty.verify()
+        self.provider.complete.assert_not_called()
+
+    def test_watched_files_bind_pass_to_current_content_and_need_reverification(self):
+        value = self.root / "value.txt"
+        value.write_text("good", encoding="utf-8")
+        agent = self.agent(replace(self.config, check_files=("value.txt",)))
+        rows, result = agent.verify()
+        self.assertEqual(result["evidence"], {"files": 1, "state": "current"})
+        self.assertEqual(result["verification"], "passed")
+        (self.root / "unrelated.txt").write_text("other", encoding="utf-8")
+        self.assertEqual(agent.refresh_verification()["state"], "current")
+        info = value.stat()
+        value.write_text("evil", encoding="utf-8")
+        os.utime(value, ns=(info.st_atime_ns, info.st_mtime_ns))
+        self.assertEqual(agent.refresh_verification()["state"], "stale")
+        value.write_text("good", encoding="utf-8")
+        self.assertEqual(agent.refresh_verification()["state"], "stale")
+        rows, again = agent.verify(rows)
+        self.assertEqual(again["evidence"], {"files": 1, "state": "current"})
+        self.assertEqual(len(self.prompts), 2)
+        self.assertNotIn("verification_stamp", json.dumps(self.saved))
+        self.provider.complete.assert_not_called()
+
+    def test_watched_file_change_during_an_exit_zero_check_cannot_pass(self):
+        command = (sys.executable, "-I", "-B", "-c",
+                   "from pathlib import Path; Path('value.txt').write_text('good')")
+        config = replace(self.config, checks=(command,), check_files=("value.txt",))
+        agent = self.agent(config)
+        rows, result = agent.verify()
+        self.assertEqual(result["verification"], "incomplete")
+        self.assertEqual(result["evidence"]["state"], "stale")
+        self.assertEqual(json.loads(rows[-2]["content"])["returncode"], 0)
+        self.assertIn("acceptance is unverified", rows[-1]["content"])
+        self.assertEqual(agent.runtime_state.outcome, "incomplete")
+        self.assertEqual(len(self.prompts), 1)
+
+    def test_unavailable_watch_scope_stops_before_approval(self):
+        config = replace(self.config, check_files=("value.txt",))
+        for path in ("missing.txt", ".env", "value.txt"):
+            with self.subTest(path=path):
+                candidate = replace(config, check_files=(path,), excluded_paths=("value.txt",))
+                agent = self.agent(candidate)
+                rows, result = agent.verify()
+                self.assertEqual(result["verification"], "incomplete")
+                self.assertEqual(result["evidence"], {"files": 1, "state": "unavailable"})
+                self.assertFalse(any(row.get("tool_calls") for row in rows))
+        self.assertEqual(self.prompts, [])
         self.provider.complete.assert_not_called()
 
     def test_unreliable_results_and_active_jobs_cannot_pass(self):
@@ -195,3 +244,39 @@ class ManualVerificationTests(unittest.TestCase):
                     self.assertEqual(len(captured), 2)
                     self.assertEqual(len(approvals), 3)  # Local failed check, model edit, fresh final check.
                     self.assertEqual(validate_history(history), history)
+
+
+class WatchedVerificationTuiTests(unittest.IsolatedAsyncioTestCase):
+    asyncSetUp = fixture.TuiTests.asyncSetUp
+    setUp = fixture.TuiTests.setUp
+    app = fixture.TuiTests.app
+    until = fixture.TuiTests.until
+    click = fixture.TuiTests.click
+
+    async def test_external_change_replaces_pass_and_local_verify_rechecks(self):
+        path = self.root / "value.txt"
+        path.write_text("ok", encoding="utf-8")
+        command = (sys.executable, "-B", "-c", "from pathlib import Path; assert Path('value.txt').read_text() == 'ok'")
+        self.config = replace(self.config, checks=(command,), check_files=("value.txt",))
+        provider = fixture.ScriptedProvider([response()])
+        app = self.app(provider, task="Verify this workspace")
+        async with app.run_test(size=(110, 36)) as pilot:
+            await self.until(pilot, lambda: isinstance(app.screen, fixture.ApprovalScreen))
+            await self.click(pilot, "#approve")
+            await self.until(pilot, lambda: not app.busy)
+            self.assertEqual(app.last_status, 0)
+            self.assertEqual(app.agent.verification_state, "current")
+            path.write_text("external change", encoding="utf-8")
+            app.slash_command("/status")
+            await self.until(pilot, lambda: app.last_status == 2 and not app._checking_files)
+            self.assertIn("请运行 /verify", app.task_message)
+            path.write_text("ok", encoding="utf-8")
+            app.slash_command("/verify")
+            await self.until(pilot, lambda: isinstance(app.screen, fixture.ApprovalScreen))
+            await self.click(pilot, "#approve")
+            await self.until(pilot, lambda: not app.busy)
+            self.assertEqual(app.last_status, 0)
+            path.unlink()
+            await self.until(pilot, lambda: app.last_status == 2)
+            self.assertEqual(app.agent.verification_state, "stale")
+            self.assertEqual(len(provider.calls), 1)

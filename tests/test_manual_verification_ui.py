@@ -41,9 +41,10 @@ class ManualVerificationCliTests(unittest.TestCase):
                 patch.object(cli,'Provider') as provider, patch.object(cli,'SessionStore') as store, \
                 patch.object(cli,'approve',side_effect=lambda text:prompts.append(text) or True), \
                 redirect_stdout(output), redirect_stderr(io.StringIO()):
-            self.assertEqual(cli.main(['--verify','--workdir',str(self.root)]),0)
+            self.assertEqual(cli.main(['--verify','--workdir',str(self.root),'--check-file','value.txt']),0)
         self.assertEqual(len(prompts),1)
         self.assertIn('"verification": "passed"',output.getvalue())
+        self.assertIn('"evidence": {"files": 1, "state": "current"}', output.getvalue())
         provider.assert_not_called()
         store.assert_not_called()
 
@@ -62,6 +63,24 @@ class ManualVerificationCliTests(unittest.TestCase):
             with self.assertRaises(SystemExit):
                 cli.main(['--verify','--resume','old'])
             provider.assert_not_called()
+
+    def test_chat_status_marks_watched_file_change_as_stale(self):
+        config = Config(self.root, "fixture", checks=(self.check,), check_files=("value.txt",))
+        provider, emitted = Mock(), []
+        tools = Tools(config, lambda _: True)
+        self.addCleanup(tools.close)
+        agent = Agent(config, provider, tools, emitted.append)
+
+        def inputs():
+            yield "/verify"
+            (self.root / "value.txt").write_text("external edit", encoding="utf-8")
+            yield "/status"
+            yield "/exit"
+
+        with patch("builtins.input", side_effect=inputs()):
+            self.assertEqual(cli.chat(agent, None, None, emitted.append, autostart=False), 2)
+        self.assertIn('Acceptance evidence: {"files": 1, "state": "stale"}', emitted)
+        provider.complete.assert_not_called()
 
     def test_chat_failure_recheck_and_new_guidance_remain_local(self):
         config = Config(self.root,'fixture',checks=(self.check,))

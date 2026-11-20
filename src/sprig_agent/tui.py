@@ -373,6 +373,8 @@ class SprigApp(App[int]):
         self._unmounted = False
         self._ui_ready = False
         self._ui_thread_id = threading.get_ident()
+        self._checking_files = False
+        self._status_after_file_check = False
         self.quit_when_idle = False
         self.transcript = ""
         self._transcript_trimmed = False
@@ -522,6 +524,7 @@ class SprigApp(App[int]):
         self._ui_thread_id = threading.get_ident()
         self.set_interval(self.OUTPUT_REFRESH_SECONDS, self.flush_output)
         self.set_interval(.25, self.refresh_jobs)
+        self.set_interval(2, self.refresh_check_files)
         self.action_focus_task()
         self.refresh_plan()
         self.append("Sprig 就绪。任务、读取内容和工具结果会发送到所示服务。\n写入和命令逐次确认；命令没有沙箱。\n")
@@ -562,6 +565,50 @@ class SprigApp(App[int]):
                 self.append("\n[后台任务状态；不是验收结果] " + json.dumps(row) + "；/job output ID 查看内存输出，log_id 可用 /log 回查。\n")
                 self.event("后台命令已结束；当前工作区仍需独立检查")
         self.refresh_terminal_view()
+
+    def refresh_check_files(self, *, show_status=False):
+        if (not self._ui_ready or self._unmounted or self.busy or self.task_status != 0
+                or self.agent.verification_state != "current"):
+            if show_status:
+                self.show_status()
+            return
+        self._status_after_file_check |= show_status
+        if not self._checking_files:
+            self._checking_files = True
+            self.check_files(self.agent)
+
+    @work(thread=True, group="check-files", exit_on_error=False)
+    def check_files(self, agent):
+        try:
+            if self._lifecycle_lock.acquire(blocking=False):
+                try:
+                    if not self._closed and not self.busy and self.agent is agent:
+                        agent.refresh_verification()
+                finally:
+                    self._lifecycle_lock.release()
+        except KeyboardInterrupt:
+            pass
+        finally:
+            if not self._unmounted:
+                self.ui_call(self.checked_files, agent)
+
+    def checked_files(self, agent):
+        self._checking_files = False
+        if (self.agent is agent and not self.busy and self.task_status == 0
+                and agent.verification_state == "stale"):
+            self.set_task_result(2, "跟踪的文件已变更或不可读，请运行 /verify")
+        if self._status_after_file_check:
+            self._status_after_file_check = False
+            self.show_status()
+
+    def show_status(self):
+        self.append(f"\n[本地状态] {self.task_message} | 执行中: {self.busy} | 消息: {len(self.messages or [])} | 本次基线: {self.agent.baseline_status} | 编辑后检查: {self.agent.edit_check_status} | 待处理引导: {len(self.pending_tasks)}\n")
+        if self.config.check_files:
+            labels = {"current": "与验收时一致", "stale": "验收已过期", "unavailable": "有文件不可读",
+                      "unverified": "待验收"}
+            self.append(f"[验收跟踪] {len(self.config.check_files)} 个文件 | {labels[self.agent.verification_state]}\n")
+        self.append(f"[待恢复要求: {len(self.recovered_inputs['pending'])}；运行状态仅当前进程]\n" + json.dumps(self.agent.runtime_snapshot(), ensure_ascii=False) + "\n")
+        self.append(f"[队列: {'已启动' if self._queue_running else '未启动/暂停'}；引导 {len(self._input_inbox.batch(delivery='steer'))} 条；排队 {len(self._input_inbox.batch(delivery='queue'))} 条]\n")
 
     def close_terminal_view(self):
         self._terminal_view = None
@@ -682,6 +729,8 @@ class SprigApp(App[int]):
         return self.task_status if self.task_status is not None else self.last_operation_status
 
     def set_task_result(self, status, message):
+        if status != 0:
+            self.agent.invalidate_verification()
         self.task_status, self.task_message = status, message
         if status == 0 and not self.config.checks:
             self.task_message += "；未配置验收命令"
@@ -1116,6 +1165,8 @@ class SprigApp(App[int]):
                 message = "验收通过" if complete and self.config.checks else ("本轮结束" if complete else "未完成 / 未验收")
                 if not complete and self.agent._stop_reason == "question":
                     message = "问题未回答；等待新输入，旧提案未执行 / 未验收"
+                elif self.agent._stop_reason == "check_scope":
+                    message = "跟踪的文件已变更或不可读，请运行 /verify"
         except KeyboardInterrupt:
             status, message = 130, "已取消；待定操作不会重放"
             if local and local[0] in {"conversation-revise", "model-catalog-refresh", "change-review"}:
@@ -1911,9 +1962,7 @@ class SprigApp(App[int]):
                         + json.dumps(self.agent.plan_snapshot(), ensure_ascii=False, indent=2) + "\n")
             return
         if command == "/status":
-            self.append(f"\n[本地状态] {self.task_message} | 执行中: {self.busy} | 消息: {len(self.messages or [])} | 本次基线: {self.agent.baseline_status} | 编辑后检查: {self.agent.edit_check_status} | 待处理引导: {len(self.pending_tasks)}\n")
-            self.append(f"[待恢复要求: {len(self.recovered_inputs['pending'])}；运行状态仅当前进程]\n" + json.dumps(self.agent.runtime_snapshot(), ensure_ascii=False) + "\n")
-            self.append(f"[队列: {'已启动' if self._queue_running else '未启动/暂停'}；引导 {len(self._input_inbox.batch(delivery='steer'))} 条；排队 {len(self._input_inbox.batch(delivery='queue'))} 条]\n")
+            self.refresh_check_files(show_status=True)
             return
         if command == "/queue":
             try:

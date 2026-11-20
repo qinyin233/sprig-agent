@@ -824,6 +824,44 @@ class Tools:
         text = self._decode(raw)
         return raw, text
 
+    def verification_stamp(self, paths):
+        """Fingerprint only explicitly selected files, with no model or edit handles."""
+        if not self.config.tool_enabled("read_file"):
+            raise ToolError("reading watched check files is disabled")
+        stamp = []
+        for path in paths:
+            self._check_cancelled()
+            parts = self._parts(path)
+            with self._command_directory(parts[:-1]) as (parent, chain):
+                name = parts[-1]
+                named = parent.stat(name)
+                with parent.open_read(name) as handle:
+                    opened = os.fstat(handle.fileno())
+                    if (not os.path.samestat(named, opened) or named.st_size != opened.st_size
+                            or named.st_mtime_ns != opened.st_mtime_ns or opened.st_size > MAX_FILE):
+                        raise ToolError("watched check file changed or exceeds 512 KiB")
+                    raw = bytearray()
+                    while len(raw) <= MAX_FILE:
+                        self._check_cancelled()
+                        chunk = handle.read(min(65536, MAX_FILE - len(raw) + 1))
+                        if not chunk:
+                            break
+                        raw.extend(chunk)
+                    if (len(raw) != opened.st_size or
+                            self._revision(opened) != self._revision(os.fstat(handle.fileno()))):
+                        raise ToolError("watched check file changed while reading")
+                text = self._decode(raw)
+                if any(secret in text for secret in self.config.secrets):
+                    raise ToolError("watched check file contains a configured credential")
+            self._parts(path)  # Privacy or path permissions may have changed during the read.
+            with self._command_directory(parts[:-1], chain) as (parent, _):
+                revision = self._revision(parent.stat(name))
+            if revision != self._revision(named):
+                raise ToolError("watched check file changed while reading")
+            stamp.append((chain, revision, hashlib.sha256(raw).digest()))
+        self._check_cancelled()
+        return tuple(stamp)
+
     def revalidate_check_reads(self, entries, owner, revision):
         """Restore recent handles only after rereading their complete source."""
         config, version = owner
