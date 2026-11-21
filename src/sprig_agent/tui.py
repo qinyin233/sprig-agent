@@ -27,6 +27,7 @@ from .config import SHORTCUT_ACTIONS, redact, terminal_text
 from .composer import DraftPastes, MAX_PASTE_BYTES, paste_text
 from .mentions import DraftFiles, mention_query
 from .model_selection import ModelSwitch
+from .model_probe import probe_model
 from .conversation_fork import ConversationFork, timeline_page, turn_catalog
 from .conversation_revision import RevisionSource, revision_command
 from .revision_ui import RevisionScreen
@@ -1161,6 +1162,19 @@ class SprigApp(App[int]):
                         raise ValueError("当前启动没有模型选择快照")
                     result = self.model_selection.refresh(self.agent)
                     message = "模型目录已刷新；当前模型和策略保持，选择目标后仍需确认"
+                elif name == "model-probe":
+                    def check_probe_cancelled():
+                        self.check_cancelled()
+                        if self._input_inbox.batch(delivery="steer"):
+                            raise KeyboardInterrupt
+
+                    result = probe_model(self.config, self.confirm, check_cancelled=check_probe_cancelled)
+                    self.emit("[模型协议探测]\n" + json.dumps(result, ensure_ascii=False, indent=2))
+                    if result["cancelled"]:
+                        return 130, "协议探测已取消"
+                    if not result["approved"]:
+                        return 2, "协议探测未经批准"
+                    return (0, "所选网关的四项协议探测通过") if result["ok"] else (2, "协议探测有失败或未测项")
                 elif name == "model-switch":
                     candidate = ModelSwitch(self.model_selection, self.agent, self.messages, arguments["target"],
                                             saving=bool(self.session_name) or self.config.auto_save_session,
@@ -1235,7 +1249,7 @@ class SprigApp(App[int]):
                     message = "跟踪的文件已变更或不可读，请运行 /verify"
         except KeyboardInterrupt:
             status, message = 130, "已取消；待定操作不会重放"
-            if local and local[0] in {"conversation-revise", "model-catalog-refresh", "change-review", "requirement-board"}:
+            if local and local[0] in {"conversation-revise", "model-catalog-refresh", "change-review", "requirement-board", "model-probe"}:
                 return status, message  # Local preparation must not recopy history or deliver guidance.
             try:
                 if self.messages:
@@ -1249,7 +1263,7 @@ class SprigApp(App[int]):
                 status, message = 1, "已取消，但会话保存失败: " + self.safe(error)
         except Exception as error:
             status, message = 1, "错误: " + self.safe(error)
-            if local and local[0] in {"conversation-revise", "model-catalog-refresh", "change-review", "requirement-board"}:
+            if local and local[0] in {"conversation-revise", "model-catalog-refresh", "change-review", "requirement-board", "model-probe"}:
                 return status, message  # Failed local preparation leaves history and pending guidance intact.
             # Keep the in-memory conversation usable after a failed checkpoint or action.
             try:
@@ -1303,7 +1317,7 @@ class SprigApp(App[int]):
             "requirement-board", "requirement-verify", "requirement-revert"} else None
         local_only = verification or targeted or self.local_action in {
             "requirement-evidence", "requirement-changes", "requirement-revert", "requirement-board",
-            "model-catalog-refresh", "change-review"}
+            "model-catalog-refresh", "change-review", "model-probe"}
         if (verification or targeted) and (self._input_inbox.batch(delivery="steer") or self._input_retry or self._input_inbox.blocked):
             status, message = 2, "检查后有新要求或保存待确认；未请求模型，请明确继续或处理 /pending"
         if self._queue_running and self.agent.had_rejected_action and status == 0:
@@ -1651,12 +1665,12 @@ class SprigApp(App[int]):
             return
         if not event.literal and command.startswith("//"):
             task = command[1:]  # A literal task starting with a slash.
-        elif (not event.literal or event.scoped_work) and command_name in (["/requirements"], ["/verify"]):
+        elif (not event.literal or event.scoped_work) and command_name in (["/requirements"], ["/verify"], ["/probe-model"]):
             if command.split(None, 2)[:2] == ["/requirements", "work"]:
                 self.slash_command(task.lstrip(), submission=event)
                 return
             if event.files:
-                self.reject_input("本地需求和检查命令只接收文本。文件选择保留，请另行发送。")
+                self.reject_input("此命令只接收文本。文件选择保留，请另行发送。")
                 return
             if self.slash_command(command) and event.editor.text == event.draft:
                 event.editor.load_text("")
@@ -2091,6 +2105,7 @@ class SprigApp(App[int]):
                         "长粘贴只折叠显示；F4 或“展开粘贴”查看编辑，完整正文仍计入请求预算。\n"
                         "/model 打开配置模型选择；/model 提供商/别名 或 @startup 明确切换，需确认且不发送请求。恢复仍校验绑定。\n"
                         "/models reload 或侧栏刷新模型目录：重读原私有配置，当前模型保持；新目标仍需选择确认。\n"
+                        "/probe-model 确认后向当前网关发送最多四个固定测试请求；保留会话与任务状态。\n"
                         "/timeline 或 /fork 选择历史轮次；/fork current 或 消息号 明确建立分支。文件不回滚，草稿保留，Enter 才请求模型。\n"
                         "/revise [消息号] 编辑旧请求；编辑区 Enter 后确认建立该请求之前的分支并发送。主草稿保留。\n")
             return
@@ -2178,6 +2193,12 @@ class SprigApp(App[int]):
                        "config_file": str(self.config.config_path) if self.config.config_path else None}
             self.append("\n[生效配置；密钥值不显示]\n" + json.dumps(public_config(self.config, details), ensure_ascii=False, indent=2) + "\n")
             return
+        if command == "/probe-model":
+            if argument or self.busy or isinstance(self.screen, ModalScreen):
+                self.reject_input("请在空闲时单独输入 /probe-model。")
+                return False
+            self.start(local=("model-probe", {}))
+            return True
         if command == "/models":
             if argument:
                 if argument != "reload":

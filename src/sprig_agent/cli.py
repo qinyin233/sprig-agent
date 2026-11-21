@@ -13,6 +13,7 @@ from .agent import Agent, SYSTEM_PROMPT
 from .changes import ChangeError, ChangeHistory
 from .config import TOOL_NAMES, redact, terminal_text
 from .diagnostics import diagnose
+from .model_probe import probe_model
 from .provider import Provider, ProviderError
 from .runtime import runtime_label
 from .session import SessionError, SessionStore, validate_history
@@ -280,6 +281,7 @@ def chat(agent, task, messages, emit, *, autostart=True, model_selection=None, s
                 emit("/timeline [OFFSET] lists local user turns; /fork current or /fork MESSAGE confirms a new branch through that whole turn. Workspace files are not rolled back and actions are not replayed. Only the next task or /continue requests the model.")
                 emit('/revise MESSAGE "JSON replacement text" confirms a branch before that request, then sends the edited literal text. Use --tui for the independent editor. The original session is preserved, workspace files stay current, and new actions require fresh approval.')
                 emit("/models lists the configured snapshot; /models reload rereads the original private configuration and process credential snapshot without changing the active model. /model KEY explicitly confirms a local model change; @startup restores original startup settings. No request is sent until the next task.")
+                emit("/probe-model asks approval for up to four fixed protocol probes of the current model, without conversation or file content.")
                 emit("/mcp shows local server state; /mcp connect|disconnect|tools|resources|templates|prompts SERVER asks fresh approval for remote requests; /mcp result ID [OFFSET] reads retained local data without replay.")
                 emit("/skills lists configured skill metadata; /skill NAME [PATH [OFFSET PAGE_SHA256]] previews local UTF-8 guidance without a model call or script execution. Quote resource paths containing spaces.")
                 emit("/summary previews an optional lossy checkpoint; /summary create [END] makes one extra model request after approval; /summary clear restores the full request view. /history MESSAGE [OFFSET] locally pages original data.")
@@ -291,6 +293,8 @@ def chat(agent, task, messages, emit, *, autostart=True, model_selection=None, s
                 emit("/ref PATH adds a live file reference; /unref PATH removes it; /refs lists metadata; /refs clear removes all. No model request is sent. Small complete files refresh before requests; larger files provide path/size only.")
                 emit("/worktrees lists checkouts; /worktree PATH creates one; /remove-worktree PATH retains HEAD in a recovery branch and removes a clean linked checkout after fresh approvals. The current conversation stays here.")
                 emit("Enter a task to continue the same conversation. /continue explicitly continues retained history without adding a duplicate request; /status shows local context; /plan shows model-reported progress, never approval or acceptance; /context previews the request budget; /usage shows local numeric request measurements and unknown token counts; /compact confirms request-only elision; /changes lists exact edit backups; /undo and /redo require diff approval; /undo-batch and /redo-batch recover retained independent batches with fresh approval per file; /discard-history confirms removal of backups; /diff and /git show Git changes with approval; /exit closes chat.")
+            elif task == "/probe-model":
+                emit(json.dumps(probe_model(agent.config, approve), ensure_ascii=False))
             elif task == "/models reload":
                 if model_selection is None:
                     emit("Model catalog refresh is unavailable for this startup; no model request sent.")
@@ -569,6 +573,7 @@ def main(argv=None):
     group.add_argument("--init-config", action="store_true", help="confirm creation of a private TOML template; never overwrite an existing file")
     group.add_argument("--show-config", action="store_true", help="show effective settings with credential values withheld; no model request")
     group.add_argument("--doctor", action="store_true", help="check configuration, workspace privacy rules and dependencies offline")
+    group.add_argument("--probe-model", action="store_true", help="approve up to four fixed provider protocol probes; no session or tool execution")
     group.add_argument("--models", action="store_true", help="list configured model aliases offline; no provider request")
     group.add_argument("--list-prompts", nargs="?", const=0, type=int, metavar="OFFSET", help="list a bounded page of configured prompt metadata offline; no credentials or model request")
     group.add_argument("--list-skills", action="store_true", help="inspect explicitly configured skill metadata offline; no model or script execution")
@@ -597,13 +602,15 @@ def main(argv=None):
             raise ValueError("--worktree-ref requires --create-worktree")
         if args.dry_run and not args.prune_sessions:
             raise ValueError("--dry-run requires --prune-sessions")
-        local_configuration = args.init_config or args.show_config or args.doctor or args.models or args.list_models or args.config_schema or args.list_skills or args.list_mcp or args.list_prompts is not None or manage_worktrees
+        local_configuration = args.init_config or args.show_config or args.doctor or args.probe_model or args.models or args.list_models or args.config_schema or args.list_skills or args.list_mcp or args.list_prompts is not None or manage_worktrees
         if os.name not in {"posix", "nt"}:
             raise ValueError("Sprig requires Linux/macOS or Windows 10+")
         if (manage_sessions or local_configuration) and (args.task or args.file or args.interface in {"chat", "tui"} or args.checks or args.resume):
             raise ValueError("local management cannot be combined with tasks or interactive interfaces")
         if args.verify and (args.task or args.file or args.interface in {"chat", "tui"}):
             raise ValueError("--verify cannot be combined with a task, file attachments, --chat or --tui; use /verify inside chat or TUI")
+        if args.probe_model and args.reference_files:
+            raise ValueError("--probe-model does not take file references")
         config_path = args.config or os.environ.get("SPRIG_CONFIG")
         if args.config_schema:
             from .configuration_schema import configuration_schema
@@ -622,7 +629,7 @@ def main(argv=None):
             if args.no_config:
                 raise ValueError("--project-config cannot be combined with --no-config")
             settings = settings.with_project(args.project_config)
-        selected_interface = "cli" if args.verify else settings.selection(vars(args), os.environ)[2]
+        selected_interface = "cli" if args.verify or args.probe_model else settings.selection(vars(args), os.environ)[2]
         if selected_interface is None:
             selected_interface = "tui" if not (args.task or args.resume or manage_sessions or local_configuration) and sys.stdin.isatty() and sys.stdout.isatty() else "cli"
         args.chat, args.tui = selected_interface == "chat", selected_interface == "tui"
@@ -633,8 +640,9 @@ def main(argv=None):
         if not local_configuration and args.tui and (not sys.stdin.isatty() or not sys.stdout.isatty()):
             raise ValueError("--tui requires an interactive terminal (stdin and stdout)")
         options = vars(args).copy()
-        if args.tui:
+        if args.tui or args.probe_model:
             options["stream"] = True
+        if args.tui:
             options["_tui_stream"] = True
         if manage_sessions or args.models or args.list_models or args.list_skills or args.list_mcp or args.list_prompts is not None or manage_worktrees or args.verify:
             options["_manage_sessions"] = not args.list_models
@@ -680,6 +688,10 @@ def main(argv=None):
         if args.list_models:
             print(terminal_text(json.dumps(Provider(config).list_models(), ensure_ascii=False, indent=2)))
             return 0
+        if args.probe_model:
+            report = probe_model(config, approve)
+            print(terminal_text(json.dumps(report, ensure_ascii=False, indent=2)))
+            return 130 if report["cancelled"] else 0 if report["ok"] else 2
         if local_configuration:
             report = diagnose(config, details) if args.doctor else public_config(config, details)
             print(terminal_text(json.dumps(report, ensure_ascii=False, indent=2)))

@@ -66,6 +66,8 @@ uv run --locked sprig --no-config --model local-model --base-url http://localhos
 
 `--show-config` 显示生效设置、密钥是否存在及来源类别，密钥值不显示。`--doctor` 检查配置、工作目录/`.sprigignore`、必要依赖和平台，不连接模型、不执行项目命令、不创建会话。它不能证明模型支持工具调用、服务在线或实际 OS 隔离。无效配置的错误不会回显 TOML 原文。
 
+要验证当前模型能否返回完整文本和工具调用，在终端运行 `uv run --locked sprig --probe-model`，或在 TUI 输入 `/probe-model`。命令会列出目标和请求上限，等你确认后才联网。[协议探测](provider-protocols.md#探测已配置的模型)
+
 `setting_sources` 标明主要运行字段来自 `default`、`user`、`provider`、`model`、`profile`、`project`、`CLI`、`environment` 或强制流式的 `TUI`；合并的排除规则会保留组合来源。字段名为运行时名称，例如 `instruction_files` 对应 `[instructions].files`、`tui_editor_height` 对应 `[tui].editor_height`。凭据仍只显示是否存在和来源类别。
 
 活动配置若显式位于工作区内，文件工具仍排除它；`.sprig` 目录始终排除。获批子进程即使开启 `inherit_env`，也移除标准模型密钥变量、所有配置声明的密钥变量及包含当前密钥的值。**这些保护不构成命令沙箱**：获批任意代码仍以当前用户权限运行，可自行读取主目录文件。

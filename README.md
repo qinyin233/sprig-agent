@@ -6,7 +6,7 @@
 - Linux / macOS / Windows 10+ / Windows WSL
 - Chat Completions、Messages、Responses 三种协议，函数工具与 SSE 流式输出
 - 可选每次模型输出 token 上限与兼容服务的思考模式
-- 分层 `config.toml`、命名提供商/模型别名/profile、生成/代理/鉴权参数、配置 Schema 与离线诊断
+- 分层 `config.toml`、命名提供商/模型别名/profile、生成/代理/鉴权参数、配置 Schema、离线诊断与可选协议探测
 - 工具禁用、文件排除、命令环境白名单、会话存储和 TUI 偏好设置
 - [按文件名发现路径](docs/file-glob.md)：glob 模式、目录范围、隐私过滤与有界只读遍历
 - CLI `--file` / TUI `/add` 附加有界快照；`--ref-file` / `/ref` 维护请求前刷新的文件引用
@@ -156,7 +156,7 @@ uv run sprig '为现有函数补一个最小测试，并运行测试' --workdir 
 ```text
 sprig [TASK] [--workdir PATH] [--file RELATIVE_PATH ...] [--model MODEL] [--base-url URL]
       [--config PATH | --no-config] [--provider NAME]
-      [--init-config | --show-config | --doctor]
+      [--init-config | --show-config | --doctor | --probe-model]
       [--max-steps INT] [--timeout SECONDS] [--max-output INT]
       [--stream] [--request-usage] [--metrics] [--chat | --tui] [--check JSON_ARGV ...]
       [--save-session NAME | --resume NAME] [--session-dir PATH]
@@ -175,6 +175,7 @@ sprig [TASK] [--workdir PATH] [--file RELATIVE_PATH ...] [--model MODEL] [--base
 | `--config PATH` / `--no-config` | 显式可信 TOML 路径 / 禁用文件；默认用户 `~/.sprig/config.toml`，不搜索仓库 |
 | `--provider` | 选择命名提供商；否则 `SPRIG_PROVIDER` 或配置默认提供商 |
 | `--init-config` / `--show-config` / `--doctor` | 确认创建私有模板 / 密钥值不显示的生效配置 / 离线诊断 |
+| `--probe-model` | 确认后发送最多四个固定请求，检查所选网关的普通回复、流式回复和工具调用。[协议探测](docs/provider-protocols.md#探测已配置的模型) |
 | `--model` | `SPRIG_MODEL`，否则选定提供商的模型；必须配置 |
 | `--base-url` | `SPRIG_BASE_URL`、选定提供商，最后为 `https://api.openai.com/v1`；覆盖地址不自动转发配置密钥 |
 | `--cli` | 单次执行，覆盖配置里的 TUI/chat 界面偏好 |

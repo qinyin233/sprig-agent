@@ -100,18 +100,21 @@ def backend(protocol, responses, captured, *, stream=False):
             value = next(iterator)
             value = value(data) if callable(value) else value
             status, value = value if isinstance(value, tuple) else (200, value)
-            streamed = stream and status == 200
+            streamed = (data.get("stream", False) if stream is None else stream) and status == 200
             if isinstance(value, bytes):
                 body = value
             elif streamed:
                 body = sse(stream_events(protocol, value))
             else:
                 body = json.dumps(value).encode()
-            self.send_response(status)
-            self.send_header("Content-Type", "text/event-stream" if streamed else "application/json")
-            self.send_header("Content-Length", str(len(body)))
-            self.end_headers()
-            self.wfile.write(body)
+            try:
+                self.send_response(status)
+                self.send_header("Content-Type", "text/event-stream" if streamed else "application/json")
+                self.send_header("Content-Length", str(len(body)))
+                self.end_headers()
+                self.wfile.write(body)
+            except (BrokenPipeError, ConnectionAbortedError, ConnectionResetError):
+                pass  # Cancellation tests deliberately close the client socket.
         def log_message(self, *args):
             pass
     server = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
