@@ -45,6 +45,8 @@ from .tools import Tools
 from .edit_batch import EditPreview
 from .requirements import command as requirement_command, display as requirement_display, work_prefix
 from .requirement_checks import command as verification_command
+from .json_budget import JSON_OPTIONS
+from . import check_repro
 
 
 class UiRequest(Message):
@@ -989,7 +991,7 @@ class SprigApp(App[int]):
             return
         if (self.recovered_inputs["pending"] or self._input_retry or self._input_inbox.blocked) and (
                 not local or local[0] in {"model-switch", "conversation-fork", "conversation-revise", "summary",
-                                         "verify", "requirement-verify", "requirement-revert"}):
+                                         "verify", "requirement-verify", "requirement-revert", "reproduction"}):
             self.reject_input("请先用 /pending apply 或 /pending discard 处理已恢复的要求；未请求模型。")
             return
         if not local and not task and not self.messages and not self.pending_tasks:
@@ -1009,6 +1011,8 @@ class SprigApp(App[int]):
             self.set_task_result(2, "固定检查进行中；尚未取得当前结果")
         elif local[0] == "requirement-verify":
             self.set_task_result(2, "单项需求检查进行中，任务整体验收待运行", requirements=False)
+        elif local[0] == "reproduction":
+            self.set_task_result(2, "单项复跑进行中，任务整体验收待运行", requirements=False)
         self.set_busy(True)
         self.set_state("处理中")
         if task:
@@ -1046,15 +1050,33 @@ class SprigApp(App[int]):
         try:
             if local:
                 name, arguments = local
-                if name in {"verify", "requirement-verify"}:
+                if name in {"verify", "requirement-verify", "reproduction"}:
                     if self.messages is None:
                         self.messages = []  # Keep intent/results on checkpoint errors.
                     self.messages, result = self.agent.verify(self.messages, **arguments)
                     status = 0 if result["verification"] == "passed" else 2
                     if name == "requirement-verify":
                         message = "需求 " + arguments["requirement"] + (" 的所选检查通过" if status == 0 else " 的所选检查未通过或未完成")
+                    elif name == "reproduction":
+                        message = "单项复跑通过" if status == 0 else "单项复跑未通过或未完成"
                     else:
                         message = "固定检查通过；未请求模型" if status == 0 else "固定检查未通过或未完成；未请求模型，未自动继续"
+                elif name == "check-repro":
+                    if "offset" in arguments:
+                        page = check_repro.catalog(self.config, self.messages, arguments["offset"], limit=5)
+                        self.emit(check_repro.display_catalog(page))
+                        return 0, "固定检查复现记录已读取"
+                    elif arguments["action"] == "export":
+                        result = check_repro.export(self.agent, self.messages, arguments["position"], arguments["path"])
+                        if result.get("changed") or result.get("outcome") == "uncertain":
+                            self.ui_call(self.invalidate_task)
+                            self.agent.record_workspace_change(self.messages, result)
+                    else:
+                        result = check_repro.card(self.config, self.messages, arguments["position"])
+                        self.emit(check_repro.markdown(result))
+                        return 0, "已显示本地复现报告"
+                    self.emit("[固定检查复现]\n" + json.dumps(result, **JSON_OPTIONS))
+                    return (2, "复现报告未导出") if "error" in result or result.get("approved") is False else (0, "已导出复现报告")
                 elif name == "requirement":
                     if self.messages is None:
                         self.messages = []
@@ -1212,7 +1234,7 @@ class SprigApp(App[int]):
                     result = worktree_action(self.config, self.confirm, cancel_event=self.cancel_event, **arguments)
                 else:
                     result = self.tools.execute(name, arguments)
-                self.emit(("[固定检查观察；下次明确请求模型时发送]\n" if name in {"verify", "requirement-verify"} else
+                self.emit(("[固定检查观察；下次明确请求模型时发送]\n" if name in {"verify", "requirement-verify", "reproduction"} else
                            "[显式摘要；不执行任务]\n" if name == "summary" else "[本地操作结果，不自动上传]\n")
                           + json.dumps(result, ensure_ascii=False, indent=2))
                 if "error" in result or result.get("approved") is False or result.get("returncode", 0) != 0:
@@ -1249,7 +1271,7 @@ class SprigApp(App[int]):
                     message = "跟踪的文件已变更或不可读，请运行 /verify"
         except KeyboardInterrupt:
             status, message = 130, "已取消；待定操作不会重放"
-            if local and local[0] in {"conversation-revise", "model-catalog-refresh", "change-review", "requirement-board", "model-probe"}:
+            if local and local[0] in {"conversation-revise", "model-catalog-refresh", "change-review", "requirement-board", "model-probe", "check-repro"}:
                 return status, message  # Local preparation must not recopy history or deliver guidance.
             try:
                 if self.messages:
@@ -1263,7 +1285,7 @@ class SprigApp(App[int]):
                 status, message = 1, "已取消，但会话保存失败: " + self.safe(error)
         except Exception as error:
             status, message = 1, "错误: " + self.safe(error)
-            if local and local[0] in {"conversation-revise", "model-catalog-refresh", "change-review", "requirement-board", "model-probe"}:
+            if local and local[0] in {"conversation-revise", "model-catalog-refresh", "change-review", "requirement-board", "model-probe", "check-repro"}:
                 return status, message  # Failed local preparation leaves history and pending guidance intact.
             # Keep the in-memory conversation usable after a failed checkpoint or action.
             try:
@@ -1312,12 +1334,12 @@ class SprigApp(App[int]):
             return False
         verification = self.local_action == "verify"
         reviewing = self.local_action == "change-review"
-        targeted = self.local_action == "requirement-verify"
+        targeted = self.local_action in {"requirement-verify", "reproduction"}
         board_action = self.local_action if self.local_action in {
             "requirement-board", "requirement-verify", "requirement-revert"} else None
         local_only = verification or targeted or self.local_action in {
             "requirement-evidence", "requirement-changes", "requirement-revert", "requirement-board",
-            "model-catalog-refresh", "change-review", "model-probe"}
+            "model-catalog-refresh", "change-review", "model-probe", "check-repro"}
         if (verification or targeted) and (self._input_inbox.batch(delivery="steer") or self._input_retry or self._input_inbox.blocked):
             status, message = 2, "检查后有新要求或保存待确认；未请求模型，请明确继续或处理 /pending"
         if self._queue_running and self.agent.had_rejected_action and status == 0:
@@ -1665,7 +1687,7 @@ class SprigApp(App[int]):
             return
         if not event.literal and command.startswith("//"):
             task = command[1:]  # A literal task starting with a slash.
-        elif (not event.literal or event.scoped_work) and command_name in (["/requirements"], ["/verify"], ["/probe-model"]):
+        elif (not event.literal or event.scoped_work) and command_name in (["/requirements"], ["/verify"], ["/probe-model"], ["/repro"]):
             if command.split(None, 2)[:2] == ["/requirements", "work"]:
                 self.slash_command(task.lstrip(), submission=event)
                 return
@@ -2082,6 +2104,7 @@ class SprigApp(App[int]):
                         "/lsp code_actions SERVER PATH 行 列 [结束行 结束列]；/lsp apply_code_action ID（新批准选择并逐文件审阅）\n"
                         "/continue /new /files /add 文件路径 /ref 文件路径 /unref 文件路径 /refs [clear]\n"
                         "/verify [需求名称 检查编号 ...] 逐次批准并运行所选固定检查\n"
+                        "/repro [偏移] 看失败消息号；show、run、report 消息号；export 消息号 路径\n"
                         "/requirements board（需求面板）、[偏移]、changes 名称、revert 名称 版本 [ID] [--merge]、work 名称 任务\n"
                         "/requirements show 名称、evidence 名称、set 名称 正文、clear 名称\n"
                         "/map [名称或路径查询] /git [路径] /diff [--staged] 路径 /compact\n"
@@ -2183,6 +2206,20 @@ class SprigApp(App[int]):
             try:
                 options = verification_command(argument)
                 self.start(local=("requirement-verify" if options else "verify", options))
+                return self.busy
+            except ValueError as error:
+                self.reject_input(self.safe(error))
+                return False
+        if command == "/repro":
+            if self.busy or isinstance(self.screen, ModalScreen):
+                self.reject_input("请等待当前操作结束再使用 /repro。")
+                return False
+            try:
+                request = check_repro.command(argument)
+                if request.get("action") == "run":
+                    self.start(local=("reproduction", {"reproduction": request["position"]}))
+                else:
+                    self.start(local=("check-repro", request))
                 return self.busy
             except ValueError as error:
                 self.reject_input(self.safe(error))

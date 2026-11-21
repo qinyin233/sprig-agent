@@ -39,6 +39,7 @@ from .message_origin import ORIGIN, application_message
 from .requirements import (REQUIREMENT_KEY, change as requirement_change, model_frame as requirement_frame,
                            state as requirement_state)
 from .requirement_checks import CHECK_KEY, RequirementCheck, latest_attempt, report as check_report, valid_indices
+from .check_repro import OBSERVATION_KEY, check_observation, retry_argv
 from .requirement_edits import EDIT_SCOPE, scoped_tasks
 from .image_reads import ImageReadResult
 from .image_inputs import images
@@ -1097,12 +1098,14 @@ class Agent:
             self.invalidate_verification()
         return {"files": len(self.config.check_files), "state": self.verification_state}
 
-    def _verify(self, messages, seen_ids, *, baseline=False, after_edit=False, target=None):
+    def _verify(self, messages, seen_ids, *, baseline=False, after_edit=False, target=None, reproduction=None):
         """Run fixed checks with fresh approval; checkpoints never complete tasks."""
         phase = "baseline" if baseline else "edit-check" if after_edit else "acceptance"
         if target is not None:
             phase = "requirement"
         checks = self.config.checks if target is None else tuple(self.config.checks[i - 1] for i in target.indices)
+        if reproduction is not None:
+            phase, checks = "reproduction", (reproduction,)
         total = len(checks)
         jobs = self.tools.jobs if isinstance(self.tools, Tools) else None
         revision = jobs.revision if jobs else None
@@ -1122,11 +1125,13 @@ class Agent:
         read_owner = (self.tools.config, self.tools._conversation_version) if check_reads else None
         checks_settled = True
         passed = True
+        watch = bool(self.config.check_files) and isinstance(self.tools, Tools)
         self._event("check", check=phase, check_total=total)
         for check_index, argv in enumerate(checks, 1):
             self._check_cancelled()
             if self._steer(messages):
                 return "steered"
+            sample = (before if scoped and check_index == 1 else self._capture_verification()) if watch else None
             call_id = CHECK_PREFIXES[phase] + uuid.uuid4().hex
             seen_ids.add(call_id)
             messages.append({"role": "assistant", "content": None, "sprig_check": phase, "tool_calls": [{
@@ -1137,10 +1142,15 @@ class Agent:
             with self._tool_activity("run", check=phase, check_index=check_index, check_total=total) as activity:
                 result = redact(self.tools.execute("run", {"argv": list(argv)}), self.config.secrets)
             content = json.dumps(result, ensure_ascii=False)
-            messages.append({"role": "tool", "tool_call_id": call_id, "content": content})
+            observed = {"role": "tool", "tool_call_id": call_id, "content": content}
+            messages.append(observed)
             if target is not None:
                 target.results.append(len(messages))
-            self._checkpoint(messages)
+            try:
+                end_sample = self._capture_verification() if watch and result.get("approved") is True else None
+                observed[OBSERVATION_KEY] = check_observation(sample, end_sample)
+            finally:
+                self._checkpoint(messages)
             self._event("tool", tool_outcome(result), **activity)
             self.emit(content)
             if self._steer(messages):
@@ -1182,11 +1192,12 @@ class Agent:
                     self._event("check", "incomplete", check=phase, check_index=total, check_total=total)
                     self.emit(f"[{phase}] Watched files changed or became unavailable during the run. Rerun /verify.")
                     return "incomplete"
-                if target is None:
+                if target is None and reproduction is None:
                     self._verification_stamp = before
                     self.verification_state = "current"
             self._event("check", "passed", check=phase, check_index=total, check_total=total)
-            self.emit("[baseline] Checks passed before model actions; final acceptance is still required" if baseline
+            self.emit("[reproduction] Selected check passed; overall acceptance remains pending" if reproduction is not None
+                      else "[baseline] Checks passed before model actions; final acceptance is still required" if baseline
                       else "[edit-check] Checks passed after file edits; final acceptance is still required" if after_edit
                       else "[acceptance] All user checks passed" if target is None
                       else "[requirement] Selected checks passed")
@@ -1205,9 +1216,11 @@ class Agent:
         if target is not None:
             notice = ("The user-selected fixed checks for a tracked requirement failed. Use the original tool results "
                       "to identify the failure. The results cover the selected checks only.")
+        elif reproduction is not None:
+            notice = "The selected fixed check failed on rerun. The results cover only this command."
         messages.append(application_message(notice))
         self._checkpoint(messages)
-        self.emit("[" + phase + "] Selected checks failed" if target is not None else
+        self.emit("[" + phase + "] Selected checks failed" if target is not None or reproduction is not None else
                   "[" + phase + "] Failed; returning evidence to the model for repair")
         self._event("check", "failed", check=phase, check_index=total, check_total=total)
         return "failed"
@@ -1308,13 +1321,20 @@ class Agent:
             self._event("finished", outcome, reason=self._stop_reason)
             return history, complete
 
-    def verify(self, messages=None, *, requirement=None, indices=()):
+    def verify(self, messages=None, *, requirement=None, indices=(), reproduction=None):
         """Explicit fixed checks only; observations persist, no provider is called."""
         if not self.config.checks:
             raise ValueError("no fixed checks configured; use --check or [agent].checks")
         if messages is not None and not isinstance(messages, list):
             raise ValueError("verification history must be a list")
-        if requirement is not None:
+        argv = None
+        if reproduction is not None:
+            if requirement is not None or indices:
+                raise ValueError("rerun one historical fixed check at a time")
+            argv = retry_argv(self.config, messages, reproduction)
+            if len(messages) + 4 > MAX_HISTORY_MESSAGES:
+                raise ValueError("session history is full; start a new session before running checks")
+        elif requirement is not None:
             if not valid_indices(indices) or max(indices) > len(self.config.checks):
                 raise ValueError("select distinct numbers from the configured checks")
             selected = requirement_state(messages).get(requirement)
@@ -1324,7 +1344,7 @@ class Agent:
                 raise ValueError("session history is full; start a new session before running targeted checks")
         elif indices:
             raise ValueError("select a tracked requirement when choosing specific fixed checks")
-        with self._execution(targeted=requirement is not None):
+        with self._execution(targeted=requirement is not None or reproduction is not None):
             self._check_cancelled()
             messages = [] if messages is None else messages
             if messages:
@@ -1343,17 +1363,20 @@ class Agent:
                                              f"{requirement} revision {selected['revision']}. Their observations describe "
                                              "these checks at execution time and do not establish overall acceptance.")
                 notice[CHECK_KEY] = target.started()
+            elif reproduction is not None:
+                notice = application_message(f"The user selected a rerun of fixed check result message {reproduction}. "
+                                             "This run covers only the selected command; overall acceptance remains pending.")
             messages.append(notice)
             self._current_history = messages
             self._checkpoint(messages)
             seen_ids = {call["id"] for message in messages for call in message.get("tool_calls", [])}
             try:
-                status = self._verify(messages, seen_ids) if target is None else self._verify(messages, seen_ids, target=target)
+                status = self._verify(messages, seen_ids, target=target, reproduction=argv)
             finally:
                 if isinstance(self.tools, Tools):
                     self.tools.read_versions.clear()
                     self.tools.index.clear()
-            outcome = ("unverified" if target is not None else "passed") if status == "passed" else (
+            outcome = ("unverified" if target is not None or reproduction is not None else "passed") if status == "passed" else (
                 "failed" if status == "failed" else "incomplete")
             result = {"verification": status, "checks": len(self.config.checks), "model_requested": False}
             if target is not None:
@@ -1365,6 +1388,8 @@ class Agent:
                 if self.config.check_files:
                     self._requirement_stamps[requirement] = (target.id, target.stamp)
                 result.update(requirement=requirement, checks=len(indices), overall_acceptance=False)
+            elif reproduction is not None:
+                result.update(reproduction_of=reproduction, checks=1, overall_acceptance=False)
             elif self.config.check_files:
                 result["evidence"] = {"files": len(self.config.check_files), "state": self.verification_state}
             self._event("finished", outcome, reason=self._stop_reason)

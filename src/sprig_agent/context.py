@@ -13,11 +13,12 @@ from .image_inputs import IMAGE_KEY, wire_content
 from .message_origin import ORIGIN, application_origin
 from .requirements import REQUIREMENT_KEY
 from .requirement_checks import CHECK_KEY
+from .check_repro import OBSERVATION_KEY
 from .requirement_edits import EDIT_SCOPE
 
 MAX_READ_METADATA_CHARS = 32768
 MAX_WINDOW_RESULT_CHARS = 65536
-_LOCAL_FIELDS = {ORIGIN, "sprig_check", INPUT_ID, REQUIREMENT_KEY, CHECK_KEY, EDIT_SCOPE}
+_LOCAL_FIELDS = {ORIGIN, "sprig_check", INPUT_ID, REQUIREMENT_KEY, CHECK_KEY, EDIT_SCOPE, OBSERVATION_KEY}
 
 
 def provider_messages(config, messages, *, check_cancelled=None):

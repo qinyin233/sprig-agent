@@ -25,6 +25,7 @@ from .image_inputs import IMAGE_KEY, images
 from .message_origin import ORIGIN, application_origin
 from .requirements import REQUIREMENT_KEY, change as requirement_change
 from .requirement_checks import CHECK_KEY, marker as check_marker
+from .check_repro import OBSERVATION_KEY, validate_observation
 from .requirement_edits import EDIT_SCOPE, scoped_tasks, validate_scope
 from .usage_ledger import UsageLedger, usage_state
 
@@ -53,7 +54,7 @@ MAX_LIST_ENTRIES = 4096
 MAX_LIST_SESSIONS = 256
 MAX_LIST_BYTES = MAX_SESSION
 CHECK_PREFIXES = {"baseline": "sprig-baseline-", "edit-check": "sprig-edit-check-", "acceptance": "sprig-check-",
-                  "requirement": "sprig-requirement-check-"}
+                  "requirement": "sprig-requirement-check-", "reproduction": "sprig-repro-"}
 
 
 class SessionError(Exception):
@@ -114,6 +115,8 @@ def validate_history(messages):
             raise SessionError(str(error)) from None
         if not isinstance(role, str):
             raise SessionError("invalid session role")
+        if OBSERVATION_KEY in message and (role != "tool" or not clean or "sprig_check" not in clean[-1]):
+            raise SessionError("check observation metadata requires an application fixed check result")
         receipt = None
         if CHECK_KEY in message:
             try:
@@ -138,7 +141,13 @@ def validate_history(messages):
             if not pending or call_id != pending[0] or not isinstance(content, str):
                 raise SessionError("invalid tool result order")
             pending.pop(0)
-            clean.append({"role": "tool", "tool_call_id": call_id, "content": content})
+            result = {"role": "tool", "tool_call_id": call_id, "content": content}
+            if OBSERVATION_KEY in message:
+                try:
+                    result[OBSERVATION_KEY] = validate_observation(message[OBSERVATION_KEY])
+                except ValueError as error:
+                    raise SessionError(str(error)) from None
+            clean.append(result)
         elif pending:
             raise SessionError("unfinished tool calls before another message")
         elif role == "assistant":

@@ -29,6 +29,8 @@ from .lsp import local_arguments as lsp_arguments
 from .terminal_input import TerminalInputs, correction_text, current_feedback, feedback_scope
 from .requirements import command as requirement_command, display as requirement_display
 from .requirement_checks import command as verification_command
+from .json_budget import JSON_OPTIONS
+from . import check_repro
 
 
 def approve(description):
@@ -287,6 +289,7 @@ def chat(agent, task, messages, emit, *, autostart=True, model_selection=None, s
                 emit("/summary previews an optional lossy checkpoint; /summary create [END] makes one extra model request after approval; /summary clear restores the full request view. /history MESSAGE [OFFSET] locally pages original data.")
                 emit("/requirements [OFFSET] lists tracked requirements. changes NAME inspects retained edits. revert NAME REVISION [ID] [--merge] proposes an inverse. work NAME TASK submits scoped work.")
                 emit("/verify or /verify NAME CHECK [CHECK ...] runs configured fixed checks with fresh approval. Use numbers in configuration order. No model request or automatic continuation.")
+                emit("/repro [OFFSET] lists fixed-check failures; show, report, run MESSAGE or export MESSAGE PATH. Reruns and new report files require fresh approval.")
                 emit("/changes review lists retained file-edit comparisons; /changes show ID|latest [OFFSET SNAPSHOT] pages the historical diff locally. Read-only TUI viewer preserves the composer; review is not a new verification result.")
                 emit("/undo-to ID restores the state before a retained edit; /redo-to ID reapplies through it. Every restore needs fresh file approval.")
                 emit("/logs lists this conversation's retained output; /log ID [OFFSET] pages historical text; /logs clear requires fresh approval. Disk retention is opt-in via --command-log-dir or storage.command_log_dir.")
@@ -376,6 +379,22 @@ def chat(agent, task, messages, emit, *, autostart=True, model_selection=None, s
                 emit(json.dumps(redact(result, agent.config.secrets), ensure_ascii=False))
             elif task.split(None, 1)[:1] == ["/verify"]:
                 verify(verification_command(task[len("/verify"):]))
+            elif task.split(None, 1)[:1] == ["/repro"]:
+                request = check_repro.command(task[len("/repro"):])
+                if "offset" in request:
+                    emit(json.dumps(check_repro.catalog(agent.config, messages, request["offset"]), **JSON_OPTIONS))
+                elif request["action"] == "run":
+                    verify({"reproduction": request["position"]})
+                elif request["action"] == "export":
+                    result = check_repro.export(agent, messages, request["position"], request["path"])
+                    if result.get("changed") or result.get("outcome") == "uncertain":
+                        status = 2
+                        agent.record_workspace_change(messages, result)
+                    emit(json.dumps(result, **JSON_OPTIONS))
+                else:
+                    report = check_repro.card(agent.config, messages, request["position"])
+                    emit(check_repro.markdown(report) if request["action"] == "report" else
+                         json.dumps(report, **JSON_OPTIONS))
             elif task == "/continue":
                 if messages and len(messages) >= 2:
                     run(None)

@@ -8,6 +8,7 @@ COMMANDS = {
     "requirements": "跟踪需求；board 打开需求面板，work 发送关联任务，revert 按版本撤回",
     "help": "本地帮助", "keys": "快捷键", "status": "任务与运行状态", "plan": "模型报告的计划",
     "verify": "逐次批准后仅运行固定检查；可指定需求名称和已配置的检查编号",
+    "repro": "查看固定检查失败；可批准单项复跑或导出 Markdown",
     "config": "生效配置", "models": "配置中的模型；reload 刷新目录，当前模型保持", "model": "明确确认后切换配置模型", "context": "上下文预算", "usage": "请求统计",
     "probe-model": "确认后发送四种固定协议探测；不附带会话和文件",
     "files": "选择快照或实时引用文件", "add": "附加文件快照", "ref": "添加实时文件引用",
