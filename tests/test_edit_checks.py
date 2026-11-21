@@ -17,6 +17,8 @@ from sprig_agent.config import Config
 from sprig_agent.provider import Provider
 from sprig_agent.session import SessionError, SessionStore, validate_history
 from sprig_agent.tools import Tools
+from tests.test_glob_protocols import answer
+from tests.test_native_protocols import backend
 from tests.test_planning import replies
 
 
@@ -108,9 +110,56 @@ class EditChecksTests(unittest.TestCase):
         history, complete = agent.run("Repair")
         self.assertFalse(complete)
         self.assertEqual(provider.complete.call_count, 1)
-        self.assertEqual(agent.edit_check_status, "failed")
+        self.assertEqual(agent.edit_check_status, "not_run")
+        self.assertEqual([row["sprig_check"] for row in history if "sprig_check" in row], ["acceptance"])
         self.assertIn("REPAIR_REQUIRED", str(history))
         self.assertEqual(validate_history(history), history)
+
+    def test_final_edit_can_pass_fixed_acceptance_without_another_model_request(self):
+        fixture = self.root / "value.txt"
+        check = (sys.executable, "-I", "-B", "-c",
+                 "from pathlib import Path; assert Path('value.txt').read_bytes() == b'good'")
+        for protocol in ("chat_completions", "messages", "responses"):
+            for streamed in (False, True):
+                with self.subTest(protocol=protocol, stream=streamed):
+                    fixture.write_bytes(b"bad")
+                    wire = answer(protocol, streamed, calls=[("fix", "edit_file", {"path": "value.txt", "old": "bad", "new": "good"})])
+                    captured, approvals = [], []
+                    with backend(protocol, [wire], captured, stream=streamed) as url:
+                        config = replace(self.base, base_url=url, proxy="direct", wire_api=protocol, stream=streamed,
+                                         max_steps=1, checks=(check,), check_after_edit=streamed)
+                        with closing(Tools(config, lambda text: approvals.append(text) or True)) as tools:
+                            agent = self.agent(config, Provider(config), tools)
+                            history, complete = agent.run("Fix the value")
+                    self.assertTrue(complete)
+                    self.assertEqual(fixture.read_bytes(), b"good")
+                    self.assertEqual(len(captured), 1)
+                    self.assertEqual(len(approvals), 2)
+                    self.assertEqual([row["sprig_check"] for row in history if "sprig_check" in row], ["acceptance"])
+                    self.assertEqual(agent.runtime_snapshot()["outcome"], "passed")
+
+    def test_failed_final_batch_or_late_guidance_cannot_trigger_acceptance(self):
+        config = replace(self.base, max_steps=1)
+        for result in ({"approved": False}, {**EDITED, "partial": True}, {"error": "invalid edit"}):
+            with self.subTest(result=result):
+                provider, tools = Mock(), Mock()
+                provider.complete.return_value = response(edit("a", "old", "new"), edit("b", "old", "new", "other.txt"))
+                tools.execute.side_effect = [EDITED, result]
+                history, complete = self.agent(config, provider, tools).run("Edit both files")
+                self.assertFalse(complete)
+                self.assertEqual([call.args[0] for call in tools.execute.call_args_list], ["edit_file", "edit_file"])
+                self.assertEqual(validate_history(history), history)
+
+        pending, provider, tools = [], Mock(), Mock()
+        provider.complete.return_value = response(edit("a", "old", "new"))
+        def execute(name, arguments):
+            pending.append("Review the changed scope first")
+            return EDITED
+        tools.execute.side_effect = execute
+        history, complete = self.agent(config, provider, tools, receive_input=lambda: [pending.pop()] if pending else []).run("Edit")
+        self.assertFalse(complete)
+        self.assertEqual(history[-1]["content"], "Review the changed scope first")
+        self.assertEqual([call.args[0] for call in tools.execute.call_args_list], ["edit_file"])
 
     def test_rejected_or_unreliable_edit_checks_stop_without_model_bypass(self):
         config = replace(self.base, check_after_edit=True)
@@ -321,10 +370,11 @@ class EditChecksTests(unittest.TestCase):
         (self.root / "next.txt").write_bytes(b"before")
         initial = response({"id": "read", "type": "function", "function": {"name": "read_file",
                             "arguments": '{"path":"next.txt"}'}})
-        config = replace(self.base, check_after_edit=True, max_steps=2, timeout=0.3,
+        config = replace(self.base, check_after_edit=True, max_steps=3, timeout=0.3,
                          checks=((sys.executable, "-I", "-B", "-c", "import time; time.sleep(10)"),))
         provider = Mock()
-        provider.complete.side_effect = [initial, response(edit("first", "before", "after"))]
+        inspect = response({"id": "inspect", "type": "function", "function": {"name": "list_files", "arguments": "{}"}})
+        provider.complete.side_effect = [initial, response(edit("first", "before", "after")), inspect]
         with closing(Tools(config, lambda _: True)) as tools:
             agent = self.agent(config, provider, tools)
             history, complete = agent.run("Edit the value")
@@ -332,7 +382,8 @@ class EditChecksTests(unittest.TestCase):
             self.assertIsNone(tools.read_versions.resolve(result["read_id"], ("next.txt",)))
         self.assertFalse(complete)
         self.assertEqual(agent.edit_check_status, "failed")
-        self.assertTrue(json.loads(history[-2]["content"])["timed_out"])
+        stage = next(message for message in history if message.get("tool_call_id", "").startswith("sprig-edit-check-"))
+        self.assertTrue(json.loads(stage["content"])["timed_out"])
 
 
 if __name__ == "__main__":
