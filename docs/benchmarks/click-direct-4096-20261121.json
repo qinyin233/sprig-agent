@@ -1,0 +1,75 @@
+{
+  "schema": 1,
+  "task": "click-command-suggestions",
+  "repository": "pallets/click",
+  "source_commit": "09ccb4bd196bfd8e84eab727274fd4209994570a",
+  "source_tree": "fc76091ac2e9a90f25ef6d517acf8619eb147602",
+  "platform": "Windows",
+  "python": "3.12.12",
+  "pytest": "8.4.2",
+  "provider": "USTC",
+  "model": "deepseek-flash-2",
+  "protocol": "chat_completions",
+  "proxy_mode": "direct",
+  "stream": false,
+  "output_token_limit": 4096,
+  "context_byte_limit": 131072,
+  "request_timeout_seconds": 120,
+  "request_deadline_seconds": 180,
+  "snapshot_files": 52,
+  "files_changed": 0,
+  "provenance": {
+    "fixture_sha256": "7d610833c8a6564f980f747e4601e7f4821872702c4a59f32ff9c5d653300d08",
+    "verifier_sha256": "cc0f0393e4cbee91d21614d0ae6686647bf747934fa58ac5b5a8c8f0e0c87c4d",
+    "task_sha256": "2908db436a3b9ac92c17b2d60eed48baae6c6549b9a1c83bb775bc816bcf6273",
+    "driver_sha256": "48b3ebe4a7fc300f2c4f0f526c3d5049950aa4f7be66b3f6e49e9ce4483636db",
+    "base_commit": "19fd4d6e18bc9fce451f92f422696b11169faa57",
+    "acceptance_commit": "831c8f0948af519e45b90801d7430ff25451f972",
+    "base_sha256": "7d610833c8a6564f980f747e4601e7f4821872702c4a59f32ff9c5d653300d08",
+    "acceptance_snapshot_sha256": "62d0162a63fa5322307e29d1710ec7624bd3ca20572329fddbdae1fe628f628d",
+    "entry_sha256": "705611bbcece32a4a053fc5a995d690892f59845ab770b052cb998744f10e3e4",
+    "adapter_sha256": "2b2d0a7f8edb1f91628dd5bf082781a191390591b695ab7e9095e07d6a140080",
+    "comparison_lock_sha256": "f556e844495bdaaea230443fa7672b0c846d51d81665845cb20909e0093ffd5f"
+  },
+  "run": {
+    "date_singapore": "2026-11-21",
+    "max_steps": 8,
+    "recover_output_limit": true,
+    "recovery_notice_count": 0,
+    "outcome": "not_completed",
+    "acceptance_passed": false,
+    "independent_post_check": {
+      "status": "failed",
+      "collected": 642,
+      "checks_passed": 635,
+      "skipped": 0,
+      "public_exception_contract": false
+    },
+    "native_approvals": {
+      "requests": 1,
+      "accepted": 1,
+      "rejected": 0
+    },
+    "independent_check_approved": true,
+    "tools": {
+      "grep": 8,
+      "list_files": 1,
+      "read_file": 4,
+      "run": 1
+    },
+    "tool_errors": 1,
+    "requests": {
+      "attempts": 8,
+      "http_200": 8,
+      "successful_completions": 8,
+      "not_sent": 0,
+      "failures": {},
+      "output_limit_request": null,
+      "total_tokens_reported": 90735,
+      "usage_requests_known": 8,
+      "usage_requests_unknown": 0,
+      "request_bytes": 336389,
+      "response_bytes": 15997
+    }
+  }
+}
