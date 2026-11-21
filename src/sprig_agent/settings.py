@@ -8,7 +8,7 @@ import re
 import sys
 import tomllib
 
-from .config import Config, ENV_NAME, GENERATION_FIELDS, TOOL_NAMES, endpoint, environment_api_key, redact
+from .config import Config, ENV_NAME, GENERATION_FIELDS, PATCH_PREREQUISITES, TOOL_NAMES, endpoint, environment_api_key, redact
 from .filesystem import Directory
 
 MAX_CONFIG = 65536
@@ -544,7 +544,8 @@ class Settings:
                 raise ValueError("project configuration cannot disable trusted edit checks")
             if any(enabled and (tool_policy.get(name) is False
                                 or name in {"search", "grep"} and any(tool_policy.get(alias) is False for alias in ("search", "grep"))
-                                or name in {"edit_lines", "file_action"} and tool_policy.get("edit_file") is False)
+                                or name in {"edit_lines", "file_action"} and tool_policy.get("edit_file") is False
+                                or name == "patch_files" and any(tool_policy.get(tool) is False for tool in PATCH_PREREQUISITES))
                    for name, enabled in self.project_data.get("tools", {}).items()):
                 raise ValueError("project configuration cannot enable a disabled tool")
             if "excluded_paths" in project_values:
@@ -581,6 +582,11 @@ class Settings:
         if tool_policy.get("edit_file") is False:
             sources["tools.edit_lines"] = "tools.edit_file"
             sources["tools.file_action"] = "tools.edit_file"
+        if tool_policy.get("patch_files") is not False:
+            for tool in PATCH_PREREQUISITES:
+                if tool_policy.get(tool) is False:
+                    sources["tools.patch_files"] = "tools." + tool
+                    break
         for name, alias in (("search", "grep"), ("grep", "search")):
             if tool_policy.get(name) is not False and tool_policy.get(alias) is False:
                 sources["tools." + name] = "tools." + alias

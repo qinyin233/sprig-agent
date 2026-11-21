@@ -37,7 +37,7 @@ from .jobs import Jobs
 from .lsp import LanguageServers
 from .lsp_client import LspError
 from .edit_match import failure_details
-from .edit_batch import EditPreview, digest, preflight
+from .edit_batch import MAX_BATCH_FILES, EditPreview, digest, preflight
 from .line_edits import replace_lines, validate_edits
 from .line_patch import apply as apply_line_patch
 from .search import (FileGlob, MAX_RANGE_LINES, MAX_READ_RANGES, MAX_SEARCH_WINDOW_FILES, RegexBudgetExceeded,
@@ -123,6 +123,10 @@ GIT_STATUS_SCHEMA = schema("git_status", "Approved Git status by literal path. I
 GIT_DIFF_SCHEMA = schema("git_diff", "Approved single-file Git patch. staged=true compares HEAD to index. Continue with snapshot and next_offset.",
                          {"path": STRING, "staged": {"type": "boolean"}, "offset": {"type": "integer", "minimum": 0},
                           "snapshot": {"type": "string", "pattern": "^[0-9a-f]{64}$"}}, ["path"])
+PATCH_FILES_SCHEMA = schema("patch_files", "Preflight independent existing files, then approve each diff. Each patch uses exact @@ hunks and its own read_id.",
+                            {"files": {"type": "array", "minItems": 2, "maxItems": MAX_BATCH_FILES, "items": {
+                                "type": "object", "properties": {"path": STRING, "read_id": STRING, "patch": STRING},
+                                "required": ["path", "read_id", "patch"], "additionalProperties": False}}}, ["files"])
 
 
 class ToolError(Exception):
@@ -159,6 +163,7 @@ class Tools:
         self._edit_preview = False
         self._edit_batch = None
         self._action_observer = None
+        self._patch_superseded = None
         self.emit_output = emit_output
         self.instructions = ProjectInstructions(self._read_instruction, self._check_cancelled,
                                                 config.project_instructions, config.instruction_files)
@@ -294,6 +299,14 @@ class Tools:
             yield
         finally:
             self._action_observer = previous
+
+    @contextmanager
+    def guard_patch(self, superseded):
+        previous, self._patch_superseded = self._patch_superseded, superseded
+        try:
+            yield
+        finally:
+            self._patch_superseded = previous
 
     def request_approval(self, description):
         observer = self._action_observer
@@ -483,6 +496,11 @@ class Tools:
             self._require_tool(name)
             if not isinstance(arguments, dict):
                 raise ToolError("tool arguments must be an object")
+            if name == "patch_files":
+                from .multi_patch import apply
+                if set(arguments) != {"files"}:
+                    raise ToolError("patch_files requires exactly the files array")
+                return redact(apply(self, arguments["files"], superseded=self._patch_superseded), self.config.secrets)
             method = {"list_files": self.list_files, "glob": self.glob, "read_file": self.read_file,
                       "search": self.search, "grep": self.grep, "project_map": self.project_map,
                       "edit_file": self.edit_file, "edit_lines": self.edit_lines,

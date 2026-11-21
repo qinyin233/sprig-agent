@@ -99,6 +99,7 @@ grep = true # canonical model search; search is the legacy alias; either false d
 project_map = true
 edit_file = true
 edit_lines = true # also disabled when edit_file=false
+patch_files = true # needs read_file, edit_file and edit_lines
 file_action = true # mkdir/delete/move; also disabled when edit_file=false
 run = true
 update_plan = true # bounded task checklist, not approval or acceptance

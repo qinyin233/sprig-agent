@@ -2,7 +2,7 @@
 import json
 
 INSPECTIONS = frozenset({"list_files", "glob", "read_file", "search", "grep", "project_map"})
-FILE_CHANGES = frozenset({"edit_file", "edit_lines", "file_action"})
+FILE_CHANGES = frozenset({"edit_file", "edit_lines", "patch_files", "file_action"})
 APPROVAL_ACTIONS = FILE_CHANGES | {"run", "mcp", "web_fetch", "job", "lsp"}
 UNCERTAIN = ("timed_out", "output_limited", "skipped", "cancelled", "interrupted", "outcome", "partial")
 

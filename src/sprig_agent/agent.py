@@ -33,7 +33,8 @@ from .mcp import MCP_SCHEMA, McpManager
 from .web_fetch import WEB_SCHEMA
 from .jobs import JOB_SCHEMA
 from .lsp import LSP_SCHEMA
-from .tools import GIT_DIFF_SCHEMA, GIT_STATUS_SCHEMA, TOOL_SCHEMAS, ToolError, Tools
+from .tools import GIT_DIFF_SCHEMA, GIT_STATUS_SCHEMA, PATCH_FILES_SCHEMA, TOOL_SCHEMAS, ToolError, Tools
+from .edit_batch import path_key
 from .attachments import snapshots as file_snapshots, snapshot_message
 from .message_origin import ORIGIN, application_message
 from .requirements import (REQUIREMENT_KEY, change as requirement_change, model_frame as requirement_frame,
@@ -774,9 +775,9 @@ class Agent:
         self._checkpoint(candidate)
         return candidate, {"applied_inputs": len(rows), "network_contacted": False, "task_executed": False}
 
-    def _steer(self, messages, pending_calls=()):
+    def _steer(self, messages, pending_calls=(), *, tasks=None):
         """Accept FIFO user guidance only at a boundary with complete tool results."""
-        tasks = self.receive_input()
+        tasks = self.receive_input() if tasks is None else tasks
         if not tasks:
             return False
         rows = self._input_messages(messages, tasks)
@@ -934,19 +935,48 @@ class Agent:
         return messages
 
     def _request_schemas(self, messages, report):
-        if (self.config.command_log_dir is not None or not self.config.tool_enabled("read_log")
-                or not isinstance(self.tools, Tools) or not self.tools.logs.has_memory_log()):
+        if not isinstance(self.tools, Tools):
             return self.schemas
-        schemas = [*self.schemas, copy.deepcopy(READ_LOG_SCHEMA)]
-        size = request_size(self.config, messages, schemas, check_cancelled=self._check_cancelled)
-        if size > report["budget_bytes"]:
-            return self.schemas
-        if (self.compact_context and not report["compaction_triggered"]
-                and size >= self.config.max_context_bytes * self.config.context_trigger_ratio):
-            return self.schemas
-        report["before_bytes"] += size - report["after_bytes"]
-        report["after_bytes"] = size
+        optional = []
+        if (self.config.command_log_dir is None and self.config.tool_enabled("read_log")
+                and self.tools.logs.has_memory_log()):
+            optional.append(READ_LOG_SCHEMA)
+        if not self.config.read_only and self.config.tool_enabled("patch_files"):
+            known = dict(self.tools.read_versions.snapshot())
+            if len(known) >= 2:
+                paths = set()
+                for _, digest, identity in recent_visible_reads(messages, self._check_cancelled):
+                    version = known.get(identity)
+                    if version is not None and version[1] == digest:
+                        paths.add(path_key(version[0]))
+                        if len(paths) == 2:
+                            optional.append(PATCH_FILES_SCHEMA)
+                            break
+        schemas = self.schemas
+        for schema in optional:
+            candidate = [*schemas, copy.deepcopy(schema)]
+            size = request_size(self.config, messages, candidate, check_cancelled=self._check_cancelled)
+            if size > report["budget_bytes"] or (self.compact_context and not report["compaction_triggered"]
+                    and size >= self.config.max_context_bytes * self.config.context_trigger_ratio):
+                continue
+            report["before_bytes"] += size - report["after_bytes"]
+            report["after_bytes"] = size
+            schemas = candidate
         return schemas
+
+    def _apply_patch_files(self, arguments):
+        if not any(schema["function"]["name"] == "patch_files" for schema in self._offered_schemas):
+            return {"error": "patch_files was not offered. Use separate edit_lines calls with current read_id values."}, []
+        pending = []
+
+        def superseded():
+            self._check_cancelled()
+            if not pending:
+                pending.extend(self.receive_input() or ())
+            return bool(pending)
+
+        with self.tools.instructions.model_action(), self.tools.guard_patch(superseded):
+            return self.tools.execute("patch_files", arguments), pending
 
     def _history_wire_budget(self, messages, pending_calls, step):
         # Complete the protocol batch for sizing only. Existing results count
@@ -1531,6 +1561,7 @@ class Agent:
                     function = call["function"]
                     self.emit(f"[tool] {function['name']}")
                     name, arguments, error = requests[index]
+                    patch_guidance = []
                     with self._tool_activity(name) as activity:
                         if blocked is not None:
                             result = blocked[index]
@@ -1539,6 +1570,8 @@ class Agent:
                         elif name == "read_history" and self.summary is not None and self.config.tool_enabled(name):
                             budget = self._history_wire_budget(messages, calls[index:], min(step + 1, self.config.max_steps))
                             result = self._execute_model_tool(name, arguments, history_wire_budget=budget)
+                        elif name == "patch_files":
+                            result, patch_guidance = self._apply_patch_files(arguments)
                         else:
                             result = self._execute_model_tool(name, arguments)
                     self.work_progress.observe(step, name, result)
@@ -1552,6 +1585,9 @@ class Agent:
                     file_change = (name in {"edit_file", "edit_lines", "file_action"}
                                    or name == "lsp" and result.get("action") in {"rename", "apply_code_action"})
                     command_change = name == "run" and result.get("command_changes", {}).get("recorded", 0) > 0
+                    if (name == "patch_files" and type(result.get("changed_files")) is int
+                            and result["changed_files"] > 0 and not result.get("outcome")):
+                        edited = True  # A later refused file does not erase earlier completed edits.
                     if ((file_change and result.get("changed") is True or command_change)
                             and result.get("approved") is True and "error" not in result
                             and not any(result.get(flag) for flag in ("outcome", "skipped", "cancelled", "interrupted"))):
@@ -1569,11 +1605,14 @@ class Agent:
                     elif name in {"edit_file", "edit_lines"} and "syntax" in result:
                         self.emit("[syntax; parser observations, not acceptance] "
                                   + json.dumps(redact(result["syntax"], self.config.secrets), ensure_ascii=False))
-                    elif name == "file_action":
+                    elif name in {"file_action", "patch_files"}:
                         self.emit(content)
                     elif name == "run":
                         self.emit(json.dumps({key: value for key, value in result.items() if key != "output"}, ensure_ascii=False)
                                   if result.get("streamed") else content)
+                    if patch_guidance and self._steer(messages, calls[index + 1:], tasks=patch_guidance):
+                        batch_steered = True
+                        break
             if self.config.check_after_edit and edited and not batch_steered and isinstance(self.tools, Tools) and self.tools.jobs.unsettled():
                 self.edit_check_status = "deferred"
                 self.emit("[edit-check] Deferred while owned background commands are active")

@@ -8,6 +8,9 @@ from pathlib import PurePosixPath
 import uuid
 
 
+MAX_BATCH_FILES = 16
+
+
 def path_key(parts):
     return tuple(part.casefold() if os.name == "nt" else part for part in parts)
 
@@ -81,8 +84,8 @@ class EditBatch:
 @contextmanager
 def preflight(tools, requests, guard=None, *, model_action=True):
     """Yield per-call failures or None; requests contain (name, arguments, error)."""
-    if len(requests) > 16:
-        raise ValueError("edit batch exceeds 16 tool calls")
+    if len(requests) > MAX_BATCH_FILES:
+        raise ValueError(f"edit batch exceeds {MAX_BATCH_FILES} tool calls")
     if (len(requests) < 2 and guard is None) or any(name not in {"edit_file", "edit_lines"} for name, _, _ in requests):
         yield None
         return

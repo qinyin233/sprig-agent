@@ -291,6 +291,7 @@ CLI 与 TUI 都实时显示命令输出，保留 UTF-8 分段，遮盖跨片段�
 | `project_map(path=".", query=...)` | 映射目录或单个文件，返回有界路径及九种语言的声明名称与行号；支持字面筛选，优先保留精确匹配；不支持的语言只列路径 |
 | `edit_file(path, old, new)` 或 `edit_file(path, edits=[...])` | 单片段或同文件多片段替换，展示合并 diff，经确认后一次写入 |
 | `edit_lines(path, read_id, edits=[...])` 或 `patch="@@ ..."` | 读取绑定的整行替换或[紧凑补丁](docs/line-patches.md)；内部核对完整摘要，仍需完整 diff 和新批准 |
+| `patch_files(files=[...])` | 在一个调用里提议 2–16 个已读取目标的补丁，整组预检后逐文件批准。[多文件补丁](docs/line-patches.md#在一个调用里提议多文件补丁) |
 | `run(argv, cwd=".", timeout=...)` | 运行参数数组所指定的命令；可选超时不能超过全局上限 |
 | `file_action(action, path, read_id=..., destination=...)` | 创建单个目录、读取标识关联的删除或复制后删除的移动；逐阶段新批准，不覆盖目标，支持文件撤销 |
 | `update_plan(plan, explanation="")` | 更新有界的模型进度清单；TUI 计划页和 `/plan` 查看，随显式保存的会话恢复；不批准操作、不代表验收通过 |

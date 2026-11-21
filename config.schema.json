@@ -231,6 +231,9 @@
         "edit_lines": {
           "type": "boolean"
         },
+        "patch_files": {
+          "type": "boolean"
+        },
         "file_action": {
           "type": "boolean"
         },
@@ -1498,6 +1501,9 @@
                 "type": "boolean"
               },
               "edit_lines": {
+                "type": "boolean"
+              },
+              "patch_files": {
                 "type": "boolean"
               },
               "file_action": {

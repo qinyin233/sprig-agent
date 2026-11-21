@@ -10,8 +10,9 @@ import unicodedata
 from urllib.parse import urlsplit, urlunsplit
 from .credentials import RuntimeCredentials
 
-TOOL_NAMES = ("list_files", "glob", "read_file", "search", "grep", "project_map", "edit_file", "run", "update_plan", "edit_lines", "file_action", "read_history", "read_log", "question", "skill", "mcp", "web_fetch", "job", "lsp", "git_status", "git_diff", "explore")
+TOOL_NAMES = ("list_files", "glob", "read_file", "search", "grep", "project_map", "edit_file", "run", "update_plan", "edit_lines", "patch_files", "file_action", "read_history", "read_log", "question", "skill", "mcp", "web_fetch", "job", "lsp", "git_status", "git_diff", "explore")
 SHORTCUT_ACTIONS = ("cancel", "quit", "focus_input", "toggle_sidebar", "help", "new_conversation", "external_editor")
+PATCH_PREREQUISITES = ("read_file", "edit_file", "edit_lines")
 GENERATION_FIELDS = ("max_tokens", "thinking", "temperature", "top_p", "reasoning_effort", "seed", "token_limit_field", "extra_body")
 MODEL_CONFIG_FIELDS = frozenset((*GENERATION_FIELDS, "model", "base_url", "api_key", "provider_name", "headers",
     "request_timeout", "request_deadline", "retry_attempts", "proxy", "api_key_header", "api_key_scheme", "preserve_reasoning",
@@ -544,7 +545,8 @@ class Config:
         return (name in TOOL_NAMES and name not in self.disabled_tools
                 and (name != "glob" or "list_files" not in self.disabled_tools)
                 and (name not in {"search", "grep"} or not {"search", "grep"}.intersection(self.disabled_tools))
-                and (name not in {"edit_lines", "file_action"} or "edit_file" not in self.disabled_tools))
+                and (name not in {"edit_lines", "file_action"} or "edit_file" not in self.disabled_tools)
+                and (name != "patch_files" or not any(tool in self.disabled_tools for tool in PATCH_PREREQUISITES)))
 
     def binding(self):
         binding = {"base_url": self.base_url, "model": self.model, "workdir": str(self.workdir)}

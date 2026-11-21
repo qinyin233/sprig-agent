@@ -14,6 +14,7 @@ from .message_origin import ORIGIN, application_origin
 from .requirements import REQUIREMENT_KEY
 from .requirement_checks import CHECK_KEY
 from .check_repro import OBSERVATION_KEY
+from .multi_patch import patch_set
 from .requirement_edits import EDIT_SCOPE
 
 MAX_READ_METADATA_CHARS = 32768
@@ -409,12 +410,28 @@ def prepare_context(config, messages, tools, compact=False, *, force=False, chec
                 marker = json.dumps({"context_elided": True, "note": "Older completed plan update omitted from this request. This is not runnable tool input. The latest successful plan result is retained; saved history is unchanged."})
                 replace_string(function, "arguments", marker, index, identity, ["arguments"])
                 continue
-            if function.get("name") not in {"edit_file", "edit_lines"}:
+            name = function.get("name")
+            if name not in {"edit_file", "edit_lines", "patch_files"}:
                 continue
             if (not _successful(result) or result.get("approved") is not True
                     or result.get("changed") is not True):
                 continue
-            path = _edit_path(function.get("arguments"), by_line=function["name"] == "edit_lines")
+            if name == "patch_files":
+                arguments = _result(function.get("arguments"))
+                if arguments is None or set(arguments) != {"files"}:
+                    continue
+                try:
+                    total = len(patch_set(arguments["files"]))
+                except ValueError:
+                    continue
+                changed, unchanged = result.get("changed_files"), result.get("unchanged_files")
+                if (result.get("requested_files") == total and type(changed) is int and type(unchanged) is int
+                        and 0 < changed <= total and 0 <= unchanged and changed + unchanged == total):
+                    marker = json.dumps({"context_elided": True, "completed_files": total,
+                        "note": "Approved patch set completed. Original patch text is in saved history. Reread sources to edit."})
+                    replace_string(function, "arguments", marker, index, identity, ["arguments"])
+                continue
+            path = _edit_path(function.get("arguments"), by_line=name == "edit_lines")
             if path is None or result.get("path") != path:
                 continue
             marker = json.dumps({"path": path, "context_elided": True,
