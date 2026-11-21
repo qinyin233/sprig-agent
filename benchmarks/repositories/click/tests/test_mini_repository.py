@@ -84,6 +84,29 @@ class MiniRepositoryTests(unittest.TestCase):
         self.assertEqual(report["outcome"], "acceptance_rejected")
         self.assertFalse(report["acceptance_passed"])
 
+    def test_independent_post_check_scores_exhausted_loop_and_preserves_its_result(self):
+        for accepted in (True, False):
+            with self.subTest(accepted=accepted):
+                decisions = iter((True, accepted))
+                approvals, observed = [], []
+
+                def confirm(description):
+                    approvals.append(description)
+                    return next(decisions)
+
+                report = self.mini.run_case(self.adapter.case, {"model": "fixture", "max_steps": 1},
+                    case_adapter=self.adapter, model_factory=self.model(["echo observation"], observed),
+                    confirm=confirm, post_check=entry.click_post_check)
+                self.assertEqual(len(observed), 1)
+                self.assertEqual(len(approvals), 2)
+                self.assertEqual(report["outcome"], "limits_exceeded")
+                self.assertFalse(report["acceptance_passed"])
+                self.assertEqual(report["approvals"]["requests"], 1)
+                self.assertEqual([row["tool"] for row in report["tools"]], ["bash"])
+                expected = ({"status": "failed", "collected": 642, "checks_passed": 635, "skipped": 0,
+                             "public_exception_contract": False} if accepted else {"status": "rejected"})
+                self.assertEqual(report["independent_post_check"], expected)
+
 
 if __name__ == "__main__":
     unittest.main()

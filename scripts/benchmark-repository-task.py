@@ -141,9 +141,11 @@ def main():
             parser.error("--request-deadline must be finite and greater than 0, at most 3600 seconds")
         if (args.client != "sprig" or not args.run) and (
                 args.request_deadline is not None or args.check_after_edit or args.stream or args.request_usage
-                or args.preserve_reasoning or args.compact_context or args.recover_output_limit or args.independent_post_check
+                or args.preserve_reasoning or args.compact_context or args.recover_output_limit
                 or args.wire_api != "chat_completions"):
             parser.error("the selected runtime options require --run --client sprig")
+        if args.independent_post_check and not args.run:
+            parser.error("--independent-post-check requires --run")
         if args.request_usage and not args.stream:
             parser.error("--request-usage requires --stream")
         if args.report and (args.report.exists() or args.report.is_symlink() or not args.report.parent.is_dir()):
@@ -171,6 +173,8 @@ def main():
                        "timeout": args.command_timeout or args.request_timeout,
                        "request_timeout": args.request_timeout, "check_before_task": args.check_before_task}
             runtime = {}
+            if args.independent_post_check:
+                runtime["post_check"] = click_post_check
             if args.client == "sprig":
                 options.update(wire_api=args.wire_api, check_after_edit=args.check_after_edit,
                                stream=args.stream, request_usage=args.request_usage,
@@ -178,8 +182,6 @@ def main():
                                recover_output_limit=args.recover_output_limit)
                 if args.request_deadline is not None:
                     options["request_deadline"] = args.request_deadline
-                if args.independent_post_check:
-                    runtime["post_check"] = click_post_check
                 if args.stream:
                     runtime["emit_delta"] = lambda text: print(terminal_text(redact(text, key)), end="", file=sys.stderr, flush=True)
             entry = load_mini().run_case if args.client == "mini" else bench.run_case

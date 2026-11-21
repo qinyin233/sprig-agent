@@ -110,6 +110,18 @@ class RepositoryTaskTests(unittest.TestCase):
                                   report["request_deadline_seconds"]), (120, 60, 180))
                 self.assertTrue(report["recover_output_limit"])
 
+    def test_repository_driver_forwards_independent_check_to_mini(self):
+        argv = ["repository-task", "--run", "--fixture", "unused", "--client", "mini", "--independent-post-check"]
+        with (patch.object(sys, "argv", argv), patch.object(sys, "version_info", (3, 12, 12)),
+              patch.object(sys.stdin, "isatty", return_value=True), patch.object(sys.stdout, "isatty", return_value=True),
+              patch.object(driver, "environment_api_key", return_value="fixture-private-marker"),
+              patch("importlib.metadata.version", return_value="8.4.2"),
+              patch.object(driver.task_module, "ClickTask", return_value=SimpleNamespace(case={})),
+              patch.object(driver, "load_mini") as mini, patch("builtins.print")):
+            mini.return_value.run_case.return_value = {"acceptance_passed": False}
+            self.assertEqual(driver.main(), 1)
+            self.assertIs(mini.return_value.run_case.call_args.kwargs["post_check"], driver.click_post_check)
+
     def adapter(self):
         base = {"src/click/__init__.py": b"baseline-source", "tests/test_commands.py": b"initial-test"}
         reference = {"src/click/__init__.py": b"reference-implementation-marker",

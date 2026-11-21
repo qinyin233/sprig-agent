@@ -58,7 +58,7 @@ Sprig 可用以下参数复测固定的 12 步预算。复用上文的 `--fixtur
 --check-before-task --check-after-edit --independent-post-check
 ```
 
-`--wire-api` 可选 `chat_completions`、`messages` 或 `responses`。开启 `--independent-post-check` 后，Sprig 在本轮结束后另行提议执行同一固定验收，模型提前停止时也可取得当时的候选分数。用户批准后，报告在 `independent_post_check` 中记录通过数、跳过数和公开异常契约。命令拒绝、取消、结果不完整或验证器变化时记录对应状态。原运行的 `outcome`、审批统计和应用验收结果按原运行结算。
+Sprig 的 `--wire-api` 可选 `chat_completions`、`messages` 或 `responses`，mini 对照使用 `chat_completions`。两个客户端都可用 `--independent-post-check`，在原任务结算后另行提议执行同一固定验收。用户批准后，报告在 `independent_post_check` 中记录通过数、跳过数和公开异常契约。命令拒绝、取消、结果不完整或验证器变化时记录对应状态。原运行的 `outcome`、审批统计和应用验收结果按原运行结算。
 
 仓库对照的 mini 现在使用 SDK 原生 `wall_time_limit_seconds=0`，与 Sprig 都不施加包含审批等待的额外任务壁钟上限；模型轮次、实际请求体预算、请求/命令超时和取消仍保留。普通小夹具入口继续使用 `600 + interval * (max_steps - 1)` 秒。这是评测配置调整，未修改上游 agent 循环或自动批准动作；旧报告的 600/980 秒限时与审批等待记录保持原样。
 

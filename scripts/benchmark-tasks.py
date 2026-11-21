@@ -31,6 +31,26 @@ from sprig_agent.policy import command_environment
 from sprig_agent.tools import Tools
 
 
+def independent_check(report, config, argv, intact, confirm, summarize, *, eligible):
+    """Score the candidate separately after the client has settled its task."""
+    if not report["verifier_intact"]:
+        report["independent_post_check"] = {"status": "verifier_modified"}
+        return
+    if not eligible:
+        report["independent_post_check"] = {"status": report["outcome"]}
+        return
+    with closing(Tools(config, confirm)) as verifier:
+        try:
+            result = verifier.execute("run", {"argv": list(argv)})
+        except KeyboardInterrupt:
+            report["independent_post_check"] = {"status": "cancelled"}
+        else:
+            report["independent_post_check"] = summarize(result)
+    if not intact():
+        report.update(verifier_intact=False, outcome="verifier_modified", acceptance_passed=False,
+                      independent_post_check={"status": "verifier_modified"})
+
+
 @contextmanager
 def disposable():
     root = Path(tempfile.mkdtemp(prefix="sprig-task-bench-")).resolve()
@@ -237,21 +257,8 @@ def run_case(case, config_options, *, provider_factory=Provider, confirm=approve
             report.update(scope="one repository Sprig task; no overall performance or competitor ranking claim",
                           repository_task=case_adapter.metadata)
         if post_check is not None:
-            # The normal agent run is settled before the separate approval.
-            if valid and outcome in {"acceptance_passed", "not_completed", "provider_error"}:
-                with closing(Tools(config, fresh_approval)) as verification:
-                    try:
-                        result = verification.execute("run", {"argv": list(argv)})
-                    except KeyboardInterrupt:
-                        report["independent_post_check"] = {"status": "cancelled"}
-                    else:
-                        report["independent_post_check"] = post_check(result)
-                if not intact():
-                    report.update(verifier_intact=False, outcome="verifier_modified", acceptance_passed=False,
-                                  independent_post_check={"status": "verifier_modified"})
-            else:
-                status = "verifier_modified" if not valid else outcome
-                report["independent_post_check"] = {"status": status}
+            independent_check(report, config, argv, intact, fresh_approval, post_check,
+                              eligible=outcome in {"acceptance_passed", "not_completed", "provider_error"})
         return redact(report, key)
 
 

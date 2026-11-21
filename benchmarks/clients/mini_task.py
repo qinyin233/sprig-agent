@@ -95,7 +95,8 @@ def sdk_snapshot():
     return bench.suite.digest(files), intact
 
 
-def run_case(case, options, *, model_factory=None, confirm=approve, emit=None, case_adapter=None, request_interval=0, environment_lock=None):
+def run_case(case, options, *, model_factory=None, confirm=approve, emit=None, case_adapter=None, request_interval=0,
+             environment_lock=None, post_check=None):
     pacer = RequestPacer(request_interval)
     environment_lock = Path(environment_lock) if environment_lock is not None else REPO / "benchmarks/clients/mini/uv.lock"
     if (environment_lock.name != "uv.lock" or environment_lock.is_symlink() or not environment_lock.is_file()
@@ -273,7 +274,7 @@ def run_case(case, options, *, model_factory=None, confirm=approve, emit=None, c
         valid = intact()
         scope = ("one repository mini SDK task; no overall performance or top-agent parity claim" if case_adapter is not None
                  else "one diagnostic mini SDK task; no overall performance or top-agent parity claim")
-        return redact({"schema": 2, "scope": scope,
+        report = {"schema": 2, "scope": scope,
                        "model_mode": "scripted_protocol_fixture" if model_factory else "upstream_backend_transport",
                        "client": "mini", "client_version": minisweagent.__version__, "sdk_sources_sha256": source_signature,
                        "client_lock_sha256": hashlib.sha256(protected[environment_lock][1]).hexdigest(),
@@ -302,7 +303,12 @@ def run_case(case, options, *, model_factory=None, confirm=approve, emit=None, c
                        "request_measurements": wire.report() if wire else None,
                        "outcome": outcome if valid else "verifier_modified", "acceptance_passed": env.acceptance_passed and valid,
                        "elapsed_ms": round(elapsed, 3), "active_ms": round(max(0, elapsed - env.approvals["wait_ms"]), 3),
-                       "approvals": {**env.approvals, "wait_ms": round(env.approvals["wait_ms"], 3)}, "tools": env.records}, key)
+                       "approvals": {**env.approvals, "wait_ms": round(env.approvals["wait_ms"], 3)}, "tools": env.records}
+        if post_check is not None:
+            bench.independent_check(report, config, acceptance, intact, env._approve, post_check,
+                                    eligible=(baseline_status in {"not_run", "passed", "failed"}
+                                              and outcome not in {"cancelled", "acceptance_rejected"}))
+        return redact(report, key)
 
 
 def main():
