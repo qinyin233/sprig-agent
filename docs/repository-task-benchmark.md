@@ -4,6 +4,8 @@
 
 2026 年 11 月 21 日在原生 Windows 完成两次同起点的模型尝试，分别记录请求超时和预算耗尽，以及实际取得的验收结果。[实测记录](live-evaluation-click-pair-20261121.md)
 
+同日另做两次 Sprig 直连复测，记录 2,048 token 输出上限出现的位置和各自的后置验收。[直连复测](live-evaluation-click-direct-20261121.md)
+
 另有独立的 [Requests 异常序列化任务](requests-task-benchmark.md)，使用同一项目中的完整 Sprig / mini 环境检查 pickle 与真正进程池行为。2026-10-26 两套验收改为让内层 worker 继承外层已批准命令的进程组 / Job，补验取消与超时后的普通子孙进程收尾；Click 的任务、642 项检查及已知失败集合保持。更新后的本地校准范围见[本批记录](benchmarks/requests-task-20261026.json)，没有新的真实模型成绩。
 
 ## 输入和验收

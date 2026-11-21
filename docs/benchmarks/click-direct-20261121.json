@@ -1,0 +1,119 @@
+{
+  "schema": 1,
+  "task": "click-command-suggestions",
+  "repository": "pallets/click",
+  "source_commit": "f785cd4764b30367a5e4331b3e7cae6dcb3917ef",
+  "source_tree": "b1e2d4b185512268df23de40008cd48f080e5c1c",
+  "platform": "Windows",
+  "python": "3.12.12",
+  "pytest": "8.4.2",
+  "provider": "USTC",
+  "model": "deepseek-flash-2",
+  "protocol": "chat_completions",
+  "proxy_mode": "direct",
+  "stream": false,
+  "output_token_limit": 2048,
+  "context_byte_limit": 131072,
+  "combined_http_attempt_limit": 12,
+  "provenance": {
+    "fixture_sha256": "7d610833c8a6564f980f747e4601e7f4821872702c4a59f32ff9c5d653300d08",
+    "verifier_sha256": "491eab8ade8e787bfb64ba20a24637d72a2908043335c5131ad8d5fb22641810",
+    "task_sha256": "2908db436a3b9ac92c17b2d60eed48baae6c6549b9a1c83bb775bc816bcf6273",
+    "driver_sha256": "48b3ebe4a7fc300f2c4f0f526c3d5049950aa4f7be66b3f6e49e9ce4483636db",
+    "base_commit": "19fd4d6e18bc9fce451f92f422696b11169faa57",
+    "acceptance_commit": "831c8f0948af519e45b90801d7430ff25451f972",
+    "base_sha256": "7d610833c8a6564f980f747e4601e7f4821872702c4a59f32ff9c5d653300d08",
+    "acceptance_snapshot_sha256": "62d0162a63fa5322307e29d1710ec7624bd3ca20572329fddbdae1fe628f628d",
+    "entry_sha256": "705611bbcece32a4a053fc5a995d690892f59845ab770b052cb998744f10e3e4",
+    "adapter_sha256": "2b2d0a7f8edb1f91628dd5bf082781a191390591b695ab7e9095e07d6a140080",
+    "comparison_lock_sha256": "f556e844495bdaaea230443fa7672b0c846d51d81665845cb20909e0093ffd5f"
+  },
+  "trials": [
+    {
+      "date_singapore": "2026-11-21",
+      "max_steps": 12,
+      "recover_output_limit": false,
+      "recovery_notice_count": 0,
+      "outcome": "provider_error",
+      "acceptance_passed": false,
+      "independent_post_check": {
+        "status": "failed",
+        "collected": 642,
+        "checks_passed": 635,
+        "skipped": 0,
+        "public_exception_contract": false
+      },
+      "native_approvals": {
+        "requests": 1,
+        "accepted": 1,
+        "rejected": 0
+      },
+      "independent_check_approved": true,
+      "tools": {
+        "glob": 1,
+        "grep": 2,
+        "read_file": 2,
+        "run": 1
+      },
+      "tool_errors": 0,
+      "requests": {
+        "attempts": 4,
+        "http_200": 4,
+        "successful_completions": 3,
+        "not_sent": 0,
+        "failures": {
+          "output_limit": 1
+        },
+        "output_limit_request": 4,
+        "total_tokens_reported": 24885,
+        "usage_requests_known": 4,
+        "usage_requests_unknown": 0,
+        "request_bytes": 83239,
+        "response_bytes": 12658
+      }
+    },
+    {
+      "date_singapore": "2026-11-21",
+      "max_steps": 8,
+      "recover_output_limit": true,
+      "recovery_notice_count": 0,
+      "outcome": "provider_error",
+      "acceptance_passed": false,
+      "independent_post_check": {
+        "status": "failed",
+        "collected": 642,
+        "checks_passed": 635,
+        "skipped": 0,
+        "public_exception_contract": false
+      },
+      "native_approvals": {
+        "requests": 1,
+        "accepted": 1,
+        "rejected": 0
+      },
+      "independent_check_approved": true,
+      "tools": {
+        "glob": 1,
+        "grep": 8,
+        "read_file": 7,
+        "run": 1
+      },
+      "tool_errors": 1,
+      "requests": {
+        "attempts": 8,
+        "http_200": 8,
+        "successful_completions": 7,
+        "not_sent": 0,
+        "failures": {
+          "output_limit": 1
+        },
+        "output_limit_request": 8,
+        "total_tokens_reported": 107714,
+        "usage_requests_known": 8,
+        "usage_requests_unknown": 0,
+        "request_bytes": 384701,
+        "response_bytes": 28749
+      }
+    }
+  ]
+}
