@@ -1,6 +1,7 @@
 """Navigation feedback stays actionable without changing permissions or scope."""
 from contextlib import closing
 import copy
+from dataclasses import replace
 import json
 from pathlib import Path
 import sys
@@ -67,6 +68,75 @@ class NavigationFeedbackTests(unittest.TestCase):
                         self.assertIn("error", result)
                         self.assertIn("omit the field or use '.'", result["error"])
         approve.assert_not_called()
+
+    def test_missing_file_reads_offer_only_the_checked_directory(self):
+        (self.root / "src").mkdir()
+        (self.root / ".sprigignore").write_bytes(b"private/\n")
+        private = "fixture-private-directory"
+        (self.root / private).mkdir()
+        config = Config(self.root, "fixture", read_only=True, api_key=private, max_output=256)
+        approve = Mock(side_effect=AssertionError("a missing file must fail before approval"))
+        with closing(Tools(config, approve)) as tools:
+            modes = ({}, {"offset": 2}, {"ranges": [[1, 1]]}, {"symbol": "method"}, {"cursor": "start"})
+            cases = [("read_file", {"path": "src/missing.py", **mode}) for mode in modes]
+            cases.extend((("read_file", {"path": "src/missing.png", "image": True}),
+                          ("read_file", {"path": "src/missing/nested.py"}),
+                          ("grep", {"pattern": "method", "path": "src/missing.py", "output_mode": "read"})))
+            for name, arguments in cases:
+                with self.subTest(name=name, arguments=arguments):
+                    result = tools.execute(name, arguments)
+                    self.assertEqual(result, {"error": "Workspace path not found.", "suggested_directory": "src",
+                                              "guidance": "Use list_files at suggested_directory to choose a path."})
+            for candidate in ("../outside.py", "private/missing.py", f"{private}/missing.py"):
+                with self.subTest(path=candidate):
+                    result = tools.execute("read_file", {"path": candidate})
+                    self.assertEqual(set(result), {"error"})
+                    self.assertNotIn(private, result["error"])
+        with closing(Tools(replace(config, disabled_tools=("list_files",)), approve)) as tools:
+            result = tools.execute("read_file", {"path": "missing.py"})
+            self.assertEqual(result, {"error": "Workspace path not found.", "suggested_directory": "."})
+        approve.assert_not_called()
+
+    def test_actual_http_recovers_wrong_path_then_edits_and_runs_fixed_acceptance(self):
+        (self.root / "src").mkdir()
+        path = "src/worker.py"
+        target = self.root / path
+        target.write_bytes(b"answer = 41\n")
+        captured = []
+        approve = Mock(return_value=True)
+
+        def list_parent(payload):
+            row = json.loads(payload["messages"][-1]["content"])
+            self.assertEqual(row["suggested_directory"], "src")
+            self.assertNotIn("read_id", row)
+            approve.assert_not_called()
+            return call("list", "list_files", {"path": row["suggested_directory"]})
+
+        def read_actual(payload):
+            row = json.loads(payload["messages"][-1]["content"])
+            self.assertEqual(row["entries"], [{"name": "worker.py", "type": "file"}])
+            return call("read", "read_file", {"path": "src/" + row["entries"][0]["name"], "limit": 1})
+
+        def edit_actual(payload):
+            row = json.loads(payload["messages"][-1]["content"])
+            self.assertEqual(row["path"], path)
+            self.assertIn("answer = 41", row["content"])
+            approve.assert_not_called()
+            return call("edit", "edit_lines", {"path": path, "read_id": row["read_id"],
+                    "edits": [{"start_line": 1, "end_line": 1, "new": "answer = 42\n"}]})
+
+        check = (sys.executable, "-I", "-B", "-c",
+                 "from pathlib import Path; assert Path('src/worker.py').read_bytes() == b'answer = 42\\n'")
+        with replies([call("guess", "read_file", {"path": "src/workers.py"}), list_parent, read_actual, edit_actual,
+                      {"role": "assistant", "content": "Updated worker"}], captured) as url:
+            config = Config(self.root, "fixture", base_url=url, proxy="direct", max_steps=5, checks=(check,))
+            with closing(Tools(config, approve)) as tools:
+                history, complete = Agent(config, Provider(config), tools, lambda _: None).run("Fix the answer in the worker")
+        self.assertTrue(complete)
+        self.assertEqual(len(captured), 5)
+        self.assertEqual(target.read_bytes(), b"answer = 42\n")
+        self.assertEqual(approve.call_count, 2)
+        self.assertTrue(any(row.get("sprig_check") == "acceptance" for row in history))
 
     def test_default_prefix_preserves_bytes_and_explains_why_it_has_no_edit_reference(self):
         raw = b"# harmless padding\n" * 300

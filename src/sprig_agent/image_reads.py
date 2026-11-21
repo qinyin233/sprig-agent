@@ -21,7 +21,7 @@ def read_image(tools, path):
     tools._check_cancelled()
     parts = tools._parts(path)
     path = "/".join(parts)
-    with tools._parent(path) as (parent, name), parent.open_read(name) as handle:
+    with tools._open_read(path) as handle:
         revision = tools._revision(os.fstat(handle.fileno()))
     try:
         frames, receipts = snapshots(config, tools, [path], tools._check_cancelled)
@@ -42,7 +42,7 @@ def read_image(tools, path):
             raise ValueError("image snapshot conflicts with updated credential protection; request a fresh read")
         tools._parts(path)
         tools.instructions.recheck_action(parts[:-1], rules)
-        with tools._parent(path) as (parent, name), parent.open_read(name) as handle:
+        with tools._open_read(path) as handle:
             if tools._revision(os.fstat(handle.fileno())) != revision:
                 raise ValueError("image changed before or during approval; request a fresh read")
         tools._check_cancelled()

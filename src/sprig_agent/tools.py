@@ -434,6 +434,16 @@ class Tools:
         with self._directory(parts[:-1]) as fd:
             yield fd, parts[-1]
 
+    @contextmanager
+    def _open_read(self, path):
+        with self._parent(path) as (parent, name), ExitStack() as stack:
+            try:
+                handle = stack.enter_context(parent.open_read(name))
+            except FileNotFoundError:
+                parts = parent.path.relative_to(self.root.path).parts
+                raise _WorkspacePathMissing(parts) from None
+            yield handle
+
     def _read(self, parent, name, limit):
         return parent.read(name, limit)
 
@@ -796,8 +806,8 @@ class Tools:
             return self._read_bytes(path, parts, cursor)
         if ranged or numbered:
             return self._read_result(parts, self._read_page(path, offset, limit or 2000, line_numbers=numbered))
-        with self._parent(path) as (fd, name):
-            raw = self._read(fd, name, self.config.max_output)
+        with self._open_read(path) as handle:
+            raw = handle.read(self.config.max_output + 1)
         truncated = len(raw) > self.config.max_output
         if truncated:
             # A byte cap may bisect a UTF-8 character. Ignore only that trailing fragment.
@@ -830,7 +840,7 @@ class Tools:
         raw = bytearray()
         error = ("ranged read exceeds the 8 MiB scan limit" if scan_limit == MAX_READ else
                  "read exceeds the 512 KiB scan limit; use ordinary ranged reads or byte pages")
-        with self._parent(path) as (directory, name), directory.open_read(name) as handle:
+        with self._open_read(path) as handle:
             if os.fstat(handle.fileno()).st_size > scan_limit:
                 raise ToolError(error)
             while True:
