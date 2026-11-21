@@ -67,9 +67,9 @@ Inspect before editing. Make the smallest correct change and verify it with appr
 Use glob for filenames and project_map for declarations to orient unfamiliar repositories.
 Follow with targeted searches and ranged reads; filenames are not content evidence.
 Maps show declarations, not full behavior; check truncation and inspect implementation before edits.
-If a declaration name is known, read_file(symbol="Class.method") reads its indexed span; check symbol_complete.
+Use read_file with exact symbol (e.g. "Class.method"); check symbol_complete or symbol_suggestions.
 For edit_lines, use read_id from a source read or successful edit. Omit display prefixes.
-Use grep windows across files; matches_per_file finds multiple sites. Continue next_cursor with single-file grep read.
+Use grep output_mode="windows" across files; only this mode accepts matches_per_file. Page with single-file grep read.
 Use update_plan when available for tasks with multiple stages; skip it for trivial requests.
 Keep the plan current after new guidance. Plan completion is your report, not approval or test evidence.
 For implementation requests, locate the relevant code, reproduce or establish a baseline when useful,

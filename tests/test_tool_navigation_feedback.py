@@ -118,6 +118,47 @@ class NavigationFeedbackTests(unittest.TestCase):
         self.assertEqual(schema["parameters"]["properties"]["context"]["maximum"], 10)
         approve.assert_not_called()
 
+    def test_actual_http_can_recover_wrong_qualification_and_grep_mode(self):
+        path = "core.py"
+        (self.root / path).write_bytes(b"class Group:\n    def resolve_command(self):\n        return 1\n")
+        captured = []
+        approve = Mock(side_effect=AssertionError("navigation requested approval"))
+
+        def exact_read(payload):
+            result = json.loads(payload["messages"][-1]["content"])
+            self.assertIn("error", result)
+            self.assertNotIn("read_id", result)
+            self.assertNotIn("content", result)
+            suggestion, = result["symbol_suggestions"]
+            self.assertEqual(suggestion, {"name": "Group.resolve_command", "start_line": 2, "end_line": 3})
+            return call("exact", "read_file", {"path": path, "symbol": suggestion["name"]})
+
+        def wrong_mode(payload):
+            result = json.loads(payload["messages"][-1]["content"])
+            self.assertTrue(result["symbol_complete"])
+            self.assertIn("return 1", result["content"])
+            self.assertIn("read_id", result)
+            return call("wrong_mode", "grep", {"pattern": "resolve_command", "path": path, "matches_per_file": 2})
+
+        def windows_mode(payload):
+            result = json.loads(payload["messages"][-1]["content"])
+            self.assertIn("omit matches_per_file", result["error"])
+            self.assertIn("output_mode='windows'", result["error"])
+            return call("windows_mode", "grep", {"pattern": "resolve_command", "path": path, "matches_per_file": 2,
+                                                  "output_mode": "windows"})
+
+        with replies([call("wrong_name", "read_file", {"path": path, "symbol": "MultiCommand.resolve_command"}),
+                      exact_read, wrong_mode, windows_mode, {"role": "assistant", "content": "Read complete"}], captured) as url:
+            config = Config(self.root, "fixture", base_url=url, proxy="direct", read_only=True, max_steps=5)
+            with closing(Tools(config, approve)) as tools:
+                history, complete = Agent(config, Provider(config), tools, lambda _: None).run("Inspect command resolution")
+        self.assertTrue(complete)
+        self.assertEqual(len(captured), 5)
+        result = json.loads(history[-2]["content"])
+        self.assertEqual(result["output_mode"], "windows")
+        self.assertEqual([file["path"] for file in result["files"]], [path])
+        approve.assert_not_called()
+
     def test_compaction_elides_old_successful_guidance_but_preserves_recent_failures_and_saved_history(self):
         history = [{"role": "system", "content": "system"}, {"role": "user", "content": "original task"}]
         for number in range(8):

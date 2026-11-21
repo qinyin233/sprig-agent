@@ -27,7 +27,8 @@
 ## 边界与继续读取
 
 - 单个待解析文件最多 512 KiB，仍先检查整个文件。更大的文件使用普通行范围或 UTF-8 字节分页，原有 8 MiB 扫描上限保持不变。
-- `symbol` 是精确索引名，最多 1024 UTF-8 字节；不做模糊选取。名称不存在、语法错误、索引不可用或达到资源上限会明确停止，可改用搜索和普通行读取。
+- `symbol` 是精确索引名，最多 1024 UTF-8 字节。找不到精确名称时，`symbol_suggestions` 可返回同文件中末段名称相同的声明及其起止行，例如请求 `MultiCommand.resolve_command` 时给出 `Group.resolve_command`。候选最多八项，并受完整 JSON 输出上限及隐私规则约束。返回的列表因上限缩短时会标记 `symbol_suggestions_truncated`。根据返回的精确名称或行范围再次读取，取得实际源码和版本标识。
+- 语法错误、索引不可用或达到资源上限时，可改用搜索和普通行读取。
 - 同名声明/重载不会自动挑选。错误返回总匹配数及有界的行位置列表；可用普通 `offset/limit` 选择范围。位置列表受完整 JSON 输出预算约束，裁剪会标记。
 - 命名模式的 `offset` 保持默认 1，不设置 `limit/cursor`，可设置 `line_numbers=false` 取得原文。后续使用普通 `offset/limit` 继续读取；无需再次指定 `symbol`。
 - 单次返回仍受 `max_output` 内容字节上限及 10,000 行窗口约束。`symbol_complete=false` 时检查 `end_line/next_offset`；若首行本身被截断，会有 `line_truncated=true`，不能发放编辑读取标识，可改用字节分页。

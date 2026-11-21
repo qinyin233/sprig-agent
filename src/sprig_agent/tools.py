@@ -24,7 +24,7 @@ from .index import SymbolIndex, language_for
 from .instructions import InstructionError, ProjectInstructions
 from .planning import TaskPlan, validate_plan
 from .revisions import MAX_RESUME_READS, READ_ID_PATTERN, ReadVersions, valid_read_id
-from .map_selection import MapSelection, encoded_size
+from .map_selection import MapSelection, encoded_size, match_score
 from .policy import FilePolicy, command_environment
 from .output import CommandOutput, SampledCommandOutput
 from .command_logs import BackgroundLog, CommandLogs, LogCapture
@@ -1049,7 +1049,32 @@ class Tools:
             raise ToolError("file could not be parsed for symbols; use ordinary line reads")
         matches = [item for item in records if item["name"] == symbol]
         if not matches:
-            return {"error": "symbol not found; use an exact project_map name or ordinary line reads", "symbol_match_count": 0}
+            result = {"error": "symbol not found; use an exact indexed name or ordinary line reads", "symbol_match_count": 0}
+            query = symbol.replace("::", ".").rsplit(".", 1)[-1].strip().casefold()
+            if not query:
+                return result
+            secrets = self.config.secrets
+            hints = {**result, "symbol_suggestions": [], "symbol_suggestions_truncated": False}
+            for item in records:
+                self._check_cancelled()
+                name = item["name"]
+                if (match_score(name.replace("::", "."), query) != 3 or "\n" in name
+                        or terminal_text(name) != name or redact(name, secrets) != name):
+                    continue
+                suggestion = {key: item[key] for key in ("name", "start_line", "end_line")}
+                candidates = hints["symbol_suggestions"]
+                if len(candidates) == 8:
+                    hints["symbol_suggestions_truncated"] = True
+                    break
+                candidate = {**hints, "symbol_suggestions": [*candidates, suggestion]}
+                if max(encoded_size(candidate), encoded_size(redact(candidate, secrets))) > self.config.max_output:
+                    hints["symbol_suggestions_truncated"] = True
+                    continue
+                hints = candidate
+            if hints["symbol_suggestions"]:
+                self._parts(path)
+                return hints
+            return result
         if len(matches) != 1:
             result = {"error": "symbol is ambiguous; use ordinary offset/limit reads", "symbol_match_count": len(matches),
                       "symbol_locations": [], "symbol_locations_truncated": True}
@@ -1196,9 +1221,11 @@ class Tools:
             raise ToolError("files/count output requires context=0; use content or read for surrounding lines")
         if cursor is not _MISSING and output_mode != "read":
             raise ToolError("cursor requires output_mode='read'")
-        if matches_per_file is not _MISSING and (output_mode != "windows"
-                or type(matches_per_file) is not int or not 1 <= matches_per_file <= MAX_WINDOW_MATCHES):
-            raise ToolError("matches_per_file requires output_mode='windows' and an integer from 1 to 8")
+        if matches_per_file is not _MISSING:
+            if output_mode != "windows":
+                raise ToolError("omit matches_per_file to keep this output mode, or set output_mode='windows'")
+            if type(matches_per_file) is not int or not 1 <= matches_per_file <= MAX_WINDOW_MATCHES:
+                raise ToolError(f"matches_per_file must be an integer from 1 to {MAX_WINDOW_MATCHES}")
         if output_mode == "read":
             if glob is not _MISSING:
                 raise ToolError("read mode requires a single explicit file path; omit glob")

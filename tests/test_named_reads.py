@@ -158,6 +158,29 @@ class NamedReadTests(unittest.TestCase):
         self.assertEqual(result["symbol_match_count"], 0)
         self.assertNotIn("sha256", result)
 
+    def test_wrong_qualification_only_suggests_bounded_public_declarations_in_the_same_file(self):
+        secret = "fixture_private_symbol"
+        source = f"class {secret}:\n    def run(self): pass\n" + "".join(
+            f"class Handler{index}:\n    def run(self): pass\n" for index in range(12))
+        path = self.root / "source.py"
+        path.write_bytes(source.encode())
+        (self.root / "unrelated.py").write_bytes(b"class Another:\n    def run(self): pass\n")
+        with closing(Tools(replace(self.config, max_output=256, api_key=secret), self.approve)) as tools:
+            result = tools.execute("read_file", {"path": "source.py", "symbol": "Wrong.Run"})
+            suggestions = result["symbol_suggestions"]
+            self.assertTrue(result["symbol_suggestions_truncated"])
+            self.assertGreater(len(suggestions), 0)
+            self.assertLessEqual(len(suggestions), 8)
+            self.assertEqual(suggestions[0], {"name": "Handler0.run", "start_line": 4, "end_line": 4})
+            self.assertEqual(result["symbol_match_count"], 0)
+            self.assertFalse({"path", "content", "sha256", "read_id"} & result.keys())
+            encoded = json.dumps(result, ensure_ascii=False)
+            self.assertNotIn("Another", encoded)
+            self.assertNotIn(secret, encoded)
+            self.assertNotIn("[REDACTED]", encoded)
+            self.assertLessEqual(len(encoded.encode()), 256)
+        self.approve.assert_not_called()
+
     def test_output_cap_reports_incomplete_symbol_and_continues_with_normal_ranges(self):
         source = "class Service:\n    def run(self):\n" + "        value = '中🙂'\n" * 80 + "        return value\n"
         (self.root / "source.py").write_bytes(source.encode())
